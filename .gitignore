@@ -11,3 +11,5 @@ zygisk/
 .cxx
 local.properties
 flashable_module/targets/
+module/obj
+*.so
