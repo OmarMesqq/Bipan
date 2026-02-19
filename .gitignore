@@ -10,6 +10,6 @@ zygisk/
 .externalNativeBuild
 .cxx
 local.properties
-flashable_module/targets/
+module/targets/
 src/obj
 *.so
