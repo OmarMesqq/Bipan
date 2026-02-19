@@ -1,15 +1,6 @@
 zygisk/
 *.zip
-*.iml
-.gradle
-/local.properties
-/.idea
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
 module/targets/
-src/obj
+src/libs/
+src/obj/
 *.so
