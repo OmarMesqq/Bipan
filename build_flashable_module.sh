@@ -2,15 +2,15 @@
 set -euxo pipefail
 
 # Build the module's .so files
-cd module
+cd src
 ndk-build
 cd ..
 
 # Copy the freshly built shared libraries into Zygisk's expected module structure
 cd flashable_module
 mkdir -p zygisk
-cp ../module/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
-cp ../module/libs/armeabi-v7a/libbipan.so zygisk/armeabi-v7a.so
+cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
+cp ../src/libs/armeabi-v7a/libbipan.so zygisk/armeabi-v7a.so
 
 # Create the final flashable zip with no compression
 rm -f ../bipan.zip
