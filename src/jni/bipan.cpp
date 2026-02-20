@@ -197,7 +197,22 @@ private:
         if (process == nullptr) {
             return false;
         }
-        return targetsSet.find(process) != targetsSet.end();
+        // Direct match
+        if (targetsSet.find(process) != targetsSet.end()) {
+            return true;
+        }
+
+        // Multi-process match (check if it's a sub-process i.e. com.some.app:subservice)
+        std::string procStr(process);
+        for (const auto& target : targetsSet) {
+            if (procStr.compare(0, target.length(), target) == 0) {
+                // Ensure we aren't matching "com.foo.app" by checking for the ':'
+                if (procStr.length() > target.length() && procStr[target.length()] == ':') {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 };
 

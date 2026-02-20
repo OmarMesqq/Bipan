@@ -42,7 +42,7 @@ for a folder called `targets`. Inside it, you should place files named after the
 You can easily create empty files by invoking your rooted shell and doing something akin to:
 ```shell
 touch /data/adb/modules/bipan/targets/com.app.to.spoof
-touch /data/adb/modules/bipan/targets/com.facebook
+touch /data/adb/modules/bipan/targets/com.facebook.katana
 touch /data/adb/modules/bipan/targets/org.another.app
 ```
 
