@@ -29,6 +29,10 @@ public:
     void preAppSpecialize(AppSpecializeArgs *args) override {
         // Filter the process: only spoof some packages
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (!raw_process_name) {
+            LOGE("preAppSpecialize: process name is nil. Aborting.");
+            return;
+        }
         bool should_spoof = isTarget(raw_process_name);
 
         if (should_spoof) {
@@ -36,10 +40,15 @@ public:
             applySeccompFilter(filterMode);   
             LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
+
+        // This is ugly, but `processNameCopy` is still in the stack when `preSpecialize` is called
+        char processNameCopy[strlen(raw_process_name) + 1];
+        strcpy(processNameCopy, raw_process_name);
+        
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
 
         const bool shouldClose = should_spoof ? (filterMode == BLOCK) : true;
-        preSpecialize(shouldClose);
+        preSpecialize(processNameCopy, should_spoof, shouldClose);
     }
 
 private:
@@ -92,9 +101,11 @@ private:
         close(fd);
     }
 
-    void preSpecialize(bool shouldClose) {
+    void preSpecialize(const char* process, bool isTarget, bool shouldClose) {
         if (shouldClose) {
-            LOGD("Dlclosing module...");
+            if (isTarget) {
+                LOGD("Dlclosing module for process %s", process);
+            }
             // If we don't hook any functions, we can let Zygisk dlclose ourselves
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
         }
