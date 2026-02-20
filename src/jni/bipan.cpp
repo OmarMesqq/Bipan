@@ -38,7 +38,7 @@ public:
         }
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
 
-        const bool shouldClose = should_spoof && (filterMode == LOG || filterMode == TRAP);
+        const bool shouldClose = should_spoof ? (filterMode == BLOCK) : true;
         preSpecialize(shouldClose);
     }
 
@@ -94,6 +94,7 @@ private:
 
     void preSpecialize(bool shouldClose) {
         if (shouldClose) {
+            LOGD("Dlclosing module...");
             // If we don't hook any functions, we can let Zygisk dlclose ourselves
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
         }
