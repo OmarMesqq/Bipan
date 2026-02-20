@@ -15,8 +15,7 @@ None of this would be possible without `topjohnwu et al.` and their amazing work
 
 
 ## Some notes
-- This project builds the modules shared libraries for architectures ARM 32 and 64 bits:
-`armeabi-v7a` and `arm64-v8a` respectively.
+- This project targets only the ARM 64 bits architecture (`arm64-v8a`/`aarch64`)
 
 - The module uses Zygisk [version 4](https://github.com/topjohnwu/zygisk-module-sample/blob/master/module/jni/zygisk.hpp), requiring at least Magisk 26 (`26000`)
 
