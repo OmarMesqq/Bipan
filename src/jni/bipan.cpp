@@ -21,23 +21,51 @@ using zygisk::ServerSpecializeArgs;
 
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
-void block_execve() {
+/**
+ * Uses seccomp to block `execve` and `execveat` syscalls.
+ * This is news to me: the Berkeley Packet Filter syntax is weird.
+ * For instance:
+ * `BPF_JUMP(code, value, jt, jf)`
+ * evaluates 1st param to 2nd and skips `jt`
+ * instructions to the next seccomp "VM" if condition is true
+ * and likewise to `jf`
+ */
+void block_exec_like_syscalls() {
     struct sock_filter filter[] = {
-        // Examine the syscall number
+        // Load the syscall number into the accumulator
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-        // If it's execve, return "Permission Denied" (EPERM)
+        
+        // Check if it's execve
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+        // If yes, return Permission Denied (EPERM)
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
-        // Otherwise, allow the syscall
+
+        // Check if it's execveat
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
+        // If yes, return Permission Denied
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+        
+        // If it didn't match those, allow it
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
     };
+
     struct sock_fprog prog = {
         .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
         .filter = filter,
     };
-    // Lock the sandbox
-    prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
-    prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog);
+    
+
+    // Promise the kernel we won't ask for elevated privileges.
+    // This is necessary as this function will be run in Zygote (non-root)
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+        LOGE("prctl(PR_SET_NO_NEW_PRIVS) failed: %d", errno);
+        return;
+    }
+
+    // Apply the seccomp filter
+    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
+        LOGE("prctl(PR_SET_SECCOMP) failed: %d", errno);
+    }
 }
 
 class Bipan : public zygisk::ModuleBase {
@@ -58,8 +86,8 @@ public:
 
         if (should_spoof) {
             spoofBuildFields();
-            block_execve();
-            LOGD("Spoofed Build fields and blocked execve() for process %s", raw_process_name);
+            block_exec_like_syscalls();
+            LOGD("Sanbox applied for %s", raw_process_name);
         }
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
         preSpecialize(raw_process_name);
