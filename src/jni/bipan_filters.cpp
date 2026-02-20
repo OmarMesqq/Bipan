@@ -5,12 +5,14 @@
 #include <unistd.h>
 #include <cerrno>
 #include <signal.h>
+#include <dlfcn.h>
 
 #include "bipan_shared.hpp"
 #include "bipan_filters.hpp"
 
 static void sigsys_trap_handler(int sig, siginfo_t *info, void *void_context);
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
+static void log_address_info(const char* label, uintptr_t addr);
 
 /**
  * Berkeley Packet Filter program to
@@ -146,6 +148,8 @@ static void sigsys_trap_handler(int sig, siginfo_t *info, void *void_context) {
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     ucontext_t *ctx = (ucontext_t *)void_context;
     int nr = info->si_syscall;
+    uintptr_t pc = ctx->uc_mcontext.pc;
+    uintptr_t lr = ctx->uc_mcontext.regs[30];
 
     LOGE("--- BIPAN SANDBOX LOG ---");
     if (nr == __NR_execve) {
@@ -163,22 +167,57 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         LOGE("Violation: uname to the utsname struct at %p", (void*)ctx->uc_mcontext.regs[0]);
     }
     else {
-        LOGE("Violation: Blocked syscall %d", nr);
+        LOGE("Violation: Syscall %d", nr);
     }
 
     /**
+     * TODO: apparently this isn't necessary as, when using seccomp,
+     * the kernel has "stepped over" the Supervisor Call by the time
+     * our handler got SIGSYS. It automatically skipped the 4 bytes
+     * of `svc #0` and now the PC is  `mov xY, x0` i.e.
+     * put the syscall's result in the C/C++ variable that receives it.
+     * As such, our only job is to mock the return value :)
+     * DEPRECATED:
      * Increment the `pc` (Program Counter) by
      * 4 bytes as to skip the Supervisor Call
      * (`svc #0`) of aarch64.
      * This "pretends" the syscall happened to the target
      * program.
      */
-    ctx->uc_mcontext.pc += 4;
+    // ctx->uc_mcontext.pc += 4;
 
     /**
-     * Then, we mock the syscall's result.
+     * Mock the syscall's result.
      * Here I'm denying it by
-     * placing `EPERM` on x0 (return register in aarch64)
+     * placing `-EPERM` on x0 (return register in aarch64)
+     * 
+     * -EPERM is signed int (32 bits/4 bytes).
+     * The innermost cast sign extends -EPERM to 64 bits,
+     * thus keeping it negative. The outermost cast is simply
+     * to shut up the compiler it lets me put the negative bit pattern
+     * into an unsigned "box" (the register)
      */
-    ctx->uc_mcontext.regs[0] = static_cast<unsigned long long>(-EPERM);
+    ctx->uc_mcontext.regs[0] = static_cast<uint64_t>(static_cast<int64_t>(-EPERM));
+
+    log_address_info("PC (Actual Caller)", pc);
+    log_address_info("LR (Return Address)", lr);
+
+    // uint32_t *instr_at_pc = (uint32_t *)pc;
+    // uint32_t *instr_before_pc = (uint32_t *)(pc - 4);
+    // LOGD("Instruction at PC: 0x%08x", *instr_at_pc);
+    // LOGD("Instruction before PC: 0x%08x", *instr_before_pc);
+}
+
+
+static void log_address_info(const char* label, uintptr_t addr) {
+    Dl_info dlinfo;
+    if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
+        LOGD("%s: %p | Library: %s | Symbol: %s", 
+             label, 
+             (void*)addr, 
+             dlinfo.dli_fname, 
+             dlinfo.dli_sname ? dlinfo.dli_sname : "N/A");
+    } else {
+        LOGE("%s: %p (Could not resolve)", label, (void*)addr);
+    }
 }
