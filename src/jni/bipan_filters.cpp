@@ -6,6 +6,8 @@
 #include <cerrno>
 #include <signal.h>
 #include <dlfcn.h>
+#include <cstring>
+#include <sys/utsname.h>
 
 #include "bipan_shared.hpp"
 #include "bipan_filters.hpp"
@@ -153,18 +155,35 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
 
     LOGE("--- BIPAN SANDBOX LOG ---");
     if (nr == __NR_execve) {
-        // X0 contains the pointer to the filename string
         const char* path = (const char*)ctx->uc_mcontext.regs[0];
         LOGE("Violation: execve(\"%s\")", path ? path : "NULL");
     } 
     else if (nr == __NR_execveat) {
-        // X1 contains the pointer to the filename string in execveat
         const char* path = (const char*)ctx->uc_mcontext.regs[1];
         LOGE("Violation: execveat(dfd, \"%s\")", path ? path : "NULL");
     }
     else if (nr == __NR_uname) {
-        // X0 contains the pointer to the utsname struct
-        LOGE("Violation: uname to the utsname struct at %p", (void*)ctx->uc_mcontext.regs[0]);
+        struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
+        if (!buf) {
+            LOGE("sigsys_log_handler: utsname struct for uname is NULL!");
+            _exit(1);
+        }
+
+        LOGE("Intercepted 'uname' syscall. Spoofing values...");
+        log_address_info("PC (Actual Caller)", pc);
+        log_address_info("LR (Return Address)", lr);
+        
+        memset(buf, 0, sizeof(struct utsname));
+        strncpy(buf->sysname, "Linux", 64);
+        strncpy(buf->nodename, "localhost", 64);
+        strncpy(buf->release, "6.6.56-android16-11-g8a3e2b1c4d5f", 64);
+        strncpy(buf->version, "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025", 64);
+        strncpy(buf->machine, "aarch64", 64);
+        strncpy(buf->domainname, "(none)", 64);
+        
+        ctx->uc_mcontext.regs[0] = 0;   // mock success
+        LOGD("Spoofed 'uname' values.");
+        return;     // so we don't hit the -EPERM logic at bottom
     }
     else {
         LOGE("Violation: Syscall %d", nr);
