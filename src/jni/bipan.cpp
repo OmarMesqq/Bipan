@@ -23,27 +23,28 @@ using zygisk::ServerSpecializeArgs;
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
 /**
- * Uses seccomp to block `execve` and `execveat` syscalls.
- * This is news to me: the Berkeley Packet Filter syntax is weird.
- * For instance:
- * `BPF_JUMP(code, value, jt, jf)`
- * evaluates 1st param to 2nd and skips `jt`
- * instructions to the next seccomp "VM" if condition is true
- * and likewise to `jf`
+ * Block the following syscalls using seccomp:
+ * - `execve`
+ * - `execveat`
+ * - `uname`
+ * 
+ * Returns `EPERM` to app
  */
-void block_exec_like_syscalls() {
+void block_syscalls() {
     struct sock_filter filter[] = {
         // Load the syscall number into the accumulator
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
         
-        // Check if it's execve
+        // Check for execve
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-        // If yes, return Permission Denied (EPERM)
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
 
-        // Check if it's execveat
+        // Check for execveat
         BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
-        // If yes, return Permission Denied
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+
+        // Check for uname
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
         
         // If it didn't match those, allow it
@@ -87,7 +88,7 @@ public:
 
         if (should_spoof) {
             spoofBuildFields();
-            block_exec_like_syscalls();
+            block_syscalls();
             LOGD("Sanbox applied for %s", raw_process_name);
         }
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
