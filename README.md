@@ -48,7 +48,7 @@ touch /data/adb/modules/bipan/targets/org.another.app
 
 Bipan will traverse this directory when Zygote spawns, cache the package names in a hash table for $O(1)$ lookup and immediately match the current process with entries on the list.
 
-If the current process shouldn't be spoofed, nothing is done and Bipan never alters its memory. Otherwise, whenever Bipan gets its first match, the Java fields are permanently spoofed for the process's lifecycle.
+If the current process shouldn't be spoofed, nothing is done and Bipan never alters its memory. Otherwise, whenever Bipan gets its first match, the Java fields are permanently spoofed for the process's (and its subprocesses') lifecycle.
 
 
 ## C++ STL
