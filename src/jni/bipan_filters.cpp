@@ -126,8 +126,9 @@ void applySeccompFilter(BIPAN_FILTER opt) {
     // Another option is to use SECCOMP_SET_MODE_STRICT:
     // "The only system calls that the calling thread is permitted
     // to make are read(2), write(2), _exit(2)"
-    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
-        LOGE("prctl(PR_SET_SECCOMP) failed: %d", errno);
+    long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
+    if (seccompApplyRet == -1) {
+        LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
     }
 }
 
@@ -153,7 +154,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     uintptr_t pc = ctx->uc_mcontext.pc;
     uintptr_t lr = ctx->uc_mcontext.regs[30];
 
-    LOGE("--- BIPAN SANDBOX LOG ---");
+    LOGE("--- BIPAN SANDBOX LOG START ---");
     if (nr == __NR_execve) {
         const char* path = (const char*)ctx->uc_mcontext.regs[0];
         LOGE("Violation: execve(\"%s\")", path ? path : "NULL");
@@ -169,7 +170,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             _exit(1);
         }
 
-        LOGE("Intercepted 'uname' syscall. Spoofing values...");
+        LOGE("Violation: uname. Spoofing values...");
         
         memset(buf, 0, sizeof(struct utsname));
         strncpy(buf->sysname, "Linux", 64);
@@ -182,7 +183,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         LOGD("Spoofed 'uname' values.");
     }
     else {
-        LOGE("Violation: Syscall %d", nr);
+        LOGE("Violation: syscall %d", nr);
     }
 
     /**
@@ -192,6 +193,12 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
      * of `svc #0` and now the PC is  `mov xY, x0` i.e.
      * put the syscall's result in the C/C++ variable that receives it.
      * As such, our only job is to mock the return value :)
+     * 
+     * You can check with:
+     * uint32_t *instr_at_pc = (uint32_t *)pc;
+     * uint32_t *instr_before_pc = (uint32_t *)(pc - 4);
+     * LOGD("Instruction at PC: 0x%08x", *instr_at_pc);
+     * LOGD("Instruction before PC: 0x%08x", *instr_before_pc);
      * DEPRECATED:
      * Increment the `pc` (Program Counter) by
      * 4 bytes as to skip the Supervisor Call
@@ -218,13 +225,10 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
      */
     ctx->uc_mcontext.regs[0] = 0;
 
-    // log_address_info("PC (Actual Caller)", pc);
-    // log_address_info("LR (Return Address)", lr);
+    log_address_info("PC (Actual Caller)", pc);
+    log_address_info("LR (Return Address)", lr);
 
-    // uint32_t *instr_at_pc = (uint32_t *)pc;
-    // uint32_t *instr_before_pc = (uint32_t *)(pc - 4);
-    // LOGD("Instruction at PC: 0x%08x", *instr_at_pc);
-    // LOGD("Instruction before PC: 0x%08x", *instr_before_pc);
+    LOGE("--- BIPAN SANDBOX LOG END ---");
 }
 
 
