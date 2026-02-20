@@ -181,9 +181,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         strncpy(buf->machine, "aarch64", 64);
         strncpy(buf->domainname, "(none)", 64);
         
-        ctx->uc_mcontext.regs[0] = 0;   // mock success
         LOGD("Spoofed 'uname' values.");
-        return;     // so we don't hit the -EPERM logic at bottom
     }
     else {
         LOGE("Violation: Syscall %d", nr);
@@ -215,8 +213,12 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
      * thus keeping it negative. The outermost cast is simply
      * to shut up the compiler it lets me put the negative bit pattern
      * into an unsigned "box" (the register)
+     * 
+     * TODO: decide if return:
+     * - `0`: fake success
+     * - `static_cast<uint64_t>(static_cast<int64_t>(-EPERM))`: Permission denied
      */
-    ctx->uc_mcontext.regs[0] = static_cast<uint64_t>(static_cast<int64_t>(-EPERM));
+    ctx->uc_mcontext.regs[0] = 0;
 
     log_address_info("PC (Actual Caller)", pc);
     log_address_info("LR (Return Address)", lr);
