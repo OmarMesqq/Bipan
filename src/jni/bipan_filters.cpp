@@ -25,6 +25,38 @@ static void sigsys_trap_handler(int sig, siginfo_t *info, void *void_context) {
     _exit(1);
 }
 
+static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
+    ucontext_t *ctx = (ucontext_t *)void_context;
+    int nr = info->si_syscall;
+
+    LOGE("--- BIPAN SANDBOX LOG (PASSIVE) ---");
+    if (nr == __NR_execve) {
+        // X0 contains the pointer to the filename string
+        const char* path = (const char*)ctx->uc_mcontext.regs[0];
+        LOGE("Violation: execve(\"%s\")", path ? path : "NULL");
+    } 
+    else if (nr == __NR_execveat) {
+        // X1 contains the pointer to the filename string in execveat
+        const char* path = (const char*)ctx->uc_mcontext.regs[1];
+        LOGE("Violation: execveat(dfd, \"%s\")", path ? path : "NULL");
+    }
+    else if (nr == __NR_uname) {
+        // X0 contains the pointer to the utsname struct
+        LOGE("Violation: uname(%p)", (void*)ctx->uc_mcontext.regs[0]);
+    }
+    else {
+        LOGE("Violation: Blocked syscall %d", nr);
+    }
+
+    // 1. Advance the Program Counter (PC) by 4 bytes.
+    // On aarch64, 'svc #0' is exactly 4 bytes. Skipping it prevents the infinite loop.
+    ctx->uc_mcontext.pc += 4;
+
+    // 2. Set the return value in X0 to -EPERM (-1).
+    // The app receives this as the result of the "failed" syscall.
+    ctx->uc_mcontext.regs[0] = static_cast<unsigned long long>(-EPERM);
+}
+
 static struct sock_filter blockFilter[] = {
         // Load the syscall number into the accumulator
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
@@ -67,7 +99,7 @@ void applySeccompFilter(BIPAN_FILTER opt) {
     // The seccomp filter program
     struct sock_fprog prog = {
         .len = 0,   // number of BPF instructions
-        .filter = 0 // Pointer to array of BPF instructions
+        .filter = nullptr // Pointer to array of BPF instructions
     };
 
     switch (opt) {
@@ -95,9 +127,18 @@ void applySeccompFilter(BIPAN_FILTER opt) {
             break;
         }
         case LOG: {
+            // Register the signal handler
+            struct sigaction sa{};
+            sa.sa_sigaction = sigsys_log_handler;
+            sa.sa_flags = SA_SIGINFO;
+            if (sigaction(SIGSYS, &sa, nullptr) == -1) {
+                LOGE("applySeccompFilter: Failed to set SIGSYS handler: %d", errno);
+                return;
+            }
+
             prog = {
-                .len = (unsigned short)(sizeof(blockFilter) / sizeof(blockFilter[0])),
-                .filter = blockFilter,
+                .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
+                .filter = trapFilter,
             };
             break;
         }
