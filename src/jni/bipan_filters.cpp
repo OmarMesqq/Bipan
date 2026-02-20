@@ -170,8 +170,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         }
 
         LOGE("Intercepted 'uname' syscall. Spoofing values...");
-        log_address_info("PC (Actual Caller)", pc);
-        log_address_info("LR (Return Address)", lr);
         
         memset(buf, 0, sizeof(struct utsname));
         strncpy(buf->sysname, "Linux", 64);
@@ -220,8 +218,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
      */
     ctx->uc_mcontext.regs[0] = 0;
 
-    log_address_info("PC (Actual Caller)", pc);
-    log_address_info("LR (Return Address)", lr);
+    // log_address_info("PC (Actual Caller)", pc);
+    // log_address_info("LR (Return Address)", lr);
 
     // uint32_t *instr_at_pc = (uint32_t *)pc;
     // uint32_t *instr_before_pc = (uint32_t *)(pc - 4);
