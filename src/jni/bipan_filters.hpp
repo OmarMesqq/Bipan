@@ -1,6 +1,12 @@
 #ifndef BIPAN_FILTERS_H
 #define BIPAN_FILTERS_H
 
-void block_syscalls();
+enum BIPAN_FILTER { 
+    BLOCK = 0,
+    LOG = 1,
+    TRAP = 2
+};
+
+void applySeccompFilter(BIPAN_FILTER opt);
 
 #endif

@@ -12,9 +12,9 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-
-
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
+
+constexpr BIPAN_FILTER filterMode = LOG;
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -31,18 +31,15 @@ public:
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
         bool should_spoof = isTarget(raw_process_name);
 
-
         if (should_spoof) {
             spoofBuildFields();
-            block_syscalls();
-            LOGD("Sanbox applied for %s", raw_process_name);
+            applySeccompFilter(filterMode);   
+            LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
-        preSpecialize(raw_process_name);
-    }
 
-    void preServerSpecialize(ServerSpecializeArgs *args) override {
-        preSpecialize("system_server");
+        const bool shouldClose = should_spoof && (filterMode == LOG || filterMode == TRAP);
+        preSpecialize(shouldClose);
     }
 
 private:
@@ -95,9 +92,11 @@ private:
         close(fd);
     }
 
-    void preSpecialize(const char *process) {
-        // Since we do not hook any functions, we should let Zygisk dlclose ourselves
-        api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+    void preSpecialize(bool shouldClose) {
+        if (shouldClose) {
+            // If we don't hook any functions, we can let Zygisk dlclose ourselves
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
     }
 
     /**
