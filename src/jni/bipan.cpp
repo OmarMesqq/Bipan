@@ -5,6 +5,10 @@
 #include <android/log.h>
 #include <dirent.h>
 #include <unordered_set>
+#include <linux/filter.h>
+#include <linux/seccomp.h>
+#include <sys/prctl.h>
+#include <syscall.h>
 
 #include "zygisk.hpp"
 
@@ -16,6 +20,25 @@ using zygisk::ServerSpecializeArgs;
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Bipan", __VA_ARGS__)
 
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
+
+void block_execve() {
+    struct sock_filter filter[] = {
+        // Examine the syscall number
+        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
+        // If it's execve, return "Permission Denied" (EPERM)
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+        // Otherwise, allow the syscall
+        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+    };
+    struct sock_fprog prog = {
+        .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+        .filter = filter,
+    };
+    // Lock the sandbox
+    prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+    prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog);
+}
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -32,13 +55,14 @@ public:
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
         bool should_spoof = isTarget(raw_process_name);
 
-        preSpecialize(raw_process_name);
 
         if (should_spoof) {
-            LOGD("Spoofing Build fields for process %s", raw_process_name);
             spoofBuildFields();
+            block_execve();
+            LOGD("Spoofed Build fields and blocked execve() for process %s", raw_process_name);
         }
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
+        preSpecialize(raw_process_name);
     }
 
     void preServerSpecialize(ServerSpecializeArgs *args) override {
