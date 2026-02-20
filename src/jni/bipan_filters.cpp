@@ -74,29 +74,13 @@ static struct sock_filter trapFilter[] = {
 };
 
 void applySeccompFilter(BIPAN_FILTER opt) {
-    // The seccomp filter program
+    // The seccomp filter "program"
     struct sock_fprog prog = {
         .len = 0,   // number of BPF instructions
         .filter = nullptr // Pointer to array of BPF instructions
     };
 
     switch (opt) {
-        case TRAP: {
-            // Register the signal handler
-            struct sigaction sa{};
-            sa.sa_sigaction = sigsys_trap_handler;
-            sa.sa_flags = SA_SIGINFO;
-            if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-                LOGE("applySeccompFilter: Failed to set SIGSYS handler: %d", errno);
-                return;
-            }
-
-            prog = {
-                .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
-                .filter = trapFilter,
-            };
-            break;
-        }
         case BLOCK: {
             prog = {
                 .len = (unsigned short)(sizeof(blockFilter) / sizeof(blockFilter[0])),
@@ -104,13 +88,14 @@ void applySeccompFilter(BIPAN_FILTER opt) {
             };
             break;
         }
+        case TRAP:
         case LOG: {
-            // Register the signal handler
+            // Register the signal handler before applying seccomp-bpf
             struct sigaction sa{};
-            sa.sa_sigaction = sigsys_log_handler;
+            sa.sa_sigaction = opt == TRAP ? sigsys_trap_handler : sigsys_log_handler;
             sa.sa_flags = SA_SIGINFO;
             if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-                LOGE("applySeccompFilter: Failed to set SIGSYS handler: %d", errno);
+                LOGE("applySeccompFilter: Failed to set SIGSYS handler for filter option %u: %d", opt, errno);
                 return;
             }
 
