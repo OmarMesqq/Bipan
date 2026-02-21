@@ -160,7 +160,7 @@ private:
         setField(buildClass, "MANUFACTURER", "google");
         setField(buildClass, "MODEL", "Pixel 8 Pro");
         setField(buildClass, "PRODUCT", "husky");
-        setField(buildClass, "RADIO", "1.0.0");
+        setField(buildClass, "RADIO", "g5300g-251108-251202-B-12876551");
         setField(buildClass, "SOC_MANUFACTURER", "Google");
         setField(buildClass, "SOC_MODEL", "Tensor G3");
         setField(buildClass, "TAGS", "release-keys");
