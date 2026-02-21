@@ -5,3 +5,4 @@ src/libs/
 src/obj/
 *.so
 TODO
+.idea
