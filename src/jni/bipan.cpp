@@ -3,6 +3,13 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <unordered_set>
+#include <thread>
+#include <mutex>
+#include <dirent.h>
+#include <fstream>
+#include <sstream>
+#include <csignal>
+#include <ucontext.h>
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
@@ -15,6 +22,10 @@ using zygisk::ServerSpecializeArgs;
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
 constexpr BIPAN_FILTER filterMode = LOG;
+
+std::mutex maps_mutex;
+std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
+static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -51,10 +62,113 @@ public:
         preSpecialize(processNameCopy, should_spoof, shouldClose);
     }
 
+    void postAppSpecialize(const AppSpecializeArgs *args) override {
+        const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (isTarget(raw_process_name)) {
+            // 1. Register the SIGSYS Handler
+            setupSigsysHandler();
+
+            // 2. Start the Watcher thread safely after specialization
+            std::thread watcher(memoryWatcherThread);
+            watcher.detach(); // Let it run in the background
+        }
+        env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
+    }
+
 private:
     Api *api;
     JNIEnv *env;
     std::unordered_set<std::string> targetsSet;
+
+    static void setupSigsysHandler() {
+        struct sigaction sa{};
+        sa.sa_flags = SA_SIGINFO;
+        sa.sa_sigaction = sigsysHandler;
+        sigemptyset(&sa.sa_mask);
+        if (sigaction(SIGSYS, &sa, nullptr) != 0) {
+            LOGE("Failed to register SIGSYS handler!");
+        }
+    }
+
+    static void memoryWatcherThread() {
+        while (true) {
+            std::vector<std::pair<uintptr_t, uintptr_t>> new_ranges;
+            std::ifstream maps("/proc/self/maps");
+            std::string line;
+
+            while (std::getline(maps, line)) {
+                // Look for executable maps belonging to app data directories
+                // Usually /data/app/ or /data/data/ containing .so
+                if (line.find("r-xp") != std::string::npos && 
+                   (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) &&
+                   line.find(".so") != std::string::npos) {
+                    
+                    uintptr_t start, end;
+                    if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
+                        new_ranges.push_back({start, end});
+                    }
+                }
+            }
+
+            // Safely update the shared ranges
+            {
+                std::lock_guard<std::mutex> lock(maps_mutex);
+                target_memory_ranges = new_ranges;
+            }
+
+            // Sleep to prevent CPU hogging. 
+            // 1-2 seconds is usually enough to catch lazy-loaded libraries.
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
+    }
+
+    static void sigsysHandler(int signum, siginfo_t *info, void *ucontext) {
+        if (signum != SIGSYS) return;
+
+        ucontext_t *uc = static_cast<ucontext_t *>(ucontext);
+        // Extract the Instruction Pointer (PC)
+        uintptr_t caller_pc = uc->uc_mcontext.pc;
+
+        // Extract Syscall Number
+        int syscall_no = uc->uc_mcontext.regs[8];
+
+        // Extract Arguments (x0 to x5)
+        long arg0 = uc->uc_mcontext.regs[0];
+        long arg1 = uc->uc_mcontext.regs[1];
+        long arg2 = uc->uc_mcontext.regs[2];
+        long arg3 = uc->uc_mcontext.regs[3];
+        long arg4 = uc->uc_mcontext.regs[4];
+        long arg5 = uc->uc_mcontext.regs[5];
+
+        bool from_target_so = false;
+        {
+            std::lock_guard<std::mutex> lock(maps_mutex);
+            for (const auto& range : target_memory_ranges) {
+                if (caller_pc >= range.first && caller_pc < range.second) {
+                    from_target_so = true;
+                    break;
+                }
+            }
+        }
+
+        if (from_target_so) {
+            // --- INTERCEPT & DUMP ---
+            LOGD("[Seccomp] Blocked syscall %d from target .so at %lx", syscall_no, caller_pc);
+            LOGD("          Args: [0]=%lx, [1]=%lx, [2]=%lx, [3]=%lx", arg0, arg1, arg2, arg3);
+
+            uc->uc_mcontext.regs[0] = -13; // Permission denied
+
+        } else {
+            // --- PASSTHROUGH (Allowed) ---
+            // Manually execute the syscall on behalf of libc/linker/apex
+            long ret = arm64_raw_syscall(syscall_no, arg0, arg1, arg2, arg3, arg4, arg5);
+
+            // Inject the return value back into the register context
+            // so the original calling function receives it.
+            uc->uc_mcontext.regs[0] = ret;
+        }
+        uc->uc_mcontext.pc += 4;
+    }
 
     /**
      * Do some IPC with the companion handler
@@ -257,6 +371,32 @@ static void companion_handler(int fd) {
     write(fd, &done, sizeof(done));
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wregister"
+#pragma clang diagnostic ignored "-Wdeprecated-register"
+/**
+ * Executes a raw system call on ARM64.
+ * Forces the compiler to map arguments to the correct x0-x5 and x8 registers.
+ */
+static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+    register long x8 __asm__("x8") = sysno;
+    register long x0 __asm__("x0") = a0;
+    register long x1 __asm__("x1") = a1;
+    register long x2 __asm__("x2") = a2;
+    register long x3 __asm__("x3") = a3;
+    register long x4 __asm__("x4") = a4;
+    register long x5 __asm__("x5") = a5;
+
+    __asm__ volatile(
+        "svc #0\n"
+        : "+r"(x0) // Output: x0 will contain the return value
+        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5) // Inputs
+        : "memory", "cc" // Clobbers: memory and condition codes might change
+    );
+    
+    return x0;
+}
+#pragma clang diagnostic pop
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
