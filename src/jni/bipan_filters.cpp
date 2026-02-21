@@ -231,7 +231,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     LOGE("--- BIPAN SANDBOX LOG END ---");
 }
 
-
 static void log_address_info(const char* label, uintptr_t addr) {
     Dl_info dlinfo;
     if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
