@@ -10,6 +10,10 @@
 #include <sstream>
 #include <csignal>
 #include <ucontext.h>
+#include <atomic>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <sys/utsname.h>
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
@@ -26,6 +30,27 @@ constexpr BIPAN_FILTER filterMode = LOG;
 std::mutex maps_mutex;
 std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+static void brokerProcessLoop();
+
+// Shared memory structure
+struct SharedIPC {
+    // 0 = Idle, 1 = App Requesting, 2 = Broker Responded
+    std::atomic<int> state; 
+    
+    // Syscall data
+    int syscall_no;
+    long arg0, arg1, arg2, arg3, arg4, arg5;
+    long return_value;
+
+    // --- ADD THIS ---
+    // The Bridge: A dedicated buffer for moving pointer data across the boundary
+    char buffer[8192]; 
+};
+
+// Pointer to our shared memory region
+SharedIPC* ipc_mem = nullptr;
+pid_t broker_pid = -1;
+
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -48,6 +73,27 @@ public:
 
         if (should_spoof) {
             spoofBuildFields();
+            // --- 1. ALLOCATE SHARED MEMORY ---
+            ipc_mem = static_cast<SharedIPC*>(mmap(
+                nullptr, 
+                sizeof(SharedIPC), 
+                PROT_READ | PROT_WRITE, 
+                MAP_SHARED | MAP_ANONYMOUS, 
+                -1, 0
+            ));
+            
+            if (ipc_mem != MAP_FAILED) {
+                ipc_mem->state.store(0); // Initialize as Idle
+
+                // --- 2. FORK THE BROKER ---
+                broker_pid = fork();
+                if (broker_pid == 0) {
+                    brokerProcessLoop();
+                    _exit(0); // Should never reach here
+                } 
+            } else {
+                LOGE("Failed to allocate shared memory for IPC!");
+            }
             applySeccompFilter(filterMode);   
             LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
@@ -159,13 +205,60 @@ private:
             uc->uc_mcontext.regs[0] = -13; // Permission denied
 
         } else {
-            // --- PASSTHROUGH (Allowed) ---
-            // Manually execute the syscall on behalf of libc/linker/apex
-            long ret = arm64_raw_syscall(syscall_no, arg0, arg1, arg2, arg3, arg4, arg5);
+            // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
+            if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
+                int expected = 0;
+                while (!ipc_mem->state.compare_exchange_weak(
+                    expected, 1, 
+                    std::memory_order_release, 
+                    std::memory_order_relaxed)) {
+                    expected = 0; 
+                    __asm__ volatile("yield" ::: "memory");
+                }
 
-            // Inject the return value back into the register context
-            // so the original calling function receives it.
-            uc->uc_mcontext.regs[0] = ret;
+                ipc_mem->syscall_no = syscall_no;
+                ipc_mem->arg0 = arg0;
+                ipc_mem->arg1 = arg1;
+                ipc_mem->arg2 = arg2;
+                ipc_mem->arg3 = arg3;
+                ipc_mem->arg4 = arg4;
+                ipc_mem->arg5 = arg5;
+
+                // --- 1. POINTER MARSHALING (APP TO BROKER) ---
+                if (syscall_no == 221) { // execve
+                    // Copy the path string into shared memory so the Broker can read it
+                    // arg0 is the pointer to the filename
+                    if (arg0 != 0) {
+                        strncpy(ipc_mem->buffer, (const char*)arg0, sizeof(ipc_mem->buffer) - 1);
+                    }
+                }
+
+                // 2. Signal Broker to go
+                ipc_mem->state.store(1, std::memory_order_release);
+
+                // 3. Spin wait for Broker response
+                // (It's okay for the App to spin here with yield, because it only 
+                // waits for the microsecond it takes the Broker to finish)
+                while (ipc_mem->state.load(std::memory_order_acquire) != 2) {
+                    __asm__ volatile("yield" ::: "memory");
+                }
+
+                // --- 4. POINTER MARSHALING (BROKER TO APP) ---
+                if (syscall_no == 160 && ipc_mem->return_value == 0) { // uname success
+                    // Copy the kernel's response from shared memory back into the App's original pointer
+                    if (arg0 != 0) {
+                        memcpy((void*)arg0, ipc_mem->buffer, sizeof(struct utsname));
+                    }
+                }
+
+                // 5. Read result
+                uc->uc_mcontext.regs[0] = ipc_mem->return_value;
+
+                // 6. Release lock back to Idle
+                ipc_mem->state.store(0, std::memory_order_release);
+            } else {
+                uc->uc_mcontext.regs[0] = -38; // -ENOSYS
+            }
         }
         uc->uc_mcontext.pc += 4;
     }
@@ -397,6 +490,39 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
     return x0;
 }
 #pragma clang diagnostic pop
+
+
+static void brokerProcessLoop() {
+    // 1. Rename the process so it stops showing up as 'zygote64' in top/htop
+    prctl(PR_SET_NAME, "bipan_broker", 0, 0, 0);
+
+    while (true) {
+        // Spin until the App sends a request (state == 1)
+        while (ipc_mem->state.load(std::memory_order_acquire) != 1) {
+            // Sleep for 50 microseconds. 
+            // This drops CPU usage from 100% down to roughly 0.01%
+            // while keeping syscall interception extremely fast.
+            usleep(50); 
+        }
+
+        // Handle Syscalls that require Pointer Marshaling
+        if (ipc_mem->syscall_no == 160) { // uname
+            ipc_mem->return_value = arm64_raw_syscall(160, (long)ipc_mem->buffer, 0, 0, 0, 0, 0);
+        }
+        else if (ipc_mem->syscall_no == 221) { // execve
+            ipc_mem->return_value = arm64_raw_syscall(221, (long)ipc_mem->buffer, ipc_mem->arg1, ipc_mem->arg2, 0, 0, 0);
+        }
+        else {
+            // Standard integer syscalls (passthrough normally)
+            ipc_mem->return_value = arm64_raw_syscall(
+                ipc_mem->syscall_no, ipc_mem->arg0, ipc_mem->arg1, 
+                ipc_mem->arg2, ipc_mem->arg3, ipc_mem->arg4, ipc_mem->arg5
+            );
+        }
+
+        ipc_mem->state.store(2, std::memory_order_release);
+    }
+}
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
