@@ -187,28 +187,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     }
 
     /**
-     * TODO: apparently this isn't necessary as, when using seccomp,
-     * the kernel has "stepped over" the Supervisor Call by the time
-     * our handler got SIGSYS. It automatically skipped the 4 bytes
-     * of `svc #0` and now the PC is  `mov xY, x0` i.e.
-     * put the syscall's result in the C/C++ variable that receives it.
-     * As such, our only job is to mock the return value :)
-     * 
-     * You can check with:
-     * uint32_t *instr_at_pc = (uint32_t *)pc;
-     * uint32_t *instr_before_pc = (uint32_t *)(pc - 4);
-     * LOGD("Instruction at PC: 0x%08x", *instr_at_pc);
-     * LOGD("Instruction before PC: 0x%08x", *instr_before_pc);
-     * DEPRECATED:
-     * Increment the `pc` (Program Counter) by
-     * 4 bytes as to skip the Supervisor Call
-     * (`svc #0`) of aarch64.
-     * This "pretends" the syscall happened to the target
-     * program.
-     */
-    // ctx->uc_mcontext.pc += 4;
-
-    /**
      * Mock the syscall's result.
      * Here I'm denying it by
      * placing `-EPERM` on x0 (return register in aarch64)
