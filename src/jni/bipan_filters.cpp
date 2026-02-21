@@ -94,14 +94,14 @@ void applySeccompFilter(BIPAN_FILTER opt) {
         }
         case TRAP:
         case LOG: {
-            // Register the signal handler before applying seccomp-bpf
-            struct sigaction sa{};
-            sa.sa_sigaction = opt == TRAP ? sigsys_trap_handler : sigsys_log_handler;
-            sa.sa_flags = SA_SIGINFO;
-            if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-                LOGE("applySeccompFilter: Failed to set SIGSYS handler for filter option %u: %d", opt, errno);
-                return;
-            }
+            // // Register the signal handler before applying seccomp-bpf
+            // struct sigaction sa{};
+            // sa.sa_sigaction = opt == TRAP ? sigsys_trap_handler : sigsys_log_handler;
+            // sa.sa_flags = SA_SIGINFO;
+            // if (sigaction(SIGSYS, &sa, nullptr) == -1) {
+            //     LOGE("applySeccompFilter: Failed to set SIGSYS handler for filter option %u: %d", opt, errno);
+            //     return;
+            // }
 
             prog = {
                 .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
