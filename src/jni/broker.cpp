@@ -1,6 +1,7 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 #include <syscall.h>
+#include <string>
 
 #include "broker.hpp"
 #include "bipan_shared.hpp"
@@ -43,11 +44,20 @@ void brokerProcessLoop() {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 #pragma clang diagnostic ignored "-Wdeprecated-register"
+
 /**
  * Executes a raw system call on ARM64.
  * Forces the compiler to map arguments to the correct x0-x5 and x8 registers.
  */
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+    std::string syscallName = "Unknown";
+    switch (sysno) {
+        case __NR_uname:    syscallName = "uname";    break;
+        case __NR_execve:   syscallName = "execve";   break;
+        case __NR_execveat: syscallName = "execveat"; break;
+    }
+    LOGW("Broker: running legit syscall %s", syscallName.c_str());
+
     register long x8 __asm__("x8") = sysno;
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;

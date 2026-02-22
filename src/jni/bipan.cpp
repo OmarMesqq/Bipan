@@ -184,7 +184,10 @@ private:
         {
             std::lock_guard<std::mutex> lock(maps_mutex);
             for (const auto& range : target_memory_ranges) {
-                if (caller_pc >= range.first && caller_pc < range.second) {
+                if (
+                    (caller_pc >= range.first && caller_pc < range.second) ||
+                    (lr >= range.first && lr < range.second)
+                    ) {
                     from_target_so = true;
                     break;
                 }
@@ -192,7 +195,7 @@ private:
         }
 
         if (!from_target_so) {
-            LOGD("Syscall is not from target .so. Rescanning maps");
+            LOGD("Syscall is not from target library. Rescanning maps");
 
             std::ifstream maps("/proc/self/maps");
             std::string line;

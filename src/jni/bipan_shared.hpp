@@ -20,7 +20,7 @@ struct SharedIPC {
     long return_value;
 
     // The Bridge: A dedicated buffer for moving pointer data across the boundary
-    char buffer[8192]; 
+    char buffer[8192];
 };
 
 /**
