@@ -8,6 +8,7 @@
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
 void brokerProcessLoop() {
+    LOGW("Starting broker loop...");
     prctl(PR_SET_NAME, "bipan_broker", 0, 0, 0);
 
     while (true) {

@@ -48,6 +48,7 @@ public:
         bool should_spoof = isTarget(raw_process_name);
 
         if (should_spoof) {
+            LOGW("Sandbox starting for %s...", raw_process_name);
             // Do the usual Java fields spoofing
             spoofBuildFields();
 
@@ -59,6 +60,7 @@ public:
                 MAP_SHARED | MAP_ANONYMOUS, 
                 -1, 0
             ));
+            LOGD("Bipan's shared mem at %p", ipc_mem);
 
             if (ipc_mem == MAP_FAILED) {
                 LOGE("Failed to allocate shared memory for IPC!");
@@ -114,10 +116,11 @@ private:
             LOGE("Failed to register SIGSYS handler!");
             _exit(1);
         }
+        LOGW("Sucessfuly set up SIGSYS handler");
     }
 
     static void memoryWatcherThread() {
-        LOGD("Starting Watcher Thread on /proc/self/maps");
+        LOGW("Starting Watcher Thread on /proc/self/maps");
         while (true) {
             std::vector<std::pair<uintptr_t, uintptr_t>> new_ranges;
             std::ifstream maps("/proc/self/maps");
@@ -230,7 +233,7 @@ private:
         } else {
             // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
-                LOGD("Allowing syscall via IPC");
+                LOGW("Allowing syscall via IPC");
 
                 int expected = 0;
                 while (!ipc_mem->state.compare_exchange_weak(
@@ -332,7 +335,7 @@ private:
     void preSpecialize(const char* process, bool isTarget, bool shouldClose) {
         if (shouldClose) {
             if (isTarget) {
-                LOGD("Dlclosing module for process %s", process);
+                LOGW("Dlclosing module for process %s", process);
             }
             // If we don't hook any functions, we can let Zygisk dlclose ourselves
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
