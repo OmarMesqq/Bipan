@@ -240,7 +240,7 @@ private:
         } else {
             // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
-                LOGW("Allowing syscall via IPC");
+                LOGW("Syscall not from target. Allowing it via IPC");
 
                 int expected = 0;
                 while (!ipc_mem->state.compare_exchange_weak(
@@ -296,9 +296,6 @@ private:
                 _exit(1);
             }
         }
-
-        //TODO: necessary? seccomp already skips `svc #0`
-        uc->uc_mcontext.pc += 4;
     }
 
     void fetchTargetProcesses() {
