@@ -12,6 +12,7 @@
 #include <sys/prctl.h>
 #include <sys/utsname.h>
 #include <syscall.h>
+#include <dlfcn.h>
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
@@ -27,6 +28,8 @@ constexpr BIPAN_FILTER filterMode = LOG;
 static std::mutex maps_mutex;
 static std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
 static pid_t broker_pid = -1;
+
+void log_address_info(const char* label, uintptr_t addr);
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -164,6 +167,10 @@ private:
         ucontext_t* uc = static_cast<ucontext_t *>(ucontext);
         uintptr_t caller_pc = uc->uc_mcontext.pc;   // caller's program counter
         int syscall_no = uc->uc_mcontext.regs[8];   // syscall number (x8 in aarch64)
+        uintptr_t lr = uc->uc_mcontext.regs[30];    // Link Return register
+
+        log_address_info("PC (Actual Caller)", caller_pc);
+        log_address_info("LR (Return Address)", lr);
 
         // extract arguments (x0 through x5)
         long arg0 = uc->uc_mcontext.regs[0];
@@ -451,6 +458,19 @@ private:
         return false;
     }
 };
+
+void log_address_info(const char* label, uintptr_t addr) {
+    Dl_info dlinfo;
+    if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
+        LOGD("%s: %p | Library: %s | Symbol: %s", 
+             label, 
+             (void*)addr, 
+             dlinfo.dli_fname, 
+             dlinfo.dli_sname ? dlinfo.dli_sname : "N/A");
+    } else {
+        LOGE("%s: %p (Could not resolve)", label, (void*)addr);
+    }
+}
 
 
 // Register the module class
