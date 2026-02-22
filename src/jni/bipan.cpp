@@ -89,10 +89,13 @@ public:
                 if (broker_pid == 0) {
                     brokerProcessLoop();
                     _exit(0); // Should never reach here
-                } 
+                }
+                LOGD("Spawned bipan_broker with PID %d", broker_pid);
             } else {
                 LOGE("Failed to allocate shared memory for IPC!");
             }
+            // 1. Register the SIGSYS Handler
+            setupSigsysHandler();
             applySeccompFilter(filterMode);   
             LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
@@ -110,9 +113,6 @@ public:
     void postAppSpecialize(const AppSpecializeArgs *args) override {
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
         if (isTarget(raw_process_name)) {
-            // 1. Register the SIGSYS Handler
-            setupSigsysHandler();
-
             // 2. Start the Watcher thread safely after specialization
             std::thread watcher(memoryWatcherThread);
             watcher.detach(); // Let it run in the background
@@ -136,6 +136,7 @@ private:
     }
 
     static void memoryWatcherThread() {
+        LOGD("Starting Watcher Thread on /proc/self/maps");
         while (true) {
             std::vector<std::pair<uintptr_t, uintptr_t>> new_ranges;
             std::ifstream maps("/proc/self/maps");
@@ -143,10 +144,10 @@ private:
 
             while (std::getline(maps, line)) {
                 // Look for executable maps belonging to app data directories
-                // Usually /data/app/ or /data/data/ containing .so
+                // Usually /data/app/ or /data/data/ containing .so or .apk (as these have .so's in them)
                 if (line.find("r-xp") != std::string::npos && 
                    (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) &&
-                   line.find(".so") != std::string::npos) {
+                   (line.find(".so") != std::string::npos || line.find(".apk") != std::string::npos)) {
                     
                     uintptr_t start, end;
                     if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
@@ -170,6 +171,7 @@ private:
     static void sigsysHandler(int signum, siginfo_t *info, void *ucontext) {
         if (signum != SIGSYS) return;
 
+        LOGD("Received signal!");
         ucontext_t *uc = static_cast<ucontext_t *>(ucontext);
         // Extract the Instruction Pointer (PC)
         uintptr_t caller_pc = uc->uc_mcontext.pc;
@@ -196,6 +198,28 @@ private:
             }
         }
 
+        if (!from_target_so) {
+            LOGD("Syscall is not from target .so. Rescanning maps");
+            std::ifstream maps("/proc/self/maps");
+            std::string line;
+            while (std::getline(maps, line)) {
+                uintptr_t start, end;
+                if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
+                    if (caller_pc >= start && caller_pc < end) {
+                        // We found exactly where the caller is. Is it a target .so?
+                        if (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) {
+                            from_target_so = true;
+                            
+                            // Dynamically add it to our cached ranges so we don't have to parse next time
+                            std::lock_guard<std::mutex> lock(maps_mutex);
+                            target_memory_ranges.push_back({start, end});
+                        }
+                        break; // Stop parsing, we found the memory block
+                    }
+                }
+            }
+        }
+
         if (from_target_so) {
             // --- INTERCEPT & DUMP ---
             LOGD("[Seccomp] Blocked syscall %d from target .so at %lx", syscall_no, caller_pc);
@@ -206,6 +230,7 @@ private:
         } else {
             // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
+                LOGD("Allowing syscall via IPC");
                 int expected = 0;
                 while (!ipc_mem->state.compare_exchange_weak(
                     expected, 1, 
@@ -256,6 +281,7 @@ private:
                 // 6. Release lock back to Idle
                 ipc_mem->state.store(0, std::memory_order_release);
             } else {
+                LOGE("IPC shared region is null. Returning ENOSYS");
                 uc->uc_mcontext.regs[0] = -38; // -ENOSYS
             }
         }
@@ -492,7 +518,6 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
 
 
 static void brokerProcessLoop() {
-    // 1. Rename the process so it stops showing up as 'zygote64' in top/htop
     prctl(PR_SET_NAME, "bipan_broker", 0, 0, 0);
 
     while (true) {
