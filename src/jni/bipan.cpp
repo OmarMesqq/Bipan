@@ -2,7 +2,6 @@
 #include <string>
 #include <unistd.h>
 #include <unordered_set>
-#include <thread>
 #include <mutex>
 #include <fstream>
 #include <sstream>
@@ -96,15 +95,6 @@ public:
         preSpecialize(processNameCopy, should_spoof, shouldClose);
     }
 
-    void postAppSpecialize(const AppSpecializeArgs *args) override {
-        const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
-        if (isTarget(raw_process_name)) {
-            std::thread watcher(memoryWatcherThread);
-            watcher.detach(); // Let it run in the background
-        }
-        env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
-    }
-
 private:
     Api *api;
     JNIEnv *env;
@@ -120,41 +110,6 @@ private:
             _exit(1);
         }
         LOGW("Sucessfuly set up SIGSYS handler");
-    }
-
-    static void memoryWatcherThread() {
-        LOGW("Starting Watcher Thread on /proc/self/maps");
-        while (true) {
-            std::vector<std::pair<uintptr_t, uintptr_t>> new_ranges;
-            std::ifstream maps("/proc/self/maps");
-            std::string line;
-
-            while (std::getline(maps, line)) {
-                // Look for executable maps belonging to app data directories
-                if (line.find("r-xp") != std::string::npos && 
-                   (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) &&
-                   (line.find(".so") != std::string::npos || line.find(".apk") != std::string::npos)) {
-                    
-                    uintptr_t start, end;
-                    if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
-                        new_ranges.push_back({start, end});
-                    } else {
-                        LOGE("memoryWatcherThread: sscanf failed to parse maps");
-                        _exit(1);
-                    }
-                }
-            }
-
-            // Safely update the shared ranges
-            {
-                std::lock_guard<std::mutex> lock(maps_mutex);
-                target_memory_ranges = new_ranges;
-            }
-
-            // Sleep to prevent CPU hogging. 
-            // 1-2 seconds is usually enough to catch lazy-loaded libraries.
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-        }
     }
 
     static void sigsysHandler(int signum, siginfo_t *info, void *ucontext) {
