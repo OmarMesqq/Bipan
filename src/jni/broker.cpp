@@ -1,5 +1,6 @@
 #include <sys/prctl.h>
 #include <unistd.h>
+#include <syscall.h>
 
 #include "broker.hpp"
 #include "bipan_shared.hpp"
@@ -19,11 +20,11 @@ void brokerProcessLoop() {
         }
 
         // Handle Syscalls that require Pointer Marshaling
-        if (ipc_mem->syscall_no == 160) { // uname
-            ipc_mem->return_value = arm64_raw_syscall(160, (long)ipc_mem->buffer, 0, 0, 0, 0, 0);
+        if (ipc_mem->syscall_no == __NR_uname) { // uname
+            ipc_mem->return_value = arm64_raw_syscall(__NR_uname, (long)ipc_mem->buffer, 0, 0, 0, 0, 0);
         }
-        else if (ipc_mem->syscall_no == 221) { // execve
-            ipc_mem->return_value = arm64_raw_syscall(221, (long)ipc_mem->buffer, ipc_mem->arg1, ipc_mem->arg2, 0, 0, 0);
+        else if (ipc_mem->syscall_no == __NR_execve) { // execve
+            ipc_mem->return_value = arm64_raw_syscall(__NR_execve, (long)ipc_mem->buffer, ipc_mem->arg1, ipc_mem->arg2, 0, 0, 0);
         }
         else {
             // Standard integer syscalls (passthrough normally)

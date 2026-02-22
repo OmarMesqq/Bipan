@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
+#include <syscall.h>
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
@@ -157,7 +158,7 @@ private:
         };
         LOGD("sigsysHandler got a signal.");
 
-        ucontext_t *uc = static_cast<ucontext_t *>(ucontext);
+        ucontext_t* uc = static_cast<ucontext_t *>(ucontext);
         uintptr_t caller_pc = uc->uc_mcontext.pc;   // caller's program counter
         int syscall_no = uc->uc_mcontext.regs[8];   // syscall number (x8 in aarch64)
 
@@ -207,10 +208,25 @@ private:
         }
 
         if (from_target_so) {
-            LOGD("Blocked syscall %d from target .so at address %lx", syscall_no, caller_pc);
-            LOGD("Args: [0]=%lx, [1]=%lx, [2]=%lx, [3]=%lx", arg0, arg1, arg2, arg3);
+            if (syscall_no == __NR_uname) {
+                struct utsname* buf = (struct utsname*)uc->uc_mcontext.regs[0];
+                memset(buf, 0, sizeof(struct utsname));
+                
+                strncpy(buf->sysname, "Linux", 64);
+                strncpy(buf->nodename, "localhost", 64);
+                strncpy(buf->release, "6.6.56-android16-11-g8a3e2b1c4d5f", 64);
+                strncpy(buf->version, "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025", 64);
+                strncpy(buf->machine, "aarch64", 64);
+                strncpy(buf->domainname, "(none)", 64);
 
-            uc->uc_mcontext.regs[0] = -13; // Permission denied
+                uc->uc_mcontext.regs[0] = 0; // success
+                LOGE("Target .so attempted uname. Falsified values");
+            } else {
+                LOGE("Blocked syscall %d from target .so at address %lx", syscall_no, caller_pc);
+                LOGE("Args: [0]=%lx, [1]=%lx, [2]=%lx, [3]=%lx", arg0, arg1, arg2, arg3);
+
+                uc->uc_mcontext.regs[0] = -13; // Permission denied
+            }
         } else {
             // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
@@ -234,7 +250,7 @@ private:
                 ipc_mem->arg5 = arg5;
 
                 // --- 1. POINTER MARSHALING (APP TO BROKER) ---
-                if (syscall_no == 221) { // execve
+                if (syscall_no == __NR_execve) {
                     // Copy the path string into shared memory so the Broker can read it
                     // arg0 is the pointer to the filename
                     if (arg0 != 0) {
@@ -253,7 +269,7 @@ private:
                 }
 
                 // --- 4. POINTER MARSHALING (BROKER TO APP) ---
-                if (syscall_no == 160 && ipc_mem->return_value == 0) { // uname success
+                if (syscall_no == __NR_uname && ipc_mem->return_value == 0) { // uname success
                     // Copy the kernel's response from shared memory back into the App's original pointer
                     if (arg0 != 0) {
                         memcpy((void*)arg0, ipc_mem->buffer, sizeof(struct utsname));
