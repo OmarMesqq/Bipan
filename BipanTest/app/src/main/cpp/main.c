@@ -22,10 +22,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGD("Native C bridge initialized. Dumping system info...");
     int ret = 0;
 
-    ret = scanProcSelfMaps();
-    if (ret == -1) {
-       LOGE("Failed to scan /proc/self/maps");
-    }
+    // ret = scanProcSelfMaps();
+    // if (ret == -1) {
+    //    LOGE("Failed to scan /proc/self/maps");
+    // }
     ret = getNativeInfo();
 
     if (ret == 0) {

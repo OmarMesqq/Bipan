@@ -9,10 +9,20 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+enum BROKER_STATUS { 
+    IDLE = 0,
+    REQUEST_SCAN = 1,
+    REQUEST_SYSCALL = 2,
+    BROKER_ANSWERED = 3
+};
+
 // Shared memory structure
 struct SharedIPC {
-    // 0 = Idle, 1 = App Requesting, 2 = Broker Responded
-    std::atomic<int> state; 
+    std::atomic<BROKER_STATUS> state;
+
+    std::atomic<bool> isTarget;
+    std::atomic<uintptr_t> pc;
+    std::atomic<uintptr_t> lr;
     
     // Syscall data
     int syscall_no;

@@ -69,7 +69,8 @@ public:
                 _exit(1);
             }
             
-            ipc_mem->state.store(0); // Initialize as Idle
+            ipc_mem->state.store(IDLE);
+
             broker_pid = fork();
             if (broker_pid == 0) {
                 brokerProcessLoop();
@@ -135,45 +136,24 @@ private:
         long arg4 = uc->uc_mcontext.regs[4];
         long arg5 = uc->uc_mcontext.regs[5];
 
-        bool from_target_so = false;
-        {
-            std::lock_guard<std::mutex> lock(maps_mutex);
-            for (const auto& range : target_memory_ranges) {
-                if (
-                    (caller_pc >= range.first && caller_pc < range.second) ||
-                    (lr >= range.first && lr < range.second)
-                    ) {
-                    from_target_so = true;
-                    break;
-                }
-            }
+        
+        // LOGD("Evaluating if syscall is legit...");
+
+        ipc_mem->pc.store(caller_pc, std::memory_order_release);
+        ipc_mem->lr.store(lr, std::memory_order_release);
+        ipc_mem->isTarget.store(false, std::memory_order_release);
+        ipc_mem->state.store(REQUEST_SCAN, std::memory_order_release);
+
+        LOGD("Main app is spinning waiting for BROKER_ANSWERED...");
+        while (ipc_mem->state.load(std::memory_order_acquire) != BROKER_ANSWERED) {
+            __asm__ volatile("yield" ::: "memory");
         }
 
-        if (!from_target_so) {
-            LOGD("Syscall is not from target library. Rescanning maps");
-
-            std::ifstream maps("/proc/self/maps");
-            std::string line;
-            while (std::getline(maps, line)) {
-                uintptr_t start, end;
-                if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
-                    if (caller_pc >= start && caller_pc < end) {
-                        // We found exactly where the caller is. Is it a target .so?
-                        if (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) {
-                            from_target_so = true;
-                            
-                            // Dynamically add it to our cached ranges so we don't have to parse next time
-                            std::lock_guard<std::mutex> lock(maps_mutex);
-                            target_memory_ranges.push_back({start, end});
-                        }
-                        break; // Stop parsing, we found the memory block
-                    }
-                } else {
-                    LOGE("sigsysHandler: sscanf failed to parse maps");
-                    _exit(1);
-                }
-            }
-        }
+        bool from_target_so = ipc_mem->isTarget.load(std::memory_order_acquire);
+        LOGD("Broker answered");
+        
+        // Tell the broker we are done with the SCAN result
+        ipc_mem->state.store(IDLE, std::memory_order_release);
 
         if (from_target_so) {
             if (syscall_no == __NR_uname) {
@@ -200,12 +180,12 @@ private:
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
                 LOGW("Syscall not from target. Allowing it via IPC");
 
-                int expected = 0;
+                BROKER_STATUS expected = IDLE;
                 while (!ipc_mem->state.compare_exchange_weak(
-                    expected, 1, 
+                    expected, REQUEST_SYSCALL, 
                     std::memory_order_release, 
                     std::memory_order_relaxed)) {
-                    expected = 0; 
+                    expected = IDLE; 
                     __asm__ volatile("yield" ::: "memory");
                 }
 
@@ -227,12 +207,14 @@ private:
                 }
 
                 // 2. Signal Broker to go
-                ipc_mem->state.store(1, std::memory_order_release);
+                LOGW("[Main app] requesting syscall to broker...");
+                ipc_mem->state.store(REQUEST_SYSCALL, std::memory_order_release);
+                LOGW("[Main app] requested syscall to broker!");
 
                 // 3. Spin wait for Broker response
                 // (It's okay for the App to spin here with yield, because it only 
                 // waits for the microsecond it takes the Broker to finish)
-                while (ipc_mem->state.load(std::memory_order_acquire) != 2) {
+                while (ipc_mem->state.load(std::memory_order_acquire) != BROKER_ANSWERED) {
                     __asm__ volatile("yield" ::: "memory");
                 }
 
@@ -248,7 +230,8 @@ private:
                 uc->uc_mcontext.regs[0] = ipc_mem->return_value;
 
                 // 6. Release lock back to Idle
-                ipc_mem->state.store(0, std::memory_order_release);
+                LOGW("[Main app] setting IPC mem to IDLE!");
+                ipc_mem->state.store(IDLE, std::memory_order_release);
             } else {
                 LOGE("IPC shared region is nil");
                 _exit(1);
