@@ -22,10 +22,10 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGD("Native C bridge initialized. Dumping system info...");
     int ret = 0;
 
-//    ret = scanProcSelfMaps();
-//    if (ret == -1) {
-//        LOGE("Failed to scan /proc/self/maps");
-//    }
+    ret = scanProcSelfMaps();
+    if (ret == -1) {
+       LOGE("Failed to scan /proc/self/maps");
+    }
     ret = getNativeInfo();
 
     if (ret == 0) {
@@ -136,7 +136,6 @@ static int scanProcSelfMaps() {
     printf("Memory map BELOW:\n");
     printf("--------------------------------------------------\n");
 
-    // read syscall
     while (fgets(line, sizeof(line), fp)) {
         // Here you can use sscanf to extract specific fields
         // For now, we'll just print the raw line
