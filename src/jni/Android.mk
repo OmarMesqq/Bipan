@@ -2,7 +2,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
-LOCAL_SRC_FILES := bipan.cpp bipan_filters.cpp root_companion.cpp broker.cpp
+LOCAL_SRC_FILES := bipan.cpp filter.cpp root_companion.cpp broker.cpp
 LOCAL_STATIC_LIBRARIES := libcxx
 LOCAL_CPPFLAGS := -Wall -Wextra -Wconversion -Wsign-conversion \
                   -Wdouble-promotion -Winline -fno-exceptions -fno-rtti \

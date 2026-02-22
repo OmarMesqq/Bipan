@@ -16,7 +16,7 @@
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 #include "broker.hpp"
 
 using zygisk::Api;

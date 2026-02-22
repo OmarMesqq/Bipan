@@ -10,7 +10,7 @@
 #include <sys/utsname.h>
 
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 
 /**
  * Berkeley Packet Filter program to
