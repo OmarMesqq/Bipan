@@ -1,16 +1,13 @@
 #include <vector>
 #include <string>
 #include <unistd.h>
-#include <dirent.h>
 #include <unordered_set>
 #include <thread>
 #include <mutex>
-#include <dirent.h>
 #include <fstream>
 #include <sstream>
 #include <csignal>
 #include <ucontext.h>
-#include <atomic>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
@@ -18,37 +15,19 @@
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
 #include "bipan_filters.hpp"
+#include "broker.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
 constexpr BIPAN_FILTER filterMode = LOG;
 
 std::mutex maps_mutex;
 std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
-static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
-static void brokerProcessLoop();
 
-// Shared memory structure
-struct SharedIPC {
-    // 0 = Idle, 1 = App Requesting, 2 = Broker Responded
-    std::atomic<int> state; 
-    
-    // Syscall data
-    int syscall_no;
-    long arg0, arg1, arg2, arg3, arg4, arg5;
-    long return_value;
-
-    // The Bridge: A dedicated buffer for moving pointer data across the boundary
-    char buffer[8192]; 
-};
-
-// Pointer to our shared memory region
-SharedIPC* ipc_mem = nullptr;
-pid_t broker_pid = -1;
+static pid_t broker_pid = -1;
 
 
 class Bipan : public zygisk::ModuleBase {
@@ -288,13 +267,6 @@ private:
         uc->uc_mcontext.pc += 4;
     }
 
-    /**
-     * Do some IPC with the companion handler
-     * to get the list of target processes whose
-     * fields should be spoofed. Yes, this runs on every app launch,
-     * but hopefully it's O(1) as I'm using an ordered_set
-     * to gather target apps.
-     */
     void fetchTargetProcesses() {
         int fd = api->connectCompanion();
         if (fd < 0) {
@@ -342,13 +314,7 @@ private:
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
         }
     }
-
-    /**
-     * Sets a field `fieldName` in a Java class `clazz` obtained via JNI
-     * to the value `value`.
-     *
-     * WARNING: This is a setter for String fields only!!!!
-     */
+    
     void setField(jclass clazz, const char* fieldName, const char* value) {
         jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "Ljava/lang/String;");
 
@@ -460,95 +426,5 @@ private:
 };
 
 
-/**
- * The companion handler func runs as root.
- * It was deemed necessary in order to bypass
- * SELinux policies in the Magisk folder
- */
-static void companion_handler(int fd) {
-    DIR* dir = opendir(TARGETS_DIR);
-    if (dir) {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_name[0] == '.') {
-                // Skip . and ..
-                continue;
-            }
-
-            auto len = static_cast<uint32_t>(strlen(entry->d_name));
-            write(fd, &len, sizeof(len));
-            write(fd, entry->d_name, len);
-        }
-        closedir(dir);
-    } else {
-        LOGE("companion_handler: failed to read targets dir (%s)!", TARGETS_DIR);
-        return;
-    }
-    
-    uint32_t done = 0; // means we are finished
-    write(fd, &done, sizeof(done));
-}
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wregister"
-#pragma clang diagnostic ignored "-Wdeprecated-register"
-/**
- * Executes a raw system call on ARM64.
- * Forces the compiler to map arguments to the correct x0-x5 and x8 registers.
- */
-static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
-    register long x8 __asm__("x8") = sysno;
-    register long x0 __asm__("x0") = a0;
-    register long x1 __asm__("x1") = a1;
-    register long x2 __asm__("x2") = a2;
-    register long x3 __asm__("x3") = a3;
-    register long x4 __asm__("x4") = a4;
-    register long x5 __asm__("x5") = a5;
-
-    __asm__ volatile(
-        "svc #0\n"
-        : "+r"(x0) // Output: x0 will contain the return value
-        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5) // Inputs
-        : "memory", "cc" // Clobbers: memory and condition codes might change
-    );
-    
-    return x0;
-}
-#pragma clang diagnostic pop
-
-
-static void brokerProcessLoop() {
-    prctl(PR_SET_NAME, "bipan_broker", 0, 0, 0);
-
-    while (true) {
-        // Spin until the App sends a request (state == 1)
-        while (ipc_mem->state.load(std::memory_order_acquire) != 1) {
-            // Sleep for 50 microseconds. 
-            // This drops CPU usage from 100% down to roughly 0.01%
-            // while keeping syscall interception extremely fast.
-            usleep(50); 
-        }
-
-        // Handle Syscalls that require Pointer Marshaling
-        if (ipc_mem->syscall_no == 160) { // uname
-            ipc_mem->return_value = arm64_raw_syscall(160, (long)ipc_mem->buffer, 0, 0, 0, 0, 0);
-        }
-        else if (ipc_mem->syscall_no == 221) { // execve
-            ipc_mem->return_value = arm64_raw_syscall(221, (long)ipc_mem->buffer, ipc_mem->arg1, ipc_mem->arg2, 0, 0, 0);
-        }
-        else {
-            // Standard integer syscalls (passthrough normally)
-            ipc_mem->return_value = arm64_raw_syscall(
-                ipc_mem->syscall_no, ipc_mem->arg0, ipc_mem->arg1, 
-                ipc_mem->arg2, ipc_mem->arg3, ipc_mem->arg4, ipc_mem->arg5
-            );
-        }
-
-        ipc_mem->state.store(2, std::memory_order_release);
-    }
-}
-
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
-// Register the companion handler function
-REGISTER_ZYGISK_COMPANION(companion_handler)
