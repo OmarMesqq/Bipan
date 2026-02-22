@@ -21,14 +21,11 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-
 constexpr BIPAN_FILTER filterMode = LOG;
 
-std::mutex maps_mutex;
-std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
-
+static std::mutex maps_mutex;
+static std::vector<std::pair<uintptr_t, uintptr_t>> target_memory_ranges;
 static pid_t broker_pid = -1;
-
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -45,13 +42,15 @@ public:
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
         if (!raw_process_name) {
             LOGE("preAppSpecialize: process name is nil. Aborting.");
-            return;
+            _exit(1);
         }
         bool should_spoof = isTarget(raw_process_name);
 
         if (should_spoof) {
+            // Do the usual Java fields spoofing
             spoofBuildFields();
-            // --- 1. ALLOCATE SHARED MEMORY ---
+
+            // Setup IPC with the un-seccomped broker
             ipc_mem = static_cast<SharedIPC*>(mmap(
                 nullptr, 
                 sizeof(SharedIPC), 
@@ -59,27 +58,29 @@ public:
                 MAP_SHARED | MAP_ANONYMOUS, 
                 -1, 0
             ));
-            
-            if (ipc_mem != MAP_FAILED) {
-                ipc_mem->state.store(0); // Initialize as Idle
 
-                // --- 2. FORK THE BROKER ---
-                broker_pid = fork();
-                if (broker_pid == 0) {
-                    brokerProcessLoop();
-                    _exit(0); // Should never reach here
-                }
-                LOGD("Spawned bipan_broker with PID %d", broker_pid);
-            } else {
+            if (ipc_mem == MAP_FAILED) {
                 LOGE("Failed to allocate shared memory for IPC!");
+                _exit(1);
             }
-            // 1. Register the SIGSYS Handler
+            
+            ipc_mem->state.store(0); // Initialize as Idle
+            broker_pid = fork();
+            if (broker_pid == 0) {
+                brokerProcessLoop();
+
+                // Should never reach here
+                LOGE("Broker stopped executing!");
+                _exit(1);
+            }
+            LOGD("Spawned bipan_broker with PID %d", broker_pid);
+
+            // Register the SIGSYS handler before applying seccomp
             setupSigsysHandler();
             applySeccompFilter(filterMode);   
             LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
 
-        // This is ugly, but `processNameCopy` is still in the stack when `preSpecialize` is called
         char processNameCopy[strlen(raw_process_name) + 1];
         strcpy(processNameCopy, raw_process_name);
         
@@ -92,7 +93,6 @@ public:
     void postAppSpecialize(const AppSpecializeArgs *args) override {
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
         if (isTarget(raw_process_name)) {
-            // 2. Start the Watcher thread safely after specialization
             std::thread watcher(memoryWatcherThread);
             watcher.detach(); // Let it run in the background
         }
@@ -111,6 +111,7 @@ private:
         sigemptyset(&sa.sa_mask);
         if (sigaction(SIGSYS, &sa, nullptr) != 0) {
             LOGE("Failed to register SIGSYS handler!");
+            _exit(1);
         }
     }
 
@@ -123,7 +124,6 @@ private:
 
             while (std::getline(maps, line)) {
                 // Look for executable maps belonging to app data directories
-                // Usually /data/app/ or /data/data/ containing .so or .apk (as these have .so's in them)
                 if (line.find("r-xp") != std::string::npos && 
                    (line.find("/data/app/") != std::string::npos || line.find("/data/data/") != std::string::npos) &&
                    (line.find(".so") != std::string::npos || line.find(".apk") != std::string::npos)) {
@@ -131,6 +131,9 @@ private:
                     uintptr_t start, end;
                     if (sscanf(line.c_str(), "%lx-%lx", &start, &end) == 2) {
                         new_ranges.push_back({start, end});
+                    } else {
+                        LOGE("memoryWatcherThread: sscanf failed to parse maps");
+                        _exit(1);
                     }
                 }
             }
@@ -148,17 +151,17 @@ private:
     }
 
     static void sigsysHandler(int signum, siginfo_t *info, void *ucontext) {
-        if (signum != SIGSYS) return;
+        if (signum != SIGSYS) {
+            LOGE("sigsysHandler: received unexpected signal: %d", signum);
+            _exit(1);
+        };
+        LOGD("sigsysHandler got a signal.");
 
-        LOGD("Received signal!");
         ucontext_t *uc = static_cast<ucontext_t *>(ucontext);
-        // Extract the Instruction Pointer (PC)
-        uintptr_t caller_pc = uc->uc_mcontext.pc;
+        uintptr_t caller_pc = uc->uc_mcontext.pc;   // caller's program counter
+        int syscall_no = uc->uc_mcontext.regs[8];   // syscall number (x8 in aarch64)
 
-        // Extract Syscall Number
-        int syscall_no = uc->uc_mcontext.regs[8];
-
-        // Extract Arguments (x0 to x5)
+        // extract arguments (x0 through x5)
         long arg0 = uc->uc_mcontext.regs[0];
         long arg1 = uc->uc_mcontext.regs[1];
         long arg2 = uc->uc_mcontext.regs[2];
@@ -179,6 +182,7 @@ private:
 
         if (!from_target_so) {
             LOGD("Syscall is not from target .so. Rescanning maps");
+
             std::ifstream maps("/proc/self/maps");
             std::string line;
             while (std::getline(maps, line)) {
@@ -195,21 +199,23 @@ private:
                         }
                         break; // Stop parsing, we found the memory block
                     }
+                } else {
+                    LOGE("sigsysHandler: sscanf failed to parse maps");
+                    _exit(1);
                 }
             }
         }
 
         if (from_target_so) {
-            // --- INTERCEPT & DUMP ---
-            LOGD("[Seccomp] Blocked syscall %d from target .so at %lx", syscall_no, caller_pc);
-            LOGD("          Args: [0]=%lx, [1]=%lx, [2]=%lx, [3]=%lx", arg0, arg1, arg2, arg3);
+            LOGD("Blocked syscall %d from target .so at address %lx", syscall_no, caller_pc);
+            LOGD("Args: [0]=%lx, [1]=%lx, [2]=%lx, [3]=%lx", arg0, arg1, arg2, arg3);
 
             uc->uc_mcontext.regs[0] = -13; // Permission denied
-
         } else {
             // --- PASSTHROUGH VIA SHARED MEMORY SPINLOCK ---
             if (ipc_mem != nullptr && ipc_mem != MAP_FAILED) {
                 LOGD("Allowing syscall via IPC");
+
                 int expected = 0;
                 while (!ipc_mem->state.compare_exchange_weak(
                     expected, 1, 
@@ -260,10 +266,12 @@ private:
                 // 6. Release lock back to Idle
                 ipc_mem->state.store(0, std::memory_order_release);
             } else {
-                LOGE("IPC shared region is null. Returning ENOSYS");
-                uc->uc_mcontext.regs[0] = -38; // -ENOSYS
+                LOGE("IPC shared region is nil");
+                _exit(1);
             }
         }
+
+        //TODO: necessary? seccomp already skips `svc #0`
         uc->uc_mcontext.pc += 4;
     }
 
@@ -314,7 +322,7 @@ private:
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
         }
     }
-    
+
     void setField(jclass clazz, const char* fieldName, const char* value) {
         jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "Ljava/lang/String;");
 
