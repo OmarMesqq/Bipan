@@ -6,3 +6,4 @@ src/obj/
 *.so
 TODO
 .idea
+.DS_Store
