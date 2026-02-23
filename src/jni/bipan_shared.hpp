@@ -13,9 +13,8 @@
 enum BROKER_STATUS {
   IDLE = 0,
   APP_LOADING_DATA = 1,
-  REQUEST_SCAN = 2,
-  REQUEST_SYSCALL = 3,
-  BROKER_ANSWERED = 4
+  REQUEST_SYSCALL = 2,
+  BROKER_ANSWERED = 3
 };
 
 // Shared memory structure
