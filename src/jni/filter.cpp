@@ -59,13 +59,13 @@ static struct sock_filter trapFilter[] = {
     // Get the syscall's number
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
-    // If it's `execve`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // // If it's `execve`, trap it
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // If it's `execveat`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // // If it's `execveat`, trap it
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     // If it's `uname`, trap it
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),

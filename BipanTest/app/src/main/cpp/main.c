@@ -59,6 +59,7 @@ static int getNativeInfo() {
         } else {
             LOGE("uname failed due to unknown reason (status code: %ld)", ret);
         }
+        return -1;
     } else {
         if (ret == 0) {
             LOGD("uname was SUCCESSFUL (status code: %ld)", ret);
@@ -72,6 +73,7 @@ static int getNativeInfo() {
         LOGD("Version:     %s\n", buffer.version);
         LOGD("Machine:     %s\n", buffer.machine);
         LOGD("Domain Name:     %s\n", buffer.domainname);
+        return 0;
     }
 
 
