@@ -21,7 +21,7 @@ None of this would be possible without `topjohnwu et al.` and their amazing work
 
 
 ## Building
-0. This project topjohnwu's `libcxx` repo, you should this repository with the `--recursive` flag
+0. This project depends on topjohnwu's `libcxx` repo, thus you should clone this repository with the `--recursive` flag
 1. You also need the Android Native Development Kit (NDK). This project uses the version `25.1.8937393`
 2. Then, ensure `$ANDROID_HOME/ndk/<ndk-version>` is in your `PATH`
 3. Finally, simply enter the `src` folder and call [`ndk-build`](https://developer.android.com/ndk/guides/ndk-build)
@@ -62,4 +62,4 @@ touch /data/adb/modules/bipan/targets/org.another.app
 
 Bipan will traverse this directory when Zygote spawns, cache the package names in a hash table for $O(1)$ lookup and immediately match the current process with entries on the list.
 
-If the current process shouldn't be spoofed, nothing is done and Bipan never alters its memory. Otherwise, whenever Bipan gets its first match, the Java fields are permanently spoofed for the process's (and its subprocesses') lifecycle.
+If the current process shouldn't be spoofed, nothing is done and Bipan never alters its memory. Otherwise, whenever Bipan gets its first match, the Java fields are permanently spoofed for the process's (and its subprocesses') lifetime.
