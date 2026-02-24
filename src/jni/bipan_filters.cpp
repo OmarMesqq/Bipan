@@ -12,38 +12,9 @@
 #include "bipan_shared.hpp"
 #include "bipan_filters.hpp"
 
-static void sigsys_trap_handler(int sig, siginfo_t *info, void *void_context);
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
 static void log_address_info(const char* label, uintptr_t addr);
 
-/**
- * Berkeley Packet Filter program to
- * block the following syscalls:
- * - `execve`
- * - `execveat`
- * - `uname`
- * 
- * The kernel shall return `EPERM` to the program, whilst
- * allowing other syscalls. Bipan can be ejected
- * from memory in this case.
- */
-static struct sock_filter blockFilter[] = {
-    // Load the syscall number into the accumulator
-    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-    
-    // If it's `execve`, block it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
-    // If it's `execveat`, block it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
-    // If it's `uname`, block it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
-    
-    // Otherwise, allow it
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-};
 
 /**
  * Berkeley Packet Filter program to
@@ -85,18 +56,10 @@ void applySeccompFilter(BIPAN_FILTER opt) {
     };
 
     switch (opt) {
-        case BLOCK: {
-            prog = {
-                .len = (unsigned short)(sizeof(blockFilter) / sizeof(blockFilter[0])),
-                .filter = blockFilter,
-            };
-            break;
-        }
-        case TRAP:
         case LOG: {
             // Register the signal handler before applying seccomp-bpf
             struct sigaction sa{};
-            sa.sa_sigaction = opt == TRAP ? sigsys_trap_handler : sigsys_log_handler;
+            sa.sa_sigaction = sigsys_log_handler;
             sa.sa_flags = SA_SIGINFO;
             if (sigaction(SIGSYS, &sa, nullptr) == -1) {
                 LOGE("applySeccompFilter: Failed to set SIGSYS handler for filter option %u: %d", opt, errno);
@@ -122,7 +85,7 @@ void applySeccompFilter(BIPAN_FILTER opt) {
         return;
     }
 
-    // Apply the seccomp filter
+    // Apply the seccomp filter across all threads (`TSYNC`)
     // Another option is to use SECCOMP_SET_MODE_STRICT:
     // "The only system calls that the calling thread is permitted
     // to make are read(2), write(2), _exit(2)"
@@ -132,29 +95,12 @@ void applySeccompFilter(BIPAN_FILTER opt) {
     }
 }
 
-static void sigsys_trap_handler(int sig, siginfo_t *info, void *void_context) {
-    int nr = info->si_syscall;
-
-    LOGE("--- BIPAN SANDBOX TRAP ---");
-    if (nr == __NR_execve || nr == __NR_execveat) {
-        LOGE("Violation: Attempted to EXECUTE a binary (Syscall %d)", nr);
-    } else if (nr == __NR_uname) {
-        LOGE("Violation: Attempted to call uname (Syscall %d)", nr);
-    } else {
-        LOGE("Violation: Blocked syscall %d", nr);
-    }
-    
-    // Aggressively exit the program upon violation
-    _exit(1);
-}
-
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     ucontext_t *ctx = (ucontext_t *)void_context;
     int nr = info->si_syscall;
     uintptr_t pc = ctx->uc_mcontext.pc;
     uintptr_t lr = ctx->uc_mcontext.regs[30];
 
-    LOGE("--- BIPAN SANDBOX LOG START ---");
     if (nr == __NR_execve) {
         const char* path = (const char*)ctx->uc_mcontext.regs[0];
         LOGE("Violation: execve(\"%s\")", path ? path : "NULL");
@@ -179,8 +125,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         strncpy(buf->version, "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025", 64);
         strncpy(buf->machine, "aarch64", 64);
         strncpy(buf->domainname, "(none)", 64);
-        
-        LOGD("Spoofed 'uname' values.");
     }
     else {
         LOGE("Violation: syscall %d", nr);
@@ -205,8 +149,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
 
     log_address_info("PC (Actual Caller)", pc);
     log_address_info("LR (Return Address)", lr);
-
-    LOGE("--- BIPAN SANDBOX LOG END ---");
 }
 
 static void log_address_info(const char* label, uintptr_t addr) {
