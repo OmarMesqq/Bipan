@@ -1,21 +1,20 @@
 #include <vector>
 #include <string>
-#include <cerrno>
 #include <unistd.h>
-#include <android/log.h>
 #include <dirent.h>
 #include <unordered_set>
 
 #include "zygisk.hpp"
+#include "bipan_shared.hpp"
+#include "bipan_filters.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "Bipan", __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Bipan", __VA_ARGS__)
-
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
+
+constexpr BIPAN_FILTER filterMode = LOG;
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -30,19 +29,21 @@ public:
     void preAppSpecialize(AppSpecializeArgs *args) override {
         // Filter the process: only spoof some packages
         const char *raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (!raw_process_name) {
+            LOGE("preAppSpecialize: process name is nil. Aborting.");
+            return;
+        }
         bool should_spoof = isTarget(raw_process_name);
 
-        preSpecialize(raw_process_name);
-
         if (should_spoof) {
-            LOGD("Spoofing Build fields for process %s", raw_process_name);
             spoofBuildFields();
+            applySeccompFilter(filterMode);   
+            LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
         }
+        
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
-    }
 
-    void preServerSpecialize(ServerSpecializeArgs *args) override {
-        preSpecialize("system_server");
+        preSpecialize(should_spoof);
     }
 
 private:
@@ -95,9 +96,11 @@ private:
         close(fd);
     }
 
-    void preSpecialize(const char *process) {
-        // Since we do not hook any functions, we should let Zygisk dlclose ourselves
-        api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+    void preSpecialize(bool isTarget) {
+        // Targets require us to on memory to catch SIGSYS
+        if (!isTarget) {
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
     }
 
     /**
@@ -149,7 +152,7 @@ private:
         setField(buildClass, "MANUFACTURER", "google");
         setField(buildClass, "MODEL", "Pixel 8 Pro");
         setField(buildClass, "PRODUCT", "husky");
-        setField(buildClass, "RADIO", "1.0.0");
+        setField(buildClass, "RADIO", "g5300g-251108-251202-B-12876551");
         setField(buildClass, "SOC_MANUFACTURER", "Google");
         setField(buildClass, "SOC_MODEL", "Tensor G3");
         setField(buildClass, "TAGS", "release-keys");

@@ -4,3 +4,6 @@ module/targets/
 src/libs/
 src/obj/
 *.so
+TODO
+.idea
+.DS_Store
