@@ -90,9 +90,8 @@ class Bipan : public zygisk::ModuleBase {
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
 
-    const bool shouldClose = should_spoof ? (filterMode == BLOCK) : true;
-    preSpecialize(processNameCopy, should_spoof, shouldClose);
-  }
+        preSpecialize(should_spoof);
+    }
 
  private:
   Api* api;
@@ -282,15 +281,12 @@ class Bipan : public zygisk::ModuleBase {
     close(fd);
   }
 
-  void preSpecialize(const char* process, bool isTarget, bool shouldClose) {
-    if (shouldClose) {
-      if (isTarget) {
-        LOGW("Dlclosing module for process %s", process);
-      }
-      // If we don't hook any functions, we can let Zygisk dlclose ourselves
-      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+    void preSpecialize(bool isTarget) {
+        // Targets require us to on memory to catch SIGSYS
+        if (!isTarget) {
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
     }
-  }
 
   void setField(jclass clazz, const char* fieldName, const char* value) {
     jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "Ljava/lang/String;");
