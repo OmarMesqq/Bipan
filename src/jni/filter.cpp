@@ -106,7 +106,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             _exit(1);
         }
 
-        LOGE("Violation: uname. Spoofing values...");
+        LOGE("Violation: uname");
         
         memset(buf, 0, sizeof(struct utsname));
         strncpy(buf->sysname, "Linux", 64);
@@ -117,7 +117,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         strncpy(buf->domainname, "(none)", 64);
     }
     else {
-        LOGE("Violation: syscall %d", nr);
+        LOGE("Violation: syscall number %d", nr);
     }
 
     /**
