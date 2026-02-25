@@ -1,11 +1,9 @@
 # Bipan
-Bipan is a Zygisk module for spoofing Java static fields commonly (and sadly)
-leveraged for device fingerprinting. As of this writing, the target fields
-live exclusively under the `android.os.Build` and `android.os.Build.VERSION` classes
-offered by the Android SDK to the app's Java/Kotlin layer.
+Bipan is a pseudo-sandbox for Android apps. It leverages Zygisk and Seccomp to spoof Java static fields commonly (sadly) used for device fingerprinting as well to spoof `uname` syscall results. Furthermore,
+it blocks `execve`/`execveat`, logging all violations to logcat.
 
 ### Important note!
-This technique works for a [good enough percentage](https://en.wikipedia.org/wiki/Wikipedia:Citation_needed) of Android apps and yields a reasonably significant
+The Java field spoofing technique works for a [good enough percentage](https://en.wikipedia.org/wiki/Wikipedia:Citation_needed) of Android apps and yields a reasonably significant
 privacy gain. Note, however, "hardened" apps like Big Tech, fintech/banking ones and games
 will **definitely** use truly native calls (C/C++) and even inline assembly (via the `svc` opcode
 for direct syscalls) to map your hardware. For now (contributions welcome!), this module doesn't defend against this.
@@ -23,10 +21,10 @@ None of this would be possible without `topjohnwu et al.` and their amazing work
 ## Building
 0. This project depends on topjohnwu's `libcxx` repo, thus you should clone this repository with the `--recursive` flag
 1. You also need the Android Native Development Kit (NDK). This project uses the version `25.1.8937393`
-2. Then, ensure `$ANDROID_HOME/ndk/<ndk-version>` is in your `PATH`
-3. Finally, simply enter the `src` folder and call [`ndk-build`](https://developer.android.com/ndk/guides/ndk-build)
+2. You should also ensure that `$ANDROID_HOME/ndk/<ndk-version>` is in your `PATH`
+3. Finally, you can build the module by simply entering the `src` folder and calling [`ndk-build`](https://developer.android.com/ndk/guides/ndk-build)
 
-Bipan's shared libraries will be at `src/libs/<arch>/libbipan.so`. 
+Bipan's shared library will be at `src/libs/arm64-v8a/libbipan.so`. 
 
 
 ## Usage
