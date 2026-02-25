@@ -13,7 +13,7 @@ using zygisk::ServerSpecializeArgs;
 
 class Bipan : public zygisk::ModuleBase {
 public:
-    Bipan() : api(nullptr), env(nullptr) {}
+    Bipan() : api(nullptr), env(nullptr), targetsSet(), isTargetApp(false) {}
 
     void onLoad(Api *api_ptr, JNIEnv *env_ptr) override {
         this->api = api_ptr;
@@ -28,23 +28,58 @@ public:
             LOGE("preAppSpecialize: process name is nil. Aborting.");
             return;
         }
-        bool should_spoof = isTarget(raw_process_name);
+        isTargetApp = isTarget(raw_process_name);
 
-        if (should_spoof) {
-            spoofBuildFields();
-            applySeccompFilter();   
-            LOGD("Sandbox applied for %s", raw_process_name);
+        if (isTargetApp) {
+            LOGW("preAppSpecialize: will apply sandbox for %s", raw_process_name);
         }
         
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
 
-        preSpecialize(should_spoof);
+        preSpecialize();
+    }
+
+    void postAppSpecialize(const AppSpecializeArgs *args) override {
+        if (isTargetApp) {
+            spoofBuildFields();
+            applySeccompFilter();
+        }
     }
 
 private:
     Api *api;
     JNIEnv *env;
     std::unordered_set<std::string> targetsSet;
+    bool isTargetApp;
+
+    void preSpecialize() {
+        // Targets require us to on memory to catch SIGSYS
+        if (!isTargetApp) {
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
+    }
+
+    bool isTarget(const char* process) {
+        if (process == nullptr) {
+            return false;
+        }
+        // Direct match
+        if (targetsSet.find(process) != targetsSet.end()) {
+            return true;
+        }
+
+        // Multi-process match (check if it's a sub-process i.e. com.some.app:subservice)
+        std::string procStr(process);
+        for (const auto& target : targetsSet) {
+            if (procStr.compare(0, target.length(), target) == 0) {
+                // Ensure we aren't matching "com.foo.app" by checking for the ':'
+                if (procStr.length() > target.length() && procStr[target.length()] == ':') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /**
      * Do some IPC with the companion handler
@@ -90,20 +125,7 @@ private:
         }
         close(fd);
     }
-
-    void preSpecialize(bool isTarget) {
-        // Targets require us to on memory to catch SIGSYS
-        if (!isTarget) {
-            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-        }
-    }
-
-    /**
-     * Sets a field `fieldName` in a Java class `clazz` obtained via JNI
-     * to the value `value`.
-     *
-     * WARNING: This is a setter for String fields only!!!!
-     */
+    
     void setField(jclass clazz, const char* fieldName, const char* value) {
         jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "Ljava/lang/String;");
 
@@ -189,28 +211,6 @@ private:
         if (versionClass) {
             env->DeleteLocalRef(versionClass);
         }
-    }
-
-    bool isTarget(const char* process) {
-        if (process == nullptr) {
-            return false;
-        }
-        // Direct match
-        if (targetsSet.find(process) != targetsSet.end()) {
-            return true;
-        }
-
-        // Multi-process match (check if it's a sub-process i.e. com.some.app:subservice)
-        std::string procStr(process);
-        for (const auto& target : targetsSet) {
-            if (procStr.compare(0, target.length(), target) == 0) {
-                // Ensure we aren't matching "com.foo.app" by checking for the ':'
-                if (procStr.length() > target.length() && procStr[target.length()] == ':') {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 };
 

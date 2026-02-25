@@ -1,6 +1,6 @@
 id=bipan
 name=Bipan
-version=3.1
-versionCode=310
+version=3.2
+versionCode=320
 author=OmarMesqq
 description=A Zygote-based sandbox for Android apps (powered by Zygisk)
