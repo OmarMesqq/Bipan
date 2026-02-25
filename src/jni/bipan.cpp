@@ -11,8 +11,6 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-constexpr BIPAN_FILTER filterMode = LOG;
-
 class Bipan : public zygisk::ModuleBase {
 public:
     Bipan() : api(nullptr), env(nullptr) {}
@@ -34,8 +32,8 @@ public:
 
         if (should_spoof) {
             spoofBuildFields();
-            applySeccompFilter(filterMode);   
-            LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
+            applySeccompFilter();   
+            LOGD("Sandbox applied for %s", raw_process_name);
         }
         
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
