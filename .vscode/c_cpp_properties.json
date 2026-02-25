@@ -7,7 +7,11 @@
                 "${workspaceFolder}/src/jni/**",
                 "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/**"
             ],
-            "defines": [],
+            "defines": [
+                "__ANDROID__",
+                "_GNU_SOURCE",
+                "__aarch64__"
+            ],
             "compilerPath": "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",
