@@ -5,7 +5,7 @@
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;

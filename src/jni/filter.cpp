@@ -10,7 +10,7 @@
 #include <sys/utsname.h>
 
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
 static void log_address_info(const char* label, uintptr_t addr);
