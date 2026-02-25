@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "Bipan C/C++",
+            "includePath": [
+                "${workspaceFolder}/src/jni/libcxx/**",
+                "${workspaceFolder}/src/jni/**",
+                "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-arm64"
+        }
+    ],
+    "version": 4
+}
