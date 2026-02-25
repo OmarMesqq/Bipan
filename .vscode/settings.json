@@ -1,0 +1,6 @@
+{
+    "cmake.ignoreCMakeListsMissing": true,
+    "conventionalCommits.scopes": [
+        "workspace"
+    ]
+}
