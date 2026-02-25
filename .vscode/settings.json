@@ -1,6 +1,8 @@
 {
     "cmake.ignoreCMakeListsMissing": true,
     "conventionalCommits.scopes": [
-        "workspace"
+        "workspace",
+        "bipan",
+        "bipantest"
     ]
 }
