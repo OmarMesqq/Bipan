@@ -10,11 +10,10 @@
 #include <sys/utsname.h>
 
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
 static void log_address_info(const char* label, uintptr_t addr);
-
 
 /**
  * Berkeley Packet Filter program to
@@ -48,35 +47,26 @@ static struct sock_filter trapFilter[] = {
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
 
-void applySeccompFilter(BIPAN_FILTER opt) {
+void applySeccompFilter() {
     // The seccomp filter "program"
     struct sock_fprog prog = {
         .len = 0,   // number of BPF instructions
         .filter = nullptr // Pointer to array of BPF instructions
     };
 
-    switch (opt) {
-        case LOG: {
-            // Register the signal handler before applying seccomp-bpf
-            struct sigaction sa{};
-            sa.sa_sigaction = sigsys_log_handler;
-            sa.sa_flags = SA_SIGINFO;
-            if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-                LOGE("applySeccompFilter: Failed to set SIGSYS handler for filter option %u: %d", opt, errno);
-                return;
-            }
-
-            prog = {
-                .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
-                .filter = trapFilter,
-            };
-            break;
-        }
-        default: {
-            LOGE("apply_seccomp_filter: unexepected filter option %u", opt);
-            return;
-        }
+    // Register the signal handler before applying seccomp-bpf
+    struct sigaction sa{};
+    sa.sa_sigaction = sigsys_log_handler;
+    sa.sa_flags = SA_SIGINFO;
+    if (sigaction(SIGSYS, &sa, nullptr) == -1) {
+        LOGE("applySeccompFilter: Failed to set SIGSYS handler (errno: %d)", errno);
+        return;
     }
+    
+    prog = {
+        .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
+        .filter = trapFilter,
+    };
 
     // Promise the kernel we won't ask for elevated privileges.
     // This is necessary as this function will be run in Zygote (non-root)

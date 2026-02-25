@@ -1,20 +1,15 @@
 #include <vector>
 #include <string>
 #include <unistd.h>
-#include <dirent.h>
 #include <unordered_set>
 
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
-#include "bipan_filters.hpp"
+#include "filter.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
-
-#define TARGETS_DIR "/data/adb/modules/bipan/targets"
-
-constexpr BIPAN_FILTER filterMode = LOG;
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -37,8 +32,8 @@ public:
 
         if (should_spoof) {
             spoofBuildFields();
-            applySeccompFilter(filterMode);   
-            LOGD("Sandbox applied for %s (Mode: %s)", raw_process_name, (filterMode == LOG ? "LOG" : "BLOCK"));
+            applySeccompFilter();   
+            LOGD("Sandbox applied for %s", raw_process_name);
         }
         
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
@@ -220,37 +215,5 @@ private:
 };
 
 
-/**
- * The companion handler func runs as root.
- * It was deemed necessary in order to bypass
- * SELinux policies in the Magisk folder
- */
-static void companion_handler(int fd) {
-    DIR* dir = opendir(TARGETS_DIR);
-    if (dir) {
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            if (entry->d_name[0] == '.') {
-                // Skip . and ..
-                continue;
-            }
-
-            auto len = static_cast<uint32_t>(strlen(entry->d_name));
-            write(fd, &len, sizeof(len));
-            write(fd, entry->d_name, len);
-        }
-        closedir(dir);
-    } else {
-        LOGE("companion_handler: failed to read targets dir (%s)!", TARGETS_DIR);
-        return;
-    }
-    
-    uint32_t done = 0; // means we are finished
-    write(fd, &done, sizeof(done));
-}
-
-
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
-// Register the companion handler function
-REGISTER_ZYGISK_COMPANION(companion_handler)
