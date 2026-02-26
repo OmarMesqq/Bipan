@@ -10,6 +10,26 @@
 #include <sys/utsname.h>
 #include <cerrno>
 #include <unistd.h>
+#include <sys/prctl.h>
+
+static volatile int ipc_lock_state = 0;
+static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4);
+static bool is_system_thread();
+
+// Async-signal-safe lock
+inline void lock_ipc() {
+    // __sync_lock_test_and_set writes 1 and returns the old value.
+    // If it returns 1, it was already locked, so we sleep on the futex.
+    while (__sync_lock_test_and_set(&ipc_lock_state, 1)) {
+        futex_wait(&ipc_lock_state, 1);
+    }
+}
+
+// Async-signal-safe unlock
+inline void unlock_ipc() {
+    __sync_lock_release(&ipc_lock_state); // sets back to 0 securely
+    futex_wake(&ipc_lock_state);          // wakes up the next waiting thread
+}
 
 static void log_address_info(const char* label, uintptr_t addr);
 static void get_library_from_addr(uintptr_t addr);
@@ -31,6 +51,20 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     uintptr_t pc = ctx->uc_mcontext.pc;
     uintptr_t lr = ctx->uc_mcontext.regs[30];
     int nr = info->si_syscall;  // or ctx->uc_mcontext.regs[8];
+    // --- NEW: INTERCEPT AND BYPASS SYSTEM THREADS ---
+    if (is_system_thread()) {
+        long result = arm64_bypassed_syscall(
+            nr, 
+            ctx->uc_mcontext.regs[0], 
+            ctx->uc_mcontext.regs[1], 
+            ctx->uc_mcontext.regs[2], 
+            ctx->uc_mcontext.regs[3], 
+            ctx->uc_mcontext.regs[4]
+        );
+        ctx->uc_mcontext.regs[0] = result;
+        return; // Return instantly! No broker IPC.
+    }
+    // ------------------------------------------------
 
     long arg0 = ctx->uc_mcontext.regs[0];
     long arg1 = ctx->uc_mcontext.regs[1];
@@ -85,6 +119,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             LOGE("flags: %d", flags);
             LOGE("mode: %u", mode);
 
+            lock_ipc();
+
             // Load syscall data in IPC memory
             ipc_mem->nr = nr;
             ipc_mem->arg0 = ctx->uc_mcontext.regs[0];                      // dirfd
@@ -116,6 +152,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
               ctx->uc_mcontext.regs[0] = ipc_mem->ret;
             }
             ipc_mem->status = IDLE;
+            // 7. RELEASE LOCK (Let the next thread go)
+            unlock_ipc();
             break;
         }
         default: {
@@ -151,4 +189,48 @@ static void get_library_from_addr(uintptr_t addr) {
   } else {
     LOGE("Could not resolve library at %p ", (void*)addr);
   }
+}
+
+// --- NEW: THE NATIVE EXECUTOR STUB ---
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wregister"
+static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4) {
+    register long x8 __asm__("x8") = sysno;
+    register long x0 __asm__("x0") = a0;
+    register long x1 __asm__("x1") = a1;
+    register long x2 __asm__("x2") = a2;
+    register long x3 __asm__("x3") = a3;
+    register long x4 __asm__("x4") = a4;
+    register long x5 __asm__("x5") = 0xBADB01; // The Magic Number!
+
+    __asm__ volatile(
+        "svc #0\n"
+        : "+r"(x0)
+        : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+        : "memory", "cc"
+    );
+
+    return x0;
+}
+#pragma clang diagnostic pop
+
+static bool is_system_thread() {
+    char thread_name[16] = {0};
+    if (prctl(PR_GET_NAME, thread_name, 0, 0, 0) != 0) {
+        return false;
+    }
+
+    if (strncmp(thread_name, "RenderThread", 12) == 0 ||
+        strncmp(thread_name, "hwuiTask", 8) == 0 ||
+        strncmp(thread_name, "Binder:", 7) == 0 ||
+        strncmp(thread_name, "Jit thread pool", 15) == 0 ||
+        strncmp(thread_name, "Profile Saver", 13) == 0 ||
+        strncmp(thread_name, "mali-", 5) == 0 ||      
+        strncmp(thread_name, "kgsl-", 5) == 0 ||      
+        strncmp(thread_name, "ReferenceQueueD", 15) == 0 ||
+        strncmp(thread_name, "FinalizerDaemon", 15) == 0 ||
+        strncmp(thread_name, "HeapTaskDaemon", 14) == 0) {
+        return true;
+    }
+    return false;
 }

