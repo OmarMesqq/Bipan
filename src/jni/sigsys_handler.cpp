@@ -166,13 +166,24 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             bool is_info_about_itself = starts_with(pathname, "/proc/self/") || 
                                         (safe_proc_pid_path[0] != '\0' && starts_with(pathname, safe_proc_pid_path));
 
+            bool is_special_file = starts_with(pathname, "/dev/urandom") || 
+                                      starts_with(pathname, "/dev/random") ||
+                                      starts_with(pathname, "/dev/null");
+
             if (
                 is_app_data || 
                 is_apk_dir || 
                 is_binder ||
                 is_gms_dir ||
-                is_info_about_itself
+                is_special_file
             ) {
+                // Remove custom ROM traces from places like /system/framework
+                if (strstr(pathname, "lineageos") != nullptr) {
+                    LOGW("App attempted to find custom ROM information!");
+                    ctx->uc_mcontext.regs[0] = -ENOENT;
+                    return;
+                }
+
                 long native_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
                 ctx->uc_mcontext.regs[0] = native_fd;
                 return;
