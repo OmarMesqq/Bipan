@@ -1,6 +1,7 @@
 #include "sigsys_handler.hpp"
 #include "shared.hpp"
 #include "synchronization.hpp"
+#include "spoofer.hpp"
 
 #include <cstdint>
 #include <dlfcn.h>
@@ -114,17 +115,64 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             int flags = (int)ctx->uc_mcontext.regs[2];
             mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
 
-            // Reduce clutter: let app read its own paths
+            // Hide direct access to custom CAs at system trust store
+            if (strstr(pathname, "81c450f1.0") != nullptr ||
+                strstr(pathname, "894c9e9f.0") != nullptr ||
+                strstr(pathname, "9a5ba575.0") != nullptr ||
+                strstr(pathname, "c7981ca8.0") != nullptr) {
+                    ctx->uc_mcontext.regs[0] = -ENOENT;
+                    return;
+            }
+
+            // Hide user added CAs on user trust store
+            if (starts_with(pathname, "/data/misc/user/0/cacerts-added")) {
+                ctx->uc_mcontext.regs[0] = -ENOENT;
+                return;
+            }
+
+            // TODO
+            bool reading_maps = (strcmp(pathname, "/proc/self/maps") == 0) || 
+                                ((safe_proc_pid_path[0] != '\0') && starts_with(pathname, safe_proc_pid_path) && strstr(pathname, "/maps") != nullptr);
+
+            if (reading_maps) {
+                LOGW("Intercepted attempt to read memory maps: %s", pathname);
+                // // Option A: Return a fake, hardcoded map file using memfd_create
+                // // Option B: Proxy it to the broker, have the broker read the real maps, 
+                // //           regex out lines containing "bipan" and "magisk", and return a memfd.
+                // ctx->uc_mcontext.regs[0] = 0;
+                // return;
+            }
+
+            // -------- ALLOW LIST --------
+
+            // app's own data directories
             bool is_app_data = (safe_path_user_0_len > 0 && strncmp(pathname, safe_path_user_0, safe_path_user_0_len) == 0) ||
                                    (safe_path_data_data_len > 0 && strncmp(pathname, safe_path_data_data, safe_path_data_data_len) == 0);
 
-            // Binder devices MUST be opened by the native process context,
-            // otherwise mmap() will fail with EINVAL due to TGID mismatches in the kernel.
-            bool is_binder = (strncmp(pathname, "/dev/binder", 11) == 0) ||
-                             (strncmp(pathname, "/dev/hwbinder", 13) == 0) ||
-                             (strncmp(pathname, "/dev/vndbinder", 14) == 0);
+            // app's own APK installation dirs
+            bool is_apk_dir = (strncmp(pathname, "/data/app/", 10) == 0) && 
+                              (strstr(pathname, target_pkg_name) != nullptr);
+            
+            // Binder devices MUST be opened by the native process context
+            bool is_binder = starts_with(pathname, "/dev/binder") || 
+                                      starts_with(pathname, "/dev/hwbinder") || 
+                                      starts_with(pathname, "/dev/vndbinder") ||
+                                      starts_with(pathname, "/dev/ashmem");
 
-            if (is_app_data || is_binder) {
+            // Most apps use GMS :/
+            bool is_gms_dir = starts_with(pathname, "/data/app/") && (strstr(pathname, "com.google.android.gms") != nullptr);
+
+            // App's will get info of themselves on the pseudofilesystem
+            bool is_info_about_itself = starts_with(pathname, "/proc/self/") || 
+                                        (safe_proc_pid_path[0] != '\0' && starts_with(pathname, safe_proc_pid_path));
+
+            if (
+                is_app_data || 
+                is_apk_dir || 
+                is_binder ||
+                is_gms_dir ||
+                is_info_about_itself
+            ) {
                 long native_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
                 ctx->uc_mcontext.regs[0] = native_fd;
                 return;

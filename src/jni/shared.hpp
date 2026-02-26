@@ -57,5 +57,7 @@ extern size_t safe_path_user_0_len;
 extern char safe_path_data_data[256];
 extern size_t safe_path_data_data_len;
 
+extern char target_pkg_name[256];
+extern char safe_proc_pid_path[64];
 
 #endif

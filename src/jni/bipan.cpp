@@ -23,6 +23,8 @@ char safe_path_user_0[256] = {0};
 size_t safe_path_user_0_len = 0;
 char safe_path_data_data[256] = {0};
 size_t safe_path_data_data_len = 0;
+char target_pkg_name[256] = {0};
+char safe_proc_pid_path[64] = {0};
 
 
 // Globals to store the original JNI function pointers
@@ -86,10 +88,10 @@ public:
                 basePkg = basePkg.substr(0, colon_pos); // Strip ":sync" or ":service"
             }
 
-            // Build the string safely in userland, BEFORE the signal handler is active
+            strncpy(target_pkg_name, basePkg.c_str(), sizeof(target_pkg_name) - 1);
+            snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
             snprintf(safe_path_user_0, sizeof(safe_path_user_0), "/data/user/0/%s", basePkg.c_str());
             safe_path_user_0_len = strlen(safe_path_user_0);
-
             snprintf(safe_path_data_data, sizeof(safe_path_data_data), "/data/data/%s", basePkg.c_str());
             safe_path_data_data_len = strlen(safe_path_data_data);
         }
