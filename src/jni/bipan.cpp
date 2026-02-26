@@ -20,6 +20,40 @@ using zygisk::ServerSpecializeArgs;
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 
+
+// Globals to store the original JNI function pointers
+void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
+void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
+
+// Ensure we only apply the seccomp filter once
+bool seccomp_applied = false;
+
+// Our hijacked clampGrowthLimit
+void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
+    if (!seccomp_applied) {
+        applySeccompFilter();
+        seccomp_applied = true;
+        LOGW("Seccomp filter safely applied at clampGrowthLimit");
+    }
+    if (orig_clampGrowthLimit) {
+        orig_clampGrowthLimit(env, obj);
+    }
+}
+
+// Our hijacked clearGrowthLimit
+void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
+    if (!seccomp_applied) {
+        applySeccompFilter();
+        seccomp_applied = true;
+        LOGW("Seccomp filter safely applied at clearGrowthLimit");
+    }
+    if (orig_clearGrowthLimit) {
+        orig_clearGrowthLimit(env, obj);
+    }
+}
+
+
+
 class Bipan : public zygisk::ModuleBase {
 public:
     Bipan() : api(nullptr), env(nullptr), targetsSet(), isTargetApp(false) {}
@@ -82,7 +116,21 @@ public:
             
             close(sv[0]);  // Close broker's end
             registerSigSysHandler();
-            applySeccompFilter();
+            
+            // Hook JNI methods that will trip app code as soon as they're done
+            // Source: https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/base/core/java/android/app/ActivityThread.java;l=8061?q=handleBindApplication&ss=android%2Fplatform%2Fsuperproject
+            // Set up the tripwire to delay Seccomp until app execution
+            JNINativeMethod methods[] = {
+                {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
+                {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}
+            };
+            
+            // Inject our functions into the VMRuntime class
+            api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", methods, 2);
+            
+            // Zygisk populates fnPtr with the original function pointer after hooking
+            orig_clampGrowthLimit = reinterpret_cast<void(*)(JNIEnv*, jobject)>(methods[0].fnPtr);
+            orig_clearGrowthLimit = reinterpret_cast<void(*)(JNIEnv*, jobject)>(methods[1].fnPtr);
         }
     }
 
