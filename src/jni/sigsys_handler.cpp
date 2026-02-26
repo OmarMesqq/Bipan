@@ -118,7 +118,13 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             bool is_app_data = (safe_path_user_0_len > 0 && strncmp(pathname, safe_path_user_0, safe_path_user_0_len) == 0) ||
                                    (safe_path_data_data_len > 0 && strncmp(pathname, safe_path_data_data, safe_path_data_data_len) == 0);
 
-            if (is_app_data) {
+            // Binder devices MUST be opened by the native process context,
+            // otherwise mmap() will fail with EINVAL due to TGID mismatches in the kernel.
+            bool is_binder = (strncmp(pathname, "/dev/binder", 11) == 0) ||
+                             (strncmp(pathname, "/dev/hwbinder", 13) == 0) ||
+                             (strncmp(pathname, "/dev/vndbinder", 14) == 0);
+
+            if (is_app_data || is_binder) {
                 long native_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
                 ctx->uc_mcontext.regs[0] = native_fd;
                 return;
