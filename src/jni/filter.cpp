@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <cerrno>
 
-#include "bipan_shared.hpp"
+#include "shared.hpp"
 #include "filter.hpp"
 
 /**

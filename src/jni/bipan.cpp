@@ -4,7 +4,7 @@
 #include <unordered_set>
 
 #include "zygisk.hpp"
-#include "bipan_shared.hpp"
+#include "shared.hpp"
 #include "filter.hpp"
 #include "sigsys_handler.hpp"
 

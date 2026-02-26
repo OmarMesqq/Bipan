@@ -1,5 +1,5 @@
 #include "sigsys_handler.hpp"
-#include "bipan_shared.hpp"
+#include "shared.hpp"
 
 #include <cstdint>
 #include <dlfcn.h>

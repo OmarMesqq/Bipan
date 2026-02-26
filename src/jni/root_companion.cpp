@@ -3,7 +3,7 @@
 #include <string>
 
 #include "zygisk.hpp"
-#include "bipan_shared.hpp"
+#include "shared.hpp"
 
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
