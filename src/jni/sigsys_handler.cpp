@@ -15,6 +15,7 @@
 static volatile int ipc_lock_state = 0;
 static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4);
 static bool is_system_thread();
+static void get_library_from_addr(const char* label, uintptr_t addr);
 
 // Async-signal-safe lock
 inline void lock_ipc() {
@@ -51,7 +52,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
     uintptr_t pc = ctx->uc_mcontext.pc;
     uintptr_t lr = ctx->uc_mcontext.regs[30];
     int nr = info->si_syscall;  // or ctx->uc_mcontext.regs[8];
-    // --- NEW: INTERCEPT AND BYPASS SYSTEM THREADS ---
+    
+    // Don't block legitimate system threads
     if (is_system_thread()) {
         long result = arm64_bypassed_syscall(
             nr, 
@@ -62,9 +64,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             ctx->uc_mcontext.regs[4]
         );
         ctx->uc_mcontext.regs[0] = result;
-        return; // Return instantly! No broker IPC.
+        return;
     }
-    // ------------------------------------------------
 
     long arg0 = ctx->uc_mcontext.regs[0];
     long arg1 = ctx->uc_mcontext.regs[1];
@@ -124,10 +125,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             }
 
             LOGE("Violation: openat to file %s", pathname);
-            // LOGE("dirfd: %d", dirfd);
-            // LOGE("pathname: %s", pathname);
-            // LOGE("flags: %d", flags);
-            // LOGE("mode: %u", mode);
 
             lock_ipc();
 
@@ -162,8 +159,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
               ctx->uc_mcontext.regs[0] = ipc_mem->ret;
             }
             ipc_mem->status = IDLE;
-            // 7. RELEASE LOCK (Let the next thread go)
-            unlock_ipc();
+            
+            unlock_ipc();   // release lock
             break;
         }
         default: {
@@ -190,18 +187,22 @@ static void log_address_info(const char* label, uintptr_t addr) {
     }
 }
 
-static void get_library_from_addr(char* label, uintptr_t addr) {
+static void get_library_from_addr(const char* label, uintptr_t addr) {
   Dl_info dlinfo;
   if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
-    LOGD("%s resolves to library %s",
-         label,
-         dlinfo.dli_fname);
+    const char* path = dlinfo.dli_fname;
+
+    bool is_system = (strncmp(path, "/system/", 8) == 0);
+    bool is_apex   = (strncmp(path, "/apex/", 6) == 0);
+
+    if (!is_system && !is_apex) {
+      LOGD("%s resolves to library %s", label, path);
+    }
   } else {
-    LOGE("Could not resolve library at %p ", (void*)addr);
+    LOGE("Could not resolve library at %p", (void*)addr);
   }
 }
 
-// --- NEW: THE NATIVE EXECUTOR STUB ---
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4) {
