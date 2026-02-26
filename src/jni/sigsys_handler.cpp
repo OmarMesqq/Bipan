@@ -32,7 +32,7 @@ inline void unlock_ipc() {
 }
 
 static void log_address_info(const char* label, uintptr_t addr);
-static void get_library_from_addr(uintptr_t addr);
+static void get_library_from_addr(char* label, uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
 
 void registerSigSysHandler() {
@@ -113,11 +113,21 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             int flags = (int)ctx->uc_mcontext.regs[2];
             mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
 
-            LOGE("Violation: openat");
-            LOGE("dirfd: %d", dirfd);
-            LOGE("pathname: %s", pathname);
-            LOGE("flags: %d", flags);
-            LOGE("mode: %u", mode);
+            // Reduce clutter: let app read its own paths
+            bool is_app_data = (safe_path_user_0_len > 0 && strncmp(pathname, safe_path_user_0, safe_path_user_0_len) == 0) ||
+                                   (safe_path_data_data_len > 0 && strncmp(pathname, safe_path_data_data, safe_path_data_data_len) == 0);
+
+            if (is_app_data) {
+                long native_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+                ctx->uc_mcontext.regs[0] = native_fd;
+                return;
+            }
+
+            LOGE("Violation: openat to file %s", pathname);
+            // LOGE("dirfd: %d", dirfd);
+            // LOGE("pathname: %s", pathname);
+            // LOGE("flags: %d", flags);
+            // LOGE("mode: %u", mode);
 
             lock_ipc();
 
@@ -163,8 +173,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
         }
     }
 
-    log_address_info("PC (Actual Caller)", pc);
-    log_address_info("LR (Return Address)", lr);
+    get_library_from_addr("PC", pc);
+    get_library_from_addr("LR", lr);
 }
 
 static void log_address_info(const char* label, uintptr_t addr) {
@@ -180,11 +190,11 @@ static void log_address_info(const char* label, uintptr_t addr) {
     }
 }
 
-static void get_library_from_addr(uintptr_t addr) {
+static void get_library_from_addr(char* label, uintptr_t addr) {
   Dl_info dlinfo;
   if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
-    LOGD("Address %p resolves to library %s",
-         (void*)addr,
+    LOGD("%s resolves to library %s",
+         label,
          dlinfo.dli_fname);
   } else {
     LOGE("Could not resolve library at %p ", (void*)addr);

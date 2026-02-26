@@ -16,9 +16,13 @@ using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
 // Initialize shared components
-
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
+// Whitelist variables
+char safe_path_user_0[256] = {0};
+size_t safe_path_user_0_len = 0;
+char safe_path_data_data[256] = {0};
+size_t safe_path_data_data_len = 0;
 
 
 // Globals to store the original JNI function pointers
@@ -75,6 +79,19 @@ public:
 
         if (isTargetApp) {
             LOGW("preAppSpecialize: will apply sandbox for %s", raw_process_name);
+            
+            std::string basePkg(raw_process_name);
+            size_t colon_pos = basePkg.find(':');
+            if (colon_pos != std::string::npos) {
+                basePkg = basePkg.substr(0, colon_pos); // Strip ":sync" or ":service"
+            }
+
+            // Build the string safely in userland, BEFORE the signal handler is active
+            snprintf(safe_path_user_0, sizeof(safe_path_user_0), "/data/user/0/%s", basePkg.c_str());
+            safe_path_user_0_len = strlen(safe_path_user_0);
+
+            snprintf(safe_path_data_data, sizeof(safe_path_data_data), "/data/data/%s", basePkg.c_str());
+            safe_path_data_data_len = strlen(safe_path_data_data);
         }
         
         env->ReleaseStringUTFChars(args->nice_name, raw_process_name);

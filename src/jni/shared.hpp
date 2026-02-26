@@ -50,4 +50,12 @@ extern SharedIPC* ipc_mem;
 extern int sv[2];
 
 
+// Pre-computed paths for the target app to bypass Seccomp safely
+extern char safe_path_user_0[256];
+extern size_t safe_path_user_0_len;
+
+extern char safe_path_data_data[256];
+extern size_t safe_path_data_data_len;
+
+
 #endif
