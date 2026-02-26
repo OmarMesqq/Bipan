@@ -2,15 +2,24 @@
 #include <string>
 #include <unistd.h>
 #include <unordered_set>
+#include <sys/mman.h>
+#include <sys/socket.h>
 
 #include "zygisk.hpp"
 #include "shared.hpp"
 #include "filter.hpp"
 #include "sigsys_handler.hpp"
+#include "broker.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
+
+// Initialize the IPC memory map only once in the main process
+SharedIPC* ipc_mem = nullptr;
+
+// Initialize socket pair with Broker
+int sv[2];
 
 class Bipan : public zygisk::ModuleBase {
 public:
@@ -43,6 +52,36 @@ public:
     void postAppSpecialize(const AppSpecializeArgs *args) override {
         if (isTargetApp) {
             spoofBuildFields();
+
+            ipc_mem = (SharedIPC*)(mmap(
+                NULL,
+                sizeof(SharedIPC),
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED | MAP_ANONYMOUS,
+                -1, 0)
+            );
+
+            if (ipc_mem == MAP_FAILED) {
+              LOGE("Failed to allocate shared memory for IPC!");
+              _exit(1);
+            }
+
+            ipc_mem->status = IDLE;
+
+            if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              LOGE("Failed to socketpair");
+              _exit(1);
+            }
+
+            pid_t pid = fork();
+            if (pid == 0) {
+              close(sv[1]);        // Close target's end
+              startBroker(sv[0]);  // Pass the socket to your broker loop
+              LOGE("Broker loop stopped!");
+              _exit(-1);
+            }
+            
+            close(sv[0]);  // Close broker's end
             registerSigSysHandler();
             applySeccompFilter();
         }
