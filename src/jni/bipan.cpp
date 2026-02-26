@@ -15,11 +15,10 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-// Initialize the IPC memory map only once in the main process
-SharedIPC* ipc_mem = nullptr;
+// Initialize shared components
 
-// Initialize socket pair with Broker
-int sv[2];
+SharedIPC* ipc_mem = nullptr;
+int sv[2] = {0};
 
 class Bipan : public zygisk::ModuleBase {
 public:
