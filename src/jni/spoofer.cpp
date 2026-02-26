@@ -12,7 +12,7 @@ bool starts_with(const char* str, const char* prefix) {
 }
 
 // Creates an anonymous in-memory file with fake contents and returns its FD
-static int create_spoofed_file(const char* fake_content) {
+int create_spoofed_file(const char* fake_content) {
     // memfd_create requires a name, but it doesn't appear in the filesystem
     int fd = syscall(__NR_memfd_create, "spoofed_file", MFD_CLOEXEC);
     if (fd >= 0) {

@@ -1,12 +1,54 @@
 #include "broker.hpp"
+#include "spoofer.hpp"
 
 #include <unistd.h>
 #include <sys/prctl.h>
+#include <fcntl.h>
+#include <linux/memfd.h>
+#include <sys/syscall.h>
+#include <string.h>
+#include <sys/prctl.h>
+#include <string>
+#include <fstream>
 
 #include "shared.hpp"
 #include "synchronization.hpp"
 
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+
+/**
+ * Reads the real maps file, applies filtering rules to remove sandboxing
+ * and rooting footprints, and returns a memfd containing the spoofed data.
+ */
+static int generate_spoofed_maps(const char* real_path) {
+    std::ifstream file(real_path);
+    if (!file.is_open()) return -ENOENT;
+
+    std::string spoofed_content;
+    std::string line;
+    
+    // Pre-allocate 1MB to prevent frequent reallocations (maps files can be large)
+    spoofed_content.reserve(1024 * 1024); 
+
+    while (std::getline(file, line)) {
+        // 1. Hide Bipan's IPC Shared Memory (/dev/zero deleted rw-s)
+        if (line.find("rw-s") != std::string::npos && line.find("/dev/zero (deleted)") != std::string::npos) {
+            continue;
+        }
+        // 2. Hide Zygisk Anonymous Executable memory
+        if (line.find("r-xp") != std::string::npos && (line.find("[anon:") != std::string::npos || line.find('/') == std::string::npos)) {
+            continue;
+        }
+        // 3. Hide Magisk, KernelSU, APatch, or Bipan footprints
+        if (line.find("magisk") != std::string::npos || line.find("ksud") != std::string::npos || line.find("bipan") != std::string::npos) {
+            continue;
+        }
+
+        spoofed_content += line + "\n";
+    }
+
+    return create_spoofed_file(spoofed_content.c_str());
+}
 
 void startBroker(int sock) {
   prctl(PR_SET_NAME, "BipanBroker", 0, 0, 0);
@@ -17,7 +59,18 @@ void startBroker(int sock) {
     }
     __sync_synchronize();
 
-    long ret = arm64_raw_syscall(
+    if (ipc_mem->nr == CMD_SPOOF_MAPS) {
+      int memfd = generate_spoofed_maps(ipc_mem->path);
+        
+        if (memfd >= 0) {
+            send_fd(sock, memfd); // Teleport it
+            close(memfd);         // Close broker's copy
+            ipc_mem->ret = 0;     // Signal success
+        } else {
+            ipc_mem->ret = memfd; // Signal error (e.g., -ENOENT)
+        }
+    } else {
+      long ret = arm64_raw_syscall(
         ipc_mem->nr,
         ipc_mem->arg0,
         (long)ipc_mem->path,
@@ -33,6 +86,7 @@ void startBroker(int sock) {
       ipc_mem->ret = 0;         // Signal success to target
     } else {
       ipc_mem->ret = ret;  // Signal error to target
+    }
     }
 
     __sync_synchronize();

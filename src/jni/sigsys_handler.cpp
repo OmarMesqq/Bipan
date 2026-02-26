@@ -81,7 +81,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
 
             LOGE("Violation: execve(\"%s\")", path);
 
-            ctx->uc_mcontext.regs[0] = 0; // "success"
+            ctx->uc_mcontext.regs[0] = -EACCES;
             break;
         }
         case __NR_execveat: {
@@ -90,7 +90,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
 
             LOGE("Violation: execveat(%d, \"%s\")", dirfd, path);
 
-            ctx->uc_mcontext.regs[0] = 0; // "success"
+            ctx->uc_mcontext.regs[0] = -EACCES;
             break;
         }
         case __NR_uname: {
@@ -121,26 +121,89 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                 strstr(pathname, "9a5ba575.0") != nullptr ||
                 strstr(pathname, "c7981ca8.0") != nullptr) {
                     ctx->uc_mcontext.regs[0] = -ENOENT;
+                    LOGW("App attempted to read system trust store for unknown CAs");
                     return;
             }
 
             // Hide user added CAs on user trust store
             if (starts_with(pathname, "/data/misc/user/0/cacerts-added")) {
+                LOGW("App attempted to read user added CAs");
                 ctx->uc_mcontext.regs[0] = -ENOENT;
                 return;
             }
 
-            // TODO
+            
+            if ( // Hide Zygisk, Magisk, and su whatnots
+                strstr(pathname, "libzygisk.so") != nullptr ||
+                strstr(pathname, "magisk") != nullptr ||
+                strstr(pathname, "magiskpolicy") != nullptr ||
+                strstr(pathname, "resetprop") != nullptr ||
+                strstr(pathname, "/product/bin/su") != nullptr ||
+                starts_with(pathname, "/system/xbin") ||
+                strstr(pathname, "supolicy") != nullptr ||
+                // Hide dangerous system binaries
+                starts_with(pathname, "/system/bin/getprop") ||
+                starts_with(pathname, "/system/bin/dumpsys") ||
+                starts_with(pathname, "/system/bin/dumpstate") ||
+                starts_with(pathname, "/system/bin/uptime") ||
+                starts_with(pathname, "/system/bin/toolbox") ||
+                starts_with(pathname, "/system/bin/toybox") ||
+                starts_with(pathname, "/system/bin/sh") ||
+                starts_with(pathname, "/system/bin/mount") ||
+                starts_with(pathname, "/system/bin/modprobe") ||
+                starts_with(pathname, "/system/bin/vmstat") ||
+                starts_with(pathname, "/system/bin/df")
+            ) {
+                    LOGW("App attempted root detection/ suspicious binary execution/path reading in path: %s", pathname);
+                    ctx->uc_mcontext.regs[0] = -ENOENT;
+                    return;
+            }
+
+            if ( // Hide senstive props
+                starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:serialno_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") ||
+                // Suspicious folders
+                starts_with(pathname, "/mnt/vendor/efs") ||
+                starts_with(pathname, "/mnt/pass_through")
+            ) {
+                    LOGW("App attempted to get a senstive prop: %s", pathname);
+                    ctx->uc_mcontext.regs[0] = -EACCES;
+                    return;
+            }
+
             bool reading_maps = (strcmp(pathname, "/proc/self/maps") == 0) || 
                                 ((safe_proc_pid_path[0] != '\0') && starts_with(pathname, safe_proc_pid_path) && strstr(pathname, "/maps") != nullptr);
 
             if (reading_maps) {
                 LOGW("Intercepted attempt to read memory maps: %s", pathname);
-                // // Option A: Return a fake, hardcoded map file using memfd_create
-                // // Option B: Proxy it to the broker, have the broker read the real maps, 
-                // //           regex out lines containing "bipan" and "magisk", and return a memfd.
-                // ctx->uc_mcontext.regs[0] = 0;
-                // return;
+                lock_ipc();
+                
+                ipc_mem->nr = CMD_SPOOF_MAPS;
+                strncpy(ipc_mem->path, pathname, 255);
+                
+                ipc_mem->status = REQUEST_SYSCALL;
+                futex_wake(&ipc_mem->status);
+                __sync_synchronize();
+                
+                while (ipc_mem->status != BROKER_ANSWERED) {
+                    futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
+                }
+                __sync_synchronize();
+
+                if (ipc_mem->ret == 0) {
+                    ctx->uc_mcontext.regs[0] = recv_fd(sv[1]);
+                } else {
+                    ctx->uc_mcontext.regs[0] = ipc_mem->ret;
+                }
+                
+                ipc_mem->status = IDLE;
+                unlock_ipc();
+                return;
             }
 
             // -------- ALLOW LIST --------
@@ -170,15 +233,30 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                                       starts_with(pathname, "/dev/random") ||
                                       starts_with(pathname, "/dev/null");
 
+            bool is_critical_system = starts_with(pathname, "/system/lib") || 
+                                      starts_with(pathname, "/system/framework") || 
+                                      starts_with(pathname, "/system_ext/framework") || 
+                                      starts_with(pathname, "/system/fonts") ||
+                                      starts_with(pathname, "/product/app/") ||
+                                      starts_with(pathname, "/product/overlay/") ||
+                                      starts_with(pathname, "/product/lib64/") ||
+                                      starts_with(pathname, "/apex/com.android.") || 
+                                      starts_with(pathname, "/data/dalvik-cache/") ||
+                                      starts_with(pathname, "/data/misc/keychain/") ||
+                                      starts_with(pathname, "/data/misc/shared_relro/") ||
+                                      starts_with(pathname, "/dev/__properties__/");
+
+
             if (
                 is_app_data || 
                 is_apk_dir || 
                 is_binder ||
                 is_gms_dir ||
-                is_special_file
+                is_special_file ||
+                is_critical_system
             ) {
-                // Remove custom ROM traces from places like /system/framework
-                if (strstr(pathname, "lineageos") != nullptr) {
+                // Remove custom ROM traces from places like /system/framework and /product/overlay
+                if ((strstr(pathname, "lineageos") != nullptr) || strstr(pathname, "Lineage") != nullptr) {
                     LOGW("App attempted to find custom ROM information!");
                     ctx->uc_mcontext.regs[0] = -ENOENT;
                     return;
