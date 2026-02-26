@@ -32,20 +32,20 @@ static struct sock_filter trapFilter[] = {
     // Touching the filesystem: getting FDs
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_io_uring_setup, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_io_uring_setup, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // Self inspecting
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // // Self inspecting
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     // IPC
     // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
@@ -56,22 +56,22 @@ static struct sock_filter trapFilter[] = {
     // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     // Memory mapping
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_secret, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_secret, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // Talking to kernel
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bpf, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // // Talking to kernel
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bpf, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // Networking
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // // Networking
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
+    // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
