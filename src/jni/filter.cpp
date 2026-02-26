@@ -10,33 +10,69 @@
 
 /**
  * Berkeley Packet Filter to
- * trap the following syscalls:
- * - `execve`
- * - `execveat`
- * - `uname`
- * 
+ * trap some syscalls.
  * The kernel shall return `SIGSYS` to the program.
  * For this to properly work, Bipan must stay in memory
  * to install and maintain its signal handler during the app's
  * lifetime.
  */
 static struct sock_filter trapFilter[] = {
-    // Get the syscall's number
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-    
-    // If it's `execve`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+
+    // System info
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // If it's `execveat`, trap it
+    // Binary execution
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // If it's `uname`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+    // Touching the filesystem: getting FDs
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    
-    // Otherwise, allow it
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_io_uring_setup, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Self inspecting
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // IPC
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Timing
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Memory mapping
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_secret, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Talking to kernel
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bpf, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Networking
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
 
