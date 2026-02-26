@@ -18,7 +18,7 @@
 /**
  * The Broker calls this to "teleport" an FD to the Target.
  */
-void send_fd(int socket, int fd) {
+inline void send_fd(int socket, int fd) {
   struct msghdr msg = {0};
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];  // Space for the FD payload
@@ -51,7 +51,7 @@ void send_fd(int socket, int fd) {
 /**
  * The Target calls this in the SIGSYS handler to "catch" the FD.
  */
-int recv_fd(int socket) {
+inline int recv_fd(int socket) {
   struct msghdr msg = {0};
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
@@ -77,12 +77,12 @@ int recv_fd(int socket) {
 }
 
 // Puts the thread to sleep IF the value at *addr equals 'expected'
-static inline void futex_wait(volatile int* addr, int expected) {
+inline void futex_wait(volatile int* addr, int expected) {
   syscall(__NR_futex, (int*)addr, FUTEX_WAIT, expected, NULL, NULL, 0);
 }
 
 // Wakes up exactly 1 thread that is sleeping on *addr
-static inline void futex_wake(volatile int* addr) {
+inline void futex_wake(volatile int* addr) {
   syscall(__NR_futex, (int*)addr, FUTEX_WAKE, 1, NULL, NULL, 0);
 }
 
