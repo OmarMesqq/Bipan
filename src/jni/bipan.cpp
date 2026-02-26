@@ -6,6 +6,7 @@
 #include "zygisk.hpp"
 #include "bipan_shared.hpp"
 #include "filter.hpp"
+#include "sigsys_handler.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -42,6 +43,7 @@ public:
     void postAppSpecialize(const AppSpecializeArgs *args) override {
         if (isTargetApp) {
             spoofBuildFields();
+            registerSigSysHandler();
             applySeccompFilter();
         }
     }
