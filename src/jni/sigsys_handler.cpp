@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 static void log_address_info(const char* label, uintptr_t addr);
+static void get_library_from_addr(uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
 
 void registerSigSysHandler() {
@@ -90,4 +91,15 @@ static void log_address_info(const char* label, uintptr_t addr) {
     } else {
         LOGE("%s: %p (Could not resolve)", label, (void*)addr);
     }
+}
+
+static void get_library_from_addr(uintptr_t addr) {
+  Dl_info dlinfo;
+  if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
+    LOGD("Address %p resolves to library %s",
+         (void*)addr,
+         dlinfo.dli_fname);
+  } else {
+    LOGE("Could not resolve library at %p ", (void*)addr);
+  }
 }
