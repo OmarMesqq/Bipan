@@ -73,12 +73,16 @@ inline int recv_fd(int socket) {
   return *((int*)CMSG_DATA(cmsg));
 }
 
-// Puts the thread to sleep IF the value at *addr equals 'expected'
+/**
+ * Puts the thread to sleep IF the value at *addr equals 'expected'
+ */
 inline void futex_wait(volatile int* addr, int expected) {
   syscall(__NR_futex, (int*)addr, FUTEX_WAIT, expected, NULL, NULL, 0);
 }
 
-// Wakes up exactly 1 thread that is sleeping on *addr
+/**
+ * Wakes up exactly 1 thread that is sleeping on *addr
+ */
 inline void futex_wake(volatile int* addr) {
   syscall(__NR_futex, (int*)addr, FUTEX_WAKE, 1, NULL, NULL, 0);
 }
