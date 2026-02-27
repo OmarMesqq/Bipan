@@ -57,3 +57,7 @@ resetprop -n ro.product.system.brand "google"
 resetprop -n ro.product.system_ext.brand "google"
 resetprop -n ro.product.vendor.brand "google"
 resetprop -n ro.product.vendor_dlkm.brand "google"
+
+# AVB and Boot image props
+resetprop -n ro.boot.verifiedbootstate "green"
+resetprop ro.bootimage.build.fingerprint "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
