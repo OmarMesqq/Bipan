@@ -206,6 +206,83 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                 return;
             }
 
+
+            if (strcmp(pathname, "/proc/cpuinfo") == 0) {
+                const char* fake_cpu = "Processor\t: AArch64 Processor rev 0 (aarch64)\n"
+                                       "model name\t: ARMv8 Processor rev 0 (v8l)\n"
+                                       "Hardware\t: Google Tensor G3\n";
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_cpu);
+                LOGW("App attempted /proc/cpuinfo.");
+                return;
+            }
+
+            if (strcmp(pathname, "/proc/version") == 0) {
+                const char* fake_version = "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_version);
+                LOGW("App attempted /proc/version.");
+                return;
+            }
+
+            if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
+                const char* fake_hosts = "127.0.0.1       localhost\n::1             ip6-localhost\n";
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_hosts);
+                LOGW("App attempted hosts file");
+                return;
+            }
+
+            if (strcmp(pathname, "/proc/sys/kernel/random/boot_id") == 0) {
+                // TODO: generate random ones
+                const char* fake_boot_id = "8cb7b32e-578f-4f6b-89a8-2c411a971243\n"; 
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_boot_id);
+                LOGW("App attempted /proc/sys/kernel/random/boot_id");
+                return;
+            }
+
+            if (strcmp(pathname, "/proc/mounts") == 0) {
+                const char* fake_mounts = 
+                    "rootfs / rootfs ro,seclabel 0 0\n"
+                    "tmpfs /dev tmpfs rw,seclabel 0 0\n"
+                    "proc /proc proc rw,relatime 0 0\n"
+                    "sysfs /sys sysfs rw,seclabel,relatime 0 0\n"
+                    "selinuxfs /sys/fs/selinux selinuxfs rw,relatime 0 0\n"
+                    "/dev/block/mapper/system /system ext4 ro,seclabel,relatime 0 0\n"
+                    "/dev/block/mapper/vendor /vendor ext4 ro,seclabel,relatime 0 0\n"
+                    "/dev/block/by-name/userdata /data f2fs rw,seclabel,nosuid,nodev,noatime 0 0\n";
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_mounts);
+                LOGW("App attempted /proc/mounts");
+                return;
+            }
+
+            if (strstr(pathname, "build.prop") != nullptr && 
+               (starts_with(pathname, "/system") || starts_with(pathname, "/vendor") || 
+                starts_with(pathname, "/product") || starts_with(pathname, "/odm")
+                || starts_with(pathname, "/system_ext")
+            )) {
+                const char* fake_prop = 
+                    "ro.build.product=husky\n"
+                    "ro.product.device=husky\n"
+                    "ro.product.model=Pixel 8 Pro\n"
+                    "ro.product.brand=google\n"
+                    "ro.product.name=husky\n"
+                    "ro.product.manufacturer=Google\n"
+                    "ro.build.tags=release-keys\n"
+                    "ro.build.type=user\n"
+                    "ro.secure=1\n"
+                    "ro.debuggable=0\n";
+                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_prop);
+                LOGW("App attempted build.prop");
+                return;
+            }
+
+            if (
+                starts_with(pathname, "/sys/devices/system/cpu") ||
+                starts_with(pathname, "/sys/class/thermal")
+            ) {
+                ctx->uc_mcontext.regs[0] = -EACCES;
+                LOGW("App attempted CPU topology/thermal fingerprinting");
+                return;
+            }
+
             // -------- ALLOW LIST --------
 
             // app's own data directories
@@ -244,7 +321,8 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                                       starts_with(pathname, "/data/dalvik-cache/") ||
                                       starts_with(pathname, "/data/misc/keychain/") ||
                                       starts_with(pathname, "/data/misc/shared_relro/") ||
-                                      starts_with(pathname, "/dev/__properties__/");
+                                      starts_with(pathname, "/dev/__properties__/") ||
+                                      starts_with(pathname, "/proc/meminfo");
 
 
             if (
