@@ -8,9 +8,6 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-// Scrub out Zygisk et al from /proc/self/maps
-#define CMD_SPOOF_MAPS 10000
-
 enum BROKER_STATUS {
   IDLE = 0,
   REQUEST_SYSCALL = 1,
