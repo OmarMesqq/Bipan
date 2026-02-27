@@ -16,28 +16,11 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 
-static volatile int ipc_lock_state = 0;
+
 static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4);
 static bool is_system_thread();
-static void get_library_from_addr(const char* label, uintptr_t addr);
-
-// Async-signal-safe lock
-inline void lock_ipc() {
-  // __sync_lock_test_and_set writes 1 and returns the old value.
-  // If it returns 1, it was already locked, so we sleep on the futex.
-  while (__sync_lock_test_and_set(&ipc_lock_state, 1)) {
-    futex_wait(&ipc_lock_state, 1);
-  }
-}
-
-// Async-signal-safe unlock
-inline void unlock_ipc() {
-  __sync_lock_release(&ipc_lock_state);  // sets back to 0 securely
-  futex_wake(&ipc_lock_state);           // wakes up the next waiting thread
-}
-
 static void log_address_info(const char* label, uintptr_t addr);
-static void get_library_from_addr(char* label, uintptr_t addr);
+static void get_library_from_addr(const char* label, uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
 void registerSigSysHandler() {
@@ -55,7 +38,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
   uintptr_t pc = ctx->uc_mcontext.pc;
   uintptr_t lr = ctx->uc_mcontext.regs[30];
-  int nr = info->si_syscall;  // or ctx->uc_mcontext.regs[8];
+  int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
   // Don't block legitimate system threads
   if (is_system_thread()) {

@@ -87,4 +87,21 @@ inline void futex_wake(volatile int* addr) {
   syscall(__NR_futex, (int*)addr, FUTEX_WAKE, 1, NULL, NULL, 0);
 }
 
+static volatile int ipc_lock_state = 0;
+
+// Async-signal-safe lock
+inline void lock_ipc() {
+  // Writes 1 and returns the old value.
+  // If it returns 1, it was already locked, so we sleep on the futex.
+  while (__sync_lock_test_and_set(&ipc_lock_state, 1)) {
+    futex_wait(&ipc_lock_state, 1);
+  }
+}
+
+// Async-signal-safe unlock
+inline void unlock_ipc() {
+  __sync_lock_release(&ipc_lock_state);  // sets back to 0 atomically
+  futex_wake(&ipc_lock_state);           // wakes up the next waiting thread
+}
+
 #endif
