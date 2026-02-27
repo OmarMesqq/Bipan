@@ -46,6 +46,16 @@ static struct sock_filter trapFilter[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Protecting our own signal handler
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
 
