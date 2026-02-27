@@ -9,16 +9,17 @@
 int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   const char* pathname = (const char*) a1;
 
-  if (strstr(pathname, "81c450f1.0") != nullptr ||
+  if ( // CAs
       strstr(pathname, "894c9e9f.0") != nullptr ||
-      strstr(pathname, "9a5ba575.0") != nullptr ||
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      // Root
       strstr(pathname, "libzygisk.so") != nullptr ||
       strstr(pathname, "magisk") != nullptr ||
       strstr(pathname, "magiskpolicy") != nullptr ||
       strstr(pathname, "resetprop") != nullptr ||
       strstr(pathname, "supolicy") != nullptr ||
+      // Weird ahh binaries
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/system/bin/su") ||
       starts_with(pathname, "/product/bin/su") ||
@@ -33,13 +34,18 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/system/bin/modprobe") ||
       starts_with(pathname, "/system/bin/vmstat") ||
       starts_with(pathname, "/system/bin/df") ||
+      // Custom ROM
       (strstr(pathname, "lineageos") != nullptr) ||
-      (strstr(pathname, "Lineage") != nullptr)) {
+      (strstr(pathname, "Lineage") != nullptr) ||
+      starts_with(pathname, "/etc/security/otacerts.zip")
+    
+    ) {
     LOGW("Spoofing existence of %s", pathname);
     return -ENOENT;
   }
 
-  if (starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
+  if ( // SELinux would already block, but these usually back build.prop
+      starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") ||
@@ -47,11 +53,16 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") ||
+      // Phone's EFS
       starts_with(pathname, "/mnt/vendor/efs") ||
       starts_with(pathname, "/mnt/vendor/cpefs") ||
       starts_with(pathname, "/mnt/pass_through") ||
+      // CPU, temperature and platform info
       starts_with(pathname, "/sys/devices/system/cpu") ||
-      starts_with(pathname, "/sys/class/thermal")) {
+      starts_with(pathname, "/sys/class/thermal") ||
+      starts_with(pathname, "/sys/devices/platform") ||
+      starts_with(pathname, "/sys/bus/platform")
+    ) {
     LOGW("Denying access to %s", pathname);
     return -EACCES;
   }
