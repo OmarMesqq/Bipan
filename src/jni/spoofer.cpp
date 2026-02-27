@@ -6,11 +6,6 @@
 #include <syscall.h>
 #include <unistd.h>
 
-// Helper to check if a string starts with a prefix
-bool starts_with(const char* str, const char* prefix) {
-    return strncmp(str, prefix, strlen(prefix)) == 0;
-}
-
 // Creates an anonymous in-memory file with fake contents and returns its FD
 int create_spoofed_file(const char* fake_content) {
     // memfd_create requires a name, but it doesn't appear in the filesystem
