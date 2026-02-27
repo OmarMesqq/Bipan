@@ -39,7 +39,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccompFilter();
     seccomp_applied = true;
-    LOGW("Seccomp filter safely applied at clampGrowthLimit");
+    LOGW("Filter applied at clampGrowthLimit");
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
@@ -51,7 +51,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccompFilter();
     seccomp_applied = true;
-    LOGW("Seccomp filter safely applied at clearGrowthLimit");
+    LOGW("Filter applied at clearGrowthLimit");
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);

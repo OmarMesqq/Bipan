@@ -190,15 +190,14 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         return;
       }
 
-      // 4. ADVANCED FINGERPRINTING & SECCOMP DETECTION
-      // if (strcmp(pathname, "/proc/self/status") == 0 ||
-      //     strcmp(pathname, "/proc/self/auxv") == 0 ||
-      //     strcmp(pathname, "/proc/meminfo") == 0) {
-      //   LOGW("Blocked advanced fingerprinting: %s", pathname);
-      //   // Return Permission Denied to starve the tracking SDKs
-      //   ctx->uc_mcontext.regs[0] = -EACCES;
-      //   return;
-      // }
+      if (strcmp(pathname, "/proc/meminfo") == 0 ||
+          strcmp(pathname, "/proc/meminfo_extra") == 0 ||
+          strcmp(pathname, "/proc/zoneinfo") == 0 ||
+          strcmp(pathname, "/proc/vmstat") == 0) {
+        LOGW("Blocked memory query: %s", pathname);
+        ctx->uc_mcontext.regs[0] = -EACCES;
+        return;
+      }
 
       // 3. MAPS SCRUBBING (Native, No Broker Needed!)
       bool reading_maps = (strcmp(pathname, "/proc/self/maps") == 0) ||
@@ -303,11 +302,17 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           !starts_with(pathname, "/dev/mali") &&
           !starts_with(pathname, "/product/app/webview") &&
           !starts_with(pathname, "/apex/com.android") &&
-          !starts_with(pathname, "/storage/emulated/0/Android") &&
+          !starts_with(pathname, "/storage/emulated/0") &&
           // TODO
           !starts_with(pathname, "/proc") &&
           !starts_with(pathname, "/dev/random") &&
+          !starts_with(pathname, "/system") &&
+          !starts_with(pathname, "/product/fonts") &&
+          !starts_with(pathname, "/dev/random") &&
           !starts_with(pathname, "/dev/urandom") &&
+          !starts_with(pathname, "/mnt/expand") &&
+          !starts_with(pathname, "/vendor/lib64") &&
+          !starts_with(pathname, "/odm/lib64/hw") &&
           !starts_with(pathname, "/dev/null")) {
         LOGD("faccessat/newfstatat/openat to %s. Allowing natively", pathname);
         get_library_from_addr("PC", pc);
