@@ -1,13 +1,15 @@
+#include "filter.hpp"
+
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <stddef.h>
 #include <sys/prctl.h>
 #include <syscall.h>
 #include <unistd.h>
+
 #include <cerrno>
-#include <stddef.h>
 
 #include "shared.hpp"
-#include "filter.hpp"
 
 /**
  * Berkeley Packet Filter to
@@ -21,9 +23,9 @@ static struct sock_filter trapFilter[] = {
     // --- MAGIC ARGUMENT BYPASS ---
     // 1. Load the lower 32 bits of arg5 (the 6th argument)
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
-    
+
     // 2. Check if it matches our magic number 0xBADB01
-    // If YES: Jump 0 instructions (execute next line). 
+    // If YES: Jump 0 instructions (execute next line).
     // If NO: Jump 1 instruction (skip the ALLOW).
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0xBADB01, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -60,30 +62,30 @@ static struct sock_filter trapFilter[] = {
 };
 
 void applySeccompFilter() {
-    // The seccomp "program"
-    struct sock_fprog prog = {
-        .len = 0,   // number of BPF instructions
-        .filter = nullptr // Pointer to array of BPF instructions
-    };
-    
-    prog = {
-        .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
-        .filter = trapFilter,
-    };
+  // The seccomp "program"
+  struct sock_fprog prog = {
+      .len = 0,          // number of BPF instructions
+      .filter = nullptr  // Pointer to array of BPF instructions
+  };
 
-    // Promise the kernel we won't ask for elevated privileges.
-    // This is necessary as this function will be run in Zygote (non-root)
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-        LOGE("prctl(PR_SET_NO_NEW_PRIVS) failed: %d", errno);
-        return;
-    }
+  prog = {
+      .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
+      .filter = trapFilter,
+  };
 
-    // Apply the seccomp filter across all threads (`TSYNC`)
-    // Another option is to use SECCOMP_SET_MODE_STRICT:
-    // "The only system calls that the calling thread is permitted
-    // to make are read(2), write(2), _exit(2)"
-    long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
-    if (seccompApplyRet == -1) {
-        LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
-    }
+  // Promise the kernel we won't ask for elevated privileges.
+  // This is necessary as this function will be run in Zygote (non-root)
+  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+    LOGE("prctl(PR_SET_NO_NEW_PRIVS) failed: %d", errno);
+    return;
+  }
+
+  // Apply the seccomp filter across all threads (`TSYNC`)
+  // Another option is to use SECCOMP_SET_MODE_STRICT:
+  // "The only system calls that the calling thread is permitted
+  // to make are read(2), write(2), _exit(2)"
+  long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
+  if (seccompApplyRet == -1) {
+    LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
+  }
 }
