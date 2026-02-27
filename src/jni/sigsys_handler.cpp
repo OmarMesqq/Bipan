@@ -78,33 +78,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   long arg5 = ctx->uc_mcontext.regs[5];
 
   switch (nr) {
-    case __NR_rt_sigaction: {
-      int signum = (int)arg0;
-      const struct sigaction* act = (const struct sigaction*)arg1;
-      struct sigaction* oldact = (struct sigaction*)arg2;
-      size_t sigsetsize = (size_t)arg3;
-
-      // Prevent the app from overwriting our Seccomp handler
-      if (signum == SIGSYS) {
-        LOGW("Target attempted to hook SIGSYS. Spoofing success.");
-
-        // If the app asked for the old signal handler back, give them zeroes
-        // to prevent uninitialized memory reads or crashes.
-        if (oldact != nullptr) {
-          memset(oldact, 0, sizeof(struct sigaction));
-          // Note: If you want to be extremely thorough, you could copy your
-          // own `sa` struct here, but zeroes usually satisfy Breakpad/Crashpad.
-        }
-
-        // Return 0 to tell the app "Yes, you successfully registered the handler!"
-        ctx->uc_mcontext.regs[0] = 0;
-        return;
-      }
-
-      // If it's any other signal (SIGSEGV, SIGABRT, etc.), let the app handle it natively
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      break;
-    }
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
