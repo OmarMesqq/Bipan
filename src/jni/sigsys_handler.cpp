@@ -154,7 +154,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                 starts_with(pathname, "/system/bin/vmstat") ||
                 starts_with(pathname, "/system/bin/df")
             ) {
-                    LOGW("App attempted root detection/ suspicious binary execution/path reading in path: %s", pathname);
+                    LOGW("App attempted root detection/suspicious binary execution in: %s", pathname);
                     ctx->uc_mcontext.regs[0] = -ENOENT;
                     return;
             }
@@ -162,8 +162,9 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
             if ( // Hide senstive props
                 starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
                 starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
-                starts_with(pathname, "/dev/__properties__/u:object_r:serialno_prop:s0") ||
                 starts_with(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
+                starts_with(pathname, "/dev/__properties__/u:object_r:serialno_prop:s0") ||
                 starts_with(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") ||
                 starts_with(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") ||
                 starts_with(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") ||
@@ -171,7 +172,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                 starts_with(pathname, "/mnt/vendor/efs") ||
                 starts_with(pathname, "/mnt/pass_through")
             ) {
-                    LOGW("App attempted to get a senstive prop: %s", pathname);
+                    LOGW("App attempted to get a senstive prop/folder: %s", pathname);
                     ctx->uc_mcontext.regs[0] = -EACCES;
                     return;
             }
@@ -180,7 +181,7 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                                 ((safe_proc_pid_path[0] != '\0') && starts_with(pathname, safe_proc_pid_path) && strstr(pathname, "/maps") != nullptr);
 
             if (reading_maps) {
-                LOGW("Intercepted attempt to read memory maps: %s", pathname);
+                LOGW("App attempted to scan memory maps: %s", pathname);
                 lock_ipc();
                 
                 ipc_mem->nr = CMD_SPOOF_MAPS;
@@ -212,14 +213,14 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                                        "model name\t: ARMv8 Processor rev 0 (v8l)\n"
                                        "Hardware\t: Google Tensor G3\n";
                 ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_cpu);
-                LOGW("App attempted /proc/cpuinfo.");
+                LOGW("App attempted /proc/cpuinfo");
                 return;
             }
 
             if (strcmp(pathname, "/proc/version") == 0) {
                 const char* fake_version = "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
                 ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_version);
-                LOGW("App attempted /proc/version.");
+                LOGW("App attempted /proc/version");
                 return;
             }
 
@@ -227,14 +228,6 @@ static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
                 const char* fake_hosts = "127.0.0.1       localhost\n::1             ip6-localhost\n";
                 ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_hosts);
                 LOGW("App attempted hosts file");
-                return;
-            }
-
-            if (strcmp(pathname, "/proc/sys/kernel/random/boot_id") == 0) {
-                // TODO: generate random ones
-                const char* fake_boot_id = "8cb7b32e-578f-4f6b-89a8-2c411a971243\n"; 
-                ctx->uc_mcontext.regs[0] = create_spoofed_file(fake_boot_id);
-                LOGW("App attempted /proc/sys/kernel/random/boot_id");
                 return;
             }
 
