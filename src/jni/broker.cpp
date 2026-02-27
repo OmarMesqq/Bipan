@@ -40,7 +40,7 @@ static int generate_spoofed_maps(const char* real_path) {
             continue;
         }
         // 3. Hide Magisk, KernelSU, APatch, or Bipan footprints
-        if (line.find("magisk") != std::string::npos || line.find("ksud") != std::string::npos || line.find("bipan") != std::string::npos) {
+        if (line.find("magisk") != std::string::npos || line.find("zygisk") != std::string::npos || line.find("bipan") != std::string::npos) {
             continue;
         }
 
