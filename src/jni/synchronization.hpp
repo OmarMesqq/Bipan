@@ -1,15 +1,13 @@
 #ifndef SYNCHRONIZATION_HPP
 #define SYNCHRONIZATION_HPP
 
-#include <linux/futex.h>
-#include <sys/syscall.h>
-#include <unistd.h>
 #include <errno.h>
 #include <linux/futex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -26,9 +24,8 @@ inline void send_fd(int socket, int fd) {
 
   // Linux requires at least 1 byte of real data to send control messages
   struct iovec io = {
-    .iov_base = (void*)"!",     // cast as C++ is annoying with type safety
-    .iov_len = 1
-    };
+      .iov_base = (void*)"!",  // cast as C++ is annoying with type safety
+      .iov_len = 1};
 
   msg.msg_iov = &io;
   msg.msg_iovlen = 1;
@@ -44,7 +41,7 @@ inline void send_fd(int socket, int fd) {
 
   if (sendmsg(socket, &msg, 0) < 0) {
     LOGE("send_fd failed: %s (errno: %d) | FD to send: %d | Socket: %d\n",
-            strerror(errno), errno, fd, socket);
+         strerror(errno), errno, fd, socket);
   }
 }
 
