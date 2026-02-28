@@ -105,29 +105,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         arg3,
         arg4
       );
-      
-      // Some logging
-      if (!starts_with(pathname, "/data") &&
-          !starts_with(pathname, "/dev/ashmem") &&
-          !starts_with(pathname, "/dev/mali") &&
-          !starts_with(pathname, "/product/app/webview") &&
-          !starts_with(pathname, "/apex/com.android") &&
-          !starts_with(pathname, "/storage/emulated/0") &&
-          // TODO
-          !starts_with(pathname, "/proc") &&
-          !starts_with(pathname, "/dev/random") &&
-          !starts_with(pathname, "/system") &&
-          !starts_with(pathname, "/product/fonts") &&
-          !starts_with(pathname, "/dev/random") &&
-          !starts_with(pathname, "/dev/urandom") &&
-          !starts_with(pathname, "/mnt/expand") &&
-          !starts_with(pathname, "/vendor/lib64") &&
-          !starts_with(pathname, "/odm/lib64/hw") &&
-          !starts_with(pathname, "/dev/null")) {
-        LOGD("Allowing faccessat/newfstatat/openat to %s", pathname);
-        get_library_from_addr("PC", pc);
-        get_library_from_addr("LR", lr);
-      }
       break;
     }
     default: {
