@@ -1,6 +1,8 @@
 #ifndef ASSEMBLY_HPP
 #define ASSEMBLY_HPP
 
+#include "shared.hpp"
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 
@@ -11,7 +13,7 @@ static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2,
   register long x2 __asm__("x2") = a2;
   register long x3 __asm__("x3") = a3;
   register long x4 __asm__("x4") = a4;
-  register long x5 __asm__("x5") = 0xBADB01;  // magic number
+  register long x5 __asm__("x5") = SECCOMP_BYPASS;
 
   __asm__ volatile(
       "svc #0\n"

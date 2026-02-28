@@ -1,3 +1,4 @@
+#ifdef BROKER_ARCH
 #include "broker.hpp"
 
 #include <fcntl.h>
@@ -49,3 +50,5 @@ void startBroker(int sock) {
 }
 
 #pragma clang diagnostic pop
+
+#endif

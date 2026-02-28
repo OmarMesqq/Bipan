@@ -16,25 +16,18 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-// Initialize shared components
+#ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
-// Whitelist variables
-char safe_path_user_0[256] = {0};
-size_t safe_path_user_0_len = 0;
-char safe_path_data_data[256] = {0};
-size_t safe_path_data_data_len = 0;
-char target_pkg_name[256] = {0};
+#endif
 char safe_proc_pid_path[64] = {0};
+static bool seccomp_applied = false;
 
 // Globals to store the original JNI function pointers
 void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
 void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
-// Ensure we only apply the seccomp filter once
-bool seccomp_applied = false;
 
-// Our hijacked clampGrowthLimit
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccompFilter();
@@ -46,7 +39,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   }
 }
 
-// Our hijacked clearGrowthLimit
+
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccompFilter();
@@ -79,19 +72,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (isTargetApp) {
       LOGW("preAppSpecialize: will apply sandbox for %s", raw_process_name);
-
-      std::string basePkg(raw_process_name);
-      size_t colon_pos = basePkg.find(':');
-      if (colon_pos != std::string::npos) {
-        basePkg = basePkg.substr(0, colon_pos);  // Strip ":sync" or ":service"
-      }
-
-      strncpy(target_pkg_name, basePkg.c_str(), sizeof(target_pkg_name) - 1);
       snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
-      snprintf(safe_path_user_0, sizeof(safe_path_user_0), "/data/user/0/%s", basePkg.c_str());
-      safe_path_user_0_len = strlen(safe_path_user_0);
-      snprintf(safe_path_data_data, sizeof(safe_path_data_data), "/data/data/%s", basePkg.c_str());
-      safe_path_data_data_len = strlen(safe_path_data_data);
     }
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
@@ -103,6 +84,7 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       spoofBuildFields();
 
+      #ifdef BROKER_ARCH
       ipc_mem = (SharedIPC*)(mmap(
           NULL,
           sizeof(SharedIPC),
@@ -131,6 +113,7 @@ class Bipan : public zygisk::ModuleBase {
       }
 
       close(sv[0]);  // Close broker's end
+      #endif
       registerSigSysHandler();
 
       // Hook JNI methods that will trip app code as soon as they're done

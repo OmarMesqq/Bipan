@@ -10,6 +10,19 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+/**
+ * MAGIC NUMBER:
+ * 
+ * So far, most syscalls I've intercepted only use 5 arguments +
+ * NR number. Apparently, you can do an "if" check in the seccomp
+ * filter as to allow/trap the offenders exclusively
+ * based on an arbitrary value.
+ */
+#define SECCOMP_BYPASS 0xBADB01
+
+// #define BROKER_ARCH
+
+#ifdef BROKER_ARCH
 enum BROKER_STATUS {
   IDLE = 0,
   REQUEST_SYSCALL = 1,
@@ -49,15 +62,9 @@ extern SharedIPC* ipc_mem;
  * valid ones in the main process.
  */
 extern int sv[2];
+#endif
 
-// Pre-computed paths for the target app to bypass Seccomp safely
-extern char safe_path_user_0[256];
-extern size_t safe_path_user_0_len;
-
-extern char safe_path_data_data[256];
-extern size_t safe_path_data_data_len;
-
-extern char target_pkg_name[256];
+// For traversing /proc/<PID>/maps
 extern char safe_proc_pid_path[64];
 
 inline bool starts_with(const char* str, const char* prefix) {

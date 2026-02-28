@@ -21,15 +21,14 @@
  */
 static struct sock_filter trapFilter[] = {
     // --- MAGIC ARGUMENT BYPASS ---
-    // 1. Load the lower 32 bits of arg5 (the 6th argument)
+    // Load the lower 32 bits of the 6th argument
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
 
-    // 2. Check if it matches our magic number 0xBADB01
-    // If YES: Jump 0 instructions (execute next line).
-    // If NO: Jump 1 instruction (skip the ALLOW).
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0xBADB01, 0, 1),
+    // Check if it matches our magic number
+    // on match: execute next line
+    // not match: skip the ALLOW
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-    // -----------------------------
 
     // Load syscall number into accumulator for standard rules
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
