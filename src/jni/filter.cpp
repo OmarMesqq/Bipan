@@ -1,155 +1,86 @@
+#include "filter.hpp"
+
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <stddef.h>
 #include <sys/prctl.h>
 #include <syscall.h>
 #include <unistd.h>
+
 #include <cerrno>
-#include <signal.h>
-#include <dlfcn.h>
-#include <cstring>
-#include <sys/utsname.h>
 
-#include "bipan_shared.hpp"
-#include "filter.hpp"
-
-static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context);
-static void log_address_info(const char* label, uintptr_t addr);
+#include "shared.hpp"
 
 /**
- * Berkeley Packet Filter program to
- * trap the following syscalls:
- * - `execve`
- * - `execveat`
- * - `uname`
- * 
+ * Berkeley Packet Filter to
+ * trap some syscalls.
  * The kernel shall return `SIGSYS` to the program.
  * For this to properly work, Bipan must stay in memory
  * to install and maintain its signal handler during the app's
  * lifetime.
  */
 static struct sock_filter trapFilter[] = {
-    // Get the syscall's number
+    // --- MAGIC ARGUMENT BYPASS ---
+    // Load the lower 32 bits of the 6th argument
+    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
+
+    // Check if it matches our magic number
+    // on match: execute next line
+    // not match: skip the ALLOW
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+
+    // Load syscall number into accumulator for standard rules
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-    
-    // If it's `execve`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+
+    // System info
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // If it's `execveat`, trap it
+    // Binary execution
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // If it's `uname`, trap it
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+    // Touching the filesystem: getting FDs
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    
-    // Otherwise, allow it
+
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
 
 void applySeccompFilter() {
-    // The seccomp filter "program"
-    struct sock_fprog prog = {
-        .len = 0,   // number of BPF instructions
-        .filter = nullptr // Pointer to array of BPF instructions
-    };
+  // The seccomp "program"
+  struct sock_fprog prog = {
+      .len = 0,          // number of BPF instructions
+      .filter = nullptr  // Pointer to array of BPF instructions
+  };
 
-    // Register the signal handler before applying seccomp-bpf
-    struct sigaction sa{};
-    sa.sa_sigaction = sigsys_log_handler;
-    sa.sa_flags = SA_SIGINFO;
-    if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-        LOGE("applySeccompFilter: Failed to set SIGSYS handler (errno: %d)", errno);
-        return;
-    }
-    
-    prog = {
-        .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
-        .filter = trapFilter,
-    };
+  prog = {
+      .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
+      .filter = trapFilter,
+  };
 
-    // Promise the kernel we won't ask for elevated privileges.
-    // This is necessary as this function will be run in Zygote (non-root)
-    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-        LOGE("prctl(PR_SET_NO_NEW_PRIVS) failed: %d", errno);
-        return;
-    }
+  // Promise the kernel we won't ask for elevated privileges.
+  // This is necessary as this function will be run in Zygote (non-root)
+  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+    LOGE("prctl(PR_SET_NO_NEW_PRIVS) failed: %d", errno);
+    return;
+  }
 
-    // Apply the seccomp filter across all threads (`TSYNC`)
-    // Another option is to use SECCOMP_SET_MODE_STRICT:
-    // "The only system calls that the calling thread is permitted
-    // to make are read(2), write(2), _exit(2)"
-    long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
-    if (seccompApplyRet == -1) {
-        LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
-    }
-}
-
-static void sigsys_log_handler(int sig, siginfo_t *info, void *void_context) {
-    ucontext_t *ctx = (ucontext_t *)void_context;
-    int nr = info->si_syscall;
-    uintptr_t pc = ctx->uc_mcontext.pc;
-    uintptr_t lr = ctx->uc_mcontext.regs[30];
-
-    if (nr == __NR_execve) {
-        const char* path = (const char*)ctx->uc_mcontext.regs[0];
-        LOGE("Violation: execve(\"%s\")", path ? path : "NULL");
-    } 
-    else if (nr == __NR_execveat) {
-        const char* path = (const char*)ctx->uc_mcontext.regs[1];
-        LOGE("Violation: execveat(dfd, \"%s\")", path ? path : "NULL");
-    }
-    else if (nr == __NR_uname) {
-        struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-        if (!buf) {
-            LOGE("sigsys_log_handler: utsname struct for uname is NULL!");
-            _exit(1);
-        }
-
-        LOGE("Violation: uname");
-        
-        memset(buf, 0, sizeof(struct utsname));
-        strncpy(buf->sysname, "Linux", 64);
-        strncpy(buf->nodename, "localhost", 64);
-        strncpy(buf->release, "6.6.56-android16-11-g8a3e2b1c4d5f", 64);
-        strncpy(buf->version, "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025", 64);
-        strncpy(buf->machine, "aarch64", 64);
-        strncpy(buf->domainname, "(none)", 64);
-    }
-    else {
-        LOGE("Violation: syscall number %d", nr);
-    }
-
-    /**
-     * Mock the syscall's result.
-     * Here I'm denying it by
-     * placing `-EPERM` on x0 (return register in aarch64)
-     * 
-     * -EPERM is signed int (32 bits/4 bytes).
-     * The innermost cast sign extends -EPERM to 64 bits,
-     * thus keeping it negative. The outermost cast is simply
-     * to shut up the compiler it lets me put the negative bit pattern
-     * into an unsigned "box" (the register)
-     * 
-     * TODO: decide if return:
-     * - `0`: fake success
-     * - `static_cast<uint64_t>(static_cast<int64_t>(-EPERM))`: Permission denied
-     */
-    ctx->uc_mcontext.regs[0] = 0;
-
-    log_address_info("PC (Actual Caller)", pc);
-    log_address_info("LR (Return Address)", lr);
-}
-
-static void log_address_info(const char* label, uintptr_t addr) {
-    Dl_info dlinfo;
-    if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
-        LOGD("%s: %p | Library: %s | Symbol: %s", 
-             label, 
-             (void*)addr, 
-             dlinfo.dli_fname, 
-             dlinfo.dli_sname ? dlinfo.dli_sname : "N/A");
-    } else {
-        LOGE("%s: %p (Could not resolve)", label, (void*)addr);
-    }
+  // Apply the seccomp filter across all threads (`TSYNC`)
+  // Another option is to use SECCOMP_SET_MODE_STRICT:
+  // "The only system calls that the calling thread is permitted
+  // to make are read(2), write(2), _exit(2)"
+  long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
+  if (seccompApplyRet == -1) {
+    LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
+  }
 }
