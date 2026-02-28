@@ -13,7 +13,6 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
 
   if ( // CAs
-      strstr(pathname, "894c9e9f.0") != nullptr ||
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // Root
