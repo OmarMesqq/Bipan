@@ -49,8 +49,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
+  bool is_critical_syscall = (nr == __NR_rt_sigaction ||
+                              nr == __NR_execve ||
+                              nr == __NR_execveat);
+
   // Don't block legitimate system threads
-  if (is_system_thread()) {
+  if (!is_critical_syscall && is_system_thread()) {
     long result = arm64_bypassed_syscall(
         nr,
         ctx->uc_mcontext.regs[0],
@@ -82,7 +86,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_uname: {
       LOGW("Spoofing uname");
       struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-      
+
       ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
       break;
     }
@@ -103,14 +107,14 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
         break;
       }
-      
+
       // Filters senstive files and uses magic number under the hood
       ctx->uc_mcontext.regs[0] = filterPathname(
-        nr,
-        arg0,
-        arg1,
-        arg2,
-        arg3,
+          nr,
+          arg0,
+          arg1,
+          arg2,
+          arg3,
           arg4);
       break;
     }
