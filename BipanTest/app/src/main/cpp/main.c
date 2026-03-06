@@ -14,18 +14,13 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-static int scanProcSelfMaps();
-static int getNativeInfo();
+static int scan_memory_maps();
+static int get_uname();
+static int demo_fork_execve();
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   LOGD("Native C bridge initialized. Dumping system info...");
-  int ret = 0;
-
-  //    ret = scanProcSelfMaps();
-  //    if (ret == -1) {
-  //        LOGE("Failed to scan /proc/self/maps");
-  //    }
-  ret = getNativeInfo();
+  int ret = get_uname();
 
   if (ret == 0) {
     LOGD("Dump successful");
@@ -38,8 +33,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   return JNI_VERSION_1_6;
 }
 
-static int getNativeInfo() {
-  // uname syscall
+static int get_uname() {
   struct utsname buffer = {0};
   long ret;
   asm volatile(
@@ -72,7 +66,9 @@ static int getNativeInfo() {
     LOGD("Machine:     %s\n", buffer.machine);
     LOGD("Domain Name:     %s\n", buffer.domainname);
   }
+}
 
+static int demo_fork_execve() {
   pid_t pid = fork();
   if (pid == 0) {
     sleep(1);
@@ -120,11 +116,10 @@ static int getNativeInfo() {
   }
 }
 
-static int scanProcSelfMaps() {
+static int scan_memory_maps() {
   FILE* fp;
   char line[1024];
 
-  // open/openat syscall
   fp = fopen("/proc/self/maps", "r");
   if (fp == NULL) {
     LOGE("Error opening /proc/self/maps");
@@ -134,7 +129,6 @@ static int scanProcSelfMaps() {
   printf("Memory map BELOW:\n");
   printf("--------------------------------------------------\n");
 
-  // read syscall
   while (fgets(line, sizeof(line), fp)) {
     // Here you can use sscanf to extract specific fields
     // For now, we'll just print the raw line
