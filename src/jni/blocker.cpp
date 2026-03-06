@@ -2,17 +2,17 @@
 
 #include <string>
 
+#include "assembly.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
-#include "assembly.hpp"
 
 int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
-  const char* pathname = (const char*) a1;
+  const char* pathname = (const char*)a1;
   if (pathname == nullptr) {
-    return -EFAULT; 
+    return -EFAULT;
   }
 
-  if ( // CAs
+  if (  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // Root
@@ -25,7 +25,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/system/bin/su") ||
       starts_with(pathname, "/product/bin/su") ||
-      starts_with(pathname, "/bin/getprop") || 
+      starts_with(pathname, "/bin/getprop") ||
       starts_with(pathname, "/system/bin/getprop") ||
       starts_with(pathname, "/system/bin/dumpsys") ||
       starts_with(pathname, "/system/bin/dumpstate") ||
@@ -41,13 +41,13 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       (strstr(pathname, "lineageos") != nullptr) ||
       (strstr(pathname, "Lineage") != nullptr) ||
       starts_with(pathname, "/etc/security/otacerts.zip")
-    
-    ) {
+
+  ) {
     LOGW("Spoofing existence of %s", pathname);
     return -ENOENT;
   }
 
-  if ( // SELinux would already block, but these usually back build.prop
+  if (  // SELinux would already block, but these usually back build.prop
       starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
@@ -56,6 +56,9 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") ||
+      starts_with(pathname, "/dev/__properties__/u:object_r:custom_version_prop:s0") ||
+      starts_with(pathname, "/dev/__properties__/u:object_r:fingerprint_prop:s0") ||
+      starts_with(pathname, "/dev/__properties__/u:object_r:bootloader_prop:s0") ||
       // Phone's EFS
       starts_with(pathname, "/mnt/vendor/efs") ||
       starts_with(pathname, "/mnt/vendor/cpefs") ||
@@ -65,8 +68,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/sys/class/thermal") ||
       starts_with(pathname, "/sys/devices/platform") ||
       starts_with(pathname, "/sys/bus/platform") ||
-      starts_with(pathname, "/sys/module")
-    ) {
+      starts_with(pathname, "/sys/module")) {
     LOGW("Denying access to %s", pathname);
     return -EACCES;
   }
@@ -111,20 +113,15 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
   if (!starts_with(pathname, "/data") &&
       !starts_with(pathname, "/dev/ashmem") &&
-      !starts_with(pathname, "/dev/mali") &&
       !starts_with(pathname, "/product/app/webview") &&
       !starts_with(pathname, "/apex/com.android") &&
       !starts_with(pathname, "/storage/emulated/0") &&
-      !starts_with(pathname, "/proc") &&
       !starts_with(pathname, "/dev/random") &&
-      !starts_with(pathname, "/system") &&
       !starts_with(pathname, "/product/fonts") &&
       !starts_with(pathname, "/dev/urandom") &&
-      !starts_with(pathname, "/mnt/expand") &&
-      !starts_with(pathname, "/vendor/lib64") &&
-      !starts_with(pathname, "/odm/lib64/hw") &&
-      !starts_with(pathname, "/dev/null")) {
-    
+      !starts_with(pathname, "/dev/zero") &&
+      !starts_with(pathname, "/dev/null") &&
+      !starts_with(pathname, "/mnt/expand")) {
     LOGD("Allowing access to %s", pathname);
   }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
