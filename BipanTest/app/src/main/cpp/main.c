@@ -14,34 +14,32 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+static void get_uname();
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
-static int install_sigsys_handler();
-static int scan_memory_maps();
-static int get_uname();
-static int demo_fork_execve();
+static void install_sigsys_handler();
+static void scan_memory_maps();
+static void demo_fork_execve();
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   LOGD("Native C bridge initialized. Dumping system info...");
-  int ret = 0;
 
+  // uname + signal handler testing
   LOGD("Getting uname BEFORE sigsys handler installation");
-  ret = get_uname();
+  get_uname();
   LOGD("Getting uname AFTER sigsys handler installation");
   install_sigsys_handler();
-  ret = get_uname();
+  get_uname();
 
-  // if (ret == 0) {
-  //   LOGD("Dump successful");
-  // } else if (ret == -1) {
-  //   LOGE("Failed to dump info!");
-  // } else {
-  //   LOGE("Unknown error when dumping info!");
-  // }
+  // execve/execveat testing
+  demo_fork_execve();
+
+  // /proc/self/maps hiding
+  // scan_memory_maps();
 
   return JNI_VERSION_1_6;
 }
 
-static int get_uname() {
+static void get_uname() {
   struct utsname buffer = {0};
   long ret;
   asm volatile(
@@ -60,7 +58,6 @@ static int get_uname() {
     } else {
       LOGE("uname failed due to unknown reason (status code: %ld)", ret);
     }
-    return -1;
   } else {
     if (ret == 0) {
       LOGD("uname was SUCCESSFUL (status code: %ld)", ret);
@@ -74,11 +71,10 @@ static int get_uname() {
     LOGD("Version:     %s\n", buffer.version);
     LOGD("Machine:     %s\n", buffer.machine);
     LOGD("Domain Name:     %s\n", buffer.domainname);
-    return 0;
   }
 }
 
-static int demo_fork_execve() {
+static void demo_fork_execve() {
   pid_t pid = fork();
   if (pid == 0) {
     sleep(1);
@@ -102,37 +98,32 @@ static int demo_fork_execve() {
 
     if (waitpid(pid, &status, 0) == -1) {
       LOGE("Parent: waitpid failed: %s", strerror(errno));
-      return -1;
     } else {
       if (WIFSIGNALED(status)) {  // The process was terminated by a signal
         int sig = WTERMSIG(status);
         LOGE("Parent: Child terminated by SIGNAL %d (%s)", sig, strsignal(sig));
-        return -1;
       } else if (WIFEXITED(status)) {  // The process exited normally by itself
         int exit_code = WEXITSTATUS(status);
         if (exit_code == 0) {
           LOGD("Parent: Child exited normally (status code %d)", exit_code);
-          return 0;
         } else {
           LOGE("Parent: Child exited with FAILURE (status code %d)", exit_code);
-          return -1;
         }
       } else {
         LOGE("Parent: Child failed by UNKNOWN cause (status code: %d)", status);
-        return -1;
       }
     }
   }
 }
 
-static int scan_memory_maps() {
+static void scan_memory_maps() {
   FILE* fp;
   char line[1024];
 
   fp = fopen("/proc/self/maps", "r");
   if (fp == NULL) {
     LOGE("Error opening /proc/self/maps");
-    return -1;
+    return;
   }
 
   printf("Memory map BELOW:\n");
@@ -157,24 +148,23 @@ static int scan_memory_maps() {
   } else {
     LOGE("sscanf failed to read all fields of /proc/self/maps");
     fclose(fp);
-    return -1;
+    return;
   }
 
   fclose(fp);
-  return 0;
+  return;
 }
 
-static int install_sigsys_handler() {
+static void install_sigsys_handler() {
   struct sigaction sa = {0};
   sa.sa_sigaction = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
   int sigactionRet = sigaction(SIGSYS, &sa, NULL);
   if (sigactionRet != 0) {
     LOGE("failed to set SIGSYS handler (errno: %d)", errno);
-    return sigactionRet;
+    return;
   }
   LOGD("Installed SIGSYS handler successfuly. Return value: %d", sigactionRet);
-  return sigactionRet;
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
