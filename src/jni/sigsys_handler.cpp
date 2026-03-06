@@ -111,8 +111,42 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         arg1,
         arg2,
         arg3,
-        arg4
-      );
+          arg4);
+      break;
+    }
+    case __NR_rt_sigaction: {
+      int signum = arg0;
+      const struct sigaction* act = (const struct sigaction*)arg1;
+      struct sigaction* oldact = (struct sigaction*)arg2;
+
+      uintptr_t sigaction_handler = (uintptr_t)act->sa_sigaction;
+
+      LOGW("App tried to install signal handler!");
+      LOGW("signum: %d", signum);
+      get_library_from_addr("sigaction location", sigaction_handler);
+
+      LOGW("sa_flags: %d", act->sa_flags);
+      LOGW("sa_mask: %d", act->sa_mask);
+
+      if (act->sa_restorer) {
+        LOGW("sa_restorer: %p", act->sa_restorer);
+      } else {
+        LOGW("no sa_restorer defined");
+      }
+
+      if (act->sa_handler) {
+        LOGW("sa_handler: %p", act->sa_handler);
+      } else {
+        LOGE("no sa_handler defined");
+      }
+      if (act->sa_sigaction) {
+        LOGW("sa_sigaction: %p", act->sa_sigaction);
+      } else {
+        LOGW("no sa_sigaction defined");
+      }
+
+      ctx->uc_mcontext.regs[0] = -EPERM;
+
       break;
     }
     default: {
