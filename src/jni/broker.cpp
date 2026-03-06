@@ -1,3 +1,5 @@
+#include "shared.hpp"
+
 #ifdef BROKER_ARCH
 #include "broker.hpp"
 
@@ -11,7 +13,6 @@
 #include <fstream>
 #include <string>
 
-#include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "assembly.hpp"
