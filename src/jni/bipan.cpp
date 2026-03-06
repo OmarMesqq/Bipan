@@ -30,7 +30,7 @@ void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applySeccompFilter();
+    applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clampGrowthLimit");
   }
@@ -42,7 +42,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applySeccompFilter();
+    applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clearGrowthLimit");
   }
@@ -107,7 +107,7 @@ class Bipan : public zygisk::ModuleBase {
       pid_t pid = fork();
       if (pid == 0) {
         close(sv[1]);        // Close target's end
-        startBroker(sv[0]);  // Pass the socket to your broker loop
+        startBroker(sv[0]);  // Pass the socket to broker loop
         LOGE("Broker loop stopped!");
         _exit(-1);
       }

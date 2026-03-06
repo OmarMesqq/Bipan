@@ -4,7 +4,6 @@
 #include <linux/memfd.h>
 #include <signal.h>
 #include <sys/prctl.h>
-
 #include <syscall.h>
 #include <unistd.h>
 
@@ -23,13 +22,25 @@ static void log_address_info(const char* label, uintptr_t addr);
 static void get_library_from_addr(const char* label, uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
+struct kernel_sigaction {
+  void (*sa_handler)(int, siginfo_t*, void*);
+  unsigned long sa_flags;
+  void (*sa_restorer)(void);
+  uint64_t sa_mask;
+};
+
 void registerSigSysHandler() {
-  struct sigaction sa{};
-  sa.sa_sigaction = sigsys_log_handler;
+  struct kernel_sigaction sa = {0};
+  sa.sa_handler = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
-  // sigemptyset(&sa.sa_mask);
-  if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-    LOGE("applySeccompFilter: Failed to set SIGSYS handler (errno: %d)", errno);
+
+  // Install the signal handler directly with the kernel
+  // to avoid issues with libsigchain
+  // sizeof(sigset_t) should be 8 bytes on aarch64
+  long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
+
+  if (ret != 0) {
+    LOGE("registerSigSysHandler: Failed to set SIGSYS handler directly (error: %ld)", ret);
     _exit(1);
   }
 }
@@ -40,8 +51,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
+  bool is_critical_syscall = (nr == __NR_rt_sigaction ||
+                              nr == __NR_execve ||
+                              nr == __NR_execveat);
+
   // Don't block legitimate system threads
-  if (is_system_thread()) {
+  if (!is_critical_syscall && is_system_thread()) {
     long result = arm64_bypassed_syscall(
         nr,
         ctx->uc_mcontext.regs[0],
@@ -64,20 +79,22 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
+      LOGE("Violation: execve/execveat");
 
-      LOGE("Violation: execve/execvat (\"%s\")", path);
+      // log_address_info("PC", pc);
+      // log_address_info("LR", lr);
 
+      LOGE("Binary: %s", path);
       ctx->uc_mcontext.regs[0] = -EACCES;
       break;
     }
     case __NR_uname: {
       LOGW("Spoofing uname");
       struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-      
+
       ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
       break;
     }
-
     case __NR_faccessat:
     case __NR_newfstatat:
     case __NR_openat: {
@@ -95,16 +112,57 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
         break;
       }
-      
+
       // Filters senstive files and uses magic number under the hood
       ctx->uc_mcontext.regs[0] = filterPathname(
-        nr,
-        arg0,
-        arg1,
-        arg2,
-        arg3,
-        arg4
-      );
+          nr,
+          arg0,
+          arg1,
+          arg2,
+          arg3,
+          arg4);
+      break;
+    }
+    case __NR_rt_sigaction: {
+      int signum = arg0;
+      const struct kernel_sigaction* act = (const struct kernel_sigaction*)arg1;
+      struct kernel_sigaction* oldact = (struct kernel_sigaction*)arg2;
+
+      if (signum == SIGSYS) {
+        LOGE("App tried to install SIGSYS handler! Blocking.");
+
+        if (act != nullptr) {
+          uintptr_t sigaction_handler = (uintptr_t)act->sa_handler;
+          LOGW("sa_flags: %lu", act->sa_flags);
+          LOGW("sa_mask: %llu", (unsigned long long)act->sa_mask);
+
+          if (act->sa_restorer) {
+            LOGW("sa_restorer: %p", act->sa_restorer);
+          } else {
+            LOGW("no sa_restorer defined");
+          }
+
+          if (act->sa_handler) {
+            LOGW("sa_handler: %p", act->sa_handler);
+          } else {
+            LOGE("no sa_handler defined");
+          }
+        } else {
+          LOGW("App is querying SIGSYS handler (act is NULL)");
+        }
+
+        ctx->uc_mcontext.regs[0] = -EPERM;
+      } else {
+        LOGW("Allowing sigaction for signal different from SIGSYS");
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
+            nr,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4);
+      }
+
       break;
     }
     default: {
