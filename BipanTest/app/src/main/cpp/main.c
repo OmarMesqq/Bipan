@@ -30,13 +30,13 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   install_sigsys_handler();
   ret = get_uname();
 
-  if (ret == 0) {
-    LOGD("Dump successful");
-  } else if (ret == -1) {
-    LOGE("Failed to dump info!");
-  } else {
-    LOGE("Unknown error when dumping info!");
-  }
+  // if (ret == 0) {
+  //   LOGD("Dump successful");
+  // } else if (ret == -1) {
+  //   LOGE("Failed to dump info!");
+  // } else {
+  //   LOGE("Unknown error when dumping info!");
+  // }
 
   return JNI_VERSION_1_6;
 }
@@ -88,7 +88,6 @@ static int demo_fork_execve() {
     char* args[] = {"/system/bin/echo", "Hello", NULL};
     char* env[] = {NULL};
 
-    // execve/execveat syscall
     if (execve("/system/bin/echo", args, env) == -1) {
       if (errno == EPERM) {  // Sandbox worked?
         LOGE("Child: received permission denied (EPERM)");
@@ -169,11 +168,13 @@ static int install_sigsys_handler() {
   struct sigaction sa = {0};
   sa.sa_sigaction = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
-  if (sigaction(SIGSYS, &sa, NULL) == -1) {
+  int sigactionRet = sigaction(SIGSYS, &sa, NULL);
+  if (sigactionRet != 0) {
     LOGE("failed to set SIGSYS handler (errno: %d)", errno);
-    return -1;
+    return sigactionRet;
   }
-  return 0;
+  LOGD("Installed SIGSYS handler successfuly. Return value: %d", sigactionRet);
+  return sigactionRet;
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
@@ -188,11 +189,25 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   long arg3 = ctx->uc_mcontext.regs[3];
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
+  long result = 0;
 
   switch (nr) {
+    case 160: {
+      LOGD("Running legit uname");
+      break;
+    }
     default: {
-      LOGE("Got syscall: %d", nr);
+      LOGE("Got another syscall: %d", nr);
       break;
     }
   }
+  result = syscall(nr,
+                   ctx->uc_mcontext.regs[0],
+                   ctx->uc_mcontext.regs[1],
+                   ctx->uc_mcontext.regs[2],
+                   ctx->uc_mcontext.regs[3],
+                   ctx->uc_mcontext.regs[4],
+                   ctx->uc_mcontext.regs[5]);
+
+  ctx->uc_mcontext.regs[0] = result;
 }
