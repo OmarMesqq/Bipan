@@ -14,13 +14,21 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
+static int install_sigsys_handler();
 static int scan_memory_maps();
 static int get_uname();
 static int demo_fork_execve();
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   LOGD("Native C bridge initialized. Dumping system info...");
-  int ret = get_uname();
+  int ret = 0;
+
+  LOGD("Getting uname BEFORE sigsys handler installation");
+  ret = get_uname();
+  LOGD("Getting uname AFTER sigsys handler installation");
+  install_sigsys_handler();
+  ret = get_uname();
 
   if (ret == 0) {
     LOGD("Dump successful");
@@ -52,6 +60,7 @@ static int get_uname() {
     } else {
       LOGE("uname failed due to unknown reason (status code: %ld)", ret);
     }
+    return -1;
   } else {
     if (ret == 0) {
       LOGD("uname was SUCCESSFUL (status code: %ld)", ret);
@@ -65,6 +74,7 @@ static int get_uname() {
     LOGD("Version:     %s\n", buffer.version);
     LOGD("Machine:     %s\n", buffer.machine);
     LOGD("Domain Name:     %s\n", buffer.domainname);
+    return 0;
   }
 }
 
@@ -153,4 +163,36 @@ static int scan_memory_maps() {
 
   fclose(fp);
   return 0;
+}
+
+static int install_sigsys_handler() {
+  struct sigaction sa = {0};
+  sa.sa_sigaction = sigsys_log_handler;
+  sa.sa_flags = SA_SIGINFO;
+  if (sigaction(SIGSYS, &sa, NULL) == -1) {
+    LOGE("failed to set SIGSYS handler (errno: %d)", errno);
+    return -1;
+  }
+  return 0;
+}
+
+static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  uintptr_t pc = ctx->uc_mcontext.pc;
+  uintptr_t lr = ctx->uc_mcontext.regs[30];
+  int nr = info->si_syscall;  // syscalls go in x8 in aarch64
+
+  long arg0 = ctx->uc_mcontext.regs[0];
+  long arg1 = ctx->uc_mcontext.regs[1];
+  long arg2 = ctx->uc_mcontext.regs[2];
+  long arg3 = ctx->uc_mcontext.regs[3];
+  long arg4 = ctx->uc_mcontext.regs[4];
+  long arg5 = ctx->uc_mcontext.regs[5];
+
+  switch (nr) {
+    default: {
+      LOGE("Got syscall: %d", nr);
+      break;
+    }
+  }
 }
