@@ -27,7 +27,6 @@ void registerSigSysHandler() {
   struct sigaction sa{};
   sa.sa_sigaction = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
-  // sigemptyset(&sa.sa_mask);
   if (sigaction(SIGSYS, &sa, nullptr) == -1) {
     LOGE("applySeccompFilter: Failed to set SIGSYS handler (errno: %d)", errno);
     _exit(1);
@@ -77,7 +76,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
       break;
     }
-
     case __NR_faccessat:
     case __NR_newfstatat:
     case __NR_openat: {
