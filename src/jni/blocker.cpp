@@ -73,6 +73,12 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return -EACCES;
   }
 
+  if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
+    LOGW("Spoofing /proc/sys/kernel/perf_event_paranoid");
+    // Value common in stock ROMs
+    return create_spoofed_file("2\n");
+  }
+
   if (strcmp(pathname, "/proc/meminfo") == 0 ||
       strcmp(pathname, "/proc/meminfo_extra") == 0 ||
       strcmp(pathname, "/proc/zoneinfo") == 0 ||
@@ -118,6 +124,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       !starts_with(pathname, "/storage/emulated/0") &&
       !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/product/fonts") &&
+      !starts_with(pathname, "/system/fonts") &&
       !starts_with(pathname, "/dev/urandom") &&
       !starts_with(pathname, "/dev/zero") &&
       !starts_with(pathname, "/dev/null") &&
