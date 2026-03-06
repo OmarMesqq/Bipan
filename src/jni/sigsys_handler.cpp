@@ -4,7 +4,6 @@
 #include <linux/memfd.h>
 #include <signal.h>
 #include <sys/prctl.h>
-
 #include <syscall.h>
 #include <unistd.h>
 
@@ -23,12 +22,23 @@ static void log_address_info(const char* label, uintptr_t addr);
 static void get_library_from_addr(const char* label, uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
+struct kernel_sigaction {
+    void (*sa_handler)(int, siginfo_t*, void*);
+    unsigned long sa_flags;
+    void (*sa_restorer)(void);
+    uint64_t sa_mask;
+};
+
 void registerSigSysHandler() {
-  struct sigaction sa{};
-  sa.sa_sigaction = sigsys_log_handler;
+  struct kernel_sigaction sa = {0};
+  sa.sa_handler = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
-  if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-    LOGE("registerSigSysHandler: Failed to set SIGSYS handler (errno: %d)", errno);
+  
+  // 8 is the size of sigset_t on 64-bit systems
+  long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
+  
+  if (ret != 0) {
+    LOGE("registerSigSysHandler: Failed to set SIGSYS handler directly (error: %ld)", ret);
     _exit(1);
   }
 }
