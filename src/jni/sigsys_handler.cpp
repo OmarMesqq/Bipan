@@ -28,7 +28,7 @@ void registerSigSysHandler() {
   sa.sa_sigaction = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
   if (sigaction(SIGSYS, &sa, nullptr) == -1) {
-    LOGE("applySeccompFilter: Failed to set SIGSYS handler (errno: %d)", errno);
+    LOGE("registerSigSysHandler: Failed to set SIGSYS handler (errno: %d)", errno);
     _exit(1);
   }
 }

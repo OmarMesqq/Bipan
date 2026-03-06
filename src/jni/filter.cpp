@@ -56,7 +56,7 @@ static struct sock_filter trapFilter[] = {
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 };
 
-void applySeccompFilter() {
+void applyRegularFilter() {
   // The seccomp "program"
   struct sock_fprog prog = {
       .len = 0,          // number of BPF instructions
@@ -81,6 +81,6 @@ void applySeccompFilter() {
   // to make are read(2), write(2), _exit(2)"
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
-    LOGE("applySeccompFilter: failed to apply seccomp (errno %d)", errno);
+    LOGE("applyRegularFilter: failed to apply seccomp (errno %d)", errno);
   }
 }
