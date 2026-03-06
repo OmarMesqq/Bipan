@@ -107,7 +107,7 @@ class Bipan : public zygisk::ModuleBase {
       pid_t pid = fork();
       if (pid == 0) {
         close(sv[1]);        // Close target's end
-        startBroker(sv[0]);  // Pass the socket to your broker loop
+        startBroker(sv[0]);  // Pass the socket to broker loop
         LOGE("Broker loop stopped!");
         _exit(-1);
       }
