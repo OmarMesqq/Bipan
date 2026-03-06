@@ -77,9 +77,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
+      LOGE("Violation: execve/execveat");
 
-      LOGE("Violation: execve/execvat (\"%s\")", path);
+      // log_address_info("PC", pc);
+      // log_address_info("LR", lr);
 
+      LOGE("Binary: %s", path);
       ctx->uc_mcontext.regs[0] = -EACCES;
       break;
     }
@@ -120,36 +123,43 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_rt_sigaction: {
       int signum = arg0;
-      const struct sigaction* act = (const struct sigaction*)arg1;
-      struct sigaction* oldact = (struct sigaction*)arg2;
+      const struct kernel_sigaction* act = (const struct kernel_sigaction*)arg1;
+      struct kernel_sigaction* oldact = (struct kernel_sigaction*)arg2;
 
-      uintptr_t sigaction_handler = (uintptr_t)act->sa_sigaction;
+      if (signum == SIGSYS) {
+        LOGE("App tried to install SIGSYS handler! Blocking.");
 
-      LOGW("App tried to install signal handler!");
-      LOGW("signum: %d", signum);
-      get_library_from_addr("sigaction location", sigaction_handler);
+        if (act != nullptr) {
+          uintptr_t sigaction_handler = (uintptr_t)act->sa_handler;
+          LOGW("sa_flags: %lu", act->sa_flags);
+          LOGW("sa_mask: %llu", (unsigned long long)act->sa_mask);
 
-      LOGW("sa_flags: %d", act->sa_flags);
-      LOGW("sa_mask: %d", act->sa_mask);
+          if (act->sa_restorer) {
+            LOGW("sa_restorer: %p", act->sa_restorer);
+          } else {
+            LOGW("no sa_restorer defined");
+          }
 
-      if (act->sa_restorer) {
-        LOGW("sa_restorer: %p", act->sa_restorer);
+          if (act->sa_handler) {
+            LOGW("sa_handler: %p", act->sa_handler);
+          } else {
+            LOGE("no sa_handler defined");
+          }
+        } else {
+          LOGW("App is querying SIGSYS handler (act is NULL)");
+        }
+
+        ctx->uc_mcontext.regs[0] = -EPERM;
       } else {
-        LOGW("no sa_restorer defined");
+        LOGW("Allowing sigaction for signal different from SIGSYS");
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
+            nr,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4);
       }
-
-      if (act->sa_handler) {
-        LOGW("sa_handler: %p", act->sa_handler);
-      } else {
-        LOGE("no sa_handler defined");
-      }
-      if (act->sa_sigaction) {
-        LOGW("sa_sigaction: %p", act->sa_sigaction);
-      } else {
-        LOGW("no sa_sigaction defined");
-      }
-
-      ctx->uc_mcontext.regs[0] = -EPERM;
 
       break;
     }
