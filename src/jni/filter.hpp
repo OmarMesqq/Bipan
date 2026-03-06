@@ -1,6 +1,6 @@
 #ifndef FILTER_H
 #define FILTER_H
 
-void applyRegularFilter();
+void applySeccomp();
 
 #endif

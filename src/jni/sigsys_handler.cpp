@@ -34,6 +34,8 @@ void registerSigSysHandler() {
   sa.sa_handler = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
 
+  // Install the signal handler directly with the kernel
+  // to avoid issues with libsigchain
   // sizeof(sigset_t) should be 8 bytes on aarch64
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
 

@@ -30,7 +30,7 @@ void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applyRegularFilter();
+    applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clampGrowthLimit");
   }
@@ -42,7 +42,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applyRegularFilter();
+    applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clearGrowthLimit");
   }
