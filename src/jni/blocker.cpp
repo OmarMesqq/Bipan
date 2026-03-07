@@ -140,10 +140,11 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       !starts_with(pathname, "/apex/com.android") &&
       !starts_with(pathname, "/storage/emulated/0") &&
       !starts_with(pathname, "/proc/self/oom") &&
-      !starts_with(pathname, "/dev/random") &&
+      !starts_with(pathname, "/proc/self/stat") &&
       !starts_with(pathname, "/product/fonts") &&
       !starts_with(pathname, "/system/fonts") &&
       !starts_with(pathname, "/dev/urandom") &&
+      !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/dev/zero") &&
       !starts_with(pathname, "/dev/null") &&
       !starts_with(pathname, "/mnt/expand")) {
