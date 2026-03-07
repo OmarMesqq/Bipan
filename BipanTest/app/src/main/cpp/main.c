@@ -34,7 +34,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   demo_fork_execve();
 
   // /proc/self/maps hiding
-  // scan_memory_maps();
+  scan_memory_maps();
 
   return JNI_VERSION_1_6;
 }
