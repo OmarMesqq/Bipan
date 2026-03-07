@@ -151,3 +151,44 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
 }
+
+/**
+ * Block IPv4 LAN IP ranges
+ */
+bool filterIPv4LanAccess(uint32_t ip4) {
+  if ((ip4 & 0xFF000000) == 0x0A000000) {
+    // 10.0.0.0/8 (Class A Private)
+    return true;
+  } else if ((ip4 & 0xFFF00000) == 0xAC100000) {
+    // 172.16.0.0/12 (Class B Private)
+    return true;
+  } else if ((ip4 & 0xFFFF0000) == 0xC0A80000) {
+    // 192.168.0.0/16 (Class C Private)
+    return true;
+  } else if ((ip4 & 0xF0000000) == 0xE0000000) {
+    // 224.0.0.0/4 (Multicast)
+    return true;
+  } else if (ip4 == 0xFFFFFFFF) {
+    // 255.255.255.255 (Broadcast)
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Block IPv6 LAN IP ranges
+ */
+bool filterIPv6LanAccess(uint8_t* ip6) {
+  if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
+    // fe80::/10 (Link-Local)
+    return true;
+  } else if ((ip6[0] & 0xFE) == 0xFC) {
+    // fc00::/7 (Unique Local)
+    return true;
+  }
+  else if (ip6[0] == 0xFF) {
+    // ff00::/8 (Multicast)
+    return true;
+  }
+  return false;
+}
