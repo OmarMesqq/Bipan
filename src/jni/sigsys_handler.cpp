@@ -285,48 +285,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       return;
     }
-    case __NR_connect: {
-      struct sockaddr* dest_addr = (struct sockaddr*)arg1;
-      bool is_lan = false;
-      int dest_port = -1;
-      char ip_str[INET6_ADDRSTRLEN] = {0};
-      const char* proto_str = "UNKNOWN";
-
-      if (dest_addr != nullptr) {
-        if (dest_addr->sa_family == AF_INET) {
-          struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
-          dest_port = ntohs(ipv4->sin_port);
-          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
-          inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
-          proto_str = "IPv4";
-
-          is_lan = filterIPv4LanAccess(ip4);
-
-        } else if (dest_addr->sa_family == AF_INET6) {
-          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
-          dest_port = ntohs(ipv6->sin6_port);
-          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
-          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
-          proto_str = "IPv6";
-
-          is_lan = filterIPv6LanAccess(ip6);
-        }
-      }
-
-      if (is_lan && dest_port == 53) {
-        LOGD("(connect) Allowing local DNS connect to %s:%d (%s)", ip_str, dest_port, proto_str);
-        is_lan = false;  // Unflag it
-      }
-
-      if (is_lan) {
-        LOGE("(connect) %s LAN connection to %s:%d spoofed", proto_str, ip_str, dest_port);
-        ctx->uc_mcontext.regs[0] = 0;
-        return;
-      }
-
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      return;
-    }
     default: {
       LOGE("Violation: syscall number %d", nr);
       ctx->uc_mcontext.regs[0] = 0;  // "success"
