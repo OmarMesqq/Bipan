@@ -168,160 +168,81 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       break;
     }
-    case __NR_bind: {
-      int sockfd = (int)arg0;
-      struct sockaddr* addr = (struct sockaddr*)arg1;
+    // case __NR_bind: {
+    //   int sockfd = (int)arg0;
+    //   struct sockaddr* addr = (struct sockaddr*)arg1;
 
-      int sock_type = 0;
-      socklen_t optlen = sizeof(sock_type);
-      long gso_ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
+    //   int sock_type = 0;
+    //   socklen_t optlen = sizeof(sock_type);
+    //   long gso_ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
 
-      const char* protocol = "UNKNOWN";
-      if (gso_ret == 0) {
-        if (sock_type == SOCK_STREAM) {
-          protocol = "TCP";
-        } else if (sock_type == SOCK_DGRAM) {
-          protocol = "UDP";
-        }
-      }
+    //   const char* protocol = "UNKNOWN";
+    //   if (gso_ret == 0) {
+    //     if (sock_type == SOCK_STREAM) {
+    //       protocol = "TCP";
+    //     } else if (sock_type == SOCK_DGRAM) {
+    //       protocol = "UDP";
+    //     }
+    //   }
 
-      char ip_str[INET6_ADDRSTRLEN] = {0};
-      int port = -1;
-      bool should_block = false;
+    //   char ip_str[INET6_ADDRSTRLEN] = {0};
+    //   int port = -1;
+    //   bool should_block = false;
 
-      if (addr != nullptr) {
-        if (addr->sa_family == AF_INET) {
-          struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
-          port = ntohs(ipv4->sin_port);
-          inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
-          should_block = true;
-        } else if (addr->sa_family == AF_INET6) {
-          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
-          port = ntohs(ipv6->sin6_port);
-          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
-          should_block = true;
-        }
-      }
+    //   if (addr != nullptr) {
+    //     if (addr->sa_family == AF_INET) {
+    //       struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
+    //       port = ntohs(ipv4->sin_port);
+    //       inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+    //       should_block = true;
+    //     } else if (addr->sa_family == AF_INET6) {
+    //       struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
+    //       port = ntohs(ipv6->sin6_port);
+    //       inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
+    //       should_block = true;
+    //     }
+    //   }
 
-      if (should_block) {
-        if (port == 0) {
-          // Client behavior: requesting a random temporary port for outbound traffic
-          LOGD("[%s] Allowing ephemeral bind on Port 0", protocol);
-          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        } else {
-          // Server behavior: trying to open a specific listening port
-          LOGE("[%s] SERVER BLOCKED: bind on %s:%d", protocol, ip_str, port);
-          ctx->uc_mcontext.regs[0] = -EACCES;
-        }
-      } else {
-        LOGD("Allowing non-IP bind request");
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      }
-      break;
-    }
-    case __NR_socket: {
-      int domain = (int)arg0;
-      int type = (int)arg1;
+    //   if (should_block) {
+    //     if (port == 0) {
+    //       // Client behavior: requesting a random temporary port for outbound traffic
+    //       LOGD("[%s] Allowing ephemeral bind on Port 0", protocol);
+    //       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+    //       return;
+    //     } else {
+    //       // Server behavior: trying to open a specific listening port
+    //       LOGE("[%s] Spoofing success of bind on %s:%d", protocol, ip_str, port);
+    //       ctx->uc_mcontext.regs[0] = 0;
+    //       return;
+    //     }
+    //   } else {
+    //     LOGD("Allowing non-IP bind request");
+    //     ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+    //     return;
+    //   }
+    // }
+    // case __NR_listen: {
+    //   // int listen(int sockfd, int backlog);
+    //   int sockfd = (int)arg0;
 
-      // Allow the socket creation so DNS and basic OS routing works.
-      // We will stop the bad behavior in the bind() and connect() hooks instead.
-      const char* domain_name = (domain == AF_INET || domain == AF_INET6) ? "NETWORK" : (domain == AF_UNIX ? "AF_UNIX" : "OTHER");
+    //   // We only care about network sockets. Let's check if it's AF_UNIX.
+    //   struct sockaddr_storage addr;
+    //   socklen_t len = sizeof(addr);
+    //   long getname_ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
-      LOGD("Allowing socket creation (Domain: %s [%d], Type: %d)", domain_name, domain, type);
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      break;
-    }
-    case __NR_listen: {
-      // The listen() syscall signature is: int listen(int sockfd, int backlog);
-      // If an app tries to listen, it is acting as a server. Period.
-
-      int sockfd = (int)arg0;
-
-      // We only care about network sockets. Let's check if it's AF_UNIX.
-      struct sockaddr_storage addr;
-      socklen_t len = sizeof(addr);
-      long getname_ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
-
-      if (getname_ret == 0 && (addr.ss_family == AF_INET || addr.ss_family == AF_INET6)) {
-        LOGE("SERVER BLOCKED: Prevented listen() on network socket");
-        ctx->uc_mcontext.regs[0] = -EACCES;  // Permission Denied
-      } else {
-        LOGD("Allowing listen() on local/UNIX socket");
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      }
-      break;
-    }
+    //   if (getname_ret == 0 && (addr.ss_family == AF_INET || addr.ss_family == AF_INET6)) {
+    //     LOGE("SERVER BLOCKED: Spoofing success for listen() on network socket");
+    //     ctx->uc_mcontext.regs[0] = 0;
+    //     return;
+    //   } else {
+    //     LOGD("Allowing listen() on local/UNIX socket");
+    //     ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+    //     return;
+    //   }
+    // }
     case __NR_sendto: {
       // sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
-      bool is_lan = false;
-      int dest_port = -1;  // Added to track the destination port
-      char ip_str[INET6_ADDRSTRLEN] = {0};
-      const char* proto_str = "UNKNOWN";
-
-      if (dest_addr != nullptr) {
-        if (dest_addr->sa_family == AF_INET) {
-          struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
-          dest_port = ntohs(ipv4->sin_port);  // Extract the Port
-          uint32_t ip = ntohl(ipv4->sin_addr.s_addr);
-          inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
-          proto_str = "IPv4";
-
-          // --- IPv4 BLOCKS ---
-          if ((ip & 0xFF000000) == 0x0A000000) {  // 10.0.0.0/8 (Class A Private)
-            is_lan = true;
-          } else if ((ip & 0xFFF00000) == 0xAC100000) {  // 172.16.0.0/12 (Class B Private)
-            is_lan = true;
-          } else if ((ip & 0xFFFF0000) == 0xC0A80000) {  // 192.168.0.0/16 (Class C Private)
-            is_lan = true;
-          } else if ((ip & 0xF0000000) == 0xE0000000) {  // 224.0.0.0/4 (Multicast)
-            is_lan = true;
-          } else if (ip == 0xFFFFFFFF) {  // 255.255.255.255 (Broadcast)
-            is_lan = true;
-          }
-
-        } else if (dest_addr->sa_family == AF_INET6) {
-          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
-          dest_port = ntohs(ipv6->sin6_port);      // Extract the Port
-          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;  // Array of 16 bytes
-          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
-          proto_str = "IPv6";
-
-          // --- IPv6 BLOCKS ---
-          // fe80::/10 (Link-Local): First byte is 0xFE, top 2 bits of second byte are 10 (0x80)
-          if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
-            is_lan = true;
-          }
-          // fc00::/7 (Unique Local): Top 7 bits are 1111 110 (0xFC)
-          else if ((ip6[0] & 0xFE) == 0xFC) {
-            is_lan = true;
-          }
-          // ff00::/8 (Multicast): First byte is 0xFF
-          else if (ip6[0] == 0xFF) {
-            is_lan = true;
-          }
-        }
-      }
-
-      if (is_lan && dest_port == 53) {
-        LOGE("[%s] Permitting local DNS query to %s:%d", proto_str, ip_str, dest_port);
-        is_lan = false;  // Unflag it so it doesn't get blocked
-      }
-
-      if (is_lan) {
-        LOGE("[%s] LAN SCAN BLOCKED: sendto %s", proto_str, ip_str);
-        // -EACCES works, but -ENETUNREACH (Network is unreachable) is the
-        // POSIX standard way to tell an app a subnet is blocked by routing rules.
-        ctx->uc_mcontext.regs[0] = -EACCES;
-        break;  // exit switch
-      }
-
-      // Allow if it's a global internet IP, or if it's AF_UNIX
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      break;
-    }
-    case __NR_connect: {
-      struct sockaddr* dest_addr = (struct sockaddr*)arg1;
       bool is_lan = false;
       int dest_port = -1;
       char ip_str[INET6_ADDRSTRLEN] = {0};
@@ -331,51 +252,81 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         if (dest_addr->sa_family == AF_INET) {
           struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
           dest_port = ntohs(ipv4->sin_port);
-          uint32_t ip = ntohl(ipv4->sin_addr.s_addr);
+          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
           inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
           proto_str = "IPv4";
 
-          if ((ip & 0xFF000000) == 0x0A000000)
-            is_lan = true;  // 10.0.0.0/8
-          else if ((ip & 0xFFF00000) == 0xAC100000)
-            is_lan = true;  // 172.16.0.0/12
-          else if ((ip & 0xFFFF0000) == 0xC0A80000)
-            is_lan = true;  // 192.168.0.0/16
-          else if ((ip & 0xF0000000) == 0xE0000000)
-            is_lan = true;  // 224.0.0.0/4
-          else if (ip == 0xFFFFFFFF)
-            is_lan = true;  // Broadcast
+          is_lan = filterIPv4LanAccess(ip4);
 
         } else if (dest_addr->sa_family == AF_INET6) {
           struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
           dest_port = ntohs(ipv6->sin6_port);
-          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
+          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;  // Array of 16 bytes
           inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
           proto_str = "IPv6";
 
-          if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80)
-            is_lan = true;  // fe80::/10
-          else if ((ip6[0] & 0xFE) == 0xFC)
-            is_lan = true;  // fc00::/7
-          else if (ip6[0] == 0xFF)
-            is_lan = true;  // ff00::/8
+          is_lan = filterIPv6LanAccess(ip6);
         }
       }
 
       if (is_lan && dest_port == 53) {
-        LOGD("[%s] Permitting local DNS connect to %s:%d", proto_str, ip_str, dest_port);
-        is_lan = false;  // Unflag it
+        LOGE("[%s] Permitting local DNS query to %s:%d", proto_str, ip_str, dest_port);
+        is_lan = false;  // Unflag it so it doesn't get blocked
       }
 
       if (is_lan) {
-        LOGE("[%s] LAN SCAN BLOCKED: connect to %s:%d", proto_str, ip_str, dest_port);
-        ctx->uc_mcontext.regs[0] = -ENETUNREACH;
-        break;
+        LOGE("(sendto) %s LAN scan to address %s spoofed", proto_str, ip_str);
+        // Return the number of bytes sent to fool the app that it succeeded
+        ctx->uc_mcontext.regs[0] = (long)arg2;
+        return;
       }
 
+      // Allow if it's a global internet IP, or if it's AF_UNIX
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      break;
+      return;
     }
+    // case __NR_connect: {
+    //   struct sockaddr* dest_addr = (struct sockaddr*)arg1;
+    //   bool is_lan = false;
+    //   int dest_port = -1;
+    //   char ip_str[INET6_ADDRSTRLEN] = {0};
+    //   const char* proto_str = "UNKNOWN";
+
+    //   if (dest_addr != nullptr) {
+    //     if (dest_addr->sa_family == AF_INET) {
+    //       struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
+    //       dest_port = ntohs(ipv4->sin_port);
+    //       uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
+    //       inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+    //       proto_str = "IPv4";
+
+    //       is_lan = filterIPv4LanAccess(ip4);
+
+    //     } else if (dest_addr->sa_family == AF_INET6) {
+    //       struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
+    //       dest_port = ntohs(ipv6->sin6_port);
+    //       uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
+    //       inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
+    //       proto_str = "IPv6";
+
+    //       is_lan = filterIPv6LanAccess(ip6);
+    //     }
+    //   }
+
+    //   if (is_lan && dest_port == 53) {
+    //     LOGD("[%s] Permitting local DNS connect to %s:%d", proto_str, ip_str, dest_port);
+    //     is_lan = false;  // Unflag it
+    //   }
+
+    //   if (is_lan) {
+    //     LOGE("[%s] LAN SCAN BLOCKED: connect to %s:%d", proto_str, ip_str, dest_port);
+    //     ctx->uc_mcontext.regs[0] = -EADDRINUSE;
+    //     return;
+    //   }
+
+    //   ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+    //   return;
+    // }
     default: {
       LOGE("Violation: syscall number %d", nr);
       ctx->uc_mcontext.regs[0] = 0;  // "success"
