@@ -33,7 +33,7 @@ int uname_spoofer(struct utsname* buf) {
  */
 int create_spoofed_file(const char* fake_content) {
   // memfd_create requires a name, but it doesn't appear in the filesystem
-  int fd = syscall(__NR_memfd_create, "bipanfd", MFD_CLOEXEC);
+  int fd = syscall(__NR_memfd_create, "Q4Blp8TKdag5", MFD_CLOEXEC);
 
   if (fd >= 0) {
     write(fd, fake_content, strlen(fake_content));
@@ -53,7 +53,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   }
 
   // Create a fake in-memory file to hold the scrubbed data (6 args)
-  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"spoofed_maps", MFD_CLOEXEC, 0, 0, 0);
+  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
     arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
@@ -81,6 +81,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
             strstr(line, "zygisk") == nullptr &&
             strstr(line, "bipan") == nullptr &&
             // Specific memory flags
+            !(strstr(line, "r-xp") != nullptr && strstr(line, "/memfd:jit") != nullptr) ||
             !(strstr(line, "rw-s") != nullptr && strstr(line, "/dev/zero (deleted)") != nullptr) &&
             !(strstr(line, "r-xp") != nullptr && (strstr(line, "[anon:") != nullptr || strchr(line, '/') == nullptr))) {
           // Line is clean: write it to the fake file
