@@ -80,8 +80,25 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
 
   if (strcmp(pathname, "/proc/meminfo") == 0 ||
-      strcmp(pathname, "/proc/meminfo_extra") == 0 ||
-      strcmp(pathname, "/proc/zoneinfo") == 0 ||
+      strcmp(pathname, "/proc/meminfo_extra") == 0) {
+    const char* fake_mem =
+        "MemTotal:       11654320 kB\n"  // 12GB Pixel 8 Pro
+        "MemFree:         1204164 kB\n"
+        "MemAvailable:    4526384 kB\n"  // Higher available = "Healthy" system
+        "Buffers:            4256 kB\n"
+        "Cached:          3100192 kB\n"
+        "SwapCached:          248 kB\n"
+        "Active:          3475584 kB\n"
+        "Inactive:        2658376 kB\n"
+        "SwapTotal:       3145724 kB\n"  // Typical ZRAM size
+        "SwapFree:        3140000 kB\n"
+        "VmallocTotal:   263061440 kB\n"  // Standard for AArch64
+        "CmaTotal:         163840 kB\n";
+    LOGW("Spoofing /proc/meminfo");
+    return create_spoofed_file(fake_mem);
+  }
+
+  if (strcmp(pathname, "/proc/zoneinfo") == 0 ||
       strcmp(pathname, "/proc/vmstat") == 0) {
     LOGW("Denying access to memory path: %s", pathname);
     return -EACCES;
