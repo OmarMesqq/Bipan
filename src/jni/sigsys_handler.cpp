@@ -168,78 +168,78 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       break;
     }
-    // case __NR_bind: {
-    //   int sockfd = (int)arg0;
-    //   struct sockaddr* addr = (struct sockaddr*)arg1;
+    case __NR_bind: {
+      int sockfd = (int)arg0;
+      struct sockaddr* addr = (struct sockaddr*)arg1;
 
-    //   int sock_type = 0;
-    //   socklen_t optlen = sizeof(sock_type);
-    //   long gso_ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
+      int sock_type = 0;
+      socklen_t optlen = sizeof(sock_type);
+      long gso_ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
 
-    //   const char* protocol = "UNKNOWN";
-    //   if (gso_ret == 0) {
-    //     if (sock_type == SOCK_STREAM) {
-    //       protocol = "TCP";
-    //     } else if (sock_type == SOCK_DGRAM) {
-    //       protocol = "UDP";
-    //     }
-    //   }
+      const char* protocol = "UNKNOWN";
+      if (gso_ret == 0) {
+        if (sock_type == SOCK_STREAM) {
+          protocol = "TCP";
+        } else if (sock_type == SOCK_DGRAM) {
+          protocol = "UDP";
+        }
+      }
 
-    //   char ip_str[INET6_ADDRSTRLEN] = {0};
-    //   int port = -1;
-    //   bool should_block = false;
+      char ip_str[INET6_ADDRSTRLEN] = {0};
+      int port = -1;
+      bool should_block = false;
 
-    //   if (addr != nullptr) {
-    //     if (addr->sa_family == AF_INET) {
-    //       struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
-    //       port = ntohs(ipv4->sin_port);
-    //       inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
-    //       should_block = true;
-    //     } else if (addr->sa_family == AF_INET6) {
-    //       struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
-    //       port = ntohs(ipv6->sin6_port);
-    //       inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
-    //       should_block = true;
-    //     }
-    //   }
+      if (addr != nullptr) {
+        if (addr->sa_family == AF_INET) {
+          struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
+          port = ntohs(ipv4->sin_port);
+          inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET_ADDRSTRLEN);
+          should_block = true;
+        } else if (addr->sa_family == AF_INET6) {
+          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
+          port = ntohs(ipv6->sin6_port);
+          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
+          should_block = true;
+        }
+      }
 
-    //   if (should_block) {
-    //     if (port == 0) {
-    //       // Client behavior: requesting a random temporary port for outbound traffic
-    //       LOGD("[%s] Allowing ephemeral bind on Port 0", protocol);
-    //       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-    //       return;
-    //     } else {
-    //       // Server behavior: trying to open a specific listening port
-    //       LOGE("[%s] Spoofing success of bind on %s:%d", protocol, ip_str, port);
-    //       ctx->uc_mcontext.regs[0] = 0;
-    //       return;
-    //     }
-    //   } else {
-    //     LOGD("Allowing non-IP bind request");
-    //     ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-    //     return;
-    //   }
-    // }
-    // case __NR_listen: {
-    //   // int listen(int sockfd, int backlog);
-    //   int sockfd = (int)arg0;
+      if (should_block) {
+        if (port == 0) {
+          // Client behavior: requesting a random temporary port for outbound traffic
+          LOGW("(bind) Allowing ephemeral bind on Port 0/%s", protocol);
+          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          return;
+        } else {
+          // Server behavior: trying to open a specific listening port
+          LOGE("(bind) Spoofing success of bind on %s:%d (%s)", ip_str, port, protocol);
+          ctx->uc_mcontext.regs[0] = 0;
+          return;
+        }
+      } else {
+        LOGW("(bind) Allowing non-IP bind request");
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
+    }
+    case __NR_listen: {
+      // int listen(int sockfd, int backlog);
+      int sockfd = (int)arg0;
 
-    //   // We only care about network sockets. Let's check if it's AF_UNIX.
-    //   struct sockaddr_storage addr;
-    //   socklen_t len = sizeof(addr);
-    //   long getname_ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
+      // We only care about network sockets. Let's check if it's AF_UNIX.
+      struct sockaddr_storage addr;
+      socklen_t len = sizeof(addr);
+      long getname_ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
-    //   if (getname_ret == 0 && (addr.ss_family == AF_INET || addr.ss_family == AF_INET6)) {
-    //     LOGE("SERVER BLOCKED: Spoofing success for listen() on network socket");
-    //     ctx->uc_mcontext.regs[0] = 0;
-    //     return;
-    //   } else {
-    //     LOGD("Allowing listen() on local/UNIX socket");
-    //     ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-    //     return;
-    //   }
-    // }
+      if (getname_ret == 0 && (addr.ss_family == AF_INET || addr.ss_family == AF_INET6)) {
+        LOGE("(listen) spoofing success");
+        ctx->uc_mcontext.regs[0] = 0;
+        return;
+      } else {
+        LOGD("(listen) Allowing for local/UNIX socket");
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
+    }
     case __NR_sendto: {
       // sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
@@ -270,7 +270,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
 
       if (is_lan && dest_port == 53) {
-        LOGE("[%s] Permitting local DNS query to %s:%d", proto_str, ip_str, dest_port);
+        LOGE("(sendto) Permitting local DNS query to %s:%d (%s)", ip_str, dest_port, proto_str);
         is_lan = false;  // Unflag it so it doesn't get blocked
       }
 
