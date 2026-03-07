@@ -120,11 +120,6 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return create_spoofed_file(fake_hosts);
   }
 
-  if (strcmp(pathname, "/proc/mounts") == 0) {
-    const char* fake_mounts = "rootfs / rootfs ro,seclabel 0 0\ntmpfs /dev tmpfs rw,seclabel 0 0\nproc /proc proc rw,relatime 0 0\nsysfs /sys sysfs rw,seclabel,relatime 0 0\nselinuxfs /sys/fs/selinux selinuxfs rw,relatime 0 0\n/dev/block/mapper/system /system ext4 ro,seclabel,relatime 0 0\n/dev/block/mapper/vendor /vendor ext4 ro,seclabel,relatime 0 0\n/dev/block/by-name/userdata /data f2fs rw,seclabel,nosuid,nodev,noatime 0 0\n";
-    LOGW("Spoofing /proc/mounts");
-    return create_spoofed_file(fake_mounts);
-  }
 
   if (strstr(pathname, "build.prop") != nullptr &&
       (starts_with(pathname, "/system") || starts_with(pathname, "/vendor") ||
@@ -184,15 +179,14 @@ bool filterIPv6LanAccess(uint8_t* ip6) {
     LOGE("filterIPv6LanAccess: IPv6 pointer is null!");
     return false;
   }
-  
+
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
     return true;
   } else if ((ip6[0] & 0xFE) == 0xFC) {
     // fc00::/7 (Unique Local)
     return true;
-  }
-  else if (ip6[0] == 0xFF) {
+  } else if (ip6[0] == 0xFF) {
     // ff00::/8 (Multicast)
     return true;
   }

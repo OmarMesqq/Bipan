@@ -111,8 +111,27 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
                            starts_with(pathname, safe_proc_pid_path) &&
                            strstr(pathname, "/maps") != nullptr);
 
+      bool reading_smaps = (strcmp(pathname, "/proc/self/smaps") == 0) ||
+                           ((safe_proc_pid_path[0] != '\0') &&
+                            starts_with(pathname, safe_proc_pid_path) &&
+                            strstr(pathname, "/smaps") != nullptr);
+
       if (reading_maps) {
         ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
+        break;
+      } else if (reading_smaps) {
+        ctx->uc_mcontext.regs[0] = clean_proc_smaps(dirfd, pathname, flags, mode);
+        break;
+      }
+
+      bool reading_mounts = (strcmp(pathname, "/proc/mounts") == 0) ||
+                            (strcmp(pathname, "/proc/self/mounts") == 0) ||
+                            ((safe_proc_pid_path[0] != '\0') &&
+                             starts_with(pathname, safe_proc_pid_path) &&
+                             strstr(pathname, "/mounts") != nullptr);
+
+      if (reading_mounts) {
+        ctx->uc_mcontext.regs[0] = clean_proc_mounts(dirfd, pathname, flags, mode);
         break;
       }
 

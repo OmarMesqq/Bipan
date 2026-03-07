@@ -2,9 +2,9 @@
 
 #include <linux/memfd.h>
 #include <sys/mman.h>
+#include <sys/utsname.h>
 #include <syscall.h>
 #include <unistd.h>
-#include <sys/utsname.h>
 
 #include <string>
 
@@ -75,18 +75,26 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
       if (buf[i] == '\n') {
         line[line_pos] = '\0';  // Null-terminate the line
 
-        if (
-            // Forbidden keywords...
-            strstr(line, "magisk") == nullptr &&
-            strstr(line, "zygisk") == nullptr &&
-            strstr(line, "bipan") == nullptr &&
-            // Specific memory flags
-            !(strstr(line, "r-xp") != nullptr && strstr(line, "/memfd:jit") != nullptr) ||
-            !(strstr(line, "rw-s") != nullptr && strstr(line, "/dev/zero (deleted)") != nullptr) &&
-            !(strstr(line, "r-xp") != nullptr && (strstr(line, "[anon:") != nullptr || strchr(line, '/') == nullptr))) {
+        // 1. Check for forbidden keywords
+        bool has_magisk = strstr(line, "magisk") != nullptr;
+        bool has_zygisk = strstr(line, "zygisk") != nullptr;
+        bool has_bipan = strstr(line, "bipan") != nullptr;
+
+        // 2. Check for Zygisk's disguised ELF payload
+        // We match ANY private mapping (-p) of memfd:jit to catch r-xp, r--p, and rw-p
+        bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && (strstr(line, "-p ") != nullptr);
+
+        // 3. Check for specific anomalous memory flags
+        bool is_deleted_zero = (strstr(line, "rw-s") != nullptr) && (strstr(line, "/dev/zero (deleted)") != nullptr);
+
+        // Anti-tamper/Zygisk trampolines (executable anon memory)
+        bool is_anon_exec = (strstr(line, "r-xp") != nullptr) && (strstr(line, "[anon:") != nullptr || strchr(line, '/') == nullptr);
+
+        if (!has_magisk && !has_zygisk && !has_bipan && !is_fake_jit && !is_deleted_zero && !is_anon_exec) {
           // Line is clean: write it to the fake file
           arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
         }
+
         line_pos = 0;  // Reset for next line
       }
     }
@@ -97,5 +105,146 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
 
   LOGW("Spoofed memory maps");
+  return fake_fd;
+}
+
+long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
+  long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+  if (real_fd < 0) {
+    LOGE("openat memory smaps failed!");
+    return -1;
+  }
+
+  // Your randomized memfd name. Perfect OPSEC.
+  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
+  if (fake_fd < 0) {
+    LOGE("memfd failed!");
+    arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+    return -1;
+  }
+
+  char buf[4096];
+  long bytes_read;
+  char line[4096];
+  int line_pos = 0;
+
+  // FSM flag: tracks whether we are currently inside a "dirty" memory region
+  bool skip_current_region = false;
+
+  while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
+    for (int i = 0; i < bytes_read; i++) {
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
+      if (buf[i] == '\n') {
+        line[line_pos] = '\0';  // Null-terminate the line for strstr
+
+        // Heuristic: Header lines start with a hex address (0-9, a-f) AND contain a hyphen.
+        bool is_header = ((line[0] >= '0' && line[0] <= '9') ||
+                          (line[0] >= 'a' && line[0] <= 'f')) &&
+                         strstr(line, "-") != nullptr;
+
+        if (is_header) {
+          // 1. Check for forbidden keywords
+          bool has_magisk = strstr(line, "magisk") != nullptr;
+          bool has_zygisk = strstr(line, "zygisk") != nullptr;
+          bool has_bipan = strstr(line, "bipan") != nullptr;
+
+          // 2. Check for Zygisk's disguised ELF payload (-p catches r-xp, r--p, and rw-p)
+          bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && (strstr(line, "-p ") != nullptr);
+
+          // 3. Check for specific anomalous memory flags
+          bool is_deleted_zero = (strstr(line, "rw-s") != nullptr) && (strstr(line, "/dev/zero (deleted)") != nullptr);
+
+          // Anti-tamper/Zygisk trampolines (executable anon memory)
+          bool is_anon_exec = (strstr(line, "r-xp") != nullptr) && (strstr(line, "[anon:") != nullptr || strchr(line, '/') == nullptr);
+
+          // State Machine: Turn the 'skip' flag on or off based on the header
+          if (has_magisk || has_zygisk || has_bipan || is_fake_jit || is_deleted_zero || is_anon_exec) {
+            skip_current_region = true;
+          } else {
+            skip_current_region = false;
+          }
+        }
+
+        // If we are NOT in a bad region, write the line (whether it's a header or a metric)
+        if (!skip_current_region) {
+          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
+        }
+
+        line_pos = 0;  // Reset for next line
+      }
+    }
+  }
+
+  // Cleanup
+  arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+  arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
+
+  LOGW("Spoofed memory smaps");
+  return fake_fd;
+}
+
+long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
+  // Open the real mounts file
+  long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+  if (real_fd < 0) {
+    LOGE("openat memory mounts failed!");
+    return -1;
+  }
+
+  // Create a fake in-memory file with a randomized name
+  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"X7bA1Zkq9R", MFD_CLOEXEC, 0, 0, 0);
+  if (fake_fd < 0) {
+    LOGE("memfd failed!");
+    arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+    return -1;
+  }
+
+  char buf[4096];
+  long bytes_read;
+  char line[4096];
+  int line_pos = 0;
+
+  while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
+    for (int i = 0; i < bytes_read; i++) {
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
+      if (buf[i] == '\n') {
+        line[line_pos] = '\0';  // Null-terminate the line
+        
+        // 1. Check for standard Root/Injection keywords
+        bool has_magisk = strstr(line, "magisk") != nullptr;
+        bool has_zygisk = strstr(line, "zygisk") != nullptr;
+        bool has_bipan = strstr(line, "bipan") != nullptr;
+        bool has_ksu = strstr(line, "KSU") != nullptr || strstr(line, "KernelSU") != nullptr;
+        bool has_apatch = strstr(line, "APatch") != nullptr;
+
+        // 2. Check for Magisk internal paths
+        bool has_core_mirror = strstr(line, "core/mirror") != nullptr;
+
+        // 3. Catch custom CA certificate overlays (often used for MITM)
+        // If someone mounts a tmpfs over the system certs, hide the mount entry.
+        bool is_cert_overlay = (strstr(line, "/system/etc/security/cacerts") != nullptr) && 
+                               (strstr(line, "tmpfs") != nullptr);
+
+        if (!has_magisk && !has_zygisk && !has_bipan && !has_ksu && !has_apatch && !has_core_mirror && !is_cert_overlay) {
+          // Line is clean: write it to the fake file
+          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
+        }
+
+        line_pos = 0;  // Reset for next line
+      }
+    }
+  }
+
+  // Cleanup
+  arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+  arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
+
+  LOGW("Spoofed memory mounts");
   return fake_fd;
 }
