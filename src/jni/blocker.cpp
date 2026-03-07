@@ -179,6 +179,11 @@ bool filterIPv4LanAccess(uint32_t ip4) {
  * Block IPv6 LAN IP ranges
  */
 bool filterIPv6LanAccess(uint8_t* ip6) {
+  if (!ip6) {
+    LOGE("filterIPv6LanAccess: IPv6 pointer is null!");
+    return false;
+  }
+  
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
     return true;
