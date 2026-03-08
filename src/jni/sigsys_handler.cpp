@@ -304,8 +304,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       return;
     }
     default: {
-      LOGE("Violation: syscall number %d", nr);
-      ctx->uc_mcontext.regs[0] = 0;  // "success"
+      LOGE("Violation: got UNEXPECTED syscall! (%d)", nr);
+      ctx->uc_mcontext.regs[0] = -ENOSYS; // mimic the kernel's response
       break;
     }
   }
