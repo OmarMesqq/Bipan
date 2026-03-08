@@ -6,6 +6,12 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 
+/**
+ * Blocks, lies about the existence or
+ * provides a fake `memfd`'d FD for senstive
+ * files. Otherwise, executes a bypassed syscall
+ * to fetch FD to the file.
+ */
 int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   const char* pathname = (const char*)a1;
   if (pathname == nullptr) {
@@ -47,7 +53,8 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return -ENOENT;
   }
 
-  if (  // SELinux would already block, but these usually back build.prop
+  if (  // SELinux would already block these, but we make sure
+        // Some of these back `build.prop`
       starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
@@ -75,8 +82,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     LOGW("Spoofing /proc/sys/kernel/perf_event_paranoid");
-    // Value common in stock ROMs
-    return create_spoofed_file("2\n");
+    return create_spoofed_file("2\n");  // Value common in stock ROMs
   }
 
   if (strcmp(pathname, "/proc/meminfo") == 0 ||
@@ -94,7 +100,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
         "SwapFree:        3140000 kB\n"
         "VmallocTotal:   263061440 kB\n"  // Standard for AArch64
         "CmaTotal:         163840 kB\n";
-    LOGW("Spoofing /proc/meminfo");
+    LOGW("Spoofing %s", pathname);
     return create_spoofed_file(fake_mem);
   }
 
@@ -148,7 +154,9 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 }
 
 /**
- * Block IPv4 LAN IP ranges
+ * Returns `true` if IP address
+ * `ip4` is in any of
+ * the IPv4 LAN ranges. `false` otherwise
  */
 bool filterIPv4LanAccess(uint32_t ip4) {
   if ((ip4 & 0xFF000000) == 0x0A000000) {
@@ -171,7 +179,9 @@ bool filterIPv4LanAccess(uint32_t ip4) {
 }
 
 /**
- * Block IPv6 LAN IP ranges
+ * Returns `true` if IP address
+ * pointed by `ip6` is in any of
+ * the IPv6 LAN ranges. `false` otherwise
  */
 bool filterIPv6LanAccess(uint8_t* ip6) {
   if (!ip6) {

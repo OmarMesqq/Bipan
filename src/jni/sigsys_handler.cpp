@@ -243,12 +243,11 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_listen: {
       // int listen(int sockfd, int backlog);
       int sockfd = (int)arg0;
-
-      // We only care about network sockets. Let's check if it's AF_UNIX.
       struct sockaddr_storage addr;
       socklen_t len = sizeof(addr);
       long getname_ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
+      // We only care about network sockets
       if (getname_ret == 0 && (addr.ss_family == AF_INET || addr.ss_family == AF_INET6)) {
         LOGE("(listen) spoofing success");
         ctx->uc_mcontext.regs[0] = 0;

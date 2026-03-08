@@ -32,7 +32,7 @@ int uname_spoofer(struct utsname* buf) {
  * @returns file descriptor on success, -1 on failure
  */
 int create_spoofed_file(const char* fake_content) {
-  // memfd_create requires a name, but it doesn't appear in the filesystem
+  // memfd_create requires a name, but it hopefully doesn't appear in the filesystem
   int fd = syscall(__NR_memfd_create, "Q4Blp8TKdag5", MFD_CLOEXEC);
 
   if (fd >= 0) {
@@ -44,15 +44,19 @@ int create_spoofed_file(const char* fake_content) {
   return fd;
 }
 
+/**
+ * Scrubs mappings that could reveal Zygisk and/or Bipan
+ * from `/proc/self/maps` and `/proc/<PID>/maps`
+ */
 long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
-  // Open the real maps file
+  // Open the real file
   long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
   if (real_fd < 0) {
     LOGE("openat memory maps failed!");
     return -1;
   }
 
-  // Create a fake in-memory file to hold the scrubbed data (6 args)
+  // Create a fake in-memory file
   long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
@@ -111,14 +115,19 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
+/**
+ * Scrubs mappings that could reveal Zygisk and/or Bipan
+ * from `/proc/self/smaps` and `/proc/<PID>/smaps`
+ */
 long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
+  // Open the real file
   long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
   if (real_fd < 0) {
     LOGE("openat memory smaps failed!");
     return -1;
   }
 
-  // Your randomized memfd name. Perfect OPSEC.
+  // Create a fake in-memory file
   long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
@@ -163,7 +172,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
           // 3. Check for specific anomalous memory flags
           bool is_deleted_zero = (strstr(line, "rw-s") != nullptr) && (strstr(line, "/dev/zero (deleted)") != nullptr);
 
-          // Anti-tamper/Zygisk trampolines (executable anon memory)
+          // Anti-tamper/Zygisk trampolines (executable anonymous memory)
           bool is_anon_exec = (strstr(line, "r-xp") != nullptr) && (strstr(line, "[anon:") != nullptr || strchr(line, '/') == nullptr);
 
           // State Machine: Turn the 'skip' flag on or off based on the header
@@ -192,15 +201,20 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
+/**
+ * Scrubs mount points that could reveal Magisk's OverlayFS,
+ * custom CAs at system trust store and whatnot
+ * from `/proc/self/mounts`, `/proc/<PID>/mounts`, and `/proc/mounts`
+ */
 long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
-  // Open the real mounts file
+  // Open the real file
   long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
   if (real_fd < 0) {
     LOGE("openat memory mounts failed!");
     return -1;
   }
 
-  // Create a fake in-memory file with a randomized name
+  // Create a fake in-memory file
   long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"X7bA1Zkq9R", MFD_CLOEXEC, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
@@ -232,8 +246,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
         // 2. Check for Magisk internal paths
         bool has_core_mirror = strstr(line, "core/mirror") != nullptr;
 
-        // 3. Catch custom CA certificate overlays (often used for MITM)
-        // If someone mounts a tmpfs over the system certs, hide the mount entry.
+        // 3. Catch custom CA certificate overlays
         bool is_cert_overlay = (strstr(line, "/system/etc/security/cacerts") != nullptr) && 
                                (strstr(line, "tmpfs") != nullptr);
 

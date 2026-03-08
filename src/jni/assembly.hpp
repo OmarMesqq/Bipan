@@ -6,6 +6,9 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 
+/**
+ * Executes a raw arm64 syscall that bypasses our seccomp filter
+ */
 static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2, long a3, long a4) {
   register long x8 __asm__("x8") = sysno;
   register long x0 __asm__("x0") = a0;
@@ -25,8 +28,7 @@ static inline long arm64_bypassed_syscall(long sysno, long a0, long a1, long a2,
 }
 
 /**
- * Executes a raw system call on ARM64.
- * Forces the compiler to map arguments to the correct x0-x5 and x8 registers.
+ * Executes a raw system call on ARM64
  */
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
   register long x8 __asm__("x8") = sysno;

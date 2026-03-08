@@ -85,10 +85,10 @@ void applySeccomp() {
     return;
   }
 
-  // Apply the seccomp filter across all threads (`TSYNC`)
-  // Another option is to use SECCOMP_SET_MODE_STRICT:
-  // "The only system calls that the calling thread is permitted
-  // to make are read(2), write(2), _exit(2)"
+  /**
+   * Apply seccomp across all threads - `SECCOMP_FILTER_FLAG_TSYNC` -
+   * and ask the kernel to use our filter: `SECCOMP_SET_MODE_FILTER`
+   */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
     LOGE("applySeccomp: failed to apply seccomp (errno %d)", errno);
