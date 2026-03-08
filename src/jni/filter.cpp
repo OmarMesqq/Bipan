@@ -20,17 +20,16 @@
  * lifetime.
  */
 static struct sock_filter trapFilter[] = {
-    // --- MAGIC ARGUMENT BYPASS ---
-    // Load the lower 32 bits of the 6th argument
+    // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
+    // load the lower 32 bits of the 6th argument
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
-
-    // Check if it matches our magic number
-    // on match: execute next line
-    // not match: skip the ALLOW
+    // check if it matches our symbolic constant
+    // on match: execute next line, allowing the syscall
+    // not match: skip the allow, falling through traps
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
-    // Load syscall number into accumulator for standard rules
+    // Load syscall number into accumulator
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
     // System info

@@ -12,13 +12,16 @@
 
 /**
  * MAGIC NUMBER:
+ * TODO:
  * 
  * So far, most syscalls I've intercepted only use 5 arguments +
- * NR number. Apparently, you can do an "if" check in the seccomp
+ * NR number. Turns out you can do an "if" check in the seccomp
  * filter as to allow/trap the offenders exclusively
- * based on an arbitrary value.
+ * based on an arbitrary value in a given (**unused**) register.
+ * A bit of hack, must I say. Syscalls that need more args
+ * will bork.
  */
-#define SECCOMP_BYPASS 0xBADB01
+#define SECCOMP_BYPASS 0xFAC101
 
 // #define BROKER_ARCH
 
