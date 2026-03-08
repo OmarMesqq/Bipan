@@ -120,7 +120,6 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return create_spoofed_file(fake_hosts);
   }
 
-
   if (strstr(pathname, "build.prop") != nullptr &&
       (starts_with(pathname, "/system") || starts_with(pathname, "/vendor") ||
        starts_with(pathname, "/product") || starts_with(pathname, "/odm") || starts_with(pathname, "/system_ext"))) {
@@ -130,14 +129,14 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
 
   if (!starts_with(pathname, "/data") &&
-      !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/product/app/webview") &&
       !starts_with(pathname, "/apex/com.android") &&
       !starts_with(pathname, "/storage/emulated/0") &&
-      !starts_with(pathname, "/proc/self/oom") &&
-      !starts_with(pathname, "/proc/self/stat") &&
       !starts_with(pathname, "/product/fonts") &&
       !starts_with(pathname, "/system/fonts") &&
+      !starts_with(pathname, "/proc/self/oom") &&
+      !starts_with(pathname, "/proc/self/stat") &&
+      !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/dev/urandom") &&
       !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/dev/zero") &&

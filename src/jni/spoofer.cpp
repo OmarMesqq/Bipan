@@ -82,7 +82,10 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         // 2. Check for Zygisk's disguised ELF payload
         // We match ANY private mapping (-p) of memfd:jit to catch r-xp, r--p, and rw-p
-        bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && (strstr(line, "-p ") != nullptr);
+        bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && 
+                           (strstr(line, "r-xp") != nullptr || 
+                            strstr(line, "r--p") != nullptr || 
+                            strstr(line, "rw-p") != nullptr);
 
         // 3. Check for specific anomalous memory flags
         bool is_deleted_zero = (strstr(line, "rw-s") != nullptr) && (strstr(line, "/dev/zero (deleted)") != nullptr);
@@ -152,7 +155,10 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
           bool has_bipan = strstr(line, "bipan") != nullptr;
 
           // 2. Check for Zygisk's disguised ELF payload (-p catches r-xp, r--p, and rw-p)
-          bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && (strstr(line, "-p ") != nullptr);
+          bool is_fake_jit = (strstr(line, "/memfd:jit") != nullptr) && 
+                           (strstr(line, "r-xp") != nullptr || 
+                            strstr(line, "r--p") != nullptr || 
+                            strstr(line, "rw-p") != nullptr);
 
           // 3. Check for specific anomalous memory flags
           bool is_deleted_zero = (strstr(line, "rw-s") != nullptr) && (strstr(line, "/dev/zero (deleted)") != nullptr);
@@ -215,7 +221,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
 
       if (buf[i] == '\n') {
         line[line_pos] = '\0';  // Null-terminate the line
-        
+
         // 1. Check for standard Root/Injection keywords
         bool has_magisk = strstr(line, "magisk") != nullptr;
         bool has_zygisk = strstr(line, "zygisk") != nullptr;
