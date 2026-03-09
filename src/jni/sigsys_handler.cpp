@@ -192,16 +192,18 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       struct sockaddr* addr = (struct sockaddr*)arg1;
       if (addr == nullptr) {
-        LOGE("bind address is NULL!");
-        _exit(1);
+        LOGE("bind address is NULL! Replying with EFAULT");
+        ctx->uc_mcontext.regs[0] = -EFAULT;
+        return;
       }
       int sock_type = 0;
       socklen_t optlen = sizeof(sock_type);
 
       long ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
       if (ret != 0) {
-        LOGE("getsockopt returned error: %d", ret);
-        _exit(1);
+        LOGE("getsockopt returned error: %d. Allowing bind to fail natively", ret);
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
       }
 
       const char* proto = "UNKNOWN";
@@ -254,8 +256,9 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
       if (ret != 0) {
-        LOGE("getsockname returned error: %d", ret);
-        _exit(1);
+        LOGE("getsockname returned error: %d. Allowing native failure", ret);
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
       }
       if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
         // Don't allow network sockets to listen...
@@ -270,43 +273,41 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_sendto: {
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
-      if (dest_addr == nullptr) {
-        break;
-      }
+      if (dest_addr != nullptr) {
+        int dest_port = -1;
+        char ipAddrStr[INET6_ADDRSTRLEN] = {0};
+        const char* proto = "UNKNOWN";
+        bool is_lan = false;
 
-      int dest_port = -1;
-      char ipAddrStr[INET6_ADDRSTRLEN] = {0};
-      const char* proto = "UNKNOWN";
-      bool is_lan = false;
+        if (dest_addr->sa_family == AF_INET) {
+          struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
+          dest_port = ntohs(ipv4->sin_port);
+          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
+          inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddrStr, INET_ADDRSTRLEN);
+          proto = "IPv4";
 
-      if (dest_addr->sa_family == AF_INET) {
-        struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
-        dest_port = ntohs(ipv4->sin_port);
-        uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
-        inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddrStr, INET_ADDRSTRLEN);
-        proto = "IPv4";
+          is_lan = filterIPv4LanAccess(ip4);
+        } else if (dest_addr->sa_family == AF_INET6) {
+          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
+          dest_port = ntohs(ipv6->sin6_port);
+          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
+          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
+          proto = "IPv6";
 
-        is_lan = filterIPv4LanAccess(ip4);
-      } else if (dest_addr->sa_family == AF_INET6) {
-        struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
-        dest_port = ntohs(ipv6->sin6_port);
-        uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
-        inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
-        proto = "IPv6";
+          is_lan = filterIPv6LanAccess(ip6);
+        }
 
-        is_lan = filterIPv6LanAccess(ip6);
-      }
+        if (is_lan && dest_port == 53) {
+          LOGE("(sendto) Permitting local DNS query to %s:%d (%s)", ipAddrStr, dest_port, proto);
+          is_lan = false;  // Unflag it so it doesn't get blocked
+        }
 
-      if (is_lan && dest_port == 53) {
-        LOGE("(sendto) Permitting local DNS query to %s:%d (%s)", ipAddrStr, dest_port, proto);
-        is_lan = false;  // Unflag it so it doesn't get blocked
-      }
-
-      if (is_lan) {
-        LOGE("(sendto) %s LAN scan to address %s spoofed", proto, ipAddrStr);
-        // Return the number of bytes sent to fool the app into thinking it succeeded
-        ctx->uc_mcontext.regs[0] = (long)arg2;
-        return;
+        if (is_lan) {
+          LOGE("(sendto) %s LAN scan to address %s spoofed", proto, ipAddrStr);
+          // Return the number of bytes sent to fool the app into thinking it succeeded
+          ctx->uc_mcontext.regs[0] = (long)arg2;
+          return;
+        }
       }
 
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
