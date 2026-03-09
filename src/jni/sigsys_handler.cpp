@@ -346,10 +346,17 @@ static void get_library_from_addr(const char* label, uintptr_t addr) {
   }
 }
 
+/**
+ * TODO: i don't like this function.
+ * Unfortunately, I can't log thread names without deadlocking.
+ * Not implementing thread_local variable now.
+ * Also, malicious code can rename itself and "become" a system thread
+ * to this function's eyes...
+ */
 static bool is_system_thread() {
   char thread_name[16] = {0};
   if (prctl(PR_GET_NAME, thread_name, 0, 0, 0) != 0) {
-    LOGE("is_system_thread: prctl could not get thread name");
+    // LOGE("is_system_thread: prctl could not get thread name");
     return false;
   }
 
@@ -363,7 +370,7 @@ static bool is_system_thread() {
       strncmp(thread_name, "ReferenceQueueD", 15) == 0 ||
       strncmp(thread_name, "FinalizerDaemon", 15) == 0 ||
       strncmp(thread_name, "HeapTaskDaemon", 14) == 0) {
-        LOGW("Allowing supposedly system thread: %s", thread_name);
+    // LOGW("Allowing supposedly system thread: %s", thread_name);
     return true;
   }
   // LOGE("Blocking non-system thread %s", thread_name);
