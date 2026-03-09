@@ -18,6 +18,8 @@
  * For this to properly work, Bipan must stay in memory
  * to install and maintain its signal handler during the app's
  * lifetime.
+ *
+ * TODO: trap `kill`, `exit_group`, and `sigprocmask`?
  */
 static struct sock_filter trapFilter[] = {
     // ---- Magic number bypass (`SECCOMP_BYPASS`) ----

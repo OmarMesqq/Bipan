@@ -53,6 +53,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   uintptr_t pc = ctx->uc_mcontext.pc;
   uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
+  long arg0 = ctx->uc_mcontext.regs[0];
+  long arg1 = ctx->uc_mcontext.regs[1];
+  long arg2 = ctx->uc_mcontext.regs[2];
+  long arg3 = ctx->uc_mcontext.regs[3];
+  long arg4 = ctx->uc_mcontext.regs[4];
+  long arg5 = ctx->uc_mcontext.regs[5];
 
   // Don't block legitimate system threads
   if (is_system_thread()) {
@@ -66,13 +72,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     ctx->uc_mcontext.regs[0] = result;
     return;
   }
-
-  long arg0 = ctx->uc_mcontext.regs[0];
-  long arg1 = ctx->uc_mcontext.regs[1];
-  long arg2 = ctx->uc_mcontext.regs[2];
-  long arg3 = ctx->uc_mcontext.regs[3];
-  long arg4 = ctx->uc_mcontext.regs[4];
-  long arg5 = ctx->uc_mcontext.regs[5];
 
   switch (nr) {
     case __NR_execve:
