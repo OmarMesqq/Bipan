@@ -31,6 +31,13 @@ static struct sock_filter trapFilter[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
+    // ---- Bypass 2: MMAP High-Bit (Upper 32 bits of x4) ----
+    // ARM64 is Little Endian, so upper 32 bits are at offset + 4
+    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[4]) + 4),
+    // Check against your specific MMAP flavour (0xBADB)
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0xBADB, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+
     // Load syscall number into accumulator
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 

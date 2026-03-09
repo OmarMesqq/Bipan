@@ -308,6 +308,17 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       return;
     }
+    case __NR_mmap: {
+      size_t length = (size_t)arg1;
+      int prot = (int)arg2;
+      int flags = (int)arg3;
+      int fd = (int)arg4;
+
+      long ret = arm64_bypassed_mmap(arg0, arg1, arg2, arg3, arg4, arg5);
+      ctx->uc_mcontext.regs[0] = ret;
+
+      break;
+    }
     default: {
       LOGE("Violation: got UNEXPECTED syscall! (%d)", nr);
       ctx->uc_mcontext.regs[0] = -ENOSYS;  // mimic the kernel's response
