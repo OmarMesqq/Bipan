@@ -33,7 +33,7 @@ struct kernel_sigaction {
 };
 
 void registerSigSysHandler() {
-  struct kernel_sigaction sa = {0};
+  struct kernel_sigaction sa = {};
   sa.sa_handler = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
 
