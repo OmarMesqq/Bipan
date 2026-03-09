@@ -142,6 +142,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       !starts_with(pathname, "/system/fonts") &&
       !starts_with(pathname, "/proc/self/oom") &&
       !starts_with(pathname, "/proc/self/stat") &&
+      !starts_with(pathname, "/proc/self/task/") &&
       !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/dev/urandom") &&
       !starts_with(pathname, "/dev/random") &&
