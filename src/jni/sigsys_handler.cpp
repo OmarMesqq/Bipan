@@ -271,8 +271,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_sendto: {
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
       if (dest_addr == nullptr) {
-        LOGE("sendto address is NULL!");
-        _exit(1);
+        break;
       }
 
       int dest_port = -1;
