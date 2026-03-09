@@ -6,6 +6,12 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 
+/**
+ * Blocks, lies about the existence or
+ * provides a fake `memfd`'d FD for senstive
+ * files. Otherwise, executes a bypassed syscall
+ * to fetch FD to the file.
+ */
 int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   const char* pathname = (const char*)a1;
   if (pathname == nullptr) {
@@ -47,7 +53,8 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return -ENOENT;
   }
 
-  if (  // SELinux would already block, but these usually back build.prop
+  if (  // SELinux would already block these, but we make sure
+        // Some of these back `build.prop`
       starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
       starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
@@ -75,13 +82,29 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     LOGW("Spoofing /proc/sys/kernel/perf_event_paranoid");
-    // Value common in stock ROMs
-    return create_spoofed_file("2\n");
+    return create_spoofed_file("2\n");  // Value common in stock ROMs
   }
 
   if (strcmp(pathname, "/proc/meminfo") == 0 ||
-      strcmp(pathname, "/proc/meminfo_extra") == 0 ||
-      strcmp(pathname, "/proc/zoneinfo") == 0 ||
+      strcmp(pathname, "/proc/meminfo_extra") == 0) {
+    const char* fake_mem =
+        "MemTotal:       11654320 kB\n"  // 12GB Pixel 8 Pro
+        "MemFree:         1204164 kB\n"
+        "MemAvailable:    4526384 kB\n"  // Higher available = "Healthy" system
+        "Buffers:            4256 kB\n"
+        "Cached:          3100192 kB\n"
+        "SwapCached:          248 kB\n"
+        "Active:          3475584 kB\n"
+        "Inactive:        2658376 kB\n"
+        "SwapTotal:       3145724 kB\n"  // Typical ZRAM size
+        "SwapFree:        3140000 kB\n"
+        "VmallocTotal:   263061440 kB\n"  // Standard for AArch64
+        "CmaTotal:         163840 kB\n";
+    LOGW("Spoofing %s", pathname);
+    return create_spoofed_file(fake_mem);
+  }
+
+  if (strcmp(pathname, "/proc/zoneinfo") == 0 ||
       strcmp(pathname, "/proc/vmstat") == 0) {
     LOGW("Denying access to memory path: %s", pathname);
     return -EACCES;
@@ -103,12 +126,6 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return create_spoofed_file(fake_hosts);
   }
 
-  if (strcmp(pathname, "/proc/mounts") == 0) {
-    const char* fake_mounts = "rootfs / rootfs ro,seclabel 0 0\ntmpfs /dev tmpfs rw,seclabel 0 0\nproc /proc proc rw,relatime 0 0\nsysfs /sys sysfs rw,seclabel,relatime 0 0\nselinuxfs /sys/fs/selinux selinuxfs rw,relatime 0 0\n/dev/block/mapper/system /system ext4 ro,seclabel,relatime 0 0\n/dev/block/mapper/vendor /vendor ext4 ro,seclabel,relatime 0 0\n/dev/block/by-name/userdata /data f2fs rw,seclabel,nosuid,nodev,noatime 0 0\n";
-    LOGW("Spoofing /proc/mounts");
-    return create_spoofed_file(fake_mounts);
-  }
-
   if (strstr(pathname, "build.prop") != nullptr &&
       (starts_with(pathname, "/system") || starts_with(pathname, "/vendor") ||
        starts_with(pathname, "/product") || starts_with(pathname, "/odm") || starts_with(pathname, "/system_ext"))) {
@@ -118,19 +135,69 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
 
   if (!starts_with(pathname, "/data") &&
-      !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/product/app/webview") &&
       !starts_with(pathname, "/apex/com.android") &&
       !starts_with(pathname, "/storage/emulated/0") &&
-      !starts_with(pathname, "/proc/self/oom") &&
-      !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/product/fonts") &&
       !starts_with(pathname, "/system/fonts") &&
+      !starts_with(pathname, "/proc/self/oom") &&
+      !starts_with(pathname, "/proc/self/stat") &&
+      !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/dev/urandom") &&
+      !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/dev/zero") &&
       !starts_with(pathname, "/dev/null") &&
       !starts_with(pathname, "/mnt/expand")) {
     LOGD("Allowing access to %s", pathname);
   }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+}
+
+/**
+ * Returns `true` if IP address
+ * `ip4` is in any of
+ * the IPv4 LAN ranges. `false` otherwise
+ */
+bool filterIPv4LanAccess(uint32_t ip4) {
+  if ((ip4 & 0xFF000000) == 0x0A000000) {
+    // 10.0.0.0/8 (Class A Private)
+    return true;
+  } else if ((ip4 & 0xFFF00000) == 0xAC100000) {
+    // 172.16.0.0/12 (Class B Private)
+    return true;
+  } else if ((ip4 & 0xFFFF0000) == 0xC0A80000) {
+    // 192.168.0.0/16 (Class C Private)
+    return true;
+  } else if ((ip4 & 0xF0000000) == 0xE0000000) {
+    // 224.0.0.0/4 (Multicast)
+    return true;
+  } else if (ip4 == 0xFFFFFFFF) {
+    // 255.255.255.255 (Broadcast)
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns `true` if IP address
+ * pointed by `ip6` is in any of
+ * the IPv6 LAN ranges. `false` otherwise
+ */
+bool filterIPv6LanAccess(uint8_t* ip6) {
+  if (!ip6) {
+    LOGE("filterIPv6LanAccess: IPv6 pointer is null!");
+    return false;
+  }
+
+  if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
+    // fe80::/10 (Link-Local)
+    return true;
+  } else if ((ip6[0] & 0xFE) == 0xFC) {
+    // fc00::/7 (Unique Local)
+    return true;
+  } else if (ip6[0] == 0xFF) {
+    // ff00::/8 (Multicast)
+    return true;
+  }
+  return false;
 }

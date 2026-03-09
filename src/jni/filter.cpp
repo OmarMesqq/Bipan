@@ -20,17 +20,16 @@
  * lifetime.
  */
 static struct sock_filter trapFilter[] = {
-    // --- MAGIC ARGUMENT BYPASS ---
-    // Load the lower 32 bits of the 6th argument
+    // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
+    // load the lower 32 bits of the 6th argument
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
-
-    // Check if it matches our magic number
-    // on match: execute next line
-    // not match: skip the ALLOW
+    // check if it matches our symbolic constant
+    // on match: execute next line, allowing the syscall
+    // not match: skip the allow, falling through traps
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
-    // Load syscall number into accumulator for standard rules
+    // Load syscall number into accumulator
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
     // System info
@@ -43,18 +42,24 @@ static struct sock_filter trapFilter[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // Touching the filesystem: getting FDs
+    // Filesystem access: grants FDs to files in disk
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     // Trap sigaction to protect Bipan's signal handler
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+    // Networking
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_listen, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -79,10 +84,10 @@ void applySeccomp() {
     return;
   }
 
-  // Apply the seccomp filter across all threads (`TSYNC`)
-  // Another option is to use SECCOMP_SET_MODE_STRICT:
-  // "The only system calls that the calling thread is permitted
-  // to make are read(2), write(2), _exit(2)"
+  /**
+   * Apply seccomp across all threads - `SECCOMP_FILTER_FLAG_TSYNC` -
+   * and ask the kernel to use our filter: `SECCOMP_SET_MODE_FILTER`
+   */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
     LOGE("applySeccomp: failed to apply seccomp (errno %d)", errno);

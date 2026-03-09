@@ -18,7 +18,7 @@
 #include "assembly.hpp"
 
 void startBroker(int sock) {
-  prctl(PR_SET_NAME, "BipanBroker", 0, 0, 0);
+  prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
 
   while (true) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
