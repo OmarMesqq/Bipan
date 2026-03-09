@@ -197,7 +197,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       long ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
       if (ret != 0) {
-        LOGE("getsockopt returned error: %d. Allowing bind to fail natively", ret);
+        LOGE("getsockopt returned error: %ld. Allowing bind to fail natively", ret);
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
@@ -252,7 +252,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
       if (ret != 0) {
-        LOGE("getsockname returned error: %d. Allowing native failure", ret);
+        LOGE("getsockname returned error: %ld. Allowing native failure", ret);
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
