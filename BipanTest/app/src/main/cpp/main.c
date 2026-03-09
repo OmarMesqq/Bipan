@@ -12,6 +12,7 @@
 
 #define TAG "Grunfeld"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static void get_uname();
@@ -126,29 +127,34 @@ static void scan_memory_maps() {
     return;
   }
 
-  printf("Memory map BELOW:\n");
-  printf("--------------------------------------------------\n");
+  LOGD("----------- Memory mappings below: ---------------------");
 
   while (fgets(line, sizeof(line), fp)) {
-    // Here you can use sscanf to extract specific fields
-    // For now, we'll just print the raw line
-    LOGD("%s", line);
-  }
+    long long start, end, offset;
+    char perms[5];
+    int dev_major, dev_minor;
+    long inode;
+    char path[1024] = {0};  // Initialize to handle anonymous mappings
 
-  long long start, end;
-  char perms[5];
-  long long offset;
-  int dev_major, dev_minor;
-  long inode;
-  char path[1024];
+    // Parse the line
+    int fields = sscanf(line, "%llx-%llx %4s %llx %x:%x %ld %1023s",
+                        &start, &end, perms, &offset, &dev_major, &dev_minor, &inode, path);
 
-  if (sscanf(line, "%llx-%llx %4s %llx %x:%x %ld %s",
-             &start, &end, perms, &offset, &dev_major, &dev_minor, &inode, path) >= 7) {
-    LOGD("Range: %llx to %llx | Perms: %s | Path: %s\n", start, end, perms, path);
-  } else {
-    LOGE("sscanf failed to read all fields of /proc/self/maps");
-    fclose(fp);
-    return;
+    if (fields < 2) {
+      LOGW("scan_memory_maps: sscanf failed to read basic range info. Continuing next line...");
+      continue;
+    };
+
+    // Skip legit system mappings
+    if (strstr(path, "/dev/__properties__") ||
+        strncmp(path, "/system", 7) == 0 ||
+        strncmp(path, "/metadata", 9) == 0 ||
+        strncmp(path, "/apex", 5) == 0 ||
+        strncmp(path, "/vendor", 7) == 0) {
+      continue;
+    }
+
+    LOGD("Range: %llx-%llx | Perms: %s | Path: %s", start, end, perms, path);
   }
 
   fclose(fp);
