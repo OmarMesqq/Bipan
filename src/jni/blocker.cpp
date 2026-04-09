@@ -140,13 +140,24 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       !starts_with(pathname, "/storage/emulated/0") &&
       !starts_with(pathname, "/product/fonts") &&
       !starts_with(pathname, "/system/fonts") &&
-      !starts_with(pathname, "/proc/self/oom") &&
-      !starts_with(pathname, "/proc/self/stat") &&
       !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/dev/urandom") &&
       !starts_with(pathname, "/dev/random") &&
       !starts_with(pathname, "/dev/zero") &&
       !starts_with(pathname, "/dev/null") &&
+      !([&]() {
+        // Grouped Proc Checks
+        if (starts_with(pathname, "/proc/")) {
+          if (strstr(pathname, "/cmdline") ||
+              strstr(pathname, "/task") ||
+              strstr(pathname, "/cgroup") ||
+              strstr(pathname, "/oom") ||
+              strstr(pathname, "/stat")) {
+            return true;
+          }
+        }
+        return false;
+      }()) &&
       !starts_with(pathname, "/mnt/expand")) {
     LOGD("Allowing access to %s", pathname);
   }
