@@ -44,7 +44,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
       starts_with(pathname, "/system/bin/vmstat") ||
       starts_with(pathname, "/system/bin/df") ||
       // Custom ROM
-      (strstr(pathname, "lineageos") != nullptr) ||
+      (strstr(pathname, "lineage") != nullptr) ||
       (strstr(pathname, "Lineage") != nullptr) ||
       starts_with(pathname, "/etc/security/otacerts.zip")
 
