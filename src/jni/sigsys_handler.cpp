@@ -8,6 +8,8 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <syscall.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -99,12 +101,16 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     case __NR_faccessat:
-    case __NR_newfstatat:
     case __NR_openat: {
       int dirfd = (int)ctx->uc_mcontext.regs[0];
       const char* pathname = (const char*)ctx->uc_mcontext.regs[1];
       int flags = (int)ctx->uc_mcontext.regs[2];
       mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
+
+      if (pathname && strstr(pathname, "/dev/log/")) {
+        ctx->uc_mcontext.regs[0] = -ENOENT;
+        return;
+      }
 
       bool reading_maps = (strcmp(pathname, "/proc/self/maps") == 0) ||
                           ((safe_proc_pid_path[0] != '\0') &&
@@ -143,6 +149,39 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           arg2,
           arg3,
           arg4);
+      break;
+    }
+    case __NR_newfstatat: {
+      int dirfd = (int)arg0;
+      const char* pathname = (const char*)arg1;
+      struct stat* statbuf = (struct stat*)arg2;
+      int flags = (int)arg3;
+
+      // Call the real fstatat first
+      long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+
+      // If it's the maps file, we overwrite the stats to look "legit"
+      if (ret == 0 && pathname && strstr(pathname, "maps")) {
+        statbuf->st_dev = 0;           // Procfs usually has dev 0
+        statbuf->st_mode &= ~S_IWUSR;  // Ensure it's read-only
+        statbuf->st_ino = 1;           // Fake a static inode
+        LOGW("Spoofing stat for maps");
+      }
+      ctx->uc_mcontext.regs[0] = ret;
+      break;
+    }
+    case __NR_readlinkat: {
+      char* buf = (char*)arg2;
+      size_t bufsiz = (size_t)arg3;
+
+      long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      if (ret > 0 && strstr(buf, "memfd:")) {
+        strncpy(buf, "/proc/self/maps", bufsiz);
+        ctx->uc_mcontext.regs[0] = strlen("/proc/self/maps");
+        LOGW("Spoofing readlinkat for memfd");
+        break;
+      }
+      ctx->uc_mcontext.regs[0] = ret;
       break;
     }
     case __NR_rt_sigaction: {
