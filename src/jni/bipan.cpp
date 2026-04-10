@@ -53,7 +53,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Bipan: Seccomp prison gate closed at clampGrowthLimit.");
+    LOGW("Seccomp applied at clampGrowthLimit.");
   }
   if (orig_clampGrowthLimit) orig_clampGrowthLimit(env, obj);
 }
@@ -62,7 +62,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Bipan: Seccomp prison gate closed at clearGrowthLimit.");
+    LOGW("Seccomp applied at clearGrowthLimit.");
   }
   if (orig_clearGrowthLimit) orig_clearGrowthLimit(env, obj);
 }
