@@ -1,3 +1,5 @@
+#include <android/dlext.h>
+#include <dlfcn.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -7,6 +9,7 @@
 #include <vector>
 
 #include "broker.hpp"
+#include "dobby.h"
 #include "filter.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
@@ -23,29 +26,84 @@ int sv[2] = {0};
 char safe_proc_pid_path[64] = {0};
 static bool seccomp_applied = false;
 
-// Globals to store the original JNI function pointers
+/**
+ * Original function pointers we hook
+ * from JNI and linker
+ */
 void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
 void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
+void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
+void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
 
+void* my_dlopen(const char* filename, int flag) {
+  if (filename != nullptr) {
+    LOGE("Hook (dlopen): app is loading: %s", filename);
+  }
+  return orig_dlopen(filename, flag);
+}
+
+void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
+  if (filename != nullptr) {
+    LOGE("Hook (android_dlopen_ext): app is loading: %s", filename);
+  }
+  return orig_android_dlopen_ext(filename, flag, extinfo);
+}
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
+    LOGD("Registering Dobby Inline Hooks for dlopen...");
+
+    void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
+    void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+
+    if (dlopen_addr != nullptr && android_dlopen_ext_addr != nullptr) {
+      int res1 = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
+      int res2 = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
+
+      if (res1 == 0 && res2 == 0) {
+        LOGW("Successfully committed Dobby hooks for linker.");
+      } else {
+        LOGE("DobbyHook failed! Res1: %d, Res2: %d", res1, res2);
+      }
+    } else {
+      LOGE("dlsym could not resolve dlopen addresses!");
+    }
+
     applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clampGrowthLimit");
   }
+
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
   }
 }
 
-
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
+    LOGD("Registering Dobby Inline Hooks for dlopen...");
+
+    void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
+    void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+
+    if (dlopen_addr != nullptr && android_dlopen_ext_addr != nullptr) {
+      int res1 = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
+      int res2 = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
+
+      if (res1 == 0 && res2 == 0) {
+        LOGW("Successfully committed Dobby hooks for linker.");
+      } else {
+        LOGE("DobbyHook failed! Res1: %d, Res2: %d", res1, res2);
+      }
+    } else {
+      LOGE("dlsym could not resolve dlopen addresses!");
+    }
+
     applySeccomp();
     seccomp_applied = true;
     LOGW("Filter applied at clearGrowthLimit");
   }
+
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);
   }
@@ -84,7 +142,7 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       spoofBuildFields();
 
-      #ifdef BROKER_ARCH
+#ifdef BROKER_ARCH
       ipc_mem = (SharedIPC*)(mmap(
           NULL,
           sizeof(SharedIPC),
@@ -113,7 +171,7 @@ class Bipan : public zygisk::ModuleBase {
       }
 
       close(sv[0]);  // Close broker's end
-      #endif
+#endif
       registerSigSysHandler();
 
       // Hook JNI methods that will trip app code as soon as they're done
