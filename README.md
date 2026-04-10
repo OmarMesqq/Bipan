@@ -19,7 +19,6 @@ None of this would be possible without `topjohnwu et al.` and their amazing work
 
 
 ## Building
-0. This project depends on topjohnwu's `libcxx` repo, thus you should clone this repository with the `--recursive` flag
 1. You also need the Android Native Development Kit (NDK). This project uses the version `25.1.8937393`
 2. You should also ensure that `$ANDROID_HOME/ndk/<ndk-version>` is in your `PATH`
 3. Finally, you can build the module by simply entering the `src` folder and calling [`ndk-build`](https://developer.android.com/ndk/guides/ndk-build)
