@@ -51,61 +51,39 @@ void* my_android_dlopen_ext(const char* filename, int flag, const android_dlexti
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    LOGD("Registering Dobby Inline Hooks for dlopen...");
-
-    void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
-    void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
-
-    if (dlopen_addr != nullptr && android_dlopen_ext_addr != nullptr) {
-      int res1 = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
-      int res2 = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-
-      if (res1 == 0 && res2 == 0) {
-        LOGW("Successfully committed Dobby hooks for linker.");
-      } else {
-        LOGE("DobbyHook failed! Res1: %d, Res2: %d", res1, res2);
-      }
-    } else {
-      LOGE("dlsym could not resolve dlopen addresses!");
-    }
-
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Filter applied at clampGrowthLimit");
+    LOGW("Bipan: Seccomp prison gate closed at clampGrowthLimit.");
   }
-
-  if (orig_clampGrowthLimit) {
-    orig_clampGrowthLimit(env, obj);
-  }
+  if (orig_clampGrowthLimit) orig_clampGrowthLimit(env, obj);
 }
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    LOGD("Registering Dobby Inline Hooks for dlopen...");
-
-    void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
-    void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
-
-    if (dlopen_addr != nullptr && android_dlopen_ext_addr != nullptr) {
-      int res1 = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
-      int res2 = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-
-      if (res1 == 0 && res2 == 0) {
-        LOGW("Successfully committed Dobby hooks for linker.");
-      } else {
-        LOGE("DobbyHook failed! Res1: %d, Res2: %d", res1, res2);
-      }
-    } else {
-      LOGE("dlsym could not resolve dlopen addresses!");
-    }
-
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Filter applied at clearGrowthLimit");
+    LOGW("Bipan: Seccomp prison gate closed at clearGrowthLimit.");
   }
+  if (orig_clearGrowthLimit) orig_clearGrowthLimit(env, obj);
+}
 
-  if (orig_clearGrowthLimit) {
-    orig_clearGrowthLimit(env, obj);
+void register_dobby_linker_hooks() {
+  static bool dobby_initialized = false;
+  if (dobby_initialized) return;
+
+  LOGD("Registering Dobby Linker Hooks in postAppSpecialize...");
+  void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
+  void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+
+  if (dlopen_addr && android_dlopen_ext_addr) {
+    int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
+    int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
+    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
+      LOGW("Linker hooks active.");
+      dobby_initialized = true;
+    } else {
+      LOGE("Failed to setup Dobby hooks!");
+    }
   }
 }
 
@@ -173,6 +151,7 @@ class Bipan : public zygisk::ModuleBase {
       close(sv[0]);  // Close broker's end
 #endif
       registerSigSysHandler();
+      register_dobby_linker_hooks();
 
       // Hook JNI methods that will trip app code as soon as they're done
       // Source: https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/base/core/java/android/app/ActivityThread.java;l=8061?q=handleBindApplication&ss=android%2Fplatform%2Fsuperproject
