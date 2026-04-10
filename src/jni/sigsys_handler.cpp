@@ -7,7 +7,6 @@
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
-#include <sys/mman.h>
 #include <syscall.h>
 #include <unistd.h>
 
@@ -78,7 +77,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   long arg3 = ctx->uc_mcontext.regs[3];
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
-  long arg6 = ctx->uc_mcontext.regs[6];
 
   switch (nr) {
     case __NR_execve:
