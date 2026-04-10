@@ -189,24 +189,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       break;
     }
-    case __NR_rt_sigprocmask: {
-      sigset_t* set = (sigset_t*)arg1;
-      if (set && sigismember(set, SIGSYS)) {
-        LOGW("App tried to block SIGSYS (Sandbox Protection)! Unmasking.");
-        sigdelset(set, SIGSYS);
-      }
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall_6(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    case __NR_mprotect: {
-      // Hardened apps change memory to PROT_EXEC to run decrypted code
-      if (arg2 & PROT_EXEC) {
-        LOGE("[EXEC] mprotect setting PROT_EXEC at %p", (void*)arg0);
-        get_library_from_addr("Executing Logic", arg0);
-      }
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall_6(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
     case __NR_bind: {
       int sockfd = (int)arg0;
 
