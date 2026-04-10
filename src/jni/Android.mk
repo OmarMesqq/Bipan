@@ -21,7 +21,7 @@ LOCAL_SRC_FILES := bipan.cpp \
 # Statically link Bipan to Dobby
 LOCAL_STATIC_LIBRARIES := dobby_static
 
-LOCAL_CPPFLAGS := -Wall -Wextra \
+LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 									-Wconversion -Wsign-conversion \
                   -Wdouble-promotion -Winline \
 									-fno-exceptions -fno-rtti \

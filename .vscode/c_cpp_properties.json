@@ -3,9 +3,8 @@
         {
             "name": "Bipan C/C++",
             "includePath": [
-                "${workspaceFolder}/src/jni/libcxx/**",
-                "${workspaceFolder}/src/jni/**",
-                "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/**"
+                "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/**",
+                "${workspaceFolder}/src/jni/**"
             ],
             "defines": [
                 "__ANDROID__",
