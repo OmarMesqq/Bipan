@@ -177,7 +177,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
         ctx->uc_mcontext.regs[0] = -EPERM;
       } else {
-        LOGW("Allowing sigaction for signal different from SIGSYS");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
             nr,
             arg0,
