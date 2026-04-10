@@ -55,7 +55,9 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     seccomp_applied = true;
     LOGW("Seccomp applied at clampGrowthLimit.");
   }
-  if (orig_clampGrowthLimit) orig_clampGrowthLimit(env, obj);
+  if (orig_clampGrowthLimit) {
+    orig_clampGrowthLimit(env, obj);
+  }
 }
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
@@ -64,7 +66,9 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     seccomp_applied = true;
     LOGW("Seccomp applied at clearGrowthLimit.");
   }
-  if (orig_clearGrowthLimit) orig_clearGrowthLimit(env, obj);
+  if (orig_clearGrowthLimit) {
+    orig_clearGrowthLimit(env, obj);
+  }
 }
 
 void register_dobby_linker_hooks() {
