@@ -17,7 +17,7 @@
  * The Broker calls this to "teleport" an FD to the Target.
  */
 inline void send_fd(int socket, int fd) {
-  struct msghdr msg = {0};
+  struct msghdr msg = {};
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];  // Space for the FD payload
   memset(buf, 0, sizeof(buf));
@@ -49,7 +49,7 @@ inline void send_fd(int socket, int fd) {
  * The Target calls this in the SIGSYS handler to "catch" the FD.
  */
 inline int recv_fd(int socket) {
-  struct msghdr msg = {0};
+  struct msghdr msg = {};
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
   char dummy[1];
