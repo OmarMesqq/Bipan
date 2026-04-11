@@ -33,7 +33,7 @@ You can skip some headache and directly create the module's zip file for flashin
 The final artifact, called `bipan.zip` will also be at the repository's root.
 
 ## Testing
-At the project's root you wil find a folder named `BipanTest`
+At the project's root you wil find a folder named `Grunfeld`
 which is an Android app written in Kotlin that queries `Build` Java fields and does native fingerprinting using a C library.
 
 You can open the folder in Android studio or `cd` into it and run `./gradlew assembleRelease` to create an `.apk`.
