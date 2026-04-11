@@ -84,8 +84,6 @@ fun getDumpedInfo(): String {
             BOARD: ${Build.BOARD}
             BOOTLOADER: ${Build.BOOTLOADER}
             BRAND: ${Build.BRAND}
-            CPU_ABI: ${Build.CPU_ABI}
-            CPU_ABI2: ${Build.CPU_ABI2}
             DEVICE: ${Build.DEVICE}
             DISPLAY: ${Build.DISPLAY}
             FINGERPRINT: ${Build.FINGERPRINT}
@@ -96,18 +94,15 @@ fun getDumpedInfo(): String {
             MODEL: ${Build.MODEL}
             ODM_SKU: ${Build.ODM_SKU}
             PRODUCT: ${Build.PRODUCT}
-            RADIO: ${Build.RADIO}
             SKU: ${Build.SKU}
             SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
             SOC_MODEL: ${Build.SOC_MODEL}
-            SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS?.joinToString()}
-            SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
-            SUPPORTED_ABIS: ${Build.SUPPORTED_ABIS?.joinToString()}
+            SUPPORTED_CPU_ABIs: ${Build.SUPPORTED_ABIS?.joinToString()}
             TAGS: ${Build.TAGS}
             TIME: ${Build.TIME}
             TYPE: ${Build.TYPE}
             USER: ${Build.USER}
-            RADIO_VER: ${Build.getRadioVersion()}
+            RADIO: ${Build.getRadioVersion()}
             MAJOR_SDK: ${Build.getMajorSdkVersion(Build.VERSION.SDK_INT_FULL)}
             MINOR_SDK: ${Build.getMinorSdkVersion(Build.VERSION.SDK_INT_FULL)}
             PARTITIONS: ${Build.getFingerprintedPartitions().joinToString { "${it.name}:${it.fingerprint}" }}
@@ -119,7 +114,6 @@ fun getDumpedInfo(): String {
             RELEASE: ${Build.VERSION.RELEASE}
             RELEASE_OR_CODENAME: ${Build.VERSION.RELEASE_OR_CODENAME}
             RELEASE_OR_PREVIEW_DISPLAY: ${Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY}
-            SDK: ${Build.VERSION.SDK}
             SDK_INT: ${Build.VERSION.SDK_INT}
             SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
             SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
