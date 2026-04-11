@@ -40,7 +40,7 @@ You can open the folder in Android studio or `cd` into it and run `./gradlew ass
 
 By adding it to Bipan's target list:
 ```shell
-touch /data/adb/modules/bipan/targets/com.omarmesqq.bipantest
+touch /data/adb/modules/bipan/targets/com.omarmesqq.grunfeld
 ```
 
 You can see whether the fields were spoofed or not. This app doesn't even have Internet connection permission and respects your privacy. All data stays on your device.
