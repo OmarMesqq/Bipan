@@ -43,7 +43,9 @@ By adding it to Bipan's target list:
 touch /data/adb/modules/bipan/targets/com.omarmesqq.grunfeld
 ```
 
-You can see whether the fields were spoofed or not. This app doesn't even have Internet connection permission and respects your privacy. All data stays on your device.
+You can see whether the fields were spoofed or not. The app does have `INTERNET`
+permission, but you can remove it from the Manifest or turn it off in the OS.
+I only added it to test User-Agent in a WebView.
 
 
 ### Post flashing
