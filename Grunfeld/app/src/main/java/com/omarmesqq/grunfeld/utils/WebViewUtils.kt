@@ -1,16 +1,15 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.compose.runtime.MutableState
 import android.webkit.CookieManager
 import android.webkit.WebStorage
+import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 
 object WebViewUtils {
@@ -43,7 +42,7 @@ object WebViewUtils {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 if (consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                    Toast.makeText(webView.context, "JS Console: ${consoleMessage.message()}", Toast.LENGTH_SHORT).show()
+                    showToastAndLog(webView.context, "JS Console: ${consoleMessage.message()}")
                 }
                 return super.onConsoleMessage(consoleMessage)
             }
@@ -86,7 +85,7 @@ object WebViewUtils {
     class WebAppInterface {
         @JavascriptInterface
         fun showLog(message: String) {
-            Log.d("WebViewJS", "Message from Web: $message")
+            //TODO
         }
     }
 }

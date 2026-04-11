@@ -1,8 +1,9 @@
 package com.omarmesqq.grunfeld
 
+
 import android.app.Application
 import android.content.res.Configuration
-import android.util.Log
+import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 private  const val TAG = "MainApplication"
 
@@ -17,7 +18,7 @@ class MainApplication: Application() {
         super.onCreate()
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            Log.e("CRITICAL_ERROR", "Uncaught exception in ${thread.name}", throwable)
+            showToastAndLog(this, "CRITICAL_ERROR: Uncaught exception in ${thread.name}: $throwable")
             // Forward the crash to the system (shows the "App has stopped" dialog)
             defaultHandler?.uncaughtException(thread, throwable)
         }
@@ -25,6 +26,7 @@ class MainApplication: Application() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        showToastAndLog(this, "Application: configuration changed")
     }
 
     override fun onTrimMemory(level: Int) {
@@ -32,14 +34,14 @@ class MainApplication: Application() {
         // Release any resources that can be rebuilt
         // quickly when the app returns to the foreground
         if (level >= TRIM_MEMORY_BACKGROUND) {
-            Log.d(TAG, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
+            showToastAndLog(this, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
         }
         // Release UI elements
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
-            Log.d(TAG, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
+            showToastAndLog(this, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
         }
         else {
-            Log.d(TAG, "onTrimMemory unknown level: $level")
+            showToastAndLog(this, "onTrimMemory unknown level: $level")
         }
     }
 
@@ -48,6 +50,6 @@ class MainApplication: Application() {
      */
     override fun onLowMemory() {
         super.onLowMemory()
-        Log.d(TAG, "onLowMemory")
+        showToastAndLog(this, "onLowMemory")
     }
 }
