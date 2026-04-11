@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.omarmesqq.bipantest"
+    namespace = "com.omarmesqq.grunfeld"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.omarmesqq.bipantest"
+        applicationId = "com.omarmesqq.grunfeld"
         minSdk = 33
         targetSdk = 36
         versionCode = 1

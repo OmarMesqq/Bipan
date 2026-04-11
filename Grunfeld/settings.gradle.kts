@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BipanTest"
+rootProject.name = "Grunfeld"
 include(":app")
