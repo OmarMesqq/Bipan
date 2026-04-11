@@ -19,7 +19,7 @@ fun WebViewScreen(url: String, webViewModel: WebViewModel = viewModel()) {
     val context = LocalContext.current
     val webView = webViewModel.getOrCreateWebView(context, url)
 
-    BackHandler(enabled = webView?.canGoBack() == true) {
+    BackHandler(enabled = true) {
         webView?.goBack()
     }
 

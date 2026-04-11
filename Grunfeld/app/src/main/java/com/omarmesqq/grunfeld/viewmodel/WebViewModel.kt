@@ -1,8 +1,8 @@
 package com.omarmesqq.grunfeld.viewmodel
 
 import android.content.Context
+import android.view.ViewGroup
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import com.omarmesqq.grunfeld.utils.WebViewUtils
@@ -20,17 +20,28 @@ class WebViewModel : ViewModel() {
     fun getOrCreateWebView(context: Context, url: String): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
-                WebViewUtils.configureSettings(this)
-                webViewClient = object : WebViewClient() {
-                    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-                        super.doUpdateVisitedHistory(view, url, isReload)
-                        // Update the Compose state so BackHandler knows to activate
-                        canGoBack.value = view?.canGoBack() ?: false
-                    }
-                }
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+
+                WebViewUtils.configureSettings(this, canGoBack)
+
                 loadUrl(url)
             }
         }
         return webView
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        WebViewUtils.fullCleanup(webView)
+        webView?.apply {
+            stopLoading()
+            (parent as? ViewGroup)?.removeView(this)
+            removeAllViews()
+            destroy()
+        }
+        webView = null
     }
 }
