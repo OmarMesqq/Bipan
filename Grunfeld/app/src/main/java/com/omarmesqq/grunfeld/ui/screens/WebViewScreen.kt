@@ -7,11 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -42,23 +41,23 @@ fun WebViewScreen(webViewModel: WebViewModel = viewModel()) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
         ) {
-            // --- 1. SEARCH BAR (Native) ---
+            // Native search bar
             OutlinedTextField(
                 value = urlText,
                 onValueChange = { webViewModel.urlText.value = it },
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
-                label = { Text("Search or type URL") },
+                label = { Text("Type URL") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { webViewModel.navigateToUrl(urlText) })
             )
 
-            // --- 2. WEBVIEW CONTAINER ---
+            // Container for webview
             Box(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
             ) {
-
                     AndroidView(
                         factory = {
                             // Re-parenting logic
@@ -68,10 +67,10 @@ fun WebViewScreen(webViewModel: WebViewModel = viewModel()) {
                         modifier = Modifier.fillMaxSize()
                     )
 
-
+                // Good ol' throbber in middle of screen
                 if (isLoading) {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
