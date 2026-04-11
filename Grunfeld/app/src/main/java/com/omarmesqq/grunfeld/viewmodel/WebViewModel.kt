@@ -8,8 +8,8 @@ import androidx.lifecycle.ViewModel
 import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 /**
- * Stores the WebView to avoid reloading the page
- * TODO: this probably leaks memory
+ * Stores the WebView in Application Context
+ * to avoid reloading the page when switching tabs
  */
 class WebViewModel : ViewModel() {
     var webView: WebView? = null
@@ -19,7 +19,7 @@ class WebViewModel : ViewModel() {
 
     fun getOrCreateWebView(context: Context, url: String): WebView? {
         if (webView == null) {
-            webView = WebView(context).apply {
+            webView = WebView(context.applicationContext).apply {
                 WebViewUtils.configureSettings(this)
                 webViewClient = object : WebViewClient() {
                     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
