@@ -1,4 +1,4 @@
-package com.omarmesqq.bipantest.ui
+package com.omarmesqq.grunfeld.ui
 
 import android.annotation.SuppressLint
 import android.os.Build

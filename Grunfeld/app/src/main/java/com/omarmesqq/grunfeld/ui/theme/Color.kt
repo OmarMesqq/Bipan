@@ -1,4 +1,4 @@
-package com.omarmesqq.bipantest.ui.theme
+package com.omarmesqq.grunfeld.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
