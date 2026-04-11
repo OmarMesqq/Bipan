@@ -29,7 +29,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   LOGD("Getting uname AFTER sigsys handler installation");
   install_sigsys_handler();
   get_uname();
-  
+
   return JNI_VERSION_1_6;
 }
 
