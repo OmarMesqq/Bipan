@@ -1,7 +1,9 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -21,6 +23,7 @@ fun MainScreen() {
     val items = listOf(Screen.BuildInfo, Screen.Webview, Screen.JniInfo)
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
             NavigationBar {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -48,10 +51,12 @@ fun MainScreen() {
         NavHost(
             navController = navController,
             startDestination = Screen.BuildInfo.route,
-            modifier = Modifier.padding(innerPadding) // Handles system bar/bottom bar space
+            modifier = Modifier
+                .padding(innerPadding) // Handles system bar/bottom bar space
+                .background(MaterialTheme.colorScheme.surface)
         ) {
             composable(Screen.BuildInfo.route) { BuildInfoScreen() }
-            composable(Screen.Webview.route) { WebViewScreen("https://browserleaks.com") }
+            composable(Screen.Webview.route) { WebViewScreen() }
             composable(Screen.JniInfo.route) { JniScreen() }
         }
     }

@@ -13,11 +13,18 @@ import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 
 object WebViewUtils {
-    fun configureSettings(webView: WebView, canGoBack: MutableState<Boolean>) {
+    fun configureSettings(
+        webView: WebView,
+        canGoBack: MutableState<Boolean>,
+        isLoading: MutableState<Boolean>,
+        urlText: MutableState<String>
+    ) {
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, false)
 
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -36,6 +43,16 @@ object WebViewUtils {
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 canGoBack.value = view?.canGoBack() ?: false
+                url?.let { urlText.value = it }
+            }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                isLoading.value = true // Show spinner
+                if (url != null) urlText.value = url // Update bar to show real URL
+            }
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                isLoading.value = false // Hide spinner
             }
         }
 

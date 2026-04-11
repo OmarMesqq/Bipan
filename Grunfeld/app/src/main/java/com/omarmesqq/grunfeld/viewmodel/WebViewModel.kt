@@ -14,10 +14,11 @@ import com.omarmesqq.grunfeld.utils.WebViewUtils
 class WebViewModel : ViewModel() {
     var webView: WebView? = null
 
-    // We use this to tell the BackHandler if it should intercept
+    // UI States
     var canGoBack = mutableStateOf(false)
-
-    fun getOrCreateWebView(context: Context, url: String): WebView? {
+    var isLoading = mutableStateOf(true)
+    var urlText = mutableStateOf("https://browserleaks.com/")
+    fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
                 layoutParams = ViewGroup.LayoutParams(
@@ -25,12 +26,22 @@ class WebViewModel : ViewModel() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-                WebViewUtils.configureSettings(this, canGoBack)
+                WebViewUtils.configureSettings(this, canGoBack, isLoading, urlText)
 
-                loadUrl(url)
+                loadUrl(urlText.value)
             }
         }
         return webView
+    }
+
+    fun navigateToUrl(url: String) {
+        val formattedUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+            url
+        } else {
+            "https://$url"
+        }
+        urlText.value = formattedUrl
+        webView?.loadUrl(formattedUrl)
     }
 
     override fun onCleared() {
