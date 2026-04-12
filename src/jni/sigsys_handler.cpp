@@ -2,14 +2,14 @@
 
 #include <arpa/inet.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <linux/memfd.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
-#include <syscall.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <syscall.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -245,7 +245,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
             return;
           }
-          
+
           // "Client" behavior: requesting a random temporary port
           LOGW("(bind) Allowing ephemeral bind on Port 0/%s", proto);
           ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
@@ -325,6 +325,35 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
 
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      return;
+    }
+    case __NR_getsockname: {
+      // Let kernel execute the real syscall to populate the sockaddr struct
+      long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+
+      // If it succeeded, inspect and scrub the returned struct
+      if (ret == 0 && arg1 != 0) {
+        struct sockaddr* addr = (struct sockaddr*)arg1;
+
+        if (addr->sa_family == AF_INET) {
+          struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
+          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
+
+          if (filterIPv4LanAccess(ip4)) {
+            LOGE("(getsockname) LAN leak prevented: Spoofed IPv4 address");
+            ipv4->sin_addr.s_addr = htonl(INADDR_ANY);
+          }
+        } else if (addr->sa_family == AF_INET6) {
+          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
+
+          if (filterIPv6LanAccess(ipv6->sin6_addr.s6_addr)) {
+            LOGE("(getsockname) LAN leak prevented: Spoofed IPv6 address");
+            memset(&ipv6->sin6_addr, 0, sizeof(ipv6->sin6_addr));
+          }
+        }
+      }
+
+      ctx->uc_mcontext.regs[0] = ret;
       return;
     }
     default: {
