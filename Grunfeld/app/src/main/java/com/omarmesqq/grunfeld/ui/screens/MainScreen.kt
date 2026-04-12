@@ -36,7 +36,6 @@ fun MainScreen() {
                         selected = currentRoute == screen.route,
                         onClick = {
                             navController.navigate(screen.route) {
-                                // Avoid building up a large stack of destinations
                                 popUpTo(navController.graph.startDestinationId) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
@@ -47,7 +46,7 @@ fun MainScreen() {
             }
         }
     ) { innerPadding ->
-        // NavHost handles the actual switching of screens
+        // Handles the actual switching of screens
         NavHost(
             navController = navController,
             startDestination = Screen.BuildInfo.route,

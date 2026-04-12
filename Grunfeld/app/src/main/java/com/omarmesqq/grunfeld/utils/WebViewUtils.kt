@@ -54,7 +54,9 @@ object WebViewUtils {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 isLoading.value = true
-                if (url != null) urlText.value = url // Update bar to show real URL
+                if (url != null) {
+                    urlText.value = url
+                }
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
@@ -82,7 +84,7 @@ object WebViewUtils {
             }
         }
 
-        // webView.addJavascriptInterface(GrunfeldWebNativeIface(), BRIDGE_NAME)
+        // webView.addJavascriptInterface(WebNativeBridge(), BRIDGE_NAME)
     }
 
     fun fullCleanup(webView: WebView?) {
@@ -98,7 +100,7 @@ object WebViewUtils {
 
 
     /**
-     * Inject custom CSS or JS after a page loads
+     * Example of Native -> Web
      */
     fun injectCustomJs(webView: WebView) {
         val js = """
@@ -112,9 +114,10 @@ object WebViewUtils {
     }
 
     /**
-     * The actual Bridge class
+     * Contains methods for
+     * Web -> Native
      */
-    class GrunfeldWebNativeIface {
+    class WebNativeBridge {
         @JavascriptInterface
         fun showLog(message: String) {
             //TODO

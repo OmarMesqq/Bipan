@@ -1,16 +1,14 @@
 package com.omarmesqq.grunfeld.viewmodel
 
 import android.content.Context
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import com.omarmesqq.grunfeld.utils.WebViewUtils
 
-/**
- * Stores the WebView in Application Context
- * to avoid reloading the page when switching tabs
- */
+private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
     var webView: WebView? = null
 
@@ -54,5 +52,6 @@ class WebViewModel : ViewModel() {
             destroy()
         }
         webView = null
+        Log.w(TAG, "onCleared finished. WebView destroyed")
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.ImeAction
 fun WebViewScreen(webViewModel: WebViewModel = viewModel()) {
     val context = LocalContext.current
     val webView = webViewModel.getOrCreateWebView(context)
+
     val isLoading by webViewModel.isLoading
     val urlText by webViewModel.urlText
 
