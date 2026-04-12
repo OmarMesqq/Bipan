@@ -32,17 +32,19 @@ You can skip some headache and directly create the module's zip file for flashin
 The final artifact, called `bipan.zip` will also be at the repository's root.
 
 ## Testing
-At the project's root you wil find a folder named `BipanTest`
+At the project's root you wil find a folder named `Grunfeld`
 which is an Android app written in Kotlin that queries `Build` Java fields and does native fingerprinting using a C library.
 
 You can open the folder in Android studio or `cd` into it and run `./gradlew assembleRelease` to create an `.apk`.
 
 By adding it to Bipan's target list:
 ```shell
-touch /data/adb/modules/bipan/targets/com.omarmesqq.bipantest
+touch /data/adb/modules/bipan/targets/com.omarmesqq.grunfeld
 ```
 
-You can see whether the fields were spoofed or not. This app doesn't even have Internet connection permission and respects your privacy. All data stays on your device.
+You can see whether the fields were spoofed or not. The app does have `INTERNET`
+permission, but you can remove it from the Manifest or turn it off in the OS.
+I only added it to test User-Agent in a WebView.
 
 
 ### Post flashing
