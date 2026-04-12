@@ -1,9 +1,6 @@
 package com.omarmesqq.grunfeld.ui
 
 import android.os.Build
-import android.os.StrictMode
-import android.os.StrictMode.ThreadPolicy
-import android.os.StrictMode.VmPolicy
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,8 +13,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
-import com.omarmesqq.grunfeld.BuildConfig
-import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -30,41 +25,6 @@ class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (BuildConfig.DEBUG) {
-            showToastAndLog(this, "App is debuggable...")
-            StrictMode.setThreadPolicy(
-                ThreadPolicy.Builder()
-                    .detectCustomSlowCalls()
-                    .detectDiskReads()
-                    .detectDiskWrites()
-                    .detectExplicitGc()
-                    .detectResourceMismatches()
-                    .detectUnbufferedIo()
-                    .penaltyLog()
-                    .build()
-            )
-            StrictMode.setVmPolicy(
-                VmPolicy.Builder()
-                    .detectBlockedBackgroundActivityLaunch()
-                    .detectCleartextNetwork()
-                    .detectContentUriWithoutPermission()
-                    .detectCredentialProtectedWhileLocked()
-                    .detectFileUriExposure()
-                    .detectImplicitDirectBoot()
-                    .detectIncorrectContextUse()
-                    .detectLeakedClosableObjects()
-                    .detectLeakedRegistrationObjects()
-                    .detectLeakedSqlLiteObjects()
-                    // LeakCanary uses reflection
-                    .permitNonSdkApiUsage()
-                    .detectUnsafeIntentLaunch()
-                    .detectUntaggedSockets()
-                    .detectActivityLeaks()
-                    .penaltyLog()
-                    .build()
-            )
-        }
 
         enableEdgeToEdge()
         setContent {

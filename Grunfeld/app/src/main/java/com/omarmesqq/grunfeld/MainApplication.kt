@@ -3,6 +3,9 @@ package com.omarmesqq.grunfeld
 
 import android.app.Application
 import android.content.res.Configuration
+import android.os.StrictMode
+import android.os.StrictMode.ThreadPolicy
+import android.os.StrictMode.VmPolicy
 import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 private  const val TAG = "MainApplication"
@@ -16,6 +19,41 @@ class MainApplication: Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) {
+            showToastAndLog(this, "App is debuggable...")
+            StrictMode.setThreadPolicy(
+                ThreadPolicy.Builder()
+                    .detectCustomSlowCalls()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectExplicitGc()
+                    .detectResourceMismatches()
+                    .detectUnbufferedIo()
+                    .penaltyLog()
+                    .build()
+            )
+            StrictMode.setVmPolicy(
+                VmPolicy.Builder()
+                    .detectBlockedBackgroundActivityLaunch()
+                    .detectCleartextNetwork()
+                    .detectContentUriWithoutPermission()
+                    .detectCredentialProtectedWhileLocked()
+                    .detectFileUriExposure()
+                    .detectImplicitDirectBoot()
+                    .detectIncorrectContextUse()
+                    .detectLeakedClosableObjects()
+                    .detectLeakedRegistrationObjects()
+                    .detectLeakedSqlLiteObjects()
+                    // LeakCanary uses reflection
+                    .permitNonSdkApiUsage()
+                    .detectUnsafeIntentLaunch()
+                    .detectUntaggedSockets()
+                    .detectActivityLeaks()
+                    .penaltyLog()
+                    .build()
+            )
+        }
+
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             showToastAndLog(this, "CRITICAL_ERROR: Uncaught exception in ${thread.name}: $throwable")
