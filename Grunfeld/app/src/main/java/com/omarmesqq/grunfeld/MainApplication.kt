@@ -1,12 +1,23 @@
 package com.omarmesqq.grunfeld
 
-
 import android.app.Application
 import android.content.res.Configuration
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.net.InetAddress
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewOutcomeReceiver
+import androidx.webkit.WebViewStartUpConfig
+import androidx.webkit.WebViewStartUpResult
+import androidx.webkit.WebViewStartupException
+import java.util.concurrent.Executors
+
 
 private  const val TAG = "MainApplication"
 
@@ -44,8 +55,7 @@ class MainApplication: Application() {
                     .detectLeakedClosableObjects()
                     .detectLeakedRegistrationObjects()
                     .detectLeakedSqlLiteObjects()
-                    // LeakCanary uses reflection
-                    .permitNonSdkApiUsage()
+                    .permitNonSdkApiUsage() // LeakCanary violates this
                     .detectUnsafeIntentLaunch()
                     .detectUntaggedSockets()
                     .detectActivityLeaks()
@@ -53,6 +63,24 @@ class MainApplication: Application() {
                     .build()
             )
         }
+
+        // Pre-warm Chromium engine using bleeding edge API
+        val executor = Executors.newSingleThreadExecutor()
+        val config = WebViewStartUpConfig.Builder(executor).build()
+
+        WebViewCompat.startUpWebView(
+            this,
+            config,
+            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
+                override fun onResult(result: WebViewStartUpResult) {
+                    Log.d(TAG, "Chromium engine successfully pre-warmed in the background!")
+                }
+
+                override fun onError(error: WebViewStartupException) {
+                    Log.e(TAG, "Failed to pre-warm Chromium: $error" )
+                }
+            }
+        )
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -68,8 +96,7 @@ class MainApplication: Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        // Release any resources that can be rebuilt
-        // quickly when the app returns to the foreground
+        // Release any resources that can be rebuilt quickly when the app returns to the foreground
         if (level >= TRIM_MEMORY_BACKGROUND) {
             showToastAndLog(this, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
         }
