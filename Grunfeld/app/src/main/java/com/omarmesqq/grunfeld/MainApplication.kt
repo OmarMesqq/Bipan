@@ -19,14 +19,13 @@ class MainApplication: Application() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             showToastAndLog(this, "CRITICAL_ERROR: Uncaught exception in ${thread.name}: $throwable")
-            // Forward the crash to the system (shows the "App has stopped" dialog)
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        showToastAndLog(this, "Application: configuration changed")
+        showToastAndLog(this, "onConfigurationChanged")
     }
 
     override fun onTrimMemory(level: Int) {

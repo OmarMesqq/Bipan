@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.BuildConfig
+import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
 
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         if (BuildConfig.DEBUG) {
+            showToastAndLog(this, "App is debuggable...")
             StrictMode.setThreadPolicy(
                 ThreadPolicy.Builder()
                     .detectCustomSlowCalls()
@@ -39,7 +41,7 @@ class MainActivity : ComponentActivity() {
                     .detectExplicitGc()
                     .detectResourceMismatches()
                     .detectUnbufferedIo()
-                    .penaltyDialog()
+                    .penaltyLog()
                     .build()
             )
             StrictMode.setVmPolicy(
@@ -54,7 +56,8 @@ class MainActivity : ComponentActivity() {
                     .detectLeakedClosableObjects()
                     .detectLeakedRegistrationObjects()
                     .detectLeakedSqlLiteObjects()
-                    .detectNonSdkApiUsage()
+                    // LeakCanary uses reflection
+                    .permitNonSdkApiUsage()
                     .detectUnsafeIntentLaunch()
                     .detectUntaggedSockets()
                     .detectActivityLeaks()

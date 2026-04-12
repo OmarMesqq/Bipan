@@ -1,5 +1,7 @@
 package com.omarmesqq.grunfeld.utils
 
+import android.net.http.SslError
+import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -8,9 +10,12 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
 import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebStorage
-import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
+import com.omarmesqq.grunfeld.BuildConfig
 
+private const val TAG = "WebViewUtils"
+private const val BRIDGE_NAME = "GrunfeldBridge"
 
 object WebViewUtils {
     fun configureSettings(
@@ -25,9 +30,10 @@ object WebViewUtils {
 
         webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+
         webView.settings.apply {
             javaScriptEnabled = true
-            domStorageEnabled = true
+            domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
             safeBrowsingEnabled = false
             allowFileAccess = false
@@ -47,27 +53,36 @@ object WebViewUtils {
             }
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                isLoading.value = true // Show spinner
+                isLoading.value = true
                 if (url != null) urlText.value = url // Update bar to show real URL
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                isLoading.value = false // Hide spinner
+                isLoading.value = false
+            }
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: SslErrorHandler?,
+                error: SslError?
+            ) {
+                if (BuildConfig.DEBUG) {
+                    handler?.proceed()
+                } else {
+                    super.onReceivedSslError(view, handler, error)
+                }
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 if (consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                    showToastAndLog(webView.context, "JS Console: ${consoleMessage.message()}")
+                    Log.e(TAG, "JS Console: ${consoleMessage.message()}")
                 }
                 return super.onConsoleMessage(consoleMessage)
             }
         }
 
-        // Add a JavaScript Interface (bridge)
-        // This allows JS on the webpage to call Kotlin code
-        webView.addJavascriptInterface(WebAppInterface(), "AndroidBridge")
+        // webView.addJavascriptInterface(GrunfeldWebNativeIface(), BRIDGE_NAME)
     }
 
     fun fullCleanup(webView: WebView?) {
@@ -99,7 +114,7 @@ object WebViewUtils {
     /**
      * The actual Bridge class
      */
-    class WebAppInterface {
+    class GrunfeldWebNativeIface {
         @JavascriptInterface
         fun showLog(message: String) {
             //TODO
