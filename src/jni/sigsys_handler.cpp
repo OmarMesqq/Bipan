@@ -233,6 +233,19 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       if (shouldBlock) {
         if (port == 0) {
+          bool is_lan_bind = false;
+          if (addr->sa_family == AF_INET) {
+            is_lan_bind = filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
+          } else if (addr->sa_family == AF_INET6) {
+            is_lan_bind = filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
+          }
+
+          if (is_lan_bind) {
+            LOGE("(bind) Blocking probe on LAN IP %s", ipAddrStr);
+            ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
+            return;
+          }
+          
           // "Client" behavior: requesting a random temporary port
           LOGW("(bind) Allowing ephemeral bind on Port 0/%s", proto);
           ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
