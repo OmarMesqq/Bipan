@@ -23,8 +23,6 @@ using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
 
-void stop_and_inspect(const char* libname, void* handle);
-
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
@@ -144,14 +142,6 @@ void* my_android_dlopen_ext(const char* filename, int flag, const android_dlexti
       LOGW("WebView Detected! Re-applying sensor blocks...");
       setupSensorsSpoofing();
     }
-
-    // // TODO: change this to the lib you want to inspect
-    // if (
-    //   (strstr(filename, "libloader.so") != nullptr) ||
-    //   strstr(filename, "libpairipcore.so") != nullptr
-    // ) {
-    //   stop_and_inspect(filename, handle);
-    // }
   }
 
   return handle;
@@ -207,44 +197,6 @@ void registerDobbyLinkerHooks() {
       LOGE("Failed to setup Dobby hooks!");
     }
   }
-}
-
-// ==========================================================
-// Deep, agressive lib interception for runtime analysis
-// ==========================================================
-
-/**
- * TODO: This is awful
- */
-void stop_and_inspect(const char* libname, void* handle) {
-  if (handle == nullptr) {
-    return;
-  }
-
-  // 1. Find the base address of the library
-  // We try to find a symbol that almost all Android libs have
-  void* sym = dlsym(handle, "JNI_OnLoad");
-  if (!sym) {
-    // Fallback: search for a common C++ mangled symbol or any known export
-    sym = dlsym(handle, "ASensorManager_getInstance");
-  }
-
-  Dl_info info;
-  if (dladdr(sym, &info)) {
-    LOGE("==================================================");
-    LOGE("%s loaded at base: %p", libname, info.dli_fbase);
-    LOGE("Attach GDB: gdb -p %d", getpid());
-    LOGE("After attaching, type 'continue' or use 'ni'");
-    LOGE("==================================================");
-  } else {
-    LOGE("%s loaded, but could not determine base address.", libname);
-  }
-
-  // 2. Send SIGSTOP to self
-  // This will freeze the app. The UI will hang.
-  // It will stay frozen until you send SIGCONT or attach with GDB.
-  LOGW("SIGSTOP sent. Waiting for GDB...");
-  raise(SIGSTOP);
 }
 
 class Bipan : public zygisk::ModuleBase {

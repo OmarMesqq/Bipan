@@ -166,10 +166,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           if (act->sa_handler) {
             LOGW("sa_handler: %p", act->sa_handler);
           } else {
-            LOGE("no sa_handler defined");
+            LOGW("no sa_handler defined");
           }
         } else {
-          LOGW("App is querying SIGSYS handler (act is NULL)");
+          LOGW("App is just querying SIGSYS handler (act is NULL)");
         }
         // TODO: maybe spoof to zero
         ctx->uc_mcontext.regs[0] = -EPERM;
