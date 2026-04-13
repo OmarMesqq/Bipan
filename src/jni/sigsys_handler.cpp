@@ -61,7 +61,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
                               nr == __NR_execve ||
                               nr == __NR_execveat);
 
-  // Don't block legitimate system threads
+  // TODO: Don't block legitimate system threads
   if (!is_critical_syscall && is_system_thread()) {
     long result = arm64_bypassed_syscall(
         nr,
@@ -390,6 +390,7 @@ static void get_library_from_addr(const char* label, uintptr_t addr) {
   }
 }
 
+// TODO
 static bool is_system_thread() {
   char thread_name[16] = {0};
   if (prctl(PR_GET_NAME, thread_name, 0, 0, 0) != 0) {

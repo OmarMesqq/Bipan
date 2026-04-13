@@ -21,6 +21,20 @@
  * 
  * TODO:
  * - ioctl
+ * - readlinkat /proc/self/fd/*
+ *      cat /proc/13451/fd/88 | head -n 10
+02000000-12000000 rw-p 00000000 00:00 0                                  [anon:dalvik-main space]
+22000000-32000000 rw-p 00000000 00:00 0                                  [anon:dalvik-free list large object space]
+42000000-44000000 r--s 00000000 00:05 21567                              /memfd:jit-zygote-cache (deleted)
+44000000-46000000 r-xs 02000000 00:05 21567                              /memfd:jit-zygote-cache (deleted)
+46000000-48000000 r--s 00000000 00:05 68815                              /memfd:jit-cache (deleted)
+48000000-4a000000 r-xs 02000000 00:05 68815                              /memfd:jit-cache (deleted)
+705a0000-70898000 rw-p 00000000 00:00 0                                  [anon:dalvik-/system/framework/boot.art]
+70898000-708e8000 rw-p 00000000 00:00 0                                  [anon:dalvik-/system/framework/boot-core-libart.art]
+708e8000-70914000 rw-p 00000000 00:00 0                                  [anon:dalvik-/system/framework/boot-okhttp.art]
+70914000-70960000 rw-p 00000000 00:00 0                                  [anon:dalvik-/system/framework/boot-bouncycastle.art]
+~ # ls -l /proc/13451/fd/88 
+lrwx------. 1 u0_a38 u0_a38 64 Apr 13 02:12 /proc/13451/fd/88 -> '/memfd:F4ON5SYGiut0 (deleted)'*
  */
 static struct sock_filter trapFilter[] = {
     // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
