@@ -84,12 +84,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
-      LOGE("Violation: execve/execveat");
+      LOGE("Violation: execve/execveat(%s)", path);
 
-      // log_address_info("PC", pc);
-      // log_address_info("LR", lr);
-
-      LOGE("Binary: %s", path);
       ctx->uc_mcontext.regs[0] = -EACCES;
       break;
     }
