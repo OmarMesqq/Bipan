@@ -21,25 +21,26 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
+#include "unwinder.hpp"
 
-static void log_address_info(const char* label, uintptr_t addr);
-static void get_library_from_addr(const char* label, uintptr_t addr);
-static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
-
-static struct kernel_sigaction {
+struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
   unsigned long sa_flags;
   void (*sa_restorer)(void);
   uint64_t sa_mask;
 };
 
+inline static bool is_smaps(const char* pathname);
+inline static bool is_maps(const char* pathname);
+inline static bool is_mounts(const char* pathname);
+static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
+
 void registerSigSysHandler() {
   struct kernel_sigaction sa = {};
   sa.sa_handler = sigsys_log_handler;
   sa.sa_flags = SA_SIGINFO;
 
-  // Install the signal handler directly with the kernel
-  // to avoid issues with libsigchain
+  // Talk directly to the kernel in order to avoid libsigchain
   // sizeof(sigset_t) should be 8 bytes on aarch64
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
 
@@ -51,8 +52,6 @@ void registerSigSysHandler() {
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
-  uintptr_t pc = ctx->uc_mcontext.pc;
-  uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
   long arg0 = ctx->uc_mcontext.regs[0];
@@ -72,10 +71,13 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     case __NR_uname: {
-      LOGW("Spoofing uname");
       struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-
-      ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
+      if (is_trusted_system_caller("uname")) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, 0, 0, 0, 0);
+      } else {
+        LOGW("Spoofing uname for untrusted caller");
+        ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
+      }
       break;
     }
     case __NR_faccessat:
@@ -86,43 +88,27 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       int flags = (int)ctx->uc_mcontext.regs[2];
       mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
 
-      bool reading_maps = (strcmp(pathname, "/proc/self/maps") == 0) ||
-                          ((safe_proc_pid_path[0] != '\0') &&
-                           starts_with(pathname, safe_proc_pid_path) &&
-                           strstr(pathname, "/maps") != nullptr);
+      const bool is_vfs = is_maps(pathname) || is_smaps(pathname) || is_mounts(pathname);
 
-      bool reading_smaps = (strcmp(pathname, "/proc/self/smaps") == 0) ||
-                           ((safe_proc_pid_path[0] != '\0') &&
-                            starts_with(pathname, safe_proc_pid_path) &&
-                            strstr(pathname, "/smaps") != nullptr);
-
-      if (reading_maps) {
-        ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
-        break;
-      } else if (reading_smaps) {
-        ctx->uc_mcontext.regs[0] = clean_proc_smaps(dirfd, pathname, flags, mode);
-        break;
-      }
-
-      bool reading_mounts = (strcmp(pathname, "/proc/mounts") == 0) ||
-                            (strcmp(pathname, "/proc/self/mounts") == 0) ||
-                            ((safe_proc_pid_path[0] != '\0') &&
-                             starts_with(pathname, safe_proc_pid_path) &&
-                             strstr(pathname, "/mounts") != nullptr);
-
-      if (reading_mounts) {
-        ctx->uc_mcontext.regs[0] = clean_proc_mounts(dirfd, pathname, flags, mode);
+      if (is_vfs) {
+        if (is_trusted_system_caller(pathname, false)) {
+          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          return;
+        }
+        if (is_maps(pathname)) {
+          ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
+          log_violation_trace(pathname);
+        } else if (is_smaps(pathname)) {
+          ctx->uc_mcontext.regs[0] = clean_proc_smaps(dirfd, pathname, flags, mode);
+          log_violation_trace(pathname);
+        } else {
+          ctx->uc_mcontext.regs[0] = clean_proc_mounts(dirfd, pathname, flags, mode);
+          log_violation_trace(pathname);
+        }
         break;
       }
 
-      // Filters senstive files and uses magic number under the hood
-      ctx->uc_mcontext.regs[0] = filterPathname(
-          nr,
-          arg0,
-          arg1,
-          arg2,
-          arg3,
-          arg4);
+      ctx->uc_mcontext.regs[0] = filterPathname(nr, arg0, arg1, arg2, arg3, arg4);
       break;
     }
     case __NR_rt_sigaction: {
@@ -166,11 +152,14 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     case __NR_bind: {
+      if (is_trusted_system_caller("bind", false)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
       int sockfd = (int)arg0;
 
       struct sockaddr* addr = (struct sockaddr*)arg1;
       if (addr == nullptr) {
-        LOGE("bind address is NULL! Replying with EFAULT");
         ctx->uc_mcontext.regs[0] = -EFAULT;
         return;
       }
@@ -179,7 +168,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       long ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
       if (ret != 0) {
-        LOGE("getsockopt returned error: %ld. Allowing bind to fail natively", ret);
+        // Allow to fail natively
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
@@ -219,6 +208,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
           if (is_lan_bind) {
             LOGE("(bind) Blocking probe on LAN IP %s", ipAddrStr);
+            log_violation_trace("(bind): LAN binding");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
             return;
           }
@@ -230,6 +220,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         } else {
           // "Server" behavior: setting up a port for listening
           LOGE("(bind) Spoofing success of bind on %s:%d (%s)", ipAddrStr, port, proto);
+          log_violation_trace("(bind): server behavior");
           ctx->uc_mcontext.regs[0] = 0;
           return;
         }
@@ -240,6 +231,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
     }
     case __NR_listen: {
+      if (is_trusted_system_caller("listen", false)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
       int sockfd = (int)arg0;
 
       struct sockaddr_storage addr;
@@ -247,12 +242,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
 
       if (ret != 0) {
-        LOGE("getsockname returned error: %ld. Allowing native failure", ret);
+        // Fail natively...
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
       if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
-        // Don't allow network sockets to listen...
+        log_violation_trace("(listen): network socket");
         LOGE("(listen) spoofing success");
         ctx->uc_mcontext.regs[0] = 0;
         return;
@@ -263,6 +258,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
     }
     case __NR_sendto: {
+      if (is_trusted_system_caller("sendto", false)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
       if (dest_addr != nullptr) {
         int dest_port = -1;
@@ -289,14 +288,14 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         }
 
         if (is_lan && dest_port == 53) {
-          LOGE("(sendto) Permitting local DNS query to %s:%d (%s)", ipAddrStr, dest_port, proto);
-          is_lan = false;  // Unflag it so it doesn't get blocked
+          LOGW("(sendto) Permitting local DNS query to %s:%d (%s)", ipAddrStr, dest_port, proto);
+          is_lan = false;
         }
 
         if (is_lan) {
-          LOGE("(sendto) %s LAN scan to address %s spoofed", proto, ipAddrStr);
-          // Return the number of bytes sent to fool the app into thinking it succeeded
-          ctx->uc_mcontext.regs[0] = (long)arg2;
+          LOGE("(sendto) %s LAN probing to address %s spoofed", proto, ipAddrStr);
+          log_violation_trace("(sendto) LAN probing");
+          ctx->uc_mcontext.regs[0] = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
           return;
         }
       }
@@ -305,6 +304,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       return;
     }
     case __NR_getsockname: {
+      if (is_trusted_system_caller("getsockname", false)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
       // Let kernel execute the real syscall to populate the sockaddr struct
       long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
 
@@ -318,6 +321,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
           if (filterIPv4LanAccess(ip4)) {
             LOGE("(getsockname) LAN leak prevented: Spoofed IPv4 address");
+            log_violation_trace("(getsockname): LAN leak IPv4");
             ipv4->sin_addr.s_addr = htonl(INADDR_ANY);
           }
         } else if (addr->sa_family == AF_INET6) {
@@ -325,6 +329,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
           if (filterIPv6LanAccess(ipv6->sin6_addr.s6_addr)) {
             LOGE("(getsockname) LAN leak prevented: Spoofed IPv6 address");
+            log_violation_trace("(getsockname): LAN leak IPv6");
             memset(&ipv6->sin6_addr, 0, sizeof(ipv6->sin6_addr));
           }
         }
@@ -341,31 +346,22 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   }
 }
 
-static void log_address_info(const char* label, uintptr_t addr) {
-  Dl_info dlinfo;
-  if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
-    LOGD("%s: %p | Library: %s | Symbol: %s",
-         label,
-         (void*)addr,
-         dlinfo.dli_fname,
-         dlinfo.dli_sname ? dlinfo.dli_sname : "N/A");
-  } else {
-    LOGE("%s: %p (Could not resolve)", label, (void*)addr);
-  }
+inline static bool is_smaps(const char* pathname) {
+  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
+         ((safe_proc_pid_path[0] != '\0') &&
+          starts_with(pathname, safe_proc_pid_path) &&
+          strstr(pathname, "/smaps") != nullptr);
 }
-
-static void get_library_from_addr(const char* label, uintptr_t addr) {
-  Dl_info dlinfo;
-  if (dladdr((void*)addr, &dlinfo) && dlinfo.dli_fname) {
-    const char* path = dlinfo.dli_fname;
-
-    bool is_system = (strncmp(path, "/system/", 8) == 0);
-    bool is_apex = (strncmp(path, "/apex/", 6) == 0);
-
-    if (!is_system && !is_apex) {
-      LOGD("%s resolves to library %s", label, path);
-    }
-  } else {
-    LOGE("Could not resolve library at %p", (void*)addr);
-  }
+inline static bool is_maps(const char* pathname) {
+  return (strcmp(pathname, "/proc/self/maps") == 0) ||
+         ((safe_proc_pid_path[0] != '\0') &&
+          starts_with(pathname, safe_proc_pid_path) &&
+          strstr(pathname, "/maps") != nullptr);
+}
+inline static bool is_mounts(const char* pathname) {
+  return (strcmp(pathname, "/proc/mounts") == 0) ||
+         (strcmp(pathname, "/proc/self/mounts") == 0) ||
+         ((safe_proc_pid_path[0] != '\0') &&
+          starts_with(pathname, safe_proc_pid_path) &&
+          strstr(pathname, "/mounts") != nullptr);
 }
