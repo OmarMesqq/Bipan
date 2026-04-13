@@ -3,5 +3,9 @@
   "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, ColumnLimit: 0 }",
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
-  "editor.detectIndentation": false
+  "editor.detectIndentation": false,
+  "conventionalCommits.scopes": [
+    "Grunfeld",
+    "Bipan"
+  ]
 }

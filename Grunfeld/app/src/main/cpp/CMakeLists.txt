@@ -11,4 +11,4 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size
 add_library(grunfeld SHARED main.c)
 
 # Link dependencies
-target_link_libraries(grunfeld log)
+target_link_libraries(grunfeld log android)

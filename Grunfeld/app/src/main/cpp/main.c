@@ -1,4 +1,5 @@
 #include <android/log.h>
+#include <android/sensor.h>
 #include <errno.h>
 #include <jni.h>
 #include <stdbool.h>
@@ -11,15 +12,17 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-#define TAG "Grunfeld"
+#define TAG "GrunfeldNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+static void test_ndk_layer();
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-  return JNI_VERSION_1_6;
+    test_ndk_layer();
+    return JNI_VERSION_1_6;
 }
 
 JNIEXPORT jstring JNICALL
@@ -67,6 +70,32 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
 
   LOGD("Installed SIGSYS handler successfully!");
   return JNI_TRUE;
+}
+
+/**
+ * TODO:
+ * this is passing. should fail
+ */
+static void test_ndk_layer() {
+    // Get the manager instance
+    ASensorManager* manager = ASensorManager_getInstanceForPackage("com.instagram.android");
+    if (!manager) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "[NDK] ASensorManager is NULL (Hook successful or system error)");
+        return;
+    }
+
+    // Test Sensor Enumeration
+    ASensorList list;
+    int count = ASensorManager_getSensorList(manager, &list);
+    __android_log_print(ANDROID_LOG_INFO, TAG, "[NDK] Found %d sensors. (Expected 0 if blocked)", count);
+
+    // Test Event Queue Creation (The Data Pipe)
+    ASensorEventQueue* queue = ASensorManager_createEventQueue(manager, NULL, 0, NULL, NULL);
+    if (queue == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "[NDK] Event Queue creation BLOCKED (Hook successful)");
+    } else {
+        __android_log_print(ANDROID_LOG_WARN, TAG, "[NDK] Event Queue created! LEAK DETECTED.");
+    }
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
