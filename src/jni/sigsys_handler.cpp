@@ -56,24 +56,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
-  // TODO:
-  bool is_critical_syscall = (nr == __NR_rt_sigaction ||
-                              nr == __NR_execve ||
-                              nr == __NR_execveat);
-
-  // TODO: Don't block legitimate system threads
-  if (!is_critical_syscall && is_system_thread()) {
-    long result = arm64_bypassed_syscall(
-        nr,
-        ctx->uc_mcontext.regs[0],
-        ctx->uc_mcontext.regs[1],
-        ctx->uc_mcontext.regs[2],
-        ctx->uc_mcontext.regs[3],
-        ctx->uc_mcontext.regs[4]);
-    ctx->uc_mcontext.regs[0] = result;
-    return;
-  }
-
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
   long arg2 = ctx->uc_mcontext.regs[2];
@@ -150,7 +132,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       struct kernel_sigaction* oldact = (struct kernel_sigaction*)arg2;
 
       if (signum == SIGSYS) {
-        LOGE("App tried to install SIGSYS handler! Blocking.");
+        LOGE("App tried to install SIGSYS handler! Spoofing success...");
 
         if (act != nullptr) {
           uintptr_t sigaction_handler = (uintptr_t)act->sa_handler;
@@ -169,10 +151,9 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
             LOGW("no sa_handler defined");
           }
         } else {
-          LOGW("App is just querying SIGSYS handler (act is NULL)");
+          LOGW("App just queried SIGSYS handler (act is NULL)");
         }
-        // TODO: maybe spoof to zero
-        ctx->uc_mcontext.regs[0] = -EPERM;
+        ctx->uc_mcontext.regs[0] = 0;
       } else {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
             nr,
@@ -388,26 +369,4 @@ static void get_library_from_addr(const char* label, uintptr_t addr) {
   } else {
     LOGE("Could not resolve library at %p", (void*)addr);
   }
-}
-
-// TODO
-static bool is_system_thread() {
-  char thread_name[16] = {0};
-  if (prctl(PR_GET_NAME, thread_name, 0, 0, 0) != 0) {
-    return false;
-  }
-
-  if (strncmp(thread_name, "RenderThread", 12) == 0 ||
-      strncmp(thread_name, "hwuiTask", 8) == 0 ||
-      strncmp(thread_name, "Binder:", 7) == 0 ||
-      strncmp(thread_name, "Jit thread pool", 15) == 0 ||
-      strncmp(thread_name, "Profile Saver", 13) == 0 ||
-      strncmp(thread_name, "mali-", 5) == 0 ||
-      strncmp(thread_name, "kgsl-", 5) == 0 ||
-      strncmp(thread_name, "ReferenceQueueD", 15) == 0 ||
-      strncmp(thread_name, "FinalizerDaemon", 15) == 0 ||
-      strncmp(thread_name, "HeapTaskDaemon", 14) == 0) {
-    return true;
-  }
-  return false;
 }

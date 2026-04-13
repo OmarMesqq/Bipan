@@ -31,7 +31,6 @@ static bool seccomp_applied = false;
 
 /**
  * Original function pointers
- * TODO: stop WebGL/WebGPU
  */
 void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
 void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
@@ -138,6 +137,12 @@ void* my_android_dlopen_ext(const char* filename, int flag, const android_dlexti
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
       LOGW("WebView Detected! Re-applying sensor blocks...");
       setupSensorsSpoofing();
+    } else if (strstr(filename, "libloader.so") != nullptr) {
+      LOGE("Attach GDB: gdb -p %d", getpid());
+      volatile int wait_for_gdb = 1;
+      while (wait_for_gdb) {
+        asm volatile("yield");
+      }
     }
   }
 

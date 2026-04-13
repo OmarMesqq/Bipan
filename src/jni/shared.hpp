@@ -12,7 +12,7 @@
 
 /**
  * MAGIC NUMBER:
- * TODO:
+ * TODO: implement PC-relative seccomp
  * 
  * So far, most syscalls I've intercepted only use 5 arguments +
  * NR number. Turns out you can do an "if" check in the seccomp
