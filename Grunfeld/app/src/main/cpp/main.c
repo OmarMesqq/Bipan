@@ -11,6 +11,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <linux/filter.h>
+#include <sys/utsname.h>
+#include <linux/fcntl.h>
+
 
 #define TAG "GrunfeldNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
@@ -19,6 +26,109 @@
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void test_ndk_layer();
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testVfsProbes(JNIEnv *env, jobject thiz) {
+    const char* paths[] =
+            {"/proc/self/maps",
+             "/proc/self/smaps",
+             "/proc/self/mounts",
+             "/proc/mounts",
+             "/etc/hosts",
+             "/system/etc/hosts",
+             "/proc/version",
+             "/proc/meminfo",
+             "/proc/meminfo_extra",
+             "/proc/cpuinfo",
+             "/proc/sys/kernel/perf_event_paranoid",
+             "/proc/zoneinfo",
+             "/proc/vmstat",
+            };
+    char buffer[128];
+
+    for (int i = 0; i < 13; i++) {
+        // We use raw openat syscall
+        long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
+
+        if (fd < 0) {
+            LOGE("[VFS] Failed to open %s (Error: %ld) - OK if Bipan blocked it", paths[i], fd);
+        } else {
+            // Try to read a bit to see if it's spoofed/cleaned
+            long bytes = arm64_raw_syscall(__NR_read, fd, (long)buffer, sizeof(buffer) - 1, 0, 0, 0);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                LOGD("[VFS] Read from %s: %s...", paths[i], buffer);
+            }
+            arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+        }
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkIdentity(JNIEnv *env, jobject thiz) {
+    // 1. Test IPv4 LAN Bind (Port 0 - Client behavior)
+    int sock4 = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in addr4 = {
+            .sin_family = AF_INET,
+            .sin_port = htons(0),
+            .sin_addr.s_addr = inet_addr("192.168.1.50") // Simulated LAN IP
+    };
+    long ret = arm64_raw_syscall(__NR_bind, sock4, (long)&addr4, sizeof(addr4), 0, 0, 0);
+    LOGD("[NET] IPv4 LAN Bind (Port 0) result: %ld (Expect -EADDRNOTAVAIL)", ret);
+
+    // 2. Test IPv6 Server Bind (Port 8080 - Server behavior)
+    int sock6 = socket(AF_INET6, SOCK_STREAM, 0);
+    struct sockaddr_in6 addr6 = {
+            .sin6_family = AF_INET6,
+            .sin6_port = htons(8080),
+            .sin6_addr = IN6ADDR_ANY_INIT
+    };
+    ret = arm64_raw_syscall(__NR_bind, sock6, (long)&addr6, sizeof(addr6), 0, 0, 0);
+    LOGD("[NET] IPv6 Server Bind (Port 8080) result: %ld (Expect 0/Spoofed success)", ret);
+
+    // 3. Test Listen (Network Socket)
+    ret = arm64_raw_syscall(__NR_listen, sock6, 5, 0, 0, 0, 0);
+    LOGD("[NET] Listen on socket result: %ld (Expect 0/Spoofed success)", ret);
+
+    close(sock4);
+    close(sock6);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env, jobject thiz) {
+    // 1. Test Sendto (Multicast / LAN Discovery)
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in target = {
+            .sin_family = AF_INET,
+            .sin_port = htons(1900), // SSDP Port
+            .sin_addr.s_addr = inet_addr("239.255.255.250") // Multicast
+    };
+    const char* msg = "M-SEARCH * HTTP/1.1";
+
+    long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, strlen(msg), 0, (long)&target, sizeof(target));
+    LOGD("[NET] sendto LAN result: %ld (Expect spoofed byte count: %zu)", ret, strlen(msg));
+
+    // 2. Test GetSockName (IP Leak Prevention)
+    // First, we need to bind to a real local IP to see if it leaks
+    struct sockaddr_in local_query = {
+            .sin_family = AF_INET,
+            .sin_port = htons(0),
+            .sin_addr.s_addr = inet_addr("192.168.1.1")
+    };
+    bind(sock, (struct sockaddr*)&local_query, sizeof(local_query));
+
+    struct sockaddr_in leaked_addr;
+    socklen_t len = sizeof(leaked_addr);
+    ret = arm64_raw_syscall(__NR_getsockname, sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+
+    if (ret == 0) {
+        char ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
+        LOGD("[NET] getsockname local IP: %s (Expect 0.0.0.0 if scrubbed)", ip);
+    }
+
+    close(sock);
+}
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     test_ndk_layer();
