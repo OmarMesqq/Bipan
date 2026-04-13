@@ -22,7 +22,6 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
@@ -133,9 +132,7 @@ void* my_dlopen(const char* filename, int flag) {
 }
 
 void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
-  void* handle = orig_android_dlopen_ext(filename, flag, extinfo);
-
-  if (filename != nullptr && handle != nullptr) {
+  if (filename != nullptr) {
     LOGE("Hook (android_dlopen_ext): app is loading: %s", filename);
 
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
@@ -144,7 +141,7 @@ void* my_android_dlopen_ext(const char* filename, int flag, const android_dlexti
     }
   }
 
-  return handle;
+  return orig_android_dlopen_ext(filename, flag, extinfo);
 }
 
 // ==========================================
