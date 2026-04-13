@@ -8,7 +8,7 @@
 
 #include "shared.hpp"
 
-static constexpr int MAX_UNWIND_DEPTH = 8;
+static constexpr int MAX_UNWIND_DEPTH = 10;
 
 // State container passed through the unwinder callbacks
 static struct UnwindState {
