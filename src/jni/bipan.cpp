@@ -30,6 +30,7 @@ static bool seccomp_applied = false;
 
 /**
  * Original function pointers
+ * TODO: stop WebGL/WebGPU
  */
 void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
 void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
