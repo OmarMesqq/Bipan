@@ -56,6 +56,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   uintptr_t lr = ctx->uc_mcontext.regs[30];
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
+  // TODO:
   bool is_critical_syscall = (nr == __NR_rt_sigaction ||
                               nr == __NR_execve ||
                               nr == __NR_execveat);
