@@ -171,7 +171,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         } else {
           LOGW("App is querying SIGSYS handler (act is NULL)");
         }
-
+        // TODO: maybe spoof to zero
         ctx->uc_mcontext.regs[0] = -EPERM;
       } else {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
