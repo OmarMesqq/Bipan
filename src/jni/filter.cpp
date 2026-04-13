@@ -20,7 +20,6 @@
  * lifetime.
  * 
  * TODO:
- * - ioctl
  * - readlinkat:
  *   - focus on /proc/<PID>/fd/*
  *      /proc/<PID>/fd/XY is spoofed maps, but it points to our FD
