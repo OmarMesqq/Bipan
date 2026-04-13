@@ -19,11 +19,11 @@ fun JniScreen() {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState()), // Added scroll in case screen fills up
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Bipan Sandbox Tester",
+            text = "Sandbox Tester",
             style = MaterialTheme.typography.headlineMedium
         )
 
@@ -33,7 +33,7 @@ fun JniScreen() {
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Identity Gaslighting", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
                 Text(text = jniData, style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = { jniData = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
                     Text("Verify Uname Spoof")
@@ -41,23 +41,22 @@ fun JniScreen() {
             }
         }
 
-        // --- VFS PROBES CARD ---
+        // --- FILESYSTEM PROBING CARD ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Virtual File System", style = MaterialTheme.typography.titleMedium)
-                Text(text = "Tests: /proc/self/maps, smaps, and mounts", style = MaterialTheme.typography.bodySmall)
+                Text(text = "File System Inspection", style = MaterialTheme.typography.titleMedium)
                 Button(
                     onClick = {
-                        NativeLibWrapper.testVfsProbes()
-                        lastAction = "VFS Probes sent to Logcat"
+                        NativeLibWrapper.testFileSystemProbes()
+                        lastAction = "Filesystem Probes sent to Logcat"
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
-                    Text("Trigger VFS Probes")
+                    Text("Probe filesystem")
                 }
             }
         }

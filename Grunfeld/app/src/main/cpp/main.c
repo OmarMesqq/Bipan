@@ -28,7 +28,7 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
 static void test_ndk_layer();
 
 JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testVfsProbes(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
     const char* paths[] =
             {"/proc/self/maps",
              "/proc/self/smaps",
@@ -43,21 +43,27 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testVfsProbes(JNIEnv *env, jo
              "/proc/sys/kernel/perf_event_paranoid",
              "/proc/zoneinfo",
              "/proc/vmstat",
+             "/data/misc/user/0/cacerts-added",
+             "/etc/security/otacerts.zip",
+             "/dev/mali",
+             "/dev/binder",
+             "/dev/hwbinder",
+             "/system/bin/app_process"
             };
-    char buffer[128];
+    char buffer[20];
 
-    for (int i = 0; i < 13; i++) {
-        // We use raw openat syscall
+    for (int i = 0; i < 19; i++) {
         long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
 
         if (fd < 0) {
-            LOGE("[VFS] Failed to open %s (Error: %ld) - OK if Bipan blocked it", paths[i], fd);
+            LOGD("[Filesystem Probe] Failed to open %s (Error: %ld)", paths[i], fd);
         } else {
-            // Try to read a bit to see if it's spoofed/cleaned
             long bytes = arm64_raw_syscall(__NR_read, fd, (long)buffer, sizeof(buffer) - 1, 0, 0, 0);
             if (bytes > 0) {
                 buffer[bytes] = '\0';
-                LOGD("[VFS] Read from %s: %s...", paths[i], buffer);
+                LOGD("[Filesystem Probe] Contents of %s: %s...", paths[i], buffer);
+            } else {
+                LOGD("[Filesystem Probe] Failed to show bytes of %s", paths[i]);
             }
             arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
         }
@@ -96,7 +102,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkIdentity(JNIEnv *e
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env, jobject thiz) {
-    // 1. Test Sendto (Multicast / LAN Discovery)
+    // sendto (Multicast / LAN Discovery)
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in target = {
             .sin_family = AF_INET,
@@ -108,23 +114,30 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env,
     long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, strlen(msg), 0, (long)&target, sizeof(target));
     LOGD("[NET] sendto LAN result: %ld (Expect spoofed byte count: %zu)", ret, strlen(msg));
 
-    // 2. Test GetSockName (IP Leak Prevention)
-    // First, we need to bind to a real local IP to see if it leaks
-    struct sockaddr_in local_query = {
+    // getsockname (LAN IP Leak Prevention)
+    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the
+    // socket to see if it leaks the local IP
+    struct sockaddr_in cf_dns = {
             .sin_family = AF_INET,
-            .sin_port = htons(0),
-            .sin_addr.s_addr = inet_addr("192.168.1.1")
+            .sin_port = htons(53),
+            .sin_addr.s_addr = inet_addr("1.1.1.1")
     };
-    bind(sock, (struct sockaddr*)&local_query, sizeof(local_query));
 
+    // use standard connect (Bipan allows public internet)
+    connect(sock, (struct sockaddr*)&cf_dns, sizeof(cf_dns));
+
+    // getsockname
     struct sockaddr_in leaked_addr;
     socklen_t len = sizeof(leaked_addr);
+
+    // The kernel WILL return the real LAN IP here.
+    // Bipan should catch it, log the violation, and scrub it to 0.0.0.0.
     ret = arm64_raw_syscall(__NR_getsockname, sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        LOGD("[NET] getsockname local IP: %s (Expect 0.0.0.0 if scrubbed)", ip);
+        LOGD("[NET] getsockname result: %s (If 0.0.0.0, Bipan successfully scrubbed a REAL leak)", ip);
     }
 
     close(sock);
