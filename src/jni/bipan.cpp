@@ -2,6 +2,7 @@
 #include <android/looper.h>
 #include <android/sensor.h>
 #include <dlfcn.h>
+#include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -20,6 +21,9 @@
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
+
+
+void stop_and_inspect(const char* libname, void* handle);
 
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
@@ -40,7 +44,9 @@ static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
 
-// Java Sensor Hook 1
+// ==========================================
+// Java and Native Sensor hooks
+// ==========================================
 jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstance, jobject sensor, jint index) {
   (void)env;
   (void)clazz;
@@ -49,7 +55,7 @@ jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstan
   LOGE("(Sensors) Blocked Java SensorManager enumeration (index %d)!", index);
   return JNI_FALSE;
 }
-// Java Sensor Hook 2
+
 jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint handle, jint rateUs, jint maxBatchReportLatencyUs) {
   (void)env;
   (void)clazz;
@@ -61,7 +67,6 @@ jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint 
   return -1;
 }
 
-// Java Sensor Hook 3
 jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstance, jint size, jint type, jint fd, jobject resource) {
   (void)env;
   (void)clazz;
@@ -74,7 +79,6 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   return -1;
 }
 
-// Native Sensor Hook 1
 ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager, ALooper* loper, int ident, ALooper_callbackFunc cb, void* data) {
   (void)manager;
   (void)loper;
@@ -98,7 +102,7 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 }
 
 // ==========================================
-// 2. SETUP & INJECTION LOGIC
+// Sensor spoofing strategy
 // ==========================================
 
 void setupSensorsSpoofing() {
@@ -120,7 +124,7 @@ void setupSensorsSpoofing() {
 }
 
 // ==========================================
-// 3. LINKER INTERCEPTORS
+// Linker hooks
 // ==========================================
 
 void* my_dlopen(const char* filename, int flag) {
@@ -131,21 +135,30 @@ void* my_dlopen(const char* filename, int flag) {
 }
 
 void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
-  if (filename != nullptr) {
+  void* handle = orig_android_dlopen_ext(filename, flag, extinfo);
+
+  if (filename != nullptr && handle != nullptr) {
     LOGE("Hook (android_dlopen_ext): app is loading: %s", filename);
+
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
       LOGW("WebView Detected! Re-applying sensor blocks...");
       setupSensorsSpoofing();
     }
-  }
 
-  void* handle = orig_android_dlopen_ext(filename, flag, extinfo);
+    // // TODO: change this to the lib you want to inspect
+    // if (
+    //   (strstr(filename, "libloader.so") != nullptr) ||
+    //   strstr(filename, "libpairipcore.so") != nullptr
+    // ) {
+    //   stop_and_inspect(filename, handle);
+    // }
+  }
 
   return handle;
 }
 
 // ==========================================
-// 4. ZYGISK MODULE
+// JNI tripwires for Seccomp
 // ==========================================
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
@@ -170,6 +183,10 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   }
 }
 
+// ==========================================
+// Dobby setup for inline hooks
+// ==========================================
+
 void registerDobbyLinkerHooks() {
   static bool dobby_initialized = false;
   if (dobby_initialized) {
@@ -190,6 +207,44 @@ void registerDobbyLinkerHooks() {
       LOGE("Failed to setup Dobby hooks!");
     }
   }
+}
+
+// ==========================================================
+// Deep, agressive lib interception for runtime analysis
+// ==========================================================
+
+/**
+ * TODO: This is awful
+ */
+void stop_and_inspect(const char* libname, void* handle) {
+  if (handle == nullptr) {
+    return;
+  }
+
+  // 1. Find the base address of the library
+  // We try to find a symbol that almost all Android libs have
+  void* sym = dlsym(handle, "JNI_OnLoad");
+  if (!sym) {
+    // Fallback: search for a common C++ mangled symbol or any known export
+    sym = dlsym(handle, "ASensorManager_getInstance");
+  }
+
+  Dl_info info;
+  if (dladdr(sym, &info)) {
+    LOGE("==================================================");
+    LOGE("%s loaded at base: %p", libname, info.dli_fbase);
+    LOGE("Attach GDB: gdb -p %d", getpid());
+    LOGE("After attaching, type 'continue' or use 'ni'");
+    LOGE("==================================================");
+  } else {
+    LOGE("%s loaded, but could not determine base address.", libname);
+  }
+
+  // 2. Send SIGSTOP to self
+  // This will freeze the app. The UI will hang.
+  // It will stay frozen until you send SIGCONT or attach with GDB.
+  LOGW("SIGSTOP sent. Waiting for GDB...");
+  raise(SIGSTOP);
 }
 
 class Bipan : public zygisk::ModuleBase {
@@ -272,7 +327,7 @@ class Bipan : public zygisk::ModuleBase {
           {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
           {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};
       api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", runtime_methods, 2);
-      
+
       // Zygisk populates fnPtr with the original function pointer after hooking
       orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[0].fnPtr);
       orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
