@@ -7,5 +7,6 @@
   "conventionalCommits.scopes": [
     "Grunfeld",
     "Bipan"
-  ]
+  ],
+  "C_Cpp.errorSquiggles": "disabled"
 }
