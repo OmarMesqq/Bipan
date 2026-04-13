@@ -5,6 +5,7 @@
 #include "assembly.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
+#include "unwinder.hpp"
 
 /**
  * Blocks, lies about the existence or
@@ -134,7 +135,23 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return create_spoofed_file(fake_prop);
   }
 
-  // TODO: /dev/[binder|mali]
+  if (starts_with(pathname, "/dev/mali") ||
+      starts_with(pathname, "/dev/kgsl-3d0") ||
+      starts_with(pathname, "/dev/binder") ||
+      starts_with(pathname, "/dev/hwbinder") ||
+      starts_with(pathname, "/vendor/lib64") ||
+      starts_with(pathname, "/system_ext/bin/hwservicemanager") ||
+      starts_with(pathname, "/system/bin/app_process") ||
+      starts_with(pathname, "/odm/lib64/hw") ||
+      starts_with(pathname, "/dev/vndbinder")) {
+    // ONLY unwind the stack if they touch these highly sensitive nodes
+    if (is_trusted_system_caller(pathname)) {
+      LOGD("Caller-ID: Allowing trusted access to %s", pathname);
+      return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+    } else {
+      return -ENOENT;
+    }
+  }
 
   if (!starts_with(pathname, "/data") &&
       !starts_with(pathname, "/product/app/webview") &&

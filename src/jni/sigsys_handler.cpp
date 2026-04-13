@@ -22,12 +22,11 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 
-static bool is_system_thread();
 static void log_address_info(const char* label, uintptr_t addr);
 static void get_library_from_addr(const char* label, uintptr_t addr);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
-struct kernel_sigaction {
+static struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
   unsigned long sa_flags;
   void (*sa_restorer)(void);
