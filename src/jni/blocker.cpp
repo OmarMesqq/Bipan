@@ -231,13 +231,5 @@ inline static const char* shouldFakeFile(const char* pathname) {
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
-  if (
-      (strcmp(pathname, "/sys/devices/system/cpu/present") == 0) ||
-      (strcmp(pathname, "/sys/devices/system/cpu/possible") == 0)) {
-    return "0-3\n";
-  }
-  if (strstr(pathname, "/cpufreq/cpuinfo_max_freq") != nullptr) {
-    return "2400000\n";
-  }
   return nullptr;
 }
