@@ -25,33 +25,27 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
 
   const bool isCallerTrusted = is_trusted_system_caller(pathname, false);
+  if (isCallerTrusted) {
+    return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+  }
 
   if (shouldSpoofExistence(pathname)) {
-    if (isCallerTrusted) {
-      return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
-    }
     LOGW("Spoofing existence of %s", pathname);
     log_violation_trace(pathname);
     return -ENOENT;
   }
 
-  if (shouldDenyAccess(pathname)) {
-    if (isCallerTrusted) {
-      return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
-    }
-    LOGW("Denying access to %s", pathname);
-    log_violation_trace(pathname);
-    return -EACCES;
-  }
-
   const char* fakeFileContent = shouldFakeFile(pathname);
   if (fakeFileContent != nullptr) {
-    if (isCallerTrusted) {
-      return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
-    }
     LOGW("Spoofing %s", pathname);
     log_violation_trace(pathname);
     return create_spoofed_file(fakeFileContent);
+  }
+
+  if (shouldDenyAccess(pathname)) {
+    LOGW("Denying access to %s", pathname);
+    log_violation_trace(pathname);
+    return -EACCES;
   }
 
   if (shouldLog(pathname) && !isCallerTrusted) {
@@ -236,6 +230,14 @@ inline static const char* shouldFakeFile(const char* pathname) {
   }
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
+  }
+  if (
+      (strcmp(pathname, "/sys/devices/system/cpu/present") == 0) ||
+      (strcmp(pathname, "/sys/devices/system/cpu/possible") == 0)) {
+    return "0-3\n";
+  }
+  if (strstr(pathname, "/cpufreq/cpuinfo_max_freq") != nullptr) {
+    return "2400000\n";
   }
   return nullptr;
 }

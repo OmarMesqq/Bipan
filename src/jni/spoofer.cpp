@@ -30,6 +30,9 @@ int uname_spoofer(struct utsname* buf) {
  * it with fake data.
  *
  * @returns file descriptor on success, -1 on failure
+ * 
+ * TODO: find a way of handling lifetime of this FD or
+ * we get too many file descriptors open
  */
 int create_spoofed_file(const char* fake_content) {
   // memfd_create requires a name, but it hopefully doesn't appear in the filesystem
