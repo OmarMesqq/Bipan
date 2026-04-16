@@ -2,9 +2,19 @@ package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
 import android.os.Build
+import android.provider.Settings.Global
+import android.provider.Settings
+import android.content.Context
+
+
+fun DumpJavaInfo(context: Context): String {
+    val buildInfo = dumpBuildInfo()
+    val settingsInfo = dumpSettingsInfo(context)
+    return "$buildInfo\n\n$settingsInfo"
+}
 
 @SuppressLint("WrongConstant")
-fun DumpBuildInfo(): String {
+private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}
             BOOTLOADER: ${Build.BOOTLOADER}
@@ -43,4 +53,27 @@ fun DumpBuildInfo(): String {
             SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
             SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
             """.trimIndent()
+}
+
+
+private fun dumpSettingsInfo(ctx: Context): String {
+    val cr = ctx.contentResolver
+
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT)
+
+    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER)
+
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+
+    return """
+       DEV_SETTINGS_ON: $devSettingsOn
+       ADB_ENABLED: $adbEnabled
+       BOOT_COUNT: $bootCount
+       DEVICE_NAME: $deviceName
+       WAIT_FOR_DEBUGGER: $waitForDebugger
+       SSAID: $ssaid
+    """.trimIndent()
 }
