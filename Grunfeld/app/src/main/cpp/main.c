@@ -30,8 +30,7 @@ static void test_ndk_layer();
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
     const char* paths[] =
-            {"/proc/self/maps",
-             "/proc/self/smaps",
+            {
              "/proc/self/mounts",
              "/proc/mounts",
              "/etc/hosts",
@@ -55,7 +54,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
             };
     char buffer[20];
 
-    for (int i = 0; i < 22; i++) {
+    for (int i = 0; i < 20; i++) {
         long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
 
         if (fd < 0) {
@@ -71,6 +70,13 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
             arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
         }
     }
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject thiz) {
+    // TODO
+    const char* mapsPath = "/proc/self/maps";
+    const char* smapsPath = "/proc/self/smaps";
 }
 
 JNIEXPORT void JNICALL
