@@ -21,7 +21,7 @@
  * 
  * TODO:
  * - readlinkat:
- *   - focus on /proc/<PID>/fd/*
+ *   - focus on /proc/<PID>/fd/<someFdNumber>
  *      /proc/<PID>/fd/XY is spoofed maps, but it points to our FD
  *      /proc/<PID>/fd/XY -> '/memfd:F4ON5SYGiut0 (deleted)'*
  */

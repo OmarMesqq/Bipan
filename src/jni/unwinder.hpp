@@ -14,7 +14,6 @@ static constexpr int MAX_UNWIND_DEPTH = 10;
 struct UnwindState {
   int current_depth;
   bool is_trusted;
-  bool silent;  // log supression for WebView
   uintptr_t frames[MAX_UNWIND_DEPTH];
   const char* libs[MAX_UNWIND_DEPTH];
 };
@@ -41,6 +40,7 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
     state->libs[state->current_depth] = lib_path;
 
     // Allow-list first system/hardware partitions
+    // TODO: allow webview to work but apply restrictions like WebRTC
     if (strncmp(lib_path, "/system/", 8) == 0 ||
         strncmp(lib_path, "/vendor/", 8) == 0 ||
         strncmp(lib_path, "/apex/", 6) == 0 ||
@@ -53,10 +53,6 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
     if (strstr(lib_path, "/data/") != nullptr ||
         strstr(lib_path, ".apk") != nullptr) {
       state->is_trusted = false;
-
-      if (strstr(lib_path, "webview") != nullptr) {
-        state->silent = true;
-      }
 
       state->current_depth++;
       return _URC_END_OF_STACK;
@@ -77,13 +73,12 @@ inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fa
   UnwindState state;
   state.current_depth = 0;
   state.is_trusted = true;
-  state.silent = false;
   memset(state.frames, 0, sizeof(state.frames));
   memset(state.libs, 0, sizeof(state.libs));
 
   _Unwind_Backtrace(unwind_callback, &state);
 
-  if (!state.is_trusted && !state.silent && log_on_fail) {
+  if (!state.is_trusted && log_on_fail) {
     LOGE("--- Caller-ID Violation ---");
     LOGE("%s", target_pathname);
     LOGE("Stacktrace:");
