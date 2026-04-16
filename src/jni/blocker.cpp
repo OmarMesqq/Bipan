@@ -1,5 +1,7 @@
 #include "blocker.hpp"
 
+#include <sys/mman.h>
+
 #include <string>
 
 #include "assembly.hpp"
@@ -11,6 +13,7 @@ inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
 inline static bool shouldDenyAccess(const char* pathname);
 inline static const char* shouldFakeFile(const char* pathname);
+void patchInstructionWithNop(uintptr_t address);
 
 /**
  * Blocks, lies about the existence or
@@ -52,6 +55,28 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     LOGW("Untrusted caller: allowing access to %s", pathname);
   }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+}
+
+void patchInstructionWithNop(uintptr_t address) {
+  // 1. Find the start of the page (4KB align)
+  uintptr_t page_start = address & ~0xFFF;
+
+  // 2. Make page writable
+  if (mprotect((void*)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+    LOGE("mprotect failed: %s", strerror(errno));
+    return;
+  }
+
+  // 3. Write NOP (0x1f2003d5 in ARM64 Little Endian)
+  *(uint32_t*)address = 0xd503201f;
+
+  // 4. Clear CPU Cache
+  __builtin___clear_cache((char*)address, (char*)(address + 4));
+
+  // 5. Restore original permissions (R-X)
+  mprotect((void*)page_start, 4096, PROT_READ | PROT_EXEC);
+
+  LOGW("Proactive Patch: Offset %p is now a NOP.", (void*)address);
 }
 
 /**
