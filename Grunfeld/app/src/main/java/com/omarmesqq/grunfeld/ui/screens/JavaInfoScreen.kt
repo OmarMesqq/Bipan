@@ -24,7 +24,7 @@ import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 
 
 @Composable
-fun BuildInfoScreen() {
+fun JavaInfoScreen() {
     val context = LocalContext.current
     var displayText by remember { mutableStateOf(DumpJavaInfo(context)) }
     val scrollState = rememberScrollState()
@@ -37,7 +37,7 @@ fun BuildInfoScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Build info",
+            text = "Java info",
             style = MaterialTheme.typography.headlineMedium
         )
 

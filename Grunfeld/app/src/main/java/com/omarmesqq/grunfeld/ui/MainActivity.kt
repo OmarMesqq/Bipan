@@ -18,8 +18,8 @@ import com.omarmesqq.grunfeld.ui.screens.MainScreen
 
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
-    object BuildInfo : Screen("build_info", "Build", Icons.Default.Coffee)
-    object Webview : Screen("webview", "Web", Icons.Default.Public)
+    object JavaInfo : Screen("java_info", "Java", Icons.Default.Coffee)
+    object WebviewInfo : Screen("webview_info", "Webview", Icons.Default.Public)
     object JniInfo : Screen("jni_info", "JNI", Icons.Default.Route)
 }
 

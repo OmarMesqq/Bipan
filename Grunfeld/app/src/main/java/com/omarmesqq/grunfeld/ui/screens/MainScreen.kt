@@ -20,7 +20,7 @@ import com.omarmesqq.grunfeld.ui.Screen
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val items = listOf(Screen.BuildInfo, Screen.Webview, Screen.JniInfo)
+    val items = listOf(Screen.JavaInfo, Screen.WebviewInfo, Screen.JniInfo)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -49,13 +49,13 @@ fun MainScreen() {
         // Handles the actual switching of screens
         NavHost(
             navController = navController,
-            startDestination = Screen.BuildInfo.route,
+            startDestination = Screen.JavaInfo.route,
             modifier = Modifier
                 .padding(innerPadding) // Handles system bar/bottom bar space
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            composable(Screen.BuildInfo.route) { BuildInfoScreen() }
-            composable(Screen.Webview.route) { WebViewScreen() }
+            composable(Screen.JavaInfo.route) { JavaInfoScreen() }
+            composable(Screen.WebviewInfo.route) { WebViewScreen() }
             composable(Screen.JniInfo.route) { JniScreen() }
         }
     }
