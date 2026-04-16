@@ -74,6 +74,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
 }
 
 JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobject thiz) {
+    // TODO
+}
+
+JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkIdentity(JNIEnv *env, jobject thiz) {
     // 1. Test IPv4 LAN Bind (Port 0 - Client behavior)
     int sock4 = socket(AF_INET, SOCK_DGRAM, 0);

@@ -6,4 +6,5 @@ object NativeLibWrapper {
     external fun testFileSystemProbes()
     external fun testNetworkIdentity()
     external fun testNetworkLeaks()
+    external fun removeBipan()
 }
