@@ -10,6 +10,7 @@ target_compile_options(grunfeld PRIVATE
     -Wall
     -Wextra
     -Winline
+    -Wshadow
     -Wconversion
     -Wsign-conversion
     -Wdouble-promotion

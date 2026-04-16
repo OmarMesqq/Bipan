@@ -119,7 +119,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env,
     };
     const char* msg = "M-SEARCH * HTTP/1.1";
 
-    long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, strlen(msg), 0, (long)&target, sizeof(target));
+    long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, (long)strlen(msg), 0, (long)&target, sizeof(target));
     LOGD("[NET] sendto LAN result: %ld (Expect spoofed byte count: %zu)", ret, strlen(msg));
 
     // getsockname (LAN IP Leak Prevention)
