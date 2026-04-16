@@ -82,8 +82,19 @@ inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fa
     LOGE("--- Caller-ID Violation ---");
     LOGE("%s", target_pathname);
     LOGE("Stacktrace:");
+
+    // FIXME? This _may_ be problematic as dladdr isn't async-signal safe, yet I haven't seen problems yet
     for (int i = 0; i < state.current_depth; i++) {
-      LOGE("  #%d pc %p  %s", i, (void*)state.frames[i], state.libs[i]);
+      uintptr_t pc = state.frames[i];
+      Dl_info info;
+
+      if (dladdr((void*)pc, &info) && info.dli_fname) {
+        // Relative offset of the offending program counter to the lib's base addr
+        uintptr_t offset = pc - (uintptr_t)info.dli_fbase;
+        LOGE("  #%d pc %p (offset 0x%lx)  %s", i, (void*)pc, offset, info.dli_fname);
+      } else {
+        LOGE("  #%d pc %p  %s", i, (void*)pc, state.libs[i]);
+      }
     }
     LOGE("---------------------------");
   }
