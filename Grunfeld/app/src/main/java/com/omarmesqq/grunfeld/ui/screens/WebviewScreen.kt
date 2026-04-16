@@ -26,7 +26,7 @@ import com.omarmesqq.grunfeld.viewmodel.WebViewModel
 import androidx.compose.ui.text.input.ImeAction
 
 @Composable
-fun WebViewScreen(webViewModel: WebViewModel = viewModel()) {
+fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     val context = LocalContext.current
     val webView = webViewModel.getOrCreateWebView(context)
 
