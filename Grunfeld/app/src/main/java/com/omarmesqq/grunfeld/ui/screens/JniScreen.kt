@@ -23,7 +23,7 @@ fun JniScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Sandbox Tester",
+            text = "JNI info",
             style = MaterialTheme.typography.headlineMedium
         )
 
