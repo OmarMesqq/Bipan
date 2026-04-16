@@ -15,7 +15,7 @@ class WebViewModel : ViewModel() {
     // UI States
     var canGoBack = mutableStateOf(false)
     var isLoading = mutableStateOf(true)
-    var urlText = mutableStateOf("https://browserleaks.com/")
+    var urlText = mutableStateOf("https://www.deviceinfo.me")
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
@@ -33,13 +33,8 @@ class WebViewModel : ViewModel() {
     }
 
     fun navigateToUrl(url: String) {
-        val formattedUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
-            url
-        } else {
-            "https://$url"
-        }
-        urlText.value = formattedUrl
-        webView?.loadUrl(formattedUrl)
+        urlText.value = url
+        webView?.loadUrl(url)
     }
 
     override fun onCleared() {
