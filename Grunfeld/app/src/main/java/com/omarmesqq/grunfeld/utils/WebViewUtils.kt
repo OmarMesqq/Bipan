@@ -11,11 +11,12 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebStorage
 import com.omarmesqq.grunfeld.BuildConfig
 
 private const val TAG = "WebViewUtils"
-private const val BRIDGE_NAME = "GrunfeldBridge"
 
 object WebViewUtils {
     fun configureSettings(
@@ -61,6 +62,22 @@ object WebViewUtils {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 isLoading.value = false
+                if (url != null && url.contains("deviceinfo.me")) {
+                    view?.let { detectAllDeviceInfoProps(it) }
+                }
+            }
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                val url = request?.url?.toString() ?: ""
+
+                // Prevent Cookie Consent banner from nagging you
+                if (url.contains("cookieconsent-js.js")) {
+                    return WebResourceResponse("text/plain", "utf-8", null)
+                }
+
+                return null
             }
             override fun onReceivedSslError(
                 view: WebView?,
@@ -83,8 +100,6 @@ object WebViewUtils {
                 return super.onConsoleMessage(consoleMessage)
             }
         }
-
-        // webView.addJavascriptInterface(WebNativeBridge(), BRIDGE_NAME)
     }
 
     fun fullCleanup(webView: WebView?) {
@@ -99,28 +114,41 @@ object WebViewUtils {
     }
 
 
-    /**
-     * Example of Native -> Web
-     */
-    fun injectCustomJs(webView: WebView) {
+    fun detectAllDeviceInfoProps(webView: WebView) {
         val js = """
-            (function() {
-                document.body.style.backgroundColor = 'pink';
-                console.log("Injected JS from native!");
-            })();
-        """.trimIndent()
+    (function() {
+        // rrhdi: Detect all button
+        // vfofc: Device Motion (Live) button
+        // ittay: Device Orientation (Live) button
+        
+        var idsToClick = ['rrhdi', 'ittay', 'vfofc'];
+        var targetToScroll = null;
 
-        webView.evaluateJavascript(js, null)
-    }
+        idsToClick.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.click();
+                if (id === 'ittay' || id === 'vfofc') {
+                    targetToScroll = el;
+                }
+            }
+        });
 
-    /**
-     * Contains methods for
-     * Web -> Native
-     */
-    class WebNativeBridge {
-        @JavascriptInterface
-        fun showLog(message: String) {
-            //TODO
+        // Wait for a while to allow DOM to reload
+        if (targetToScroll) {
+            setTimeout(function() {
+                targetToScroll.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+            }, 2500);
+        }
+    })();
+    """.trimIndent()
+
+        webView.evaluateJavascript(js) { result ->
+            // 'result' is the return value of the JS (if any)
+            Log.d(TAG, "JS Injection worked. Res: $result")
         }
     }
 }

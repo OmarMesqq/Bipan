@@ -37,6 +37,13 @@ class WebViewModel : ViewModel() {
         webView?.loadUrl(url)
     }
 
+    fun clearAndReset() {
+        Log.d(TAG, "clearAndReset")
+        WebViewUtils.fullCleanup(webView)
+        urlText.value = "about:blank"
+        webView?.loadUrl("about:blank")
+    }
+
     override fun onCleared() {
         super.onCleared()
         WebViewUtils.fullCleanup(webView)
@@ -47,6 +54,6 @@ class WebViewModel : ViewModel() {
             destroy()
         }
         webView = null
-        Log.w(TAG, "onCleared finished. WebView destroyed")
+        Log.w(TAG, "onCleared: automatically destroyed WebView")
     }
 }
