@@ -218,6 +218,7 @@ inline static bool shouldDenyAccess(const char* pathname) {
            // CPU, temperature and platform info
            starts_with(pathname, "/sys/devices/system/cpu") ||
            starts_with(pathname, "/sys/class/thermal") ||
+           starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")) ||
