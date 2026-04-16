@@ -26,7 +26,8 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
                   -Wdouble-promotion -Winline \
 									-fno-exceptions -fno-rtti \
                   -fvisibility=hidden -fvisibility-inlines-hidden \
-									-fomit-frame-pointer -flto
+									-fomit-frame-pointer -flto \
+									-Wno-unused-parameter
 
 # "Local Linker Libraries": dynamically link to liblog.so (for use of logcat)
 LOCAL_LDLIBS := -llog 

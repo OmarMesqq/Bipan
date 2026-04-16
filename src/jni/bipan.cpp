@@ -125,14 +125,14 @@ void setupSensorsSpoofing() {
 
 void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    LOGE("Hook (dlopen): app is loading: %s", filename);
+    LOGW("Hook (dlopen): app is loading: %s", filename);
   }
   return orig_dlopen(filename, flag);
 }
 
 void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    LOGE("Hook (android_dlopen_ext): app is loading: %s", filename);
+    LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
 
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
       LOGW("WebView Detected! Re-applying sensor blocks...");
