@@ -94,9 +94,7 @@ object WebViewUtils {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                if (consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                    Log.e(TAG, "JS Console: ${consoleMessage.message()}")
-                }
+                Log.d(TAG, "JS Console: ${consoleMessage?.message()}")
                 return super.onConsoleMessage(consoleMessage)
             }
         }

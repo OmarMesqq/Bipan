@@ -15,7 +15,7 @@ class WebViewModel : ViewModel() {
     // UI States
     var canGoBack = mutableStateOf(false)
     var isLoading = mutableStateOf(true)
-    var urlText = mutableStateOf("https://www.deviceinfo.me")
+    var urlText = mutableStateOf("https://browserleaks.com")
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
