@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euxo pipefail
 
+# Compile the SettingsHook Java code
+javac -cp $ANDROID_HOME/platforms/android-36/android.jar src/com/omarmesqq/bipan/SettingsHook.java
+
+# Convert Java bytecode (.class) to ART's/Dalvik's bytecode (.dex)
+d8 --release --lib $ANDROID_HOME/platforms/android-36/android.jar src/com/omarmesqq/bipan/SettingsHook.class
+
+# Transform it into an array of bytes C++ can call
+xxd -i classes.dex > src/jni/settings_hook_payload.h
+
 # Build the module's .so file
 cd src
 ndk-build

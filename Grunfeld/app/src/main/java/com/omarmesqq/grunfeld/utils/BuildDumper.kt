@@ -59,20 +59,19 @@ private fun dumpBuildInfo(): String {
 private fun dumpSettingsInfo(ctx: Context): String {
     val cr = ctx.contentResolver
 
+    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
+
     val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED)
     val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED)
     val bootCount = Global.getInt(cr, Global.BOOT_COUNT)
-
-    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
     val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER)
-
     val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
 
     return """
+       DEVICE_NAME: $deviceName
        DEV_SETTINGS_ON: $devSettingsOn
        ADB_ENABLED: $adbEnabled
        BOOT_COUNT: $bootCount
-       DEVICE_NAME: $deviceName
        WAIT_FOR_DEBUGGER: $waitForDebugger
        SSAID: $ssaid
     """.trimIndent()

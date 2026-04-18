@@ -7,3 +7,8 @@ src/obj/
 TODO
 .idea
 .DS_Store
+*.class
+*.dex
+
+# Generated each time SettingsHook.java changes
+settings_hook_payload.h

@@ -14,6 +14,7 @@
 #include "broker.hpp"
 #include "dobby.h"
 #include "filter.hpp"
+#include "settings_hook_payload.h"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "zygisk.hpp"
@@ -116,7 +117,7 @@ void setupSensorsSpoofing() {
     DobbyHook(createQueue_addr, (void*)hook_ASensorManager_createEventQueue, (void**)&orig_ASensorManager_createEventQueue);
   }
 
-  LOGD("Native sensor hooks applied process-wide.");
+  // LOGD("Native sensor hooks applied process-wide.");
 }
 
 // ==========================================
@@ -125,17 +126,17 @@ void setupSensorsSpoofing() {
 
 void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    LOGW("Hook (dlopen): app is loading: %s", filename);
+    // LOGW("Hook (dlopen): app is loading: %s", filename);
   }
   return orig_dlopen(filename, flag);
 }
 
 void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
+    // LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
 
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
-      LOGW("WebView Detected! Re-applying sensor blocks...");
+      // LOGW("WebView Detected! Re-applying sensor blocks...");
       setupSensorsSpoofing();
     } else if (strstr(filename, "libloader.so") != nullptr) {
       LOGE("Attach GDB: gdb -p %d", getpid());
@@ -158,6 +159,8 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     applySeccomp();
     seccomp_applied = true;
     LOGW("Seccomp applied at clampGrowthLimit.");
+
+    // injectAndStartJavaPayload(env);
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
@@ -169,6 +172,8 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     applySeccomp();
     seccomp_applied = true;
     LOGW("Seccomp applied at clearGrowthLimit.");
+
+    // injectAndStartJavaPayload(env);
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);
@@ -233,6 +238,7 @@ class Bipan : public zygisk::ModuleBase {
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
       spoofBuildFields();
+      injectAndStartJavaPayload();
 
 #ifdef BROKER_ARCH
       ipc_mem = (SharedIPC*)(mmap(
@@ -299,6 +305,66 @@ class Bipan : public zygisk::ModuleBase {
     if (!isTargetApp) {
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
     }
+  }
+
+  void injectAndStartJavaPayload() {
+    // 1. Map our C++ byte array into a Java DirectByteBuffer
+    jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
+    if (byteBuffer == nullptr) {
+      LOGE("inject: Failed to create DirectByteBuffer");
+      return;
+    }
+
+    // 2. Get the System ClassLoader (we need this as a parent delegate)
+    jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    jmethodID getSystemClassLoader = env->GetStaticMethodID(classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject systemClassLoader = env->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
+
+    // 3. Instantiate dalvik.system.InMemoryDexClassLoader
+    jclass inMemoryDexClassLoaderClass = env->FindClass("dalvik/system/InMemoryDexClassLoader");
+    jmethodID constructor = env->GetMethodID(inMemoryDexClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
+    jobject dexClassLoader = env->NewObject(inMemoryDexClassLoaderClass, constructor, byteBuffer, systemClassLoader);
+
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      LOGE("inject: Failed to instantiate InMemoryDexClassLoader. Is the payload valid?");
+      return;
+    }
+
+    // 4. Ask our new ClassLoader to find your SettingsHook class
+    jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring className = env->NewStringUTF("com.omarmesqq.bipan.SettingsHook");
+    jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
+
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      LOGE("inject: Failed to load class com.omarmesqq.bipan.SettingsHook");
+    } else {
+      jclass payloadClass = static_cast<jclass>(payloadClassObj);
+
+      // 5. Execute the static install() method!
+      if (payloadClass != nullptr) {
+        jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
+        if (installMethod != nullptr) {
+          env->CallStaticVoidMethod(payloadClass, installMethod);
+
+          if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("inject: Exception thrown inside SettingsHook.install()!");
+          } else {
+            LOGW("Bipan: Fileless Java Payload successfully injected and executing!");
+          }
+        }
+      }
+    }
+
+    // 6. Clean up JNI references to prevent memory leaks in the target process
+    env->DeleteLocalRef(className);
+    env->DeleteLocalRef(dexClassLoader);
+    env->DeleteLocalRef(systemClassLoader);
+    env->DeleteLocalRef(inMemoryDexClassLoaderClass);
+    env->DeleteLocalRef(classLoaderClass);
+    env->DeleteLocalRef(byteBuffer);
   }
 
   bool isTarget(const char* process) {
