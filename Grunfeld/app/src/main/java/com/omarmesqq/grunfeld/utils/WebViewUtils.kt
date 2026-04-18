@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.Throwable
+import androidx.core.net.toUri
 
 private const val TAG = "WebViewUtils"
 private const val BRIDGE_NAME = "GrunfeldBridge"
@@ -90,6 +91,11 @@ object WebViewUtils {
                 if (path.contains("favicon") || path.contains("apple-touch-icon")) {
                     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Neutering favicon/icon fetch: ${request.url}")
                     return WebResourceResponse("image/png", "UTF-8", null)
+                }
+
+                if (!isHostAllowed(url, urlText.value)) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "Blocking 3rd Party: $url")
+                    return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
                 }
 
                 if (request.method == "POST") {
@@ -257,6 +263,23 @@ object WebViewUtils {
         webView.evaluateJavascript(js) { result ->
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "JS Injection worked. Res: $result")
         }
+    }
+
+    private fun isHostAllowed(requestUrl: String?, currentUrl: String?): Boolean {
+        if (requestUrl.isNullOrBlank() || currentUrl.isNullOrBlank()) return false
+
+        // Normalize both hosts (strip 'www.' and convert to lowercase)
+        val getHost = { url: String ->
+            val uri = url.toUri()
+            uri.host?.lowercase()?.removePrefix("www.")
+        }
+
+        val requestHost = getHost(requestUrl) ?: return false
+        val allowedHost = getHost(currentUrl) ?: return false
+
+        // Allow if exact match (site.com == site.com)
+        // or if it's a subdomain (api.site.com ends with .site.com)
+        return requestHost == allowedHost || requestHost.endsWith(".$allowedHost")
     }
 
     class GrunfeldWebNativeIface(private val webView: WebView, private val allowedHost: String) {
