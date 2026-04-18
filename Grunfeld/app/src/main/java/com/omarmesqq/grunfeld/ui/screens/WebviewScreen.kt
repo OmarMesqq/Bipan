@@ -33,11 +33,16 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omarmesqq.grunfeld.viewmodel.WebViewModel
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 
 @Composable
 fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     val context = LocalContext.current
     val webView = webViewModel.getOrCreateWebView(context)
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     val isLoading by webViewModel.isLoading
     val urlText by webViewModel.urlText
@@ -59,7 +64,13 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
                 label = { Text("Type URL") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { webViewModel.navigateToUrl(urlText) })
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        webViewModel.navigateToUrl(urlText)
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    }
+                )
             )
 
             // Container for webview
