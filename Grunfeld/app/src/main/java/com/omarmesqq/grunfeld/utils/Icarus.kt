@@ -25,12 +25,17 @@ private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
 
 object Icarus {
-
+    /**
+     * Always allow Cross Origin Resource Sharing for any resource
+     * in case origin forgot to set
+     */
+    private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
+    private const val TIMEOUT = 30L // seconds
     private val okHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
+        .readTimeout(TIMEOUT, TimeUnit.SECONDS)
+        .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
         .cookieJar(object : okhttp3.CookieJar {
             private val cookieStore = mutableMapOf<String, List<okhttp3.Cookie>>()
             override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
@@ -59,23 +64,40 @@ object Icarus {
     fun handleRequest(
         context: Context,
         request: WebResourceRequest,
+        currentUrl: String,
+        userAgent: String
     ): WebResourceResponse? {
         val uri = request.url
         val urlString = uri.toString()
 
+        if (!isHostAllowed(urlString, currentUrl)) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "Blocking 3rd Party: $urlString")
+            return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
+        }
 
+        // Assume GET as default I guess
+        val method = request.method?.uppercase() ?: "GET"
         // Network Fetch via OkHttp
         return try {
-            val okRequestBuilder = Request.Builder().url(urlString)
+            val okRequestBuilder = if (method in listOf("GET", "HEAD", "OPTIONS")) {
+                Request.Builder()
+                    .url(urlString)
+                    .header("User-Agent", userAgent)
+                    .method(method, null)
+            } else {
+                Request.Builder()
+                    .url(urlString)
+                    .header("User-Agent", userAgent)
+            }
 
-            // Map WebView Headers -> OkHttp (Stripping privacy leaks)
+            // Map WebView Headers to OkHttp
             request.requestHeaders.forEach { (key, value) ->
                 if (!shouldStripHeader(key)) {
                     okRequestBuilder.addHeader(key, value)
                 }
             }
 
-            // Sync Cookies manually
+            // Sync Cookies
             val cookies = CookieManager.getInstance().getCookie(urlString)
             if (!cookies.isNullOrEmpty()) {
                 okRequestBuilder.addHeader("Cookie", cookies)
@@ -83,7 +105,7 @@ object Icarus {
 
             val response = okHttpClient.newCall(okRequestBuilder.build()).execute()
 
-            if (response.isSuccessful) {
+            if (response.isSuccessful) { // 200s
                 val contentType = response.header("Content-Type", "text/html; charset=utf-8")
                 val mimeType = contentType?.split(";")?.get(0) ?: "text/html"
                 val encoding = if (contentType?.contains("charset=") == true)
@@ -104,44 +126,38 @@ object Icarus {
                     encoding,
                     response.code,
                     response.message.ifEmpty { "OK" },
-                    mapOf("Access-Control-Allow-Origin" to "*"),
+                    CORS_HEADERS,
                     bodyStream
                 )
-            } else {
+            } else { // 400s and 500s
                 avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Response unsuccessful: code ${response.code}", shouldToast = true)
                 return WebResourceResponse(
                     "text/plain",
                     "UTF-8",
                     response.code,
                     response.message.ifEmpty { "Error" },
-                    mapOf("Access-Control-Allow-Origin" to "*"),
+                    CORS_HEADERS,
                     "".byteInputStream()
                 )
             }
-        } catch (e: Exception) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception", tr = e, shouldToast = true)
+        } catch (e: Exception) { // Catastrophic failure...
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception\n${e.stackTraceToString()}", shouldToast = true)
             return WebResourceResponse(
                 "text/plain",
                 "UTF-8",
                 504,
                 "Icarus Timeout",
-                mapOf("Access-Control-Allow-Origin" to "*"),
+                CORS_HEADERS,
                 "".byteInputStream()
             )
         }
     }
 
-    fun executeManualBodyRequest(urlString: String, body: String, contentType: String, allowedHost: String, method: String): String? {
+    fun executeManualBodyRequest(urlString: String, body: String, contentType: String, currentUrl: String, method: String, userAgent: String): String? {
         return try {
-            val uri = urlString.toUri()
-            val host = uri.host ?: ""
-
-            val baseAllowedHost = allowedHost.removePrefix("www.")
-            val isPrimaryHost = host == baseAllowedHost || host.endsWith(".$baseAllowedHost")
-
-            if (!isPrimaryHost) {
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualBodyRequest: $host not allowed")
-                return null
+            if (!isHostAllowed(urlString, currentUrl)) {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "Blocking 3rd Party: $urlString")
+                return "<html><body>Host not allowed</body></html>"
             }
 
             val mediaType = contentType.toMediaTypeOrNull() ?: "application/x-www-form-urlencoded".toMediaType()
@@ -150,6 +166,7 @@ object Icarus {
             val okRequestBuilder = Request.Builder()
                 .url(urlString)
                 .method(method.uppercase(), requestBody)
+                .header("User-Agent", userAgent)
 
             val cookies = CookieManager.getInstance().getCookie(urlString)
             if (!cookies.isNullOrEmpty()) {
@@ -176,6 +193,24 @@ object Icarus {
         }
     }
 
+    private fun isHostAllowed(requestUrl: String?, currentUrl: String?): Boolean {
+        if (requestUrl.isNullOrBlank() || currentUrl.isNullOrBlank()) return false
+
+        // Normalize both hosts (strip 'www.' and convert to lowercase)
+        val getHost = { url: String ->
+            // If it doesn't start with a scheme, Uri.parse won't find the host
+            val formattedUrl = if (!url.contains("://")) "https://$url" else url
+            val uri = formattedUrl.toUri()
+            uri.host?.lowercase()?.removePrefix("www.")
+        }
+
+        val requestHost = getHost(requestUrl) ?: return false
+        val allowedHost = getHost(currentUrl) ?: return false
+
+        // Allow if exact match (site.com == site.com)
+        // or if it's a subdomain (api.site.com ends with .site.com)
+        return requestHost == allowedHost || requestHost.endsWith(".$allowedHost")
+    }
 
 
     private fun shouldStripHeader(key: String): Boolean {
@@ -190,7 +225,8 @@ object Icarus {
             "Sec-Fetch-User",
             "Referer",
             "Upgrade-Insecure-Requests",
-            "Accept-Encoding"
+            "Accept-Encoding", // we drop to let OkHttp handle compression
+            "User-Agent"       // OkHttp will reinject the one we pass from WebViewUtils
         )
         return useless.any { it.equals(key, ignoreCase = true) }
     }

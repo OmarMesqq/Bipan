@@ -26,15 +26,13 @@ private const val TAG = "WebViewUtils"
 private const val BRIDGE_NAME = "GrunfeldBridge"
 
 object WebViewUtils {
+    private lateinit var trueUserAgent: String
     fun configureSettings(
         webView: WebView,
         canGoBack: MutableState<Boolean>,
         isLoading: MutableState<Boolean>,
         urlText: MutableState<String>
     ) {
-        // Native-JS Bridge for monkey patching
-        webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText), BRIDGE_NAME)
-
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, false)
@@ -55,7 +53,11 @@ object WebViewUtils {
             setGeolocationEnabled(false)
             setSupportZoom(false)
             mixedContentMode = MIXED_CONTENT_NEVER_ALLOW
+            trueUserAgent = userAgentString
         }
+
+        // Native-JS Bridge for monkey patching
+        webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText, trueUserAgent), BRIDGE_NAME)
 
         webView.webViewClient = object : WebViewClient() {
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -94,11 +96,6 @@ object WebViewUtils {
                     return WebResourceResponse("image/png", "UTF-8", null)
                 }
 
-                if (!isHostAllowed(url, urlText.value)) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "Blocking 3rd Party: $url")
-                    return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
-                }
-
                 val bodyMethods = listOf("POST", "PUT", "PATCH", "DELETE")
                 if (request.method?.uppercase() in bodyMethods) {
                     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Blocked native ${request.method} leak to ${request.url}", shouldToast = true)
@@ -109,8 +106,8 @@ object WebViewUtils {
                 if (url.contains("cookieconsent-js.js")) {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
-
-                return Icarus.handleRequest(view.context, request)
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "HTTP verb: ${request.method} for $path")
+                return Icarus.handleRequest(view.context, request, urlText.value, trueUserAgent)
             }
             override fun onReceivedSslError(
                 view: WebView?,
@@ -271,28 +268,10 @@ object WebViewUtils {
         }
     }
 
-    private fun isHostAllowed(requestUrl: String?, currentUrl: String?): Boolean {
-        if (requestUrl.isNullOrBlank() || currentUrl.isNullOrBlank()) return false
-
-        // Normalize both hosts (strip 'www.' and convert to lowercase)
-        val getHost = { url: String ->
-            // If it doesn't start with a scheme, Uri.parse won't find the host
-            val formattedUrl = if (!url.contains("://")) "https://$url" else url
-            val uri = formattedUrl.toUri()
-            uri.host?.lowercase()?.removePrefix("www.")
-        }
-
-        val requestHost = getHost(requestUrl) ?: return false
-        val allowedHost = getHost(currentUrl) ?: return false
-
-        // Allow if exact match (site.com == site.com)
-        // or if it's a subdomain (api.site.com ends with .site.com)
-        return requestHost == allowedHost || requestHost.endsWith(".$allowedHost")
-    }
-
     private class GrunfeldWebNativeIface(
         private val webView: WebView,
-        private val currentUrlState: MutableState<String>
+        private val currentUrlState: MutableState<String>,
+        private val userAgent: String
     ) {
         @JavascriptInterface
         fun performInterceptedRequest(
@@ -305,7 +284,7 @@ object WebViewUtils {
         ) {
             CoroutineScope(Dispatchers.IO).launch {
                 val allowedHost = currentUrlState.value
-                val responseData = Icarus.executeManualBodyRequest(url, body, contentType, allowedHost, method)
+                val responseData = Icarus.executeManualBodyRequest(url, body, contentType, allowedHost, method, userAgent)
 
                 val base64Data = android.util.Base64.encodeToString(
                     responseData?.toByteArray(Charsets.UTF_8),
