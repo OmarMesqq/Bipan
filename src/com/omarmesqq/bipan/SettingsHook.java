@@ -59,22 +59,37 @@ public class SettingsHook implements InvocationHandler {
 
     private static void unseal() {
         try {
-            // Fix the Double-Reflection Array Mismatch
+            // 1. Get the getDeclaredMethod from Class
             Method getDeclaredMethod = Class.class.getDeclaredMethod("getDeclaredMethod", String.class, Class[].class);
             Class<?> vmRuntimeClass = Class.forName("dalvik.system.VMRuntime");
 
-            // Use (Class[]) null to explicitly tell the VM we are passing NO parameters for getRuntime()
-            Method getRuntimeMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "getRuntime", (Class[]) null);
+            // 2. Get VMRuntime.getRuntime()
+            // We use (Object) null to ensure the second parameter (Class[]) is treated as null, not as an Object[] wrapper
+            Method getRuntimeMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "getRuntime", (Object) null);
             Object vmRuntime = getRuntimeMethod.invoke(null);
 
-            // Wrap the Class array in an Object array to prevent Method.invoke from flattening it
-            Method setExemptionsMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "setHiddenApiExemptions", new Object[]{new Class[]{String[].class}});
+            // 3. Get VMRuntime.setHiddenApiExemptions(String[])
+            // Note the nested array: we are passing an array that contains an array. This is critical.
+            Method setExemptionsMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "setHiddenApiExemptions", (Object) new Class[]{String[].class});
             
-            // Execute the bypass
-            setExemptionsMethod.invoke(vmRuntime, new Object[]{new String[]{"L"}});
+            // 4. Trigger the bypass
+            setExemptionsMethod.invoke(vmRuntime, (Object) new String[][]{new String[]{"L"}});
+            
             android.util.Log.w("Bipan", "VM Unsealed: Hidden API restrictions removed.");
         } catch (Throwable e) {
-            android.util.Log.e("Bipan", "Failed to unseal VM: " + e.getMessage());
+            // If the above fails, there is an alternative way for Android 15/16
+            try {
+                Method forName = Class.class.getDeclaredMethod("forName", String.class);
+                Method getDeclaredMethod = Class.class.getDeclaredMethod("getDeclaredMethod", String.class, Class[].class);
+                Class<?> vmRuntimeClass = (Class<?>) forName.invoke(null, "dalvik.system.VMRuntime");
+                Method getRuntime = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "getRuntime", (Object) null);
+                Object vmRuntime = getRuntime.invoke(null);
+                Method setHiddenApiExemptions = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "setHiddenApiExemptions", (Object) new Class[]{String[].class});
+                setHiddenApiExemptions.invoke(vmRuntime, new Object[]{new String[]{"L"}});
+                android.util.Log.w("Bipan", "VM Unsealed (Alt Method Success).");
+            } catch (Throwable e2) {
+                android.util.Log.e("Bipan", "Fatal: Could not unseal VM", e2);
+            }
         }
     }
 
