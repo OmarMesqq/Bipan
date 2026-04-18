@@ -89,7 +89,14 @@ object Icarus {
                 val encoding = if (contentType?.contains("charset=") == true)
                     contentType.split("charset=")[1].trim() else "UTF-8"
 
-                val bodyStream = response.body.byteStream()
+                var bodyStream = response.body.byteStream()
+
+                // Apparently, V8 fetches source maps itself, let's kill it
+                if (mimeType.contains("javascript") || mimeType.contains("css")) {
+                    val content = response.body.string()
+                    val scrubbedContent = content.replace(Regex("""[/#|*]\s*sourceMappingURL=.*"""), "")
+                    bodyStream = scrubbedContent.byteInputStream(Charsets.UTF_8)
+                }
 
 
                 WebResourceResponse(
@@ -183,7 +190,8 @@ object Icarus {
             "Sec-Fetch-Dest",
             "Sec-Fetch-User",
             "Referer",
-            "Upgrade-Insecure-Requests"
+            "Upgrade-Insecure-Requests",
+            "Accept-Encoding"
         )
         return useless.any { it.equals(key, ignoreCase = true) }
     }
