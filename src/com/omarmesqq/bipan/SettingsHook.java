@@ -6,9 +6,23 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Field;
 import android.content.Context;
+import android.util.Log;
 
 public class SettingsHook implements InvocationHandler {
     private final Object originalProvider;
+    private static final String TAG = "Bipan";
+    private static final String RANDOM_ANDROID_ID = generateRandomId();
+
+    private static String generateRandomId() {
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        byte[] bytes = new byte[8]; // 64 bits = 16 hex chars
+        random.nextBytes(bytes);
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
 
     public SettingsHook(Object originalProvider) {
         this.originalProvider = originalProvider;
@@ -43,11 +57,11 @@ public class SettingsHook implements InvocationHandler {
                         case "boot_count": fakeValue = "43"; break;
                     }
                 } else if ("GET_secure".equals(callingMethod) && "android_id".equals(settingKey)) {
-                    fakeValue = "a1b2c3d4e5f6g7h8";
+                    fakeValue = RANDOM_ANDROID_ID;
                 }
 
                 if (fakeValue != null) {
-                    android.util.Log.w("Bipan", "SPOOFED: " + settingKey + " -> " + fakeValue);
+                    Log.w(TAG, "Spoofed Java Settings field: " + settingKey + " -> " + fakeValue);
                     Bundle fakeResult = new Bundle();
                     fakeResult.putString("value", fakeValue);
                     return fakeResult;
@@ -75,7 +89,7 @@ public class SettingsHook implements InvocationHandler {
             // 4. Trigger the bypass
             setExemptionsMethod.invoke(vmRuntime, (Object) new String[][]{new String[]{"L"}});
             
-            android.util.Log.w("Bipan", "VM Unsealed: Hidden API restrictions removed.");
+            Log.w(TAG, "VM Unsealed: Hidden API restrictions removed.");
         } catch (Throwable e) {
             // If the above fails, there is an alternative way for Android 15/16
             try {
@@ -86,9 +100,9 @@ public class SettingsHook implements InvocationHandler {
                 Object vmRuntime = getRuntime.invoke(null);
                 Method setHiddenApiExemptions = (Method) getDeclaredMethod.invoke(vmRuntimeClass, "setHiddenApiExemptions", (Object) new Class[]{String[].class});
                 setHiddenApiExemptions.invoke(vmRuntime, new Object[]{new String[]{"L"}});
-                android.util.Log.w("Bipan", "VM Unsealed (Alt Method Success).");
+                Log.w(TAG, "VM Unsealed (Alt Method Success).");
             } catch (Throwable e2) {
-                android.util.Log.e("Bipan", "Fatal: Could not unseal VM", e2);
+                Log.e(TAG, "Fatal: Could not unseal VM", e2);
             }
         }
     }
@@ -99,7 +113,7 @@ public class SettingsHook implements InvocationHandler {
             unseal();
 
             try {
-                android.util.Log.w("Bipan", "SettingsHook: Waiting for Application context...");
+                Log.w(TAG, "SettingsHook: Waiting for Application context...");
                 Object activityThread = null;
                 Context appContext = null;
 
@@ -114,7 +128,7 @@ public class SettingsHook implements InvocationHandler {
                 }
 
                 if (appContext == null) {
-                    android.util.Log.e("Bipan", "Failed to get Application context.");
+                    Log.e(TAG, "Failed to get Application context.");
                     return;
                 }
 
@@ -141,10 +155,10 @@ public class SettingsHook implements InvocationHandler {
                             if (mValues != null) {
                                 // ArrayMap implements Map, so we can cast to clear it
                                 ((java.util.Map) mValues).clear();
-                                android.util.Log.d("Bipan", "Cache cleared for " + className);
+                                Log.d(TAG, "Cache cleared for " + className);
                             }
                         } catch (Throwable e) {
-                            android.util.Log.w("Bipan", "Could not clear cache map for " + className);
+                            Log.w(TAG, "Could not clear cache map for " + className);
                         }
 
                         Field mProviderHolderField = cache.getClass().getDeclaredField("mProviderHolder");
@@ -164,13 +178,13 @@ public class SettingsHook implements InvocationHandler {
                         );
 
                         mContentProviderField.set(providerHolder, proxy);
-                        android.util.Log.w("Bipan", "Successfully hijacked Binder for " + className);
+                        Log.w(TAG, "Successfully hijacked Binder for " + className);
                     } catch (Exception e) {
-                        android.util.Log.e("Bipan", "Failed hijacking class: " + className, e);
+                        Log.e(TAG, "Failed hijacking class: " + className, e);
                     }
                 }
             } catch (Exception e) {
-                android.util.Log.e("Bipan", "Async install fatal error", e);
+                Log.e(TAG, "Async install fatal error", e);
             }
         }).start();
     }

@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.Throwable
-import androidx.core.net.toUri
 
 private const val TAG = "WebViewUtils"
 private const val BRIDGE_NAME = "GrunfeldBridge"
@@ -106,7 +105,6 @@ object WebViewUtils {
                 if (url.contains("cookieconsent-js.js")) {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "HTTP verb: ${request.method} for $path")
                 return Icarus.handleRequest(view.context, request, urlText.value, trueUserAgent)
             }
             override fun onReceivedSslError(
