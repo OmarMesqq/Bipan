@@ -44,17 +44,13 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
              "/proc/vmstat",
              "/data/misc/user/0/cacerts-added",
              "/etc/security/otacerts.zip",
-             "/dev/mali",
-             "/dev/binder",
-             "/dev/hwbinder",
-             "/system/bin/app_process",
              "/sys/devices/system/cpu/present",
              "/sys/devices/system/cpu/possible",
              "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
             };
     char buffer[20];
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 16; i++) {
         long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
 
         if (fd < 0) {

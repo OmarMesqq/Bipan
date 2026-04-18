@@ -65,6 +65,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
+      if (is_trusted_system_caller(path, false)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        return;
+      }
       LOGE("Violation: execve/execveat(%s)", path);
 
       ctx->uc_mcontext.regs[0] = -EACCES;
@@ -72,12 +76,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_uname: {
       struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-      if (is_trusted_system_caller("uname")) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, 0, 0, 0, 0);
-      } else {
-        LOGW("Spoofing uname for untrusted caller");
-        ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
-      }
+      LOGW("Spoofing uname");
+      ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
       break;
     }
     case __NR_faccessat:
@@ -91,10 +91,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       const bool is_vfs = is_maps(pathname) || is_smaps(pathname) || is_mounts(pathname);
 
       if (is_vfs) {
-        if (is_trusted_system_caller(pathname, false)) {
-          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-          return;
-        }
         if (is_maps(pathname)) {
           ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
           log_violation_trace(pathname);
@@ -152,10 +148,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     case __NR_bind: {
-      if (is_trusted_system_caller("bind", false)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
-      }
       int sockfd = (int)arg0;
 
       struct sockaddr* addr = (struct sockaddr*)arg1;
@@ -231,10 +223,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
     }
     case __NR_listen: {
-      if (is_trusted_system_caller("listen", false)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
-      }
       int sockfd = (int)arg0;
 
       struct sockaddr_storage addr;
@@ -258,10 +246,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
     }
     case __NR_sendto: {
-      if (is_trusted_system_caller("sendto", false)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
-      }
       struct sockaddr* dest_addr = (struct sockaddr*)arg4;
       if (dest_addr != nullptr) {
         int dest_port = -1;
@@ -304,10 +288,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       return;
     }
     case __NR_getsockname: {
-      if (is_trusted_system_caller("getsockname", false)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
-      }
       // Let kernel execute the real syscall to populate the sockaddr struct
       long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
 

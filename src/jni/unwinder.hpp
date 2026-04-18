@@ -40,9 +40,9 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
     state->libs[state->current_depth] = lib_path;
 
     // Allow-list first system/hardware partitions
-    // TODO: allow webview to work but apply restrictions like WebRTC
     if (strncmp(lib_path, "/system/", 8) == 0 ||
         strncmp(lib_path, "/vendor/", 8) == 0 ||
+        strncmp(lib_path, "/product/", 9) == 0 ||
         strncmp(lib_path, "/apex/", 6) == 0 ||
         strncmp(lib_path, "/system_ext/", 12) == 0) {
       state->current_depth++;  // we are at a "trusted" OS component frame, keep on unwinding
@@ -83,7 +83,7 @@ inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fa
     LOGE("%s", target_pathname);
     LOGE("Stacktrace:");
 
-    // FIXME? This _may_ be problematic as dladdr isn't async-signal safe, yet I haven't seen problems yet
+    // TODO? This *may* be problematic as dladdr isn't async-signal safe, yet I haven't seen problems yet
     for (int i = 0; i < state.current_depth; i++) {
       uintptr_t pc = state.frames[i];
       Dl_info info;

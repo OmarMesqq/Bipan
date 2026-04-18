@@ -57,6 +57,10 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
 }
 
+
+/**
+ * TODO:
+ */
 void patchInstructionWithNop(uintptr_t address) {
   // 1. Find the start of the page (4KB align)
   uintptr_t page_start = address & ~0xFFF;
@@ -187,16 +191,8 @@ inline static bool shouldSpoofExistence(const char* pathname) {
               // Custom ROM
               (strstr(pathname, "lineage") != nullptr) ||
               (strstr(pathname, "Lineage") != nullptr) ||
-              starts_with(pathname, "/etc/security/otacerts.zip")) ||
-          (starts_with(pathname, "/dev/mali") ||
-           starts_with(pathname, "/dev/kgsl-3d0") ||
-           starts_with(pathname, "/dev/binder") ||
-           starts_with(pathname, "/dev/hwbinder") ||
-           starts_with(pathname, "/vendor/lib64") ||
-           starts_with(pathname, "/system_ext/bin/hwservicemanager") ||
-           starts_with(pathname, "/system/bin/app_process") ||
-           starts_with(pathname, "/odm/lib64/hw") ||
-           starts_with(pathname, "/dev/vndbinder")));
+              starts_with(pathname, "/etc/security/otacerts.zip"))
+          );
 }
 
 inline static bool shouldDenyAccess(const char* pathname) {

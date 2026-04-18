@@ -117,7 +117,7 @@ void setupSensorsSpoofing() {
     DobbyHook(createQueue_addr, (void*)hook_ASensorManager_createEventQueue, (void**)&orig_ASensorManager_createEventQueue);
   }
 
-  // LOGD("Native sensor hooks applied process-wide.");
+  LOGD("Native sensor hooks applied");
 }
 
 // ==========================================
@@ -126,17 +126,17 @@ void setupSensorsSpoofing() {
 
 void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    // LOGW("Hook (dlopen): app is loading: %s", filename);
+    LOGW("Hook (dlopen): app is loading: %s", filename);
   }
   return orig_dlopen(filename, flag);
 }
 
 void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    // LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
+    LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
 
     if (strstr(filename, "libwebviewchromium.so") != nullptr) {
-      // LOGW("WebView Detected! Re-applying sensor blocks...");
+      LOGW("WebView Detected! Re-applying sensor blocks...");
       setupSensorsSpoofing();
     } else if (strstr(filename, "libloader.so") != nullptr) {
       LOGE("Attach GDB: gdb -p %d", getpid());
@@ -159,8 +159,6 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     applySeccomp();
     seccomp_applied = true;
     LOGW("Seccomp applied at clampGrowthLimit.");
-
-    // injectAndStartJavaPayload(env);
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
@@ -172,8 +170,6 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     applySeccomp();
     seccomp_applied = true;
     LOGW("Seccomp applied at clearGrowthLimit.");
-
-    // injectAndStartJavaPayload(env);
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);
