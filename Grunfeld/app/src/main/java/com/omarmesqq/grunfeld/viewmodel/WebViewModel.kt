@@ -37,8 +37,13 @@ class WebViewModel : ViewModel() {
     }
 
     fun navigateToUrl(url: String) {
-        urlText.value = url
-        webView?.loadUrl(url)
+        val formattedUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+            url
+        } else {
+            "https://$url"
+        }
+        urlText.value = formattedUrl
+        webView?.loadUrl(formattedUrl)
     }
 
     fun clearAndReset() {
