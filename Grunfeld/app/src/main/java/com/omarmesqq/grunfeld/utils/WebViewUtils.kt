@@ -31,7 +31,9 @@ object WebViewUtils {
         isLoading: MutableState<Boolean>,
         urlText: MutableState<String>
     ) {
+        // Native-JS Bridge for monkey patching
         webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText.value), BRIDGE_NAME)
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, false)
@@ -61,6 +63,7 @@ object WebViewUtils {
             }
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                // Inject JS at every page load
                 view?.evaluateJavascript(getPostInterceptionJs(), null)
                 isLoading.value = true
                 if (url != null) {
@@ -70,6 +73,7 @@ object WebViewUtils {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 isLoading.value = false
+
                 if (url != null && url.contains("deviceinfo.me")) {
                     view?.let { detectAllDeviceInfoProps(it) }
                 }

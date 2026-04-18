@@ -40,7 +40,7 @@ class WebViewModel : ViewModel() {
     }
 
     fun clearAndReset() {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "clearAndReset")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "clearAndReset", shouldToast = true)
         WebViewUtils.fullCleanup(webView)
         urlText.value = "about:blank"
         webView?.loadUrl("about:blank")
