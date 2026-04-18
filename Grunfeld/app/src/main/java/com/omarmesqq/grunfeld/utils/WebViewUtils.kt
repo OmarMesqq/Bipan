@@ -43,7 +43,7 @@ object WebViewUtils {
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
         webView.settings.apply {
-blockNetworkLoads = false
+            blockNetworkLoads = false
             javaScriptEnabled = true
             domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
@@ -271,7 +271,9 @@ blockNetworkLoads = false
 
         // Normalize both hosts (strip 'www.' and convert to lowercase)
         val getHost = { url: String ->
-            val uri = url.toUri()
+            // If it doesn't start with a scheme, Uri.parse won't find the host
+            val formattedUrl = if (!url.contains("://")) "https://$url" else url
+            val uri = formattedUrl.toUri()
             uri.host?.lowercase()?.removePrefix("www.")
         }
 
