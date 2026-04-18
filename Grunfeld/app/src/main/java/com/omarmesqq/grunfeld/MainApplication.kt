@@ -65,22 +65,22 @@ class MainApplication: Application() {
         }
 
         // Pre-warm Chromium engine using bleeding edge API
-        val executor = Executors.newSingleThreadExecutor()
-        val config = WebViewStartUpConfig.Builder(executor).build()
-
-        WebViewCompat.startUpWebView(
-            this,
-            config,
-            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
-                override fun onResult(result: WebViewStartUpResult) {
-                    Log.d(TAG, "Chromium engine successfully pre-warmed in the background!")
-                }
-
-                override fun onError(error: WebViewStartupException) {
-                    Log.e(TAG, "Failed to pre-warm Chromium: $error" )
-                }
-            }
-        )
+//        val executor = Executors.newSingleThreadExecutor()
+//        val config = WebViewStartUpConfig.Builder(executor).build()
+//
+//        WebViewCompat.startUpWebView(
+//            this,
+//            config,
+//            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
+//                override fun onResult(result: WebViewStartUpResult) {
+//                    Log.d(TAG, "Chromium engine successfully pre-warmed in the background!")
+//                }
+//
+//                override fun onError(error: WebViewStartupException) {
+//                    Log.e(TAG, "Failed to pre-warm Chromium: $error" )
+//                }
+//            }
+//        )
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
