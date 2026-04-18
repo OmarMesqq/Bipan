@@ -79,10 +79,13 @@ object WebViewUtils {
                 request: WebResourceRequest?
             ): WebResourceResponse? {
                 if (view == null || request == null) return null
+
                 val url = request.url?.toString() ?: ""
-                if (request.url?.path?.endsWith("favicon.ico") == true) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Neutering favicon fetch ${request.url}")
-                    return WebResourceResponse("image/x-icon", "UTF-8", null)
+                val path = request.url?.path?.lowercase() ?: ""
+
+                if (path.contains("favicon") || path.contains("apple-touch-icon")) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Neutering favicon/icon fetch: ${request.url}")
+                    return WebResourceResponse("image/png", "UTF-8", null)
                 }
 
                 if (request.method == "POST") {
