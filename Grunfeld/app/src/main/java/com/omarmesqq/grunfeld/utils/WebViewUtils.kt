@@ -33,7 +33,7 @@ object WebViewUtils {
         urlText: MutableState<String>
     ) {
         // Native-JS Bridge for monkey patching
-        webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText.value), BRIDGE_NAME)
+        webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText), BRIDGE_NAME)
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
@@ -66,7 +66,7 @@ object WebViewUtils {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 // Inject JS at every page load
-                view?.evaluateJavascript(getPostInterceptionJs(), null)
+                view?.evaluateJavascript(getMonkeyPatchJS(), null)
                 isLoading.value = true
                 if (url != null) {
                     urlText.value = url
@@ -99,8 +99,9 @@ object WebViewUtils {
                     return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
                 }
 
-                if (request.method == "POST") {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Blocked native POST leak to ${request.url}", shouldToast = true)
+                val bodyMethods = listOf("POST", "PUT", "PATCH", "DELETE")
+                if (request.method?.uppercase() in bodyMethods) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Blocked native ${request.method} leak to ${request.url}", shouldToast = true)
                     return WebResourceResponse("text/plain", "UTF-8", 405, "Method Not Allowed", null, "".byteInputStream())
                 }
 
@@ -134,7 +135,7 @@ object WebViewUtils {
         }
     }
 
-    private fun getPostInterceptionJs(): String {
+    private fun getMonkeyPatchJS(): String {
         return """
     (function() {
         if (window.bridgeInitialized) return;
@@ -142,19 +143,21 @@ object WebViewUtils {
         window.grunfeldCallbacks = {};
         let requestId = 0;
 
-        // Helper to decode UTF-8 Base64 accurately
         const b64DecodeUnicode = (str) => {
             return decodeURIComponent(atob(str).split('').map(function(c) {
                 return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
             }).join(''));
         };
 
+        const bodyVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
         // 1. Hook Forms
         const originalSubmit = HTMLFormElement.prototype.submit;
         HTMLFormElement.prototype.submit = function() {
-            if (this.method.toLowerCase() === 'post') {
+            const method = this.method.toUpperCase();
+            if (bodyVerbs.includes(method)) {
                 const params = new URLSearchParams(new FormData(this)).toString();
-                GrunfeldBridge.performInterceptedPost(this.action, params, "application/x-www-form-urlencoded", true, -1);
+                GrunfeldBridge.performInterceptedRequest(this.action, params, "application/x-www-form-urlencoded", true, -1, method);
                 return;
             }
             originalSubmit.apply(this, arguments);
@@ -163,7 +166,8 @@ object WebViewUtils {
         // 2. Hook Fetch
         const originalFetch = window.fetch;
         window.fetch = function(input, init) {
-            if (init && init.method && init.method.toUpperCase() === 'POST') {
+            const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
+            if (bodyVerbs.includes(method)) {
                 const id = requestId++;
                 const url = (typeof input === 'string') ? input : input.url;
                 return new Promise((resolve) => {
@@ -171,7 +175,7 @@ object WebViewUtils {
                         const decoded = b64DecodeUnicode(respB64);
                         resolve(new Response(decoded, { status: 200 }));
                     };
-                    GrunfeldBridge.performInterceptedPost(url, init.body || "", init.headers['Content-Type'] || "", false, id);
+                    GrunfeldBridge.performInterceptedRequest(url, init.body || "", init.headers && init.headers['Content-Type'] ? init.headers['Content-Type'] : "", false, id, method);
                 });
             }
             return originalFetch.apply(this, arguments);
@@ -183,13 +187,13 @@ object WebViewUtils {
         const open = XHR.open;
 
         XHR.open = function(method, url) {
-            this._method = method;
+            this._method = method.toUpperCase();
             this._url = url;
             return open.apply(this, arguments);
         };
 
         XHR.send = function(data) {
-            if (this._method === 'POST') {
+            if (bodyVerbs.includes(this._method)) {
                 const id = requestId++;
                 window.grunfeldCallbacks[id] = (respB64) => {
                     const decoded = b64DecodeUnicode(respB64);
@@ -200,7 +204,8 @@ object WebViewUtils {
                     if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
                     if (typeof this.onload === 'function') this.onload();
                 };
-                GrunfeldBridge.performInterceptedPost(this._url, data || "", "", false, id);
+                // XHR doesn't expose Content-Type easily before send, default to empty or extract if needed.
+                GrunfeldBridge.performInterceptedRequest(this._url, data || "", "", false, id, this._method);
                 return;
             }
             return send.apply(this, arguments);
@@ -285,19 +290,23 @@ object WebViewUtils {
         return requestHost == allowedHost || requestHost.endsWith(".$allowedHost")
     }
 
-    private class GrunfeldWebNativeIface(private val webView: WebView, private val allowedHost: String) {
+    private class GrunfeldWebNativeIface(
+        private val webView: WebView,
+        private val currentUrlState: MutableState<String>
+    ) {
         @JavascriptInterface
-        fun performInterceptedPost(
+        fun performInterceptedRequest(
             url: String,
             body: String,
             contentType: String,
             isNavigation: Boolean,
-            callbackId: Int
+            callbackId: Int,
+            method: String
         ) {
             CoroutineScope(Dispatchers.IO).launch {
-                val responseData = Icarus.executeManualPost(url, body, contentType, allowedHost)
+                val allowedHost = currentUrlState.value
+                val responseData = Icarus.executeManualBodyRequest(url, body, contentType, allowedHost, method)
 
-                // Encode to Base64 (Using NO_WRAP to keep it in one line for JS)
                 val base64Data = android.util.Base64.encodeToString(
                     responseData?.toByteArray(Charsets.UTF_8),
                     android.util.Base64.NO_WRAP
@@ -305,10 +314,8 @@ object WebViewUtils {
 
                 withContext(Dispatchers.Main) {
                     if (isNavigation) {
-                        // Full Page Navigation (Base64 is native to loadDataWithBaseURL)
                         webView.loadDataWithBaseURL(url, base64Data, "text/html", "base64", url)
                     } else {
-                        // Background AJAX (Return encoded string to our JS decoder)
                         webView.evaluateJavascript(
                             "window.grunfeldResolve($callbackId, '$base64Data')",
                             null

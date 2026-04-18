@@ -131,7 +131,7 @@ object Icarus {
         }
     }
 
-    fun executeManualPost(urlString: String, body: String, contentType: String, allowedHost: String): String? {
+    fun executeManualBodyRequest(urlString: String, body: String, contentType: String, allowedHost: String, method: String): String? {
         return try {
             val uri = urlString.toUri()
             val host = uri.host ?: ""
@@ -140,7 +140,7 @@ object Icarus {
             val isPrimaryHost = host == baseAllowedHost || host.endsWith(".$baseAllowedHost")
 
             if (!isPrimaryHost) {
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: $host not allowed")
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualBodyRequest: $host not allowed")
                 return null
             }
 
@@ -149,7 +149,7 @@ object Icarus {
 
             val okRequestBuilder = Request.Builder()
                 .url(urlString)
-                .post(requestBody)
+                .method(method.uppercase(), requestBody)
 
             val cookies = CookieManager.getInstance().getCookie(urlString)
             if (!cookies.isNullOrEmpty()) {
@@ -159,7 +159,6 @@ object Icarus {
             val response = okHttpClient.newCall(okRequestBuilder.build()).execute()
 
             if (response.isSuccessful) {
-                // Inside executeManualPost after response is successful:
                 val latestCookies = response.headers("Set-Cookie")
                 latestCookies.forEach { cookieStr ->
                     // Feed the new session cookie back to the system
@@ -168,11 +167,11 @@ object Icarus {
                 val body = response.body.string()
                 return body
             } else {
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: unsuccessful response: ${response.code}")
-                "<html><body>POST Failed: ${response.code}</body></html>"
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualBodyRequest: unsuccessful response: ${response.code}")
+                "<html><body>${method.uppercase()} Failed: ${response.code}</body></html>"
             }
         } catch (e: Exception) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: Exception", tr = e, shouldToast = true)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualBodyRequest: Exception", tr = e, shouldToast = true)
             "<html><body>Icarus Bridge Error: ${e.message}</body></html>"
         }
     }
