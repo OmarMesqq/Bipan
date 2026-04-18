@@ -19,6 +19,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import com.omarmesqq.grunfeld.BuildConfig
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 
 private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
@@ -63,7 +64,7 @@ object Icarus {
         val urlString = uri.toString()
 
 
-        // 4. Network Fetch via OkHttp
+        // Network Fetch via OkHttp
         return try {
             val okRequestBuilder = Request.Builder().url(urlString)
 
@@ -100,6 +101,7 @@ object Icarus {
                     bodyStream
                 )
             } else {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Response unsuccessful: code ${response.code}", shouldToast = true)
                 return WebResourceResponse(
                     "text/plain",
                     "UTF-8",
@@ -110,6 +112,7 @@ object Icarus {
                 )
             }
         } catch (e: Exception) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception", tr = e, shouldToast = true)
             return WebResourceResponse(
                 "text/plain",
                 "UTF-8",
@@ -130,6 +133,7 @@ object Icarus {
             val isPrimaryHost = host == baseAllowedHost || host.endsWith(".$baseAllowedHost")
 
             if (!isPrimaryHost) {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: $host not allowed")
                 return null
             }
 
@@ -157,9 +161,11 @@ object Icarus {
                 val body = response.body.string()
                 return body
             } else {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: unsuccessful response: ${response.code}")
                 "<html><body>POST Failed: ${response.code}</body></html>"
             }
         } catch (e: Exception) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualPost: Exception", tr = e, shouldToast = true)
             "<html><body>Icarus Bridge Error: ${e.message}</body></html>"
         }
     }

@@ -11,8 +11,10 @@ import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
-    // private val initialUrl = "https://httpbin.org"
-    private val initialUrl = "https://browserleaks.com"
+    // https://browserleaks.com
+    // https://httpbin.org
+    // https://deviceinfo.me
+    private val initialUrl = "https://httpbin.org"
     var webView: WebView? = null
 
     // UI States
