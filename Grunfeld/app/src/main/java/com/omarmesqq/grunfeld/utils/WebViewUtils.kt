@@ -1,7 +1,6 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.net.http.SslError
-import android.util.Log
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -15,6 +14,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebStorage
 import com.omarmesqq.grunfeld.BuildConfig
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -81,10 +81,12 @@ object WebViewUtils {
                 if (view == null || request == null) return null
                 val url = request.url?.toString() ?: ""
                 if (request.url?.path?.endsWith("favicon.ico") == true) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Neutering favicon fetch ${request.url}")
                     return WebResourceResponse("image/x-icon", "UTF-8", null)
                 }
 
                 if (request.method == "POST") {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Blocked native POST leak to ${request.url}", shouldToast = true)
                     return WebResourceResponse("text/plain", "UTF-8", 405, "Method Not Allowed", null, "".byteInputStream())
                 }
 
@@ -101,7 +103,7 @@ object WebViewUtils {
                 error: SslError?
             ) {
                 if (BuildConfig.DEBUG) {
-                    Log.e(TAG, "onReceivedSslError: $error")
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "onReceivedSslError: $error", shouldToast = true)
                     // handler?.proceed()
                     throw Throwable()
                 } else {
@@ -112,7 +114,7 @@ object WebViewUtils {
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                Log.d(TAG, "JS Console: ${consoleMessage?.message()}")
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "JS Console: ${consoleMessage?.message()}")
                 return super.onConsoleMessage(consoleMessage)
             }
         }
@@ -246,7 +248,7 @@ object WebViewUtils {
     """.trimIndent()
 
         webView.evaluateJavascript(js) { result ->
-            Log.d(TAG, "JS Injection worked. Res: $result")
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "JS Injection worked. Res: $result")
         }
     }
 

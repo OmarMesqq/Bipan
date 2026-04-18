@@ -176,7 +176,8 @@ object Icarus {
             "Sec-Fetch-Mode",
             "Sec-Fetch-Dest",
             "Sec-Fetch-User",
-            "Referer"
+            "Referer",
+            "Upgrade-Insecure-Requests"
         )
         return useless.any { it.equals(key, ignoreCase = true) }
     }

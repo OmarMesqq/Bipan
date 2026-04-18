@@ -1,11 +1,12 @@
 package com.omarmesqq.grunfeld.viewmodel
 
 import android.content.Context
-import android.util.Log
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 private const val TAG = "WebViewModel"
@@ -38,7 +39,7 @@ class WebViewModel : ViewModel() {
     }
 
     fun clearAndReset() {
-        Log.d(TAG, "clearAndReset")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "clearAndReset")
         WebViewUtils.fullCleanup(webView)
         urlText.value = "about:blank"
         webView?.loadUrl("about:blank")
@@ -54,6 +55,6 @@ class WebViewModel : ViewModel() {
             destroy()
         }
         webView = null
-        Log.w(TAG, "onCleared: automatically destroyed WebView")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "onCleared: automatically destroyed WebView")
     }
 }
