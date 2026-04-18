@@ -274,7 +274,7 @@ class Bipan : public zygisk::ModuleBase {
 
       JNINativeMethod manager_methods[] = {
           {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
-          {"nativeCreateDirectChannel", "(JIIILandroid/os/MemoryFile;)I", (void*)my_nativeCreateDirectChannel}};
+          {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
       api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, 2);
 
       JNINativeMethod runtime_methods[] = {
