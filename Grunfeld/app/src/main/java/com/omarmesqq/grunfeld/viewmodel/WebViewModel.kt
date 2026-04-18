@@ -11,12 +11,14 @@ import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
+    // private val initialUrl = "https://httpbin.org"
+    private val initialUrl = "https://browserleaks.com"
     var webView: WebView? = null
 
     // UI States
     var canGoBack = mutableStateOf(false)
     var isLoading = mutableStateOf(true)
-    var urlText = mutableStateOf("https://httpbin.org")
+    var urlText = mutableStateOf(initialUrl)
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
@@ -26,7 +28,6 @@ class WebViewModel : ViewModel() {
                 )
 
                 WebViewUtils.configureSettings(this, canGoBack, isLoading, urlText)
-
                 loadUrl(urlText.value)
             }
         }
