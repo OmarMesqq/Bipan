@@ -43,6 +43,7 @@ object WebViewUtils {
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
         webView.settings.apply {
+blockNetworkLoads = false
             javaScriptEnabled = true
             domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
@@ -228,7 +229,7 @@ object WebViewUtils {
     }
 
 
-    fun detectAllDeviceInfoProps(webView: WebView) {
+    private fun detectAllDeviceInfoProps(webView: WebView) {
         val js = """
     (function() {
         // rrhdi: Detect all button
@@ -282,7 +283,7 @@ object WebViewUtils {
         return requestHost == allowedHost || requestHost.endsWith(".$allowedHost")
     }
 
-    class GrunfeldWebNativeIface(private val webView: WebView, private val allowedHost: String) {
+    private class GrunfeldWebNativeIface(private val webView: WebView, private val allowedHost: String) {
         @JavascriptInterface
         fun performInterceptedPost(
             url: String,
