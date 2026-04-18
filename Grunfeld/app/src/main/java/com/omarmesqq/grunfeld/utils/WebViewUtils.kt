@@ -43,7 +43,7 @@ object WebViewUtils {
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
         webView.settings.apply {
-            blockNetworkLoads = false
+            blockNetworkLoads = true
             javaScriptEnabled = true
             domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
