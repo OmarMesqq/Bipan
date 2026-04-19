@@ -20,6 +20,7 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import okhttp3.logging.HttpLoggingInterceptor
 import java.net.UnknownHostException
 
 private const val TAG = "Icarus"
@@ -37,6 +38,7 @@ object Icarus {
         .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
+        .fastFallback(true)
         .cookieJar(object : okhttp3.CookieJar {
             private val cookieStore = mutableMapOf<String, List<okhttp3.Cookie>>()
             override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
@@ -60,6 +62,13 @@ object Icarus {
                 hostnameVerifier { _, _ -> true }
             }
         }
+        .addInterceptor(HttpLoggingInterceptor { message ->
+            // Direct output to your custom avocado logger
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, REQUEST_LOGGING_TAG, message)
+        }.apply {
+            // HEADERS shows all stripping/injections; BODY shows JSON responses
+            level = HttpLoggingInterceptor.Level.HEADERS
+        })
         .build()
 
     fun handleRequest(
@@ -70,14 +79,14 @@ object Icarus {
     ): WebResourceResponse? {
         val uri = request.url
         val urlString = uri.toString()
+        // Assume GET as default I guess
+        val method = request.method?.uppercase() ?: "GET"
 
         if (!isHostAllowed(urlString, currentUrl)) {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "Blocking 3rd Party: $urlString")
             return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
         }
 
-        // Assume GET as default I guess
-        val method = request.method?.uppercase() ?: "GET"
         // Network Fetch via OkHttp
         return try {
             val okRequestBuilder = if (method in listOf("GET", "HEAD", "OPTIONS")) {
