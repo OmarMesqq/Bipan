@@ -63,10 +63,8 @@ object Icarus {
             }
         }
         .addInterceptor(HttpLoggingInterceptor { message ->
-            // Direct output to your custom avocado logger
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, REQUEST_LOGGING_TAG, message)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, REQUEST_LOGGING_TAG, message)
         }.apply {
-            // HEADERS shows all stripping/injections; BODY shows JSON responses
             level = HttpLoggingInterceptor.Level.HEADERS
         })
         .build()
@@ -229,10 +227,20 @@ object Icarus {
 
 
     private fun shouldStripHeader(key: String): Boolean {
+        val lowercaseKey = key.lowercase()
+
+        // Client Hints
+        if (lowercaseKey.startsWith("sec-ch-")) {
+            return true
+        }
+
+        // Network Information
+        val networkHeaders = listOf("downlink", "rtt", "ect", "dpr", "device-memory", "viewport-width")
+        if (networkHeaders.contains(lowercaseKey)) {
+            return true
+        }
+
         val useless = listOf(
-            "Sec-CH-UA",
-            "Sec-CH-UA-Mobile",
-            "Sec-CH-UA-Platform",
             "X-Requested-With",
             "Sec-Fetch-Site",
             "Sec-Fetch-Mode",
