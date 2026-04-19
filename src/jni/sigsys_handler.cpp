@@ -12,9 +12,12 @@
 #include <syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <mutex>
 
 #include "assembly.hpp"
 #include "blocker.hpp"
@@ -22,6 +25,14 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "unwinder.hpp"
+
+std::map<int, std::string> spoofed_fds;
+std::mutex fds_mutex;
+
+void register_spoofed_fd(int fd, const char* original_path) {
+  std::lock_guard<std::mutex> lock(fds_mutex);
+  spoofed_fds[fd] = original_path;
+}
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -33,6 +44,8 @@ struct kernel_sigaction {
 inline static bool is_smaps(const char* pathname);
 inline static bool is_maps(const char* pathname);
 inline static bool is_mounts(const char* pathname);
+inline bool is_address_lan(struct sockaddr* addr);
+static size_t get_msghdr_len(const struct msghdr* msg);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
 void registerSigSysHandler() {
@@ -324,6 +337,30 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
   }
+}
+
+/**
+ * TODO:
+ */
+inline bool is_address_lan(struct sockaddr* addr) {
+  if (addr == nullptr) return false;
+  if (addr->sa_family == AF_INET) {
+    return filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
+  }
+  if (addr->sa_family == AF_INET6) {
+    return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
+  }
+  return false;
+}
+
+static size_t get_msghdr_len(const struct msghdr* msg) {
+  size_t total = 0;
+  if (msg && msg->msg_iov) {
+    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
+      total += msg->msg_iov[i].iov_len;
+    }
+  }
+  return total;
 }
 
 inline static bool is_smaps(const char* pathname) {

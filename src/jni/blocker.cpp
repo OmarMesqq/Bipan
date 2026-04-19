@@ -2,12 +2,14 @@
 
 #include <sys/mman.h>
 
+
 #include <string>
 
 #include "assembly.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "unwinder.hpp"
+#include "sigsys_handler.hpp"
 
 inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
@@ -40,9 +42,11 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
   const char* fakeFileContent = shouldFakeFile(pathname);
   if (fakeFileContent != nullptr) {
-    LOGW("Spoofing %s", pathname);
-    log_violation_trace(pathname);
-    return create_spoofed_file(fakeFileContent);
+    int fake_fd = create_spoofed_file(fakeFileContent);
+    if (fake_fd >= 0) {
+      register_spoofed_fd(fake_fd, pathname);
+      return fake_fd;
+    }
   }
 
   if (shouldDenyAccess(pathname)) {
@@ -56,7 +60,6 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
 }
-
 
 /**
  * TODO:
@@ -164,35 +167,34 @@ inline static bool shouldLog(const char* pathname) {
 
 inline static bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
-              strstr(pathname, "c7981ca8.0") != nullptr ||
-              starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
-              // Root
-              strstr(pathname, "libzygisk.so") != nullptr ||
-              strstr(pathname, "magisk") != nullptr ||
-              strstr(pathname, "magiskpolicy") != nullptr ||
-              strstr(pathname, "resetprop") != nullptr ||
-              strstr(pathname, "supolicy") != nullptr ||
-              // Weird ahh binaries
-              starts_with(pathname, "/system/xbin") ||
-              starts_with(pathname, "/system/bin/su") ||
-              starts_with(pathname, "/product/bin/su") ||
-              starts_with(pathname, "/bin/getprop") ||
-              starts_with(pathname, "/system/bin/getprop") ||
-              starts_with(pathname, "/system/bin/dumpsys") ||
-              starts_with(pathname, "/system/bin/dumpstate") ||
-              starts_with(pathname, "/system/bin/uptime") ||
-              starts_with(pathname, "/system/bin/toolbox") ||
-              starts_with(pathname, "/system/bin/toybox") ||
-              starts_with(pathname, "/system/bin/sh") ||
-              starts_with(pathname, "/system/bin/mount") ||
-              starts_with(pathname, "/system/bin/modprobe") ||
-              starts_with(pathname, "/system/bin/vmstat") ||
-              starts_with(pathname, "/system/bin/df") ||
-              // Custom ROM
-              (strstr(pathname, "lineage") != nullptr) ||
-              (strstr(pathname, "Lineage") != nullptr) ||
-              starts_with(pathname, "/etc/security/otacerts.zip"))
-          );
+      strstr(pathname, "c7981ca8.0") != nullptr ||
+      starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      // Root
+      strstr(pathname, "libzygisk.so") != nullptr ||
+      strstr(pathname, "magisk") != nullptr ||
+      strstr(pathname, "magiskpolicy") != nullptr ||
+      strstr(pathname, "resetprop") != nullptr ||
+      strstr(pathname, "supolicy") != nullptr ||
+      // Weird ahh binaries
+      starts_with(pathname, "/system/xbin") ||
+      starts_with(pathname, "/system/bin/su") ||
+      starts_with(pathname, "/product/bin/su") ||
+      starts_with(pathname, "/bin/getprop") ||
+      starts_with(pathname, "/system/bin/getprop") ||
+      starts_with(pathname, "/system/bin/dumpsys") ||
+      starts_with(pathname, "/system/bin/dumpstate") ||
+      starts_with(pathname, "/system/bin/uptime") ||
+      starts_with(pathname, "/system/bin/toolbox") ||
+      starts_with(pathname, "/system/bin/toybox") ||
+      starts_with(pathname, "/system/bin/sh") ||
+      starts_with(pathname, "/system/bin/mount") ||
+      starts_with(pathname, "/system/bin/modprobe") ||
+      starts_with(pathname, "/system/bin/vmstat") ||
+      starts_with(pathname, "/system/bin/df") ||
+      // Custom ROM
+      (strstr(pathname, "lineage") != nullptr) ||
+      (strstr(pathname, "Lineage") != nullptr) ||
+      starts_with(pathname, "/etc/security/otacerts.zip")));
 }
 
 inline static bool shouldDenyAccess(const char* pathname) {

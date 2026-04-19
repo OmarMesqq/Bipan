@@ -18,12 +18,6 @@
  * For this to properly work, Bipan must stay in memory
  * to install and maintain its signal handler during the app's
  * lifetime.
- * 
- * TODO:
- * - readlinkat:
- *   - focus on /proc/<PID>/fd/<someFdNumber>
- *      /proc/<PID>/fd/XY is spoofed maps, but it points to our FD
- *      /proc/<PID>/fd/XY -> '/memfd:F4ON5SYGiut0 (deleted)'*
  */
 static struct sock_filter trapFilter[] = {
     // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
@@ -48,12 +42,14 @@ static struct sock_filter trapFilter[] = {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    // Filesystem access: grants FDs to files in disk
+    // Filesystem
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
     // Trap sigaction to protect Bipan's signal handler
