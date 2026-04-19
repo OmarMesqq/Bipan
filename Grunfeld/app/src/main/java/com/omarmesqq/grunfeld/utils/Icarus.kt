@@ -85,6 +85,19 @@ object Icarus {
             return WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, "".byteInputStream())
         }
 
+        if (method == "OPTIONS") {
+            // Echo back whatever headers the browser is asking for
+            val requestedHeaders = request.requestHeaders["Access-Control-Request-Headers"] ?: "*"
+
+            val responseHeaders = mutableMapOf(
+                "Access-Control-Allow-Origin" to "*",
+                "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, PUT, DELETE, PATCH",
+                "Access-Control-Allow-Headers" to requestedHeaders, // Dynamic fix
+                "Access-Control-Max-Age" to "3600"
+            )
+            return WebResourceResponse("text/plain", "UTF-8", 200, "OK", responseHeaders, "".byteInputStream())
+        }
+
         // Network Fetch via OkHttp
         return try {
             val okRequestBuilder = if (method in listOf("GET", "HEAD", "OPTIONS")) {
@@ -115,7 +128,18 @@ object Icarus {
 
             val response = okHttpClient.newCall(okRequestBuilder.build()).execute()
 
-            if (response.isSuccessful) { // 200s
+            if (response.isSuccessful) {
+                // 1. FLATTEN HEADERS: Convert Map<String, List<String>> to Map<String, String>
+                val flatHeaders = mutableMapOf<String, String>()
+                for (name in response.headers.names()) {
+                    // Standard HTTP behavior: multiple headers with same name are comma-separated
+                    flatHeaders[name] = response.headers(name).joinToString(", ")
+                }
+
+                // 2. PERMISSIVE CORS: Force origin and headers to avoid preflight blocks
+                flatHeaders["Access-Control-Allow-Origin"] = "*"
+                flatHeaders["Access-Control-Allow-Headers"] = "*"
+
                 val contentType = response.header("Content-Type", "text/html; charset=utf-8")
                 val mimeType = contentType?.split(";")?.get(0) ?: "text/html"
                 val encoding = if (contentType?.contains("charset=") == true)
@@ -123,20 +147,19 @@ object Icarus {
 
                 var bodyStream = response.body.byteStream()
 
-                // Apparently, V8 fetches source maps itself, let's kill it
+                // 3. SOURCE MAP SCRUBBING
                 if (mimeType.contains("javascript") || mimeType.contains("css")) {
                     val content = response.body.string()
-                    val scrubbedContent = content.replace(Regex("""[/#|*]\s*sourceMappingURL=.*"""), "")
-                    bodyStream = scrubbedContent.byteInputStream(Charsets.UTF_8)
+                    val scrubbed = content.replace(Regex("""[/#|*]\s*sourceMappingURL=.*"""), "")
+                    bodyStream = scrubbed.byteInputStream(Charsets.UTF_8)
                 }
 
-
-                WebResourceResponse(
+                return WebResourceResponse(
                     mimeType,
                     encoding,
                     response.code,
                     response.message.ifEmpty { "OK" },
-                    CORS_HEADERS,
+                    flatHeaders, // Use the correct flat Map here!
                     bodyStream
                 )
             } else { // 400s and 500s
