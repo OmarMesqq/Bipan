@@ -44,8 +44,8 @@ struct kernel_sigaction {
 inline static bool is_smaps(const char* pathname);
 inline static bool is_maps(const char* pathname);
 inline static bool is_mounts(const char* pathname);
-inline bool is_address_lan(struct sockaddr* addr);
-static size_t get_msghdr_len(const struct msghdr* msg);
+inline static size_t get_msghdr_len(const struct msghdr* msg);
+inline static bool is_lan_address(struct sockaddr* addr);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 
 void registerSigSysHandler() {
@@ -58,7 +58,7 @@ void registerSigSysHandler() {
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
 
   if (ret != 0) {
-    LOGE("registerSigSysHandler: Failed to set SIGSYS handler directly (error: %ld)", ret);
+    LOGE("Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
   }
 }
@@ -82,7 +82,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
       }
-      LOGE("Violation: execve/execveat(%s)", path);
+      LOGE("Violation: execve/execveat");
+      log_violation_trace(path);
 
       ctx->uc_mcontext.regs[0] = -EACCES;
       break;
@@ -122,31 +123,10 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_rt_sigaction: {
       int signum = arg0;
-      const struct kernel_sigaction* act = (const struct kernel_sigaction*)arg1;
-      struct kernel_sigaction* oldact = (struct kernel_sigaction*)arg2;
 
       if (signum == SIGSYS) {
         LOGE("App tried to install SIGSYS handler! Spoofing success...");
-
-        if (act != nullptr) {
-          uintptr_t sigaction_handler = (uintptr_t)act->sa_handler;
-          LOGW("sa_flags: %lu", act->sa_flags);
-          LOGW("sa_mask: %llu", (unsigned long long)act->sa_mask);
-
-          if (act->sa_restorer) {
-            LOGW("sa_restorer: %p", act->sa_restorer);
-          } else {
-            LOGW("no sa_restorer defined");
-          }
-
-          if (act->sa_handler) {
-            LOGW("sa_handler: %p", act->sa_handler);
-          } else {
-            LOGW("no sa_handler defined");
-          }
-        } else {
-          LOGW("App just queried SIGSYS handler (act is NULL)");
-        }
+        log_violation_trace("SIGSYS handler hijacking");
         ctx->uc_mcontext.regs[0] = 0;
       } else {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
@@ -230,7 +210,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           break;
         }
       } else {
-        //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+        // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
@@ -254,7 +234,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = 0;
         break;
       } else {
-        //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+        // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
@@ -339,14 +319,14 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       int protocol = (int)arg2;
 
       if (domain == 16) {  // 16 is the constant for AF_NETLINK
-        LOGE("(socket) Blocking AF_NETLINK socket creation (Privacy Protection)");
+        LOGE("(socket) Blocking AF_NETLINK");
         log_violation_trace("(socket): AF_NETLINK");
         ctx->uc_mcontext.regs[0] = -EACCES;
         break;
       }
 
       // Allow everything else (AF_INET, AF_UNIX, etc.) to proceed normally
-      //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+      // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       break;
     }
@@ -390,7 +370,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         if (spoofed_fds.count(target_fd)) {
           std::string original = spoofed_fds[target_fd];
 
-          LOGW("(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
+          // TODO: too noisy!
+          // LOGW("(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
 
           // Manually fill the buffer with the "honest" path
           size_t len = std::min(bufsiz - 1, original.length());
@@ -407,35 +388,11 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     default: {
-      LOGE("Violation: got UNEXPECTED syscall! (%d)", nr);
+      LOGE("Violation: got unexpected syscall: (%d)", nr);
       ctx->uc_mcontext.regs[0] = -ENOSYS;  // mimic the kernel's response
       break;
     }
   }
-}
-
-/**
- * TODO:
- */
-inline bool is_address_lan(struct sockaddr* addr) {
-  if (addr == nullptr) return false;
-  if (addr->sa_family == AF_INET) {
-    return filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
-  }
-  if (addr->sa_family == AF_INET6) {
-    return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
-  }
-  return false;
-}
-
-static size_t get_msghdr_len(const struct msghdr* msg) {
-  size_t total = 0;
-  if (msg && msg->msg_iov) {
-    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
-      total += msg->msg_iov[i].iov_len;
-    }
-  }
-  return total;
 }
 
 inline static bool is_smaps(const char* pathname) {
@@ -456,4 +413,28 @@ inline static bool is_mounts(const char* pathname) {
          ((safe_proc_pid_path[0] != '\0') &&
           starts_with(pathname, safe_proc_pid_path) &&
           strstr(pathname, "/mounts") != nullptr);
+}
+
+inline static size_t get_msghdr_len(const struct msghdr* msg) {
+  size_t total = 0;
+  if (msg && msg->msg_iov) {
+    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
+      total += msg->msg_iov[i].iov_len;
+    }
+  }
+  return total;
+}
+
+/**
+ * TODO:
+ */
+inline static bool is_lan_address(struct sockaddr* addr) {
+  if (addr == nullptr) return false;
+  if (addr->sa_family == AF_INET) {
+    return filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
+  }
+  if (addr->sa_family == AF_INET6) {
+    return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
+  }
+  return false;
 }
