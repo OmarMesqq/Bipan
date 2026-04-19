@@ -18,6 +18,11 @@
  * For this to properly work, Bipan must stay in memory
  * to install and maintain its signal handler during the app's
  * lifetime.
+ * 
+ * TODO:
+ * 
+ * - `mmap`
+ * - `mprotect`
  */
 static struct sock_filter trapFilter[] = {
     // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
