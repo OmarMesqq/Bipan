@@ -6,7 +6,8 @@
   "editor.detectIndentation": false,
   "conventionalCommits.scopes": [
     "Grunfeld",
-    "Bipan"
+    "Bipan",
+    "BipanJava"
   ],
   "C_Cpp.errorSquiggles": "disabled"
 }

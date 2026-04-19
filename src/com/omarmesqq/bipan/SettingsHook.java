@@ -7,11 +7,17 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public class SettingsHook implements InvocationHandler {
   private final Object originalProvider;
-  private static final String TAG = "Bipan";
+  private static final String TAG = "BipanJava";
   private static final String RANDOM_ANDROID_ID = generateRandomId();
+  private static final Set<String> ALLOWLIST =
+      new HashSet<>(Arrays.asList("com.spotify.music"));
+  private static String currentPackageName = "unknown";
 
   private static String generateRandomId() {
     java.security.SecureRandom random = new java.security.SecureRandom();
@@ -48,6 +54,19 @@ public class SettingsHook implements InvocationHandler {
         }
       }
 
+      if (settingKey != null) {
+        if ("android_id".equals(settingKey)) {
+          Log.w(TAG, currentPackageName + " is reading SSAID");
+
+          if (ALLOWLIST.contains(currentPackageName)) {
+            Log.i(TAG,
+                "Allowlisted app detected: " + currentPackageName
+                    + ". Returning true SSAID");
+            return method.invoke(originalProvider, args);
+          }
+        }
+      }
+
       if (callingMethod != null && settingKey != null) {
         String fakeValue = null;
         if ("GET_global".equals(callingMethod)) {
@@ -67,7 +86,7 @@ public class SettingsHook implements InvocationHandler {
         }
 
         if (fakeValue != null) {
-          Log.w(TAG,
+          Log.d(TAG,
               "Spoofed Java Settings field: " + settingKey + " -> "
                   + fakeValue);
           Bundle fakeResult = new Bundle();
@@ -104,7 +123,7 @@ public class SettingsHook implements InvocationHandler {
       setExemptionsMethod.invoke(
           vmRuntime, (Object) new String[][] {new String[] {"L"}});
 
-      Log.w(TAG, "VM Unsealed: Hidden API restrictions removed.");
+      Log.d(TAG, "VM Unsealed: Hidden API restrictions removed.");
     } catch (Throwable e) {
       // If the above fails, there is an alternative way for Android 15/16
       try {
@@ -121,7 +140,7 @@ public class SettingsHook implements InvocationHandler {
             (Object) new Class[] {String[].class});
         setHiddenApiExemptions.invoke(
             vmRuntime, new Object[] {new String[] {"L"}});
-        Log.w(TAG, "VM Unsealed (Alt Method Success).");
+        Log.d(TAG, "VM Unsealed (Alt Method Success).");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
       }
@@ -134,7 +153,7 @@ public class SettingsHook implements InvocationHandler {
       unseal();
 
       try {
-        Log.w(TAG, "SettingsHook: Waiting for Application context...");
+        Log.d(TAG, "SettingsHook: Waiting for Application context...");
         Object activityThread = null;
         Context appContext = null;
 
@@ -145,6 +164,10 @@ public class SettingsHook implements InvocationHandler {
           if (activityThread != null) {
             appContext = (Context) atClass.getMethod("getApplication")
                              .invoke(activityThread);
+
+            currentPackageName =
+                (String) atClass.getMethod("currentPackageName").invoke(null);
+
             if (appContext != null)
               break;
           }
@@ -189,7 +212,7 @@ public class SettingsHook implements InvocationHandler {
                 Log.d(TAG, "Cache cleared for " + className);
               }
             } catch (Throwable e) {
-              Log.w(TAG, "Could not clear cache map for " + className);
+              Log.e(TAG, "Could not clear cache map for " + className);
             }
 
             Field mProviderHolderField =
@@ -211,7 +234,7 @@ public class SettingsHook implements InvocationHandler {
                     new SettingsHook(original));
 
             mContentProviderField.set(providerHolder, proxy);
-            Log.w(TAG, "Successfully hijacked Binder for " + className);
+            Log.d(TAG, "Successfully hijacked Binder for " + className);
           } catch (Exception e) {
             Log.e(TAG, "Failed hijacking class: " + className, e);
           }
