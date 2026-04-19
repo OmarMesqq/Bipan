@@ -254,8 +254,8 @@ object Icarus {
             "Sec-Fetch-Mode",
             "Sec-Fetch-Dest",
             "Sec-Fetch-User",
-//            "Referer",
-//            "Upgrade-Insecure-Requests",
+            "Referer",
+            "Upgrade-Insecure-Requests",
             "Accept-Encoding", // we drop to let OkHttp handle compression
             "User-Agent"       // OkHttp will reinject the one we pass from WebViewUtils
         )
