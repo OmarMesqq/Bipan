@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <linux/futex.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -102,6 +103,26 @@ inline void lock_ipc() {
 inline void unlock_ipc() {
   __sync_lock_release(&ipc_lock_state);  // sets back to 0 atomically
   futex_wake(&ipc_lock_state);           // wakes up the next waiting thread
+}
+
+static volatile int lock = 0;
+inline void* atomic_compare(void* arg) {
+  int* parg = (int*)arg;
+  int tid = *parg;
+
+  volatile int* addr = &lock;
+  int expected = 0;
+  int desired = 1;
+  asm goto(
+      "cas %w0, %w1, [%2]\n\t"
+      "cbz %w0, %l[first]"
+      : "+r"(expected)
+      : "r"(desired), "r"(addr)
+      : "memory"
+      : first);
+  return NULL;
+first:
+  return NULL;
 }
 
 #endif
