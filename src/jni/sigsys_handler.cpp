@@ -331,6 +331,79 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.regs[0] = ret;
       return;
     }
+    case __NR_socket: {
+      int domain = (int)arg0;  // AF_INET, AF_NETLINK, etc.
+      int type = (int)arg1;    // SOCK_STREAM, SOCK_RAW, etc.
+      int protocol = (int)arg2;
+
+      if (domain == 16) {  // 16 is the constant for AF_NETLINK
+        LOGE("(socket) Blocking AF_NETLINK socket creation (Privacy Protection)");
+        log_violation_trace("(socket): AF_NETLINK");
+        ctx->uc_mcontext.regs[0] = -EACCES;
+        return;
+      }
+
+      // Allow everything else (AF_INET, AF_UNIX, etc.) to proceed normally
+      //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      return;
+    }
+    case __NR_sendmsg: {
+      int sockfd = (int)arg0;
+      struct msghdr* msg = (struct msghdr*)arg1;
+
+      if (msg != nullptr && msg->msg_name != nullptr) {
+        struct sockaddr* dest_addr = (struct sockaddr*)msg->msg_name;
+
+        // Reuse your LAN check logic here
+        bool is_lan = false;
+        if (dest_addr->sa_family == AF_INET) {
+          uint32_t ip4 = ntohl(((struct sockaddr_in*)dest_addr)->sin_addr.s_addr);
+          is_lan = filterIPv4LanAccess(ip4);
+        } else if (dest_addr->sa_family == AF_INET6) {
+          is_lan = filterIPv6LanAccess(((struct sockaddr_in6*)dest_addr)->sin6_addr.s6_addr);
+        }
+
+        if (is_lan) {
+          LOGE("(sendmsg) LAN probing via sendmsg spoofed");
+          // Fool the app: return the length it tried to send
+          ctx->uc_mcontext.regs[0] = (long)get_msghdr_len(msg);
+          return;
+        }
+      }
+      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      return;
+    }
+    case __NR_readlinkat: {
+      int dirfd = (int)arg0;
+      const char* pathname = (const char*)arg1;
+      char* buf = (char*)arg2;
+      size_t bufsiz = (size_t)arg3;
+
+      // Check if the app is trying to readlink an FD
+      if (pathname != nullptr && strstr(pathname, "/proc/self/fd/") != nullptr) {
+        int target_fd = atoi(pathname + 14);  // Extract FD number after "/proc/self/fd/"
+
+        std::lock_guard<std::mutex> lock(fds_mutex);
+        if (spoofed_fds.count(target_fd)) {
+          std::string original = spoofed_fds[target_fd];
+
+          LOGW("(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
+
+          // Manually fill the buffer with the "honest" path
+          size_t len = std::min(bufsiz - 1, original.length());
+          memcpy(buf, original.c_str(), len);
+          buf[len] = '\0';
+
+          ctx->uc_mcontext.regs[0] = len;  // Return length of string
+          return;
+        }
+      }
+
+      // Otherwise, let the real readlinkat proceed
+      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      break;
+    }
     default: {
       LOGE("Violation: got UNEXPECTED syscall! (%d)", nr);
       ctx->uc_mcontext.regs[0] = -ENOSYS;  // mimic the kernel's response
