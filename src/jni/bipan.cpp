@@ -158,7 +158,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Seccomp applied at clampGrowthLimit.");
+    LOGD("Seccomp applied at clampGrowthLimit.");
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
@@ -169,7 +169,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     applySeccomp();
     seccomp_applied = true;
-    LOGW("Seccomp applied at clearGrowthLimit.");
+    LOGD("Seccomp applied at clearGrowthLimit.");
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);
@@ -194,7 +194,7 @@ void registerDobbyLinkerHooks() {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
     if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
-      LOGW("Linker hooks active.");
+      LOGD("Linker hooks active.");
       dobby_initialized = true;
     } else {
       LOGE("Failed to setup Dobby hooks!");
@@ -222,7 +222,7 @@ class Bipan : public zygisk::ModuleBase {
     isTargetApp = isTarget(raw_process_name);
 
     if (isTargetApp) {
-      LOGW("preAppSpecialize: will apply sandbox for %s", raw_process_name);
+      LOGD("preAppSpecialize: will apply sandbox for %s", raw_process_name);
       snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
     }
 
@@ -348,7 +348,7 @@ class Bipan : public zygisk::ModuleBase {
             env->ExceptionClear();
             LOGE("inject: Exception thrown inside SettingsHook.install()!");
           } else {
-            LOGW("Bipan: Fileless Java Payload successfully injected and executing!");
+            LOGD("Bipan: Fileless Java Payload successfully injected and executing!");
           }
         }
       }
