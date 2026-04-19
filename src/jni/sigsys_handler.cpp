@@ -230,7 +230,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           return;
         }
       } else {
-        LOGI("(bind) Allowing non-IP bind request");
+        //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+        LOGW("(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
@@ -253,7 +254,8 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = 0;
         return;
       } else {
-        LOGI("(listen) Allowing for local/UNIX socket");
+        //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
+        LOGW("(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         return;
       }
