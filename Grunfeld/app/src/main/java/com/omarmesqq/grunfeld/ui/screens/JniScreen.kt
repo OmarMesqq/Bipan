@@ -11,6 +11,8 @@ import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun JniScreen() {
+    var sensorData by remember { mutableStateOf("Sensors not tested.") }
+    var stealthReport by remember { mutableStateOf("Run scan to verify Bipan hiding...") }
     var jniData by remember { mutableStateOf("No data loaded yet.") }
     var handlerStatus by remember { mutableStateOf("Not installed") }
     var lastAction by remember { mutableStateOf("Standby") }
@@ -27,7 +29,28 @@ fun JniScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
-        // --- UNAME CARD ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            colors = if (sensorData.contains("LEAK"))
+                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            else CardDefaults.cardColors()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "Sensor Privacy (NDK Layer)", style = MaterialTheme.typography.titleMedium)
+                Text(text = sensorData, style = MaterialTheme.typography.bodyMedium)
+                Button(
+                    onClick = {
+                        sensorData = NativeLibWrapper.testSensors()
+                        lastAction = "Probed NDK Sensor Layer"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Test Native Sensors")
+                }
+            }
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -36,12 +59,41 @@ fun JniScreen() {
                 Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
                 Text(text = jniData, style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = { jniData = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Verify Uname Spoof")
+                    Text("Get uname")
                 }
             }
         }
 
-        // --- FILESYSTEM PROBING CARD ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (stealthReport.contains("!!"))
+                    MaterialTheme.colorScheme.errorContainer
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
+
+                // Display the raw report from C
+                Text(
+                    text = stealthReport,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Button(
+                    onClick = { stealthReport = NativeLibWrapper.scanMaps() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Scan /proc/self/maps")
+                }
+            }
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -54,14 +106,12 @@ fun JniScreen() {
                         lastAction = "Filesystem Probes sent to Logcat"
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
                     Text("Probe filesystem")
                 }
             }
         }
 
-        // --- NETWORK SECURITY CARD ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -91,7 +141,6 @@ fun JniScreen() {
             }
         }
 
-        // --- SYSTEM STATUS CARD ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -107,8 +156,7 @@ fun JniScreen() {
                         val success = NativeLibWrapper.installSigsysHandler()
                         handlerStatus = if (success) "Active (Ring 0)" else "Failed"
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = handlerStatus == "Not installed"
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Arm Seccomp Trap")
                 }

@@ -7,4 +7,6 @@ object NativeLibWrapper {
     external fun testNetworkIdentity()
     external fun testNetworkLeaks()
     external fun removeBipan()
+    external fun testSensors(): String
+    external fun scanMaps(): String
 }

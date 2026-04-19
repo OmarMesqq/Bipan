@@ -20,12 +20,31 @@
 
 
 #define TAG "GrunfeldNative"
+#define MAX_REPORT_SIZE 8192
+
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+
+static int is_noise(const char* path) {
+    if (!path || strlen(path) == 0) return 0;
+    const char* filters[] = {
+            "/apex/",
+            "/system/",
+            "/vendor/",
+            "/product/",
+            "/dev/",
+            "/data/misc/"
+    };
+    for (int i = 0; i < 6; i++) {
+        if (strstr(path, filters[i])) return 1;
+    }
+    return 0;
+}
+
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
-static void test_ndk_layer();
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
@@ -68,11 +87,54 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
     }
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject thiz) {
-    // TODO
-    const char* mapsPath = "/proc/self/maps";
-    const char* smapsPath = "/proc/self/smaps";
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) return (*env)->NewStringUTF(env, "Error: Could not open maps");
+
+    char line[1024];
+    char report[MAX_REPORT_SIZE] = "--- Bipan Stealth Report ---\n";
+    int found_any = 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        char addr[128], perms[16], offset[16], dev[16], inode[16], path[256] = "";
+        int count = sscanf(line, "%s %s %s %s %s %s", addr, perms, offset, dev, inode, path);
+
+        if (is_noise(path)) continue;
+
+        // Focus on Executable regions
+        if (strstr(perms, "x")) {
+            found_any = 1;
+            uintptr_t start_addr;
+            sscanf(addr, "%lx-", &start_addr);
+
+            char* elf_status = "Unknown";
+            unsigned char* ptr = (unsigned char*)start_addr;
+
+            // Diagnostic check
+            if (ptr[0] == 0x7f && ptr[1] == 'E' && ptr[2] == 'L' && ptr[3] == 'F') {
+                elf_status = "!! ELF HEADER DETECTED !!";
+            } else if (ptr[0] == 0x00 && ptr[1] == 0x00) {
+                elf_status = "Scrubbed (Safe)";
+            }
+
+            // Append to our Kotlin-bound report
+            char entry[512];
+            snprintf(entry, sizeof(entry), "\n[Region]: %s\n[Perms]: %s\n[Path]: %s\n[Status]: %s\n",
+                     addr, perms, (count < 6 ? "Anonymous" : path), elf_status);
+
+            if (strlen(report) + strlen(entry) < MAX_REPORT_SIZE - 1) {
+                strcat(report, entry);
+            }
+        }
+    }
+
+    if (!found_any) {
+        strcat(report, "\nNo suspicious executable regions found.\nStealth level: HIGH");
+    }
+
+    fclose(fp);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT void JNICALL
@@ -154,7 +216,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env,
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    test_ndk_layer();
     return JNI_VERSION_1_6;
 }
 
@@ -178,12 +239,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
 
     char result_str[512];
     snprintf(result_str, sizeof(result_str),
-             "System: %s\nNode: %s\nRelease: %s\nVersion: %s\nMachine: %s",
+             "System: %s\nNode: %s\nRelease: %s\nVersion: %s\nMachine: %s\nDomain Name: %s",
              buffer.sysname,
              buffer.nodename,
              buffer.release,
              buffer.version,
-             buffer.machine);
+             buffer.machine,
+             buffer.domainname
+             );
 
     return (*env)->NewStringUTF(env, result_str);
 }
@@ -206,29 +269,48 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
 }
 
 /**
- * TODO:
- * this is passing. should fail
+ * TODO: this is passing. should fail
  */
-static void test_ndk_layer() {
-    // Get the manager instance
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
+    char result_buffer[512];
+    char* status_msg;
+    char* queue_msg;
+
+    // 1. Get the manager instance
+    // Note: In a real app, you'd use the actual package name or NULL
     ASensorManager* manager = ASensorManager_getInstanceForPackage("com.instagram.android");
+
     if (!manager) {
-        __android_log_print(ANDROID_LOG_ERROR, TAG, "[NDK] ASensorManager is NULL (Hook successful or system error)");
-        return;
+        return (*env)->NewStringUTF(env, "Sensor Status: Manager is NULL\n(Hook Active)");
     }
 
-    // Test Sensor Enumeration
+    // 2. Test Sensor Enumeration
     ASensorList list;
     int count = ASensorManager_getSensorList(manager, &list);
-    __android_log_print(ANDROID_LOG_INFO, TAG, "[NDK] Found %d sensors. (Expected 0 if blocked)", count);
 
-    // Test Event Queue Creation (The Data Pipe)
+    if (count == 0) {
+        status_msg = "SUCCESS: 0 Sensors found (Blocked)";
+    } else {
+        status_msg = "LEAK: Sensors detected";
+    }
+
+    // 3. Test Event Queue Creation
     ASensorEventQueue* queue = ASensorManager_createEventQueue(manager, NULL, 0, NULL, NULL);
     if (queue == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, TAG, "[NDK] Event Queue creation BLOCKED (Hook successful)");
+        queue_msg = "SUCCESS: Event Queue Blocked";
     } else {
-        __android_log_print(ANDROID_LOG_WARN, TAG, "[NDK] Event Queue created! LEAK DETECTED.");
+        queue_msg = "LEAK: Event Queue Created";
+        // Clean up if it actually leaked
+        ASensorManager_destroyEventQueue(manager, queue);
     }
+
+    // Format the final on-screen report
+    snprintf(result_buffer, sizeof(result_buffer),
+             "Sensor Count: %d\n%s\n%s",
+             count, status_msg, queue_msg);
+
+    return (*env)->NewStringUTF(env, result_buffer);
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
