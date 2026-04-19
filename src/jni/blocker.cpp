@@ -55,9 +55,10 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return -EACCES;
   }
 
-  if (shouldLog(pathname) && !isCallerTrusted) {
-    LOGW("Untrusted caller: allowing access to %s", pathname);
-  }
+  // TODO: too noisy! bionic kills us. Should find an async-signal safe logging solution
+  // if (shouldLog(pathname) && !isCallerTrusted) {
+  //   LOGW("Untrusted caller: allowing access to %s", pathname);
+  // }
   return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
 }
 
