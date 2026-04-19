@@ -26,6 +26,7 @@ private const val BRIDGE_NAME = "GrunfeldBridge"
 
 object WebViewUtils {
     private lateinit var trueUserAgent: String
+    private val spoofedUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1"
     fun configureSettings(
         webView: WebView,
         canGoBack: MutableState<Boolean>,

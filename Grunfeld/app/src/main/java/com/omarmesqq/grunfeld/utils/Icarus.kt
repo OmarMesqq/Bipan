@@ -20,6 +20,7 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import java.net.UnknownHostException
 
 private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
@@ -83,11 +84,13 @@ object Icarus {
                 Request.Builder()
                     .url(urlString)
                     .header("User-Agent", userAgent)
+                    .header("Priority", "u=0, i")
                     .method(method, null)
             } else {
                 Request.Builder()
                     .url(urlString)
                     .header("User-Agent", userAgent)
+                    .header("Priority", "u=0, i")
             }
 
             // Map WebView Headers to OkHttp
@@ -140,6 +143,8 @@ object Icarus {
                     "".byteInputStream()
                 )
             }
+        } catch (e: UnknownHostException) {
+            throw e
         } catch (e: Exception) { // Catastrophic failure...
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception\n${e.stackTraceToString()}", shouldToast = true)
             return WebResourceResponse(
@@ -167,6 +172,7 @@ object Icarus {
                 .url(urlString)
                 .method(method.uppercase(), requestBody)
                 .header("User-Agent", userAgent)
+                .header("Priority", "u=0, i")
 
             val cookies = CookieManager.getInstance().getCookie(urlString)
             if (!cookies.isNullOrEmpty()) {
