@@ -56,7 +56,7 @@ object Icarus {
                     override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
                 })
 
-                val sslContext = SSLContext.getInstance("SSL")
+                val sslContext = SSLContext.getInstance("TLS")
                 sslContext.init(null, trustAllCerts, java.security.SecureRandom())
                 sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
                 hostnameVerifier { _, _ -> true }
@@ -151,7 +151,15 @@ object Icarus {
                 )
             }
         } catch (e: UnknownHostException) {
-            throw e
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: DNS query failed for $urlString", shouldToast = true)
+            return WebResourceResponse(
+                "text/plain",
+                "UTF-8",
+                200,
+                "OK",
+                CORS_HEADERS,
+                "".byteInputStream()
+            )
         } catch (e: Exception) { // Catastrophic failure...
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception\n${e.stackTraceToString()}", shouldToast = true)
             return WebResourceResponse(
@@ -246,8 +254,8 @@ object Icarus {
             "Sec-Fetch-Mode",
             "Sec-Fetch-Dest",
             "Sec-Fetch-User",
-            "Referer",
-            "Upgrade-Insecure-Requests",
+//            "Referer",
+//            "Upgrade-Insecure-Requests",
             "Accept-Encoding", // we drop to let OkHttp handle compression
             "User-Agent"       // OkHttp will reinject the one we pass from WebViewUtils
         )
