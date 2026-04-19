@@ -14,7 +14,7 @@ class WebViewModel : ViewModel() {
     // https://browserleaks.com/
     // https://httpbin.org/
     // https://deviceinfo.me/
-    private val initialUrl = "https://browserleaks.com/"
+    private val initialUrl = "https://deviceinfo.me/"
     var webView: WebView? = null
 
     // UI States

@@ -71,5 +71,6 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.okhttp)
 
+    debugImplementation(libs.logging.interceptor)
     debugImplementation(libs.leakcanary.android)
 }
