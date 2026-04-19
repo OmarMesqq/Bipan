@@ -143,33 +143,64 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobj
 }
 
 JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkIdentity(JNIEnv *env, jobject thiz) {
-    // 1. Test IPv4 LAN Bind (Port 0 - Client behavior)
-    int sock4 = socket(AF_INET, SOCK_DGRAM, 0);
-    struct sockaddr_in addr4 = {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
+    long ret = 0;
+
+    // Client behavior: IPv4, TCP, LAN addr, random port (0): Should fail
+    int sock4tcp = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in addr4tcp = {
             .sin_family = AF_INET,
             .sin_port = htons(0),
-            .sin_addr.s_addr = inet_addr("192.168.1.50") // Simulated LAN IP
+            .sin_addr.s_addr = inet_addr("192.168.1.1")
     };
-    long ret = arm64_raw_syscall(__NR_bind, sock4, (long)&addr4, sizeof(addr4), 0, 0, 0);
-    LOGD("[NET] IPv4 LAN Bind (Port 0) result: %ld (Expect -EADDRNOTAVAIL)", ret);
+    ret = arm64_raw_syscall(__NR_bind, sock4tcp, (long)&addr4tcp, sizeof(addr4tcp), 0, 0, 0);
 
-    // 2. Test IPv6 Server Bind (Port 8080 - Server behavior)
-    int sock6 = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 addr6 = {
+    // Client behavior: IPv4, UDP, LAN addr, random port (0): Should fail
+    int sock6udp = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in addr6udp = {
+            .sin_family = AF_INET,
+            .sin_port = htons(0),
+            .sin_addr.s_addr = inet_addr("127.0.0.1")
+    };
+    ret = arm64_raw_syscall(__NR_bind, sock6udp, (long)&addr6udp, sizeof(addr6udp), 0, 0, 0);
+
+    // Client behavior: IPv6, TCP, LAN addr, random port (0): Should fail
+    int sock6tcp = socket(AF_INET6, SOCK_STREAM, 0);
+    struct sockaddr_in6 addr6tcp = {
             .sin6_family = AF_INET6,
-            .sin6_port = htons(8080),
-            .sin6_addr = IN6ADDR_ANY_INIT
+            .sin6_port = htons(0),
+            .sin6_addr.s_addr = inet_pton(AF_INET6, "::1", &addr6tcp)
     };
-    ret = arm64_raw_syscall(__NR_bind, sock6, (long)&addr6, sizeof(addr6), 0, 0, 0);
-    LOGD("[NET] IPv6 Server Bind (Port 8080) result: %ld (Expect 0/Spoofed success)", ret);
+    ret = arm64_raw_syscall(__NR_bind, sock6tcp, (long)&addr6tcp, sizeof(addr6tcp), 0, 0, 0);
 
-    // 3. Test Listen (Network Socket)
-    ret = arm64_raw_syscall(__NR_listen, sock6, 5, 0, 0, 0, 0);
-    LOGD("[NET] Listen on socket result: %ld (Expect 0/Spoofed success)", ret);
+    // Client behavior: IPv6, UDP, LAN addr, random port (0): Should fail
+    int sock6udp = socket(AF_INET6, SOCK_DGRAM, 0);
+    struct sockaddr_in6 addr6udp = {
+            .sin6_family = AF_INET6,
+            .sin6_port = htons(0),
+            .sin6_addr.s_addr = inet_pton(AF_INET6, "fe80::10b4:f5ff:fecc:ee2a", &addr6tcp
+    };
+    ret = arm64_raw_syscall(__NR_bind, sock6udp, (long)&addr6udp, sizeof(addr6udp), 0, 0, 0);
 
-    close(sock4);
-    close(sock6);
+    // Server behavior: IPv6, UDP, LAN addr, arbitrary port : Should fail
+    int sock6udpServer = socket(AF_INET6, SOCK_DGRAM, 0);
+    struct sockaddr_in6 addr6udpServer = {
+            .sin6_family = AF_INET6,
+            .sin6_port = htons(49321),
+            .sin6_addr.s_addr = inet_pton(AF_INET6, "fe80::10b4:f5ff:fecc:ee2a", &addr6tcp
+    };
+    ret = arm64_raw_syscall(__NR_bind, sock6udpServer, (long)&addr6udpServer, sizeof(addr6udpServer), 0, 0, 0);
+
+    // "Legitimate" use: local/UNIX TCP domain sockets on random port for IPC (example)
+    int sockUnix = socket(AF_LOCAL, SOCK_STREAM, 0);
+    struct sockaddr_in addrUnix = {
+            .sin_family = AF_INET,
+            .sin_port = htons(0),
+            .sin_addr.s_addr = inet_addr("127.0.0.1")
+    };
+    ret = arm64_raw_syscall(__NR_bind, sockUnix, (long)&addrUnix, sizeof(addrUnix), 0, 0, 0);
+
+
 }
 
 JNIEXPORT void JNICALL

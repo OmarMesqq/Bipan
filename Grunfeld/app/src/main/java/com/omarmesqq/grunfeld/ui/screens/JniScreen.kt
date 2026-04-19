@@ -37,12 +37,11 @@ fun JniScreen() {
             else CardDefaults.cardColors()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Sensor Privacy (NDK Layer)", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Sensors Privacy (NDK Layer)", style = MaterialTheme.typography.titleMedium)
                 Text(text = sensorData, style = MaterialTheme.typography.bodyMedium)
                 Button(
                     onClick = {
                         sensorData = NativeLibWrapper.testSensors()
-                        lastAction = "Probed NDK Sensor Layer"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -117,22 +116,20 @@ fun JniScreen() {
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Network Firewall", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Networking", style = MaterialTheme.typography.titleMedium)
 
                 Button(
                     onClick = {
-                        NativeLibWrapper.testNetworkIdentity()
-                        lastAction = "Network Identity checks sent to Logcat"
+                        NativeLibWrapper.testBind()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Test Bind/Listen (Identity)")
+                    Text("Bind on LAN (IPv4/IPv6 and TCP/UDP)")
                 }
 
                 Button(
                     onClick = {
                         NativeLibWrapper.testNetworkLeaks()
-                        lastAction = "LAN Leak checks sent to Logcat"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -146,19 +143,18 @@ fun JniScreen() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Last Action: $lastAction", style = MaterialTheme.typography.bodySmall)
-                Text(text = "Sigsys Handler: $handlerStatus", style = MaterialTheme.typography.bodySmall)
+                Text(text = "Signal Handler: $handlerStatus", style = MaterialTheme.typography.bodySmall)
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = {
                         val success = NativeLibWrapper.installSigsysHandler()
-                        handlerStatus = if (success) "Active (Ring 0)" else "Failed"
+                        handlerStatus = if (success) "Active" else "Failed"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Arm Seccomp Trap")
+                    Text("Install SIGSYS handler")
                 }
             }
         }

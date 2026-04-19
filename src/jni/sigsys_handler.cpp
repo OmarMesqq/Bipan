@@ -167,23 +167,26 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
 
       char ipAddrStr[INET6_ADDRSTRLEN] = {0};  // use IPv6 as its larger and fits IPv4
       int port = -1;
-      bool shouldBlock = false;
+      bool isRelevantFamily = false;
 
       if (addr->sa_family == AF_INET) {
         struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
         port = ntohs(ipv4->sin_port);
         inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddrStr, INET_ADDRSTRLEN);
-        shouldBlock = true;
+        isRelevantFamily = true;
 
       } else if (addr->sa_family == AF_INET6) {
         struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
         port = ntohs(ipv6->sin6_port);
         inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
-        shouldBlock = true;
+        isRelevantFamily = true;
+
+      } else if (addr->sa_family == AF_PACKET) {
+        isRelevantFamily = true;
       }
 
-      if (shouldBlock) {
-        if (port == 0) {
+      if (isRelevantFamily) {
+        if (port == 0) { // Random high ports
           bool is_lan_bind = false;
           if (addr->sa_family == AF_INET) {
             is_lan_bind = filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
@@ -192,7 +195,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           }
 
           if (is_lan_bind) {
-            LOGE("(bind) Blocking probe on LAN IP %s", ipAddrStr);
+            LOGE("(bind) Blocking on LAN IP %s (%s)", ipAddrStr, proto);
             log_violation_trace("(bind): LAN binding");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
             break;
