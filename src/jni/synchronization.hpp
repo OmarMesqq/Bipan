@@ -105,11 +105,11 @@ inline void unlock_ipc() {
   futex_wake(&ipc_lock_state);           // wakes up the next waiting thread
 }
 
-static volatile int lock = 0;
-inline void* atomic_compare(void* arg) {
-  int* parg = (int*)arg;
-  int tid = *parg;
+#define IN_USE 0
+#define FREE_TO_GO 1
 
+static volatile int lock = FREE_TO_GO;
+inline void* atomic_compare(void* arg) {
   volatile int* addr = &lock;
   int expected = 0;
   int desired = 1;

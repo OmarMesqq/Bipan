@@ -80,7 +80,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
       if (is_trusted_system_caller(path, false)) {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
+        break;
       }
       LOGE("Violation: execve/execveat(%s)", path);
 
@@ -166,7 +166,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       struct sockaddr* addr = (struct sockaddr*)arg1;
       if (addr == nullptr) {
         ctx->uc_mcontext.regs[0] = -EFAULT;
-        return;
+        break;
       }
       int sock_type = 0;
       socklen_t optlen = sizeof(sock_type);
@@ -175,7 +175,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       if (ret != 0) {
         // Allow to fail natively
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
+        break;
       }
 
       const char* proto = "UNKNOWN";
@@ -215,25 +215,25 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
             LOGE("(bind) Blocking probe on LAN IP %s", ipAddrStr);
             log_violation_trace("(bind): LAN binding");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
-            return;
+            break;
           }
 
           // "Client" behavior: requesting a random temporary port
           LOGW("(bind) Allowing ephemeral bind on Port 0/%s", proto);
           ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-          return;
+          break;
         } else {
           // "Server" behavior: setting up a port for listening
           LOGE("(bind) Spoofing success of bind on %s:%d (%s)", ipAddrStr, port, proto);
           log_violation_trace("(bind): server behavior");
           ctx->uc_mcontext.regs[0] = 0;
-          return;
+          break;
         }
       } else {
         //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
+        break;
       }
     }
     case __NR_listen: {
@@ -246,18 +246,18 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       if (ret != 0) {
         // Fail natively...
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
+        break;
       }
       if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
         log_violation_trace("(listen): network socket");
         LOGE("(listen) spoofing success");
         ctx->uc_mcontext.regs[0] = 0;
-        return;
+        break;
       } else {
         //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        return;
+        break;
       }
     }
     case __NR_sendto: {
@@ -295,12 +295,12 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           LOGE("(sendto) %s LAN probing to address %s spoofed", proto, ipAddrStr);
           log_violation_trace("(sendto) LAN probing");
           ctx->uc_mcontext.regs[0] = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
-          return;
+          break;
         }
       }
 
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      return;
+      break;
     }
     case __NR_getsockname: {
       // Let kernel execute the real syscall to populate the sockaddr struct
@@ -331,7 +331,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
       }
 
       ctx->uc_mcontext.regs[0] = ret;
-      return;
+      break;
     }
     case __NR_socket: {
       int domain = (int)arg0;  // AF_INET, AF_NETLINK, etc.
@@ -342,13 +342,13 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         LOGE("(socket) Blocking AF_NETLINK socket creation (Privacy Protection)");
         log_violation_trace("(socket): AF_NETLINK");
         ctx->uc_mcontext.regs[0] = -EACCES;
-        return;
+        break;
       }
 
       // Allow everything else (AF_INET, AF_UNIX, etc.) to proceed normally
       //TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      return;
+      break;
     }
     case __NR_sendmsg: {
       int sockfd = (int)arg0;
@@ -370,11 +370,11 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           LOGE("(sendmsg) LAN probing via sendmsg spoofed");
           // Fool the app: return the length it tried to send
           ctx->uc_mcontext.regs[0] = (long)get_msghdr_len(msg);
-          return;
+          break;
         }
       }
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-      return;
+      break;
     }
     case __NR_readlinkat: {
       int dirfd = (int)arg0;
@@ -398,7 +398,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
           buf[len] = '\0';
 
           ctx->uc_mcontext.regs[0] = len;  // Return length of string
-          return;
+          break;
         }
       }
 
