@@ -171,11 +171,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     // 2. Client behavior: IPv4, UDP, LAN addr, random ephemeral port (0): Should fail
     #define LAN_ADDR_2 "192.168.1.50"
     int s2 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in6 a2 = {
-            .sin6_family = IPv4_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
+    struct sockaddr_in a2 = {
+            .sin_family = IPv4_FAMILY,
+            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
     };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_2, &a2.sin6_addr);
+    inet_pton(IPv4_FAMILY, LAN_ADDR_2, &a2.sin_addr);
     ret = arm64_raw_syscall(__NR_bind, s2, (long)&a2, sizeof(a2), 0, 0, 0);
     snprintf(entry, sizeof(entry), "IPv4 UDP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
@@ -185,7 +185,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     int s3 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
     struct sockaddr_in6 a3 = {
             .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT),
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
     };
     inet_pton(IPv6_FAMILY, LAN_ADDR_3, &a3.sin6_addr);
     ret = arm64_raw_syscall(__NR_bind, s3, (long)&a3, sizeof(a3), 0, 0, 0);
@@ -195,11 +195,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     // 4. Client behavior: IPv6, UDP, LAN addr, random ephemeral port (0): should fail
     #define LAN_ADDR_4 "fe80::10b4:f5ff:fecc:ee2a"
     int s4 = socket(IPv6_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in6 a4 = { .
-            sin6_family = IPv6_FAMILY,
+    struct sockaddr_in6 a4 = {
+            .sin6_family = IPv6_FAMILY,
             .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
     };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_4, &a2.sin6_addr);
+    inet_pton(IPv6_FAMILY, LAN_ADDR_4, &a4.sin6_addr);
     ret = arm64_raw_syscall(__NR_bind, s4, (long)&a4, sizeof(a4), 0, 0, 0);
     snprintf(entry, sizeof(entry), "IPv6 UDP LAN (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
@@ -232,6 +232,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     close(s3);
     close(s4);
     close(s5);
+    unlink(a6.sun_path);
     close(s6);
 
     return (*env)->NewStringUTF(env, report);
