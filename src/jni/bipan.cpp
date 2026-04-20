@@ -13,7 +13,7 @@
 
 #include "broker.hpp"
 #include "dobby.h"
-#include "filter.hpp"
+#include "hooks.hpp"
 #include "settings_hook_payload.h"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
@@ -23,184 +23,16 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
+// Variables "owned" exclusively by the entrypoint (this module)
+extern "C" char __executable_start;  // Thanks, linker
+// Variables shared across modules
+char safe_proc_pid_path[64] = {0};
+
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 #endif
-char safe_proc_pid_path[64] = {0};
-static bool seccomp_applied = false;
 
-/**
- * Original function pointers
- */
-void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
-void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
-void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
-void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
-static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
-static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
-static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
-
-// ==========================================
-// Java and Native Sensor hooks
-// ==========================================
-jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstance, jobject sensor, jint index) {
-  (void)env;
-  (void)clazz;
-  (void)nativeInstance;
-  (void)sensor;
-  LOGE("(Sensors) Blocked Java SensorManager enumeration (index %d)!", index);
-  return JNI_FALSE;
-}
-
-jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint handle, jint rateUs, jint maxBatchReportLatencyUs) {
-  (void)env;
-  (void)clazz;
-  (void)eventQueuePtr;
-  (void)handle;
-  (void)rateUs;
-  (void)maxBatchReportLatencyUs;
-  LOGE("(Sensors) Blocked Java nativeEnableSensor! Data stream is dead.");
-  return -1;
-}
-
-jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstance, jint size, jint type, jint fd, jobject resource) {
-  (void)env;
-  (void)clazz;
-  (void)nativeInstance;
-  (void)size;
-  (void)type;
-  (void)fd;
-  (void)resource;
-  LOGE("(Sensors) Blocked nativeCreateDirectChannel! High-speed tracking denied.");
-  return -1;
-}
-
-ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager, ALooper* loper, int ident, ALooper_callbackFunc cb, void* data) {
-  (void)manager;
-  (void)loper;
-  (void)ident;
-  (void)cb;
-  (void)data;
-  LOGE("(Sensors) Blocked Native createEventQueue! NDK app is now blind.");
-  return nullptr;
-}
-
-int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** list) {
-  (void)manager;
-  if (list != nullptr) *list = nullptr;
-  return 0;
-}
-
-ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
-  (void)manager;
-  (void)type;
-  return nullptr;
-}
-
-// ==========================================
-// Sensor spoofing strategy
-// ==========================================
-
-void setupSensorsSpoofing() {
-  void* getList_addr = dlsym(RTLD_DEFAULT, "ASensorManager_getSensorList");
-  void* getDefault_addr = dlsym(RTLD_DEFAULT, "ASensorManager_getDefaultSensor");
-  void* createQueue_addr = dlsym(RTLD_DEFAULT, "ASensorManager_createEventQueue");
-
-  if (getList_addr) {
-    DobbyHook(getList_addr, (void*)hook_ASensorManager_getSensorList, (void**)&orig_ASensorManager_getSensorList);
-  }
-  if (getDefault_addr) {
-    DobbyHook(getDefault_addr, (void*)hook_ASensorManager_getDefaultSensor, (void**)&orig_ASensorManager_getDefaultSensor);
-  }
-  if (createQueue_addr) {
-    DobbyHook(createQueue_addr, (void*)hook_ASensorManager_createEventQueue, (void**)&orig_ASensorManager_createEventQueue);
-  }
-
-  LOGD("Native sensor hooks applied");
-}
-
-// ==========================================
-// Linker hooks
-// ==========================================
-
-void* my_dlopen(const char* filename, int flag) {
-  if (filename != nullptr) {
-    LOGW("Hook (dlopen): app is loading: %s", filename);
-  }
-  return orig_dlopen(filename, flag);
-}
-
-void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
-  if (filename != nullptr) {
-    LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
-
-    if (strstr(filename, "libwebviewchromium.so") != nullptr) {
-      LOGW("WebView Detected! Re-applying sensor blocks...");
-      setupSensorsSpoofing();
-    } else if (strstr(filename, "libloader.so") != nullptr) {
-      LOGE("Attach GDB: gdb -p %d", getpid());
-      volatile int wait_for_gdb = 1;
-      while (wait_for_gdb) {
-        asm volatile("yield");
-      }
-    }
-  }
-
-  return orig_android_dlopen_ext(filename, flag, extinfo);
-}
-
-// ==========================================
-// JNI tripwires for Seccomp
-// ==========================================
-
-void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
-  if (!seccomp_applied) {
-    applySeccomp();
-    seccomp_applied = true;
-    LOGD("Seccomp applied at clampGrowthLimit.");
-  }
-  if (orig_clampGrowthLimit) {
-    orig_clampGrowthLimit(env, obj);
-  }
-}
-
-void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
-  if (!seccomp_applied) {
-    applySeccomp();
-    seccomp_applied = true;
-    LOGD("Seccomp applied at clearGrowthLimit.");
-  }
-  if (orig_clearGrowthLimit) {
-    orig_clearGrowthLimit(env, obj);
-  }
-}
-
-// ==========================================
-// Dobby setup for inline hooks
-// ==========================================
-
-void registerDobbyLinkerHooks() {
-  static bool dobby_initialized = false;
-  if (dobby_initialized) {
-    return;
-  }
-
-  LOGD("Registering Dobby Linker Hooks...");
-  void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
-  void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
-
-  if (dlopen_addr && android_dlopen_ext_addr) {
-    int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
-    int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
-      LOGD("Linker hooks active.");
-      dobby_initialized = true;
-    } else {
-      LOGE("Failed to setup Dobby hooks!");
-    }
-  }
-}
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -233,6 +65,7 @@ class Bipan : public zygisk::ModuleBase {
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
+      LOGI("Library loaded at: %p", (void*)&__executable_start);
       spoofBuildFields();
       injectAndStartJavaPayload();
 
@@ -266,9 +99,9 @@ class Bipan : public zygisk::ModuleBase {
 
       close(sv[0]);  // Close broker's end
 #endif
-      registerSigSysHandler();
+      registerSignalHandler();
       registerDobbyLinkerHooks();
-      setupSensorsSpoofing();
+      registerDobbySensorsHooks();
 
       JNINativeMethod event_queue_methods[] = {
           {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
@@ -279,6 +112,7 @@ class Bipan : public zygisk::ModuleBase {
           {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
       api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, 2);
 
+      // This will finally trigger Seccomp before app code runs
       JNINativeMethod runtime_methods[] = {
           {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
           {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};

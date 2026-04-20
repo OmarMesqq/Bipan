@@ -11,6 +11,8 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+extern char safe_proc_pid_path[64];
+
 /**
  * MAGIC NUMBER:
  * TODO: implement PC-relative seccomp
@@ -68,8 +70,6 @@ extern SharedIPC* ipc_mem;
 extern int sv[2];
 #endif
 
-// For traversing /proc/<PID>/maps
-extern char safe_proc_pid_path[64];
 
 inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;

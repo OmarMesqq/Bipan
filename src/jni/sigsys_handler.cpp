@@ -29,7 +29,7 @@
 std::map<int, std::string> spoofed_fds;
 std::mutex fds_mutex;
 
-void register_spoofed_fd(int fd, const char* original_path) {
+void storeSpoofedFD(int fd, const char* original_path) {
   std::lock_guard<std::mutex> lock(fds_mutex);
   spoofed_fds[fd] = original_path;
 }
@@ -46,11 +46,11 @@ inline static bool is_maps(const char* pathname);
 inline static bool is_mounts(const char* pathname);
 inline static size_t get_msghdr_len(const struct msghdr* msg);
 inline static bool is_lan_address(struct sockaddr* addr);
-static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
+static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 
-void registerSigSysHandler() {
+void registerSignalHandler() {
   struct kernel_sigaction sa = {};
-  sa.sa_handler = sigsys_log_handler;
+  sa.sa_handler = sigsys_handler;
   sa.sa_flags = SA_SIGINFO;
 
   // Talk directly to the kernel in order to avoid libsigchain
@@ -63,7 +63,7 @@ void registerSigSysHandler() {
   }
 }
 
-static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
+static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
@@ -181,8 +181,6 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
         inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
         isRelevantFamily = true;
 
-      } else if (addr->sa_family == AF_PACKET) {
-        isRelevantFamily = true;
       }
 
       if (isRelevantFamily) {

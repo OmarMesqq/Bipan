@@ -43,7 +43,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   if (fakeFileContent != nullptr) {
     int fake_fd = create_spoofed_file(fakeFileContent);
     if (fake_fd >= 0) {
-      register_spoofed_fd(fake_fd, pathname);
+      storeSpoofedFD(fake_fd, pathname);
       return fake_fd;
     }
   }
