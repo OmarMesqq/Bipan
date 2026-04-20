@@ -63,6 +63,11 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
 /**
  * TODO:
+ * We patch the call site with a `nop`.
+ * Bipan logs the violation as the PC at bottommost frame,
+ * and every instruction in ARM64 is 4 bytes we just do:
+ * PC_call = PC_logged - 4
+ * and do nop(PC_call)
  */
 void patchInstructionWithNop(uintptr_t address) {
   // 1. Find the start of the page (4KB align)
@@ -94,9 +99,9 @@ void patchInstructionWithNop(uintptr_t address) {
  */
 bool filterIPv4LanAccess(uint32_t ip4) {
   // Unspecified address (0.0.0.0)
-  // if (ip4 == 0x00000000) {
-  //   return true;
-  // }
+  if (ip4 == 0x00000000) {
+    return true;
+  }
 
   // Loopback (127.0.0.0/8)
   // if ((ip4 & 0xFF000000) == 0x7F000000) {
@@ -137,13 +142,13 @@ bool filterIPv6LanAccess(uint8_t* ip6) {
   }
 
   // Unspecified (::)
-  // bool is_unspecified = true;
-  // for (int i = 0; i < 16; i++) {
-  //   if (ip6[i] != 0) is_unspecified = false;
-  // }
-  // if (is_unspecified) {
-  //   return true;
-  // }
+  bool is_unspecified = true;
+  for (int i = 0; i < 16; i++) {
+    if (ip6[i] != 0) is_unspecified = false;
+  }
+  if (is_unspecified) {
+    return true;
+  }
 
   // Loopback (::1)
   // bool is_loopback = (ip6[15] == 1);
