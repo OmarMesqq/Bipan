@@ -22,6 +22,7 @@ import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import okhttp3.logging.HttpLoggingInterceptor
 import java.net.UnknownHostException
+import javax.net.SocketFactory
 
 private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
@@ -33,8 +34,10 @@ object Icarus {
      */
     private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     private const val TIMEOUT = 30L // seconds
+    private const val OKHTTP_SOCKET_TAG = 8988
     private val okHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
+        .socketFactory(TaggingSocketFactory(SocketFactory.getDefault(), OKHTTP_SOCKET_TAG))
         .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
@@ -58,7 +61,10 @@ object Icarus {
 
                 val sslContext = SSLContext.getInstance("TLS")
                 sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-                sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+                sslSocketFactory(
+                    TaggingSSLSocketFactory(sslContext.socketFactory, OKHTTP_SOCKET_TAG),
+                    trustAllCerts[0] as X509TrustManager
+                )
                 hostnameVerifier { _, _ -> true }
             }
         }
