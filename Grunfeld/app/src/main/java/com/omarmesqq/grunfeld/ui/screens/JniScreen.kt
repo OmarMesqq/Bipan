@@ -1,21 +1,24 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.R.attr.onClick
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun JniScreen() {
-    var sensorData by remember { mutableStateOf("Sensors not tested.") }
-    var stealthReport by remember { mutableStateOf("Run scan to verify Bipan hiding...") }
-    var jniData by remember { mutableStateOf("No data loaded yet.") }
-    var handlerStatus by remember { mutableStateOf("Not installed") }
-    var lastAction by remember { mutableStateOf("Standby") }
+    var sensorData by remember { mutableStateOf("Sensors not tested yet") }
+    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
+    var bindReport by remember { mutableStateOf("Bind not tested yet") }
+    var unameReport by remember { mutableStateOf("Uname not fetched yet") }
+    var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
 
     Column(
         modifier = Modifier
@@ -29,6 +32,7 @@ fun JniScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
+        SectionHeader("SENSORS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -50,19 +54,21 @@ fun JniScreen() {
             }
         }
 
+        SectionHeader("SYSTEM INFO")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
-                Text(text = jniData, style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = { jniData = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
+                Text(text = unameReport, style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = { unameReport = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
                     Text("Get uname")
                 }
             }
         }
 
+        SectionHeader("STEALTH")
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -93,6 +99,7 @@ fun JniScreen() {
             }
         }
 
+        SectionHeader("FILESYSTEM")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -102,7 +109,6 @@ fun JniScreen() {
                 Button(
                     onClick = {
                         NativeLibWrapper.testFileSystemProbes()
-                        lastAction = "Filesystem Probes sent to Logcat"
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -111,46 +117,70 @@ fun JniScreen() {
             }
         }
 
+        SectionHeader("NETWORKING")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Networking", style = MaterialTheme.typography.titleMedium)
-
+                CodeTitle("bind()")
+                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
                 Button(
                     onClick = {
-                        NativeLibWrapper.testBind()
+                        bindReport = NativeLibWrapper.testBind()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Bind on LAN (IPv4/IPv6 and TCP/UDP)")
                 }
-
+            }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("sendto()")
+                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
                 Button(
                     onClick = {
                         NativeLibWrapper.testNetworkLeaks()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Test Sendto/GetSockName (Leaks)")
+                    Text("sendto LAN")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("getsockname()")
+                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
+                Button(
+                    onClick = {
+                        NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("getsockname on LAN info")
                 }
             }
         }
 
+        SectionHeader("MISC")
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Signal Handler: $handlerStatus", style = MaterialTheme.typography.bodySmall)
+                Text(text = "Signal Handler", style = MaterialTheme.typography.titleMedium)
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Button(
+                Text(
+                    text = signalHandlerStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                            Button(
                     onClick = {
                         val success = NativeLibWrapper.installSigsysHandler()
-                        handlerStatus = if (success) "Active" else "Failed"
+                        signalHandlerStatus = if (success) "Active" else "Failed"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -158,5 +188,40 @@ fun JniScreen() {
                 }
             }
         }
+    }
+}
+
+
+@Composable
+fun SectionHeader(title: String) {
+    Column(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+@Composable
+fun CodeTitle(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = MaterialTheme.shapes.extraSmall
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
     }
 }

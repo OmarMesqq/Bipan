@@ -17,6 +17,7 @@
 #include <linux/filter.h>
 #include <sys/utsname.h>
 #include <linux/fcntl.h>
+#include <sys/un.h>
 
 
 #define TAG "GrunfeldNative"
@@ -35,7 +36,7 @@ static int is_noise(const char* path) {
             "/vendor/",
             "/product/",
             "/dev/",
-            "/data/misc/"
+            "/data/"
     };
     for (int i = 0; i < 6; i++) {
         if (strstr(path, filters[i])) return 1;
@@ -142,65 +143,98 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobj
     // TODO
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
+    char report[2048] = "--- Bind LAN leak Test ---\n";
+    char entry[256] = {0};
     long ret = 0;
 
-    // Client behavior: IPv4, TCP, LAN addr, random port (0): Should fail
-    int sock4tcp = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in addr4tcp = {
-            .sin_family = AF_INET,
-            .sin_port = htons(0),
-            .sin_addr.s_addr = inet_addr("192.168.1.1")
+    #define IPv4_FAMILY AF_INET
+    #define IPv6_FAMILY AF_INET6
+    #define SOCK_TYPE_TCP SOCK_STREAM
+    #define SOCK_TYPE_UDP SOCK_DGRAM
+    #define RANDOM_EPHEMERAL_PORT 0 // client behavior
+    #define ARBITRARY_PORT 8080 // server behavior
+
+    // 1. Client behavior: IPv4, TCP, random ephemeral port (0): Should fail
+    #define LAN_ADDR_1 "192.168.1.1"
+    int s1 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in a1 = {
+            .sin_family = IPv4_FAMILY,
+            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
     };
-    ret = arm64_raw_syscall(__NR_bind, sock4tcp, (long)&addr4tcp, sizeof(addr4tcp), 0, 0, 0);
+    inet_pton(IPv4_FAMILY, LAN_ADDR_1, &a1.sin_addr);
+    ret = arm64_raw_syscall(__NR_bind, s1, (long)&a1, sizeof(a1), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv4 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
 
-    // Client behavior: IPv4, UDP, LAN addr, random port (0): Should fail
-    int sock6udp = socket(AF_INET, SOCK_DGRAM, 0);
-    struct sockaddr_in addr6udp = {
-            .sin_family = AF_INET,
-            .sin_port = htons(0),
-            .sin_addr.s_addr = inet_addr("127.0.0.1")
+    // 2. Client behavior: IPv4, UDP, LAN addr, random ephemeral port (0): Should fail
+    #define LAN_ADDR_2 "192.168.1.50"
+    int s2 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
+    struct sockaddr_in6 a2 = {
+            .sin6_family = IPv4_FAMILY,
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
     };
-    ret = arm64_raw_syscall(__NR_bind, sock6udp, (long)&addr6udp, sizeof(addr6udp), 0, 0, 0);
+    inet_pton(IPv4_FAMILY, LAN_ADDR_2, &a2.sin6_addr);
+    ret = arm64_raw_syscall(__NR_bind, s2, (long)&a2, sizeof(a2), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv4 UDP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
 
-    // Client behavior: IPv6, TCP, LAN addr, random port (0): Should fail
-    int sock6tcp = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 addr6tcp = {
-            .sin6_family = AF_INET6,
-            .sin6_port = htons(0),
-            .sin6_addr.s_addr = inet_pton(AF_INET6, "::1", &addr6tcp)
+    // 3. Client behavior: IPv6, TCP, LAN addr, random ephemeral port (0): should fail
+    #define LAN_ADDR_3 "::1"
+    int s3 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in6 a3 = {
+            .sin6_family = IPv6_FAMILY,
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT),
     };
-    ret = arm64_raw_syscall(__NR_bind, sock6tcp, (long)&addr6tcp, sizeof(addr6tcp), 0, 0, 0);
+    inet_pton(IPv6_FAMILY, LAN_ADDR_3, &a3.sin6_addr);
+    ret = arm64_raw_syscall(__NR_bind, s3, (long)&a3, sizeof(a3), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv6 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
 
-    // Client behavior: IPv6, UDP, LAN addr, random port (0): Should fail
-    int sock6udp = socket(AF_INET6, SOCK_DGRAM, 0);
-    struct sockaddr_in6 addr6udp = {
-            .sin6_family = AF_INET6,
-            .sin6_port = htons(0),
-            .sin6_addr.s_addr = inet_pton(AF_INET6, "fe80::10b4:f5ff:fecc:ee2a", &addr6tcp
+    // 4. Client behavior: IPv6, UDP, LAN addr, random ephemeral port (0): should fail
+    #define LAN_ADDR_4 "fe80::10b4:f5ff:fecc:ee2a"
+    int s4 = socket(IPv6_FAMILY, SOCK_TYPE_UDP, 0);
+    struct sockaddr_in6 a4 = { .
+            sin6_family = IPv6_FAMILY,
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
     };
-    ret = arm64_raw_syscall(__NR_bind, sock6udp, (long)&addr6udp, sizeof(addr6udp), 0, 0, 0);
+    inet_pton(IPv6_FAMILY, LAN_ADDR_4, &a2.sin6_addr);
+    ret = arm64_raw_syscall(__NR_bind, s4, (long)&a4, sizeof(a4), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv6 UDP LAN (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
 
-    // Server behavior: IPv6, UDP, LAN addr, arbitrary port : Should fail
-    int sock6udpServer = socket(AF_INET6, SOCK_DGRAM, 0);
-    struct sockaddr_in6 addr6udpServer = {
-            .sin6_family = AF_INET6,
-            .sin6_port = htons(49321),
-            .sin6_addr.s_addr = inet_pton(AF_INET6, "fe80::10b4:f5ff:fecc:ee2a", &addr6tcp
+    // 5. Server behavior: IPv4, TCP, listening on arbitrary port (8080): should fail
+    int s5 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in a5 = {
+            .sin_family = IPv4_FAMILY,
+            .sin_port = htons(ARBITRARY_PORT)
     };
-    ret = arm64_raw_syscall(__NR_bind, sock6udpServer, (long)&addr6udpServer, sizeof(addr6udpServer), 0, 0, 0);
+    a5.sin_addr.s_addr = htonl(INADDR_ANY);
+    ret = arm64_raw_syscall(__NR_bind, s5, (long)&a5, sizeof(a5), 0, 0, 0);
+    // Bipan spoofs `bind`s success (return 0) but don't actually let it happen
+    snprintf(entry, sizeof(entry), "Server Bind (Port %d): %s\n", ARBITRARY_PORT, (ret == 0 ? "SPOOFED ✅" : "FAILED ❌"));
+    strcat(report, entry);
 
-    // "Legitimate" use: local/UNIX TCP domain sockets on random port for IPC (example)
-    int sockUnix = socket(AF_LOCAL, SOCK_STREAM, 0);
-    struct sockaddr_in addrUnix = {
-            .sin_family = AF_INET,
-            .sin_port = htons(0),
-            .sin_addr.s_addr = inet_addr("127.0.0.1")
+
+    // 6. "Legitimate" use: local/UNIX TCP  on random port for IPC (example): should pass
+    int s6 = socket(AF_UNIX, SOCK_TYPE_TCP, 0);
+    struct sockaddr_un a6 = {
+            .sun_family = AF_UNIX
     };
-    ret = arm64_raw_syscall(__NR_bind, sockUnix, (long)&addrUnix, sizeof(addrUnix), 0, 0, 0);
+    strncpy(a6.sun_path, "/data/data/com.omarmesqq.grunfeld/ipc_socket", sizeof(a6.sun_path)-1);
+    ret = arm64_raw_syscall(__NR_bind, s6, (long)&a6, sizeof(a6), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "Unix Domain IPC: %s\n", (ret == 0 ? "ALLOWED ✅" : "BLOCKED ❌"));
+    strcat(report, entry);
 
+    close(s1);
+    close(s2);
+    close(s3);
+    close(s4);
+    close(s5);
+    close(s6);
 
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT void JNICALL

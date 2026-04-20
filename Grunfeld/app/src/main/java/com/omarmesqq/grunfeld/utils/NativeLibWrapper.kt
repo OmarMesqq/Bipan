@@ -4,7 +4,7 @@ object NativeLibWrapper {
     external fun getUname(): String
     external fun installSigsysHandler(): Boolean
     external fun testFileSystemProbes()
-    external fun testBind()
+    external fun testBind(): String
     external fun testNetworkLeaks()
     external fun testSensors(): String
     external fun scanMaps(): String
