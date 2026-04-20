@@ -145,7 +145,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobj
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[2048] = "--- Bind LAN leak Test ---\n";
+    char report[2048] = {0};
     char entry[256] = {0};
     long ret = 0;
 
@@ -181,7 +181,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     strcat(report, entry);
 
     // 3. Client behavior: IPv6, TCP, LAN addr, random ephemeral port (0): should fail
-    #define LAN_ADDR_3 "::1"
+    #define LAN_ADDR_3 "fe80::10b4:f5ff:fecc:ee2a"
     int s3 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
     struct sockaddr_in6 a3 = {
             .sin6_family = IPv6_FAMILY,
