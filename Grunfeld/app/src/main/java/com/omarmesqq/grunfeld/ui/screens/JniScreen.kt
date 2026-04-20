@@ -11,13 +11,24 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+
 
 @Composable
 fun JniScreen() {
-    var sensorData by remember { mutableStateOf("Sensors not tested yet") }
-    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
-    var bindReport by remember { mutableStateOf("Bind not tested yet") }
+    var sensorReport by remember { mutableStateOf("Sensors not tested yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
+    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
+    // TODO: filesystem
+    var bindReport by remember { mutableStateOf("bind not tested yet") }
+    var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
+    var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
 
     Column(
@@ -36,16 +47,16 @@ fun JniScreen() {
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            colors = if (sensorData.contains("LEAK"))
+            colors = if (sensorReport.contains("LEAK"))
                 CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
             else CardDefaults.cardColors()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Sensors Privacy (NDK Layer)", style = MaterialTheme.typography.titleMedium)
-                Text(text = sensorData, style = MaterialTheme.typography.bodyMedium)
+                ReportTextWithCopy(sensorReport, "Sensors not tested yet")
                 Button(
                     onClick = {
-                        sensorData = NativeLibWrapper.testSensors()
+                        sensorReport = NativeLibWrapper.testSensors()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -61,7 +72,7 @@ fun JniScreen() {
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
-                Text(text = unameReport, style = MaterialTheme.typography.bodyMedium)
+                ReportTextWithCopy(unameReport, "Uname not fetched yet")
                 Button(onClick = { unameReport = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
                     Text("Get uname")
                 }
@@ -82,13 +93,7 @@ fun JniScreen() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
-
-                // Display the raw report from C
-                Text(
-                    text = stealthReport,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                ReportTextWithCopy(sensorReport, "Sensors not tested yet")
 
                 Button(
                     onClick = { stealthReport = NativeLibWrapper.scanMaps() },
@@ -124,7 +129,7 @@ fun JniScreen() {
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("bind()")
-                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
+                ReportTextWithCopy(bindReport, "bind not tested yet")
                 Button(
                     onClick = {
                         bindReport = NativeLibWrapper.testBind()
@@ -136,10 +141,10 @@ fun JniScreen() {
             }
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("sendto()")
-                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
+                ReportTextWithCopy(sendtoReport, "sendto not tested yet")
                 Button(
                     onClick = {
-                        NativeLibWrapper.testNetworkLeaks()
+                        // NativeLibWrapper.testNetworkLeaks()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -149,10 +154,10 @@ fun JniScreen() {
 
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("getsockname()")
-                Text(text = bindReport, style = MaterialTheme.typography.bodySmall)
+                ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
                 Button(
                     onClick = {
-                        NativeLibWrapper.testNetworkLeaks()
+                        // NativeLibWrapper.testNetworkLeaks()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -223,5 +228,52 @@ fun CodeTitle(text: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
+    }
+}
+
+@Composable
+fun ReportText(
+    text: String,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    modifier: Modifier = Modifier
+    ) {
+    SelectionContainer(modifier = modifier) {
+        Text(
+            text = text,
+            style = style,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun ReportTextWithCopy(
+    text: String,
+    initialText: String,
+    style: TextStyle = MaterialTheme.typography.bodyMedium
+) {
+    val clipboardManager = LocalClipboardManager.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(text = text, style = style)
+        }
+
+        if (text != initialText) {
+            IconButton(
+                onClick = { clipboardManager.setText(AnnotatedString(text)) },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
     }
 }

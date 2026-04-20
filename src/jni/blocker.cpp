@@ -2,14 +2,13 @@
 
 #include <sys/mman.h>
 
-
 #include <string>
 
 #include "assembly.hpp"
 #include "shared.hpp"
+#include "sigsys_handler.hpp"
 #include "spoofer.hpp"
 #include "unwinder.hpp"
-#include "sigsys_handler.hpp"
 
 inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
@@ -88,11 +87,22 @@ void patchInstructionWithNop(uintptr_t address) {
 }
 
 /**
+ * TODO:
  * Returns `true` if IP address
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
  */
 bool filterIPv4LanAccess(uint32_t ip4) {
+  // Unspecified address (0.0.0.0)
+  // if (ip4 == 0x00000000) {
+  //   return true;
+  // }
+
+  // Loopback (127.0.0.0/8)
+  // if ((ip4 & 0xFF000000) == 0x7F000000) {
+  //   return true;
+  // }
+
   if ((ip4 & 0xFF000000) == 0x0A000000) {
     // 10.0.0.0/8 (Class A Private)
     return true;
@@ -108,20 +118,41 @@ bool filterIPv4LanAccess(uint32_t ip4) {
   } else if (ip4 == 0xFFFFFFFF) {
     // 255.255.255.255 (Broadcast)
     return true;
+  } else if ((ip4 & 0xFFFF0000) == 0xA9FE0000) {
+    // 169.254.0.0/16 (Link-Local/ APIPA (Automatic Private IP Addressing))
+    return true;
   }
   return false;
 }
 
 /**
+ * TODO:
  * Returns `true` if IP address
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
  */
 bool filterIPv6LanAccess(uint8_t* ip6) {
   if (!ip6) {
-    LOGE("filterIPv6LanAccess: IPv6 pointer is null!");
     return false;
   }
+
+  // Unspecified (::)
+  // bool is_unspecified = true;
+  // for (int i = 0; i < 16; i++) {
+  //   if (ip6[i] != 0) is_unspecified = false;
+  // }
+  // if (is_unspecified) {
+  //   return true;
+  // }
+
+  // Loopback (::1)
+  // bool is_loopback = (ip6[15] == 1);
+  // for (int i = 0; i < 15; i++) {
+  //   if (ip6[i] != 0) is_loopback = false;
+  // }
+  // if (is_loopback) {
+  //   return true;
+  // }
 
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
