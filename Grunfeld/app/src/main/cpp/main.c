@@ -251,6 +251,57 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     snprintf(entry, sizeof(entry), "Unix Domain IPC: %s\n", (ret == 0 ? "ALLOWED ✅" : "BLOCKED ❌"));
     strcat(report, entry);
 
+
+    // 7. Loopback binding IPv4 TCP
+    #define LAN_ADDR_5 "127.0.0.1"
+    int s7 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in a7 = {
+            .sin_family = IPv4_FAMILY,
+            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
+    };
+    inet_pton(IPv4_FAMILY, LAN_ADDR_5, &a7.sin_addr);
+    ret = arm64_raw_syscall(__NR_bind, s7, (long)&a7, sizeof(a7), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv4 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
+
+    // 8. Loopback binding IPv6 TCP
+    #define LAN_ADDR_6 "::1"
+    int s8 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in6 a8 = {
+            .sin6_family = IPv6_FAMILY,
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
+    };
+    inet_pton(IPv6_FAMILY, LAN_ADDR_6, &a8.sin6_addr);
+    ret = arm64_raw_syscall(__NR_bind, s8, (long)&a8, sizeof(a8), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv6 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
+
+
+    // 9. Loopback binding IPv4 UDP
+    #define LAN_ADDR_7 "127.0.0.1"
+    int s9 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
+    struct sockaddr_in a9 = {
+            .sin_family = IPv4_FAMILY,
+            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
+    };
+    inet_pton(IPv4_FAMILY, LAN_ADDR_7, &a9.sin_addr);
+    ret = arm64_raw_syscall(__NR_bind, s9, (long)&a9, sizeof(a9), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv4 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
+
+    // 10. Loopback binding IPv6 UDP
+    #define LAN_ADDR_8 "::1"
+    int s10 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
+    struct sockaddr_in6 a10 = {
+            .sin6_family = IPv6_FAMILY,
+            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
+    };
+    inet_pton(IPv6_FAMILY, LAN_ADDR_8, &a10.sin6_addr);
+    ret = arm64_raw_syscall(__NR_bind, s10, (long)&a10, sizeof(a10), 0, 0, 0);
+    snprintf(entry, sizeof(entry), "IPv6 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+    strcat(report, entry);
+
+
     close(s1);
     close(s2);
     close(s3);
@@ -258,6 +309,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     close(s5);
     unlink(a6.sun_path);
     close(s6);
+    close(s7);
+    close(s8);
+    close(s9);
+    close(s10);
 
     return (*env)->NewStringUTF(env, report);
 }
