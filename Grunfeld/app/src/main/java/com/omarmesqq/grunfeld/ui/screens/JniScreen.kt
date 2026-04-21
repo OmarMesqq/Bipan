@@ -99,7 +99,7 @@ fun JniScreen() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(sensorReport, "Sensors not tested yet")
+                ReportTextWithCopy(stealthReport, "Maps not tested yet")
 
                 Button(
                     onClick = { stealthReport = NativeLibWrapper.scanMaps() },
@@ -146,6 +146,18 @@ fun JniScreen() {
                 }
             }
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("listen()")
+                ReportTextWithCopy(sendtoReport, "listen not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("listen")
+                }
+            }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("sendto()")
                 ReportTextWithCopy(sendtoReport, "sendto not tested yet")
                 Button(
@@ -168,6 +180,32 @@ fun JniScreen() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("getsockname on LAN info")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("socket()")
+                ReportTextWithCopy(getsocknameReport, "socket not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("socket")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("sendmsg()")
+                ReportTextWithCopy(getsocknameReport, "sendmsg not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sendmsg")
                 }
             }
         }

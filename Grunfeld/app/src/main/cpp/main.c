@@ -1,5 +1,6 @@
 #include <android/log.h>
 #include <android/sensor.h>
+#include <android/looper.h>
 #include <errno.h>
 #include <jni.h>
 #include <stdbool.h>
@@ -17,6 +18,7 @@
 #include <linux/filter.h>
 #include <sys/utsname.h>
 #include <linux/fcntl.h>
+#include <time.h>
 #include <sys/un.h>
 
 
@@ -25,7 +27,28 @@
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+#define PACKAGE_NAME "com.omarmesqq.grunfeld"
+#define LOOPER_ID_USER 8998
+#define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
+
+__attribute__((constructor))
+void grunfeld_early_init() {
+    LOGW("---------------------------------------------------");
+    LOGW("Grunfeld Constructor: Library mapped into memory.");
+    LOGW("Checking if hooks are already active at this point...");
+
+    // Try to get native data asap
+    ASensorManager* sm = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
+    if (sm == NULL) {
+        LOGI("Constructor check: SensorManager is NULL (Hooks likely active)");
+    } else {
+        LOGE("Constructor check: SensorManager is VALID (LEAK or Hooks not yet applied)");
+    }
+    LOGW("---------------------------------------------------");
+}
 
 
 static int is_noise(const char* path) {
@@ -140,7 +163,8 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobject thiz) {
-    // TODO
+    // TODO: sigprocmask
+
 }
 
 JNIEXPORT jstring JNICALL
@@ -343,32 +367,104 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     char* status_msg;
     char* queue_msg;
 
-    // 1. Get the manager instance
-    // Note: In a real app, you'd use the actual package name or NULL
-    ASensorManager* manager = ASensorManager_getInstanceForPackage("com.instagram.android");
+    // On API >= 26 we get the sensor sensorManager for our specific package
+    ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
 
-    if (!manager) {
-        return (*env)->NewStringUTF(env, "Sensor Status: Manager is NULL\n(Hook Active)");
+    if (!sensorManager) {
+        return (*env)->NewStringUTF(env, "Sensor Manager is NULL (Hook Active?)");
     }
 
-    // 2. Test Sensor Enumeration
+    // Enumerate all sensors
     ASensorList list;
-    int count = ASensorManager_getSensorList(manager, &list);
+    int count = ASensorManager_getSensorList(sensorManager, &list);
 
     if (count == 0) {
         status_msg = "SUCCESS: 0 Sensors found (Blocked)";
     } else {
         status_msg = "LEAK: Sensors detected";
+        for (int i = 0; i < count; i++) {
+            const char* name = ASensor_getName(list[i]);
+            const char* vendor = ASensor_getVendor(list[i]);
+            int type = ASensor_getType(list[i]);
+            LOGI("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
+        }
     }
 
-    // 3. Test Event Queue Creation
-    ASensorEventQueue* queue = ASensorManager_createEventQueue(manager, NULL, 0, NULL, NULL);
+    // Get some famous sensors
+    const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
+    const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
+    if (!accel || !gyro) {
+        LOGE("Accelerometer and or Gyroscope handle is NULL!");
+    }
+
+    // Get a looper for the current thread
+    ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+    if (!looper) {
+        LOGE("[Sensors] Failed to get looper!\n");
+    }
+
+    // Create an event queue get streamed sensor data
+    ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
     if (queue == NULL) {
         queue_msg = "SUCCESS: Event Queue Blocked";
     } else {
         queue_msg = "LEAK: Event Queue Created";
-        // Clean up if it actually leaked
-        ASensorManager_destroyEventQueue(manager, queue);
+
+        // Add the "famous" sensors to the event stream queue
+        ASensorEventQueue_enableSensor(queue, accel);
+        ASensorEventQueue_enableSensor(queue, gyro);
+        // and set the rate at which their data is transmitted
+        ASensorEventQueue_setEventRate(queue, accel, SENSORS_SAMPLING_RATE);
+        ASensorEventQueue_setEventRate(queue, gyro, SENSORS_SAMPLING_RATE);
+
+
+        // Calculate the end time for our loop:  current time  + 3 seconds
+        struct timespec start_time, current_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        double start_secs = start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
+        double end_secs = start_secs + 3.0;
+
+        int ident;      // Identifier of the event source
+        int events;     // Number of events available
+        void* data;     // User data
+        ASensorEvent event;
+
+        // Polling loop
+        bool sampling = true;
+        // Change timeout from -1 to 100 (ms).
+        // If it's -1, the loop "sleeps" until a sensor moves.
+        // If the phone is still, it won't check the 3-second limit!
+        while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
+            // Check if 3 seconds have passed and break if so
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            double now = current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
+            if (now >= end_secs) {
+                sampling = false;
+                continue;
+            }
+
+            // If the event came from our sensor queue, do stuff
+            if (ident == LOOPER_ID_USER) {
+                while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
+                    if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
+                        LOGI("Accel X: %f, Y: %f, Z: %f",
+                             event.acceleration.x,
+                             event.acceleration.y,
+                             event.acceleration.z);
+                    } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
+                        LOGI("Gyro X: %f, Y: %f, Z: %f",
+                             event.vector.x,
+                             event.vector.y,
+                             event.vector.z);
+                    }
+                }
+            }
+        }
+
+        // Cleanup
+        ASensorEventQueue_disableSensor(queue, accel);
+        ASensorEventQueue_disableSensor(queue, gyro);
+        ASensorManager_destroyEventQueue(sensorManager, queue);
     }
 
     // Format the final on-screen report
