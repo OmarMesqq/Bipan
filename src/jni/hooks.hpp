@@ -10,8 +10,6 @@ using zygisk::Api;
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
 
-void registerDobbySensorsHooks();
-
 // ==========================================
 // Original function pointers
 // ==========================================
@@ -42,18 +40,6 @@ static void* my_dlopen(const char* filename, int flag) {
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
     LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
-
-    if (strstr(filename, "libwebviewchromium.so") != nullptr) {
-      // TODO:
-      LOGW("WebView Detected! Re-applying sensor blocks...");
-      registerDobbySensorsHooks();
-    } else if (strstr(filename, "libloader.so") != nullptr) {
-      LOGE("Attach GDB: gdb -p %d", getpid());
-      volatile int wait_for_gdb = 1;
-      while (wait_for_gdb) {
-        asm volatile("yield");
-      }
-    }
   }
 
   return orig_android_dlopen_ext(filename, flag, extinfo);
@@ -99,6 +85,18 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
 // Native Sensors hooks
 // ==========================================
 
+#define NATIVE_SENSORS_FUNCTIONS_COUNT 5
+
+ASensorManager* hook_ASensorManager_getInstance() {
+  LOGE("(Sensors) Blocked ASensorManager_getInstance!");
+  return nullptr;
+}
+
+ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
+  LOGE("(Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
+  return nullptr;
+}
+
 ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager, ALooper* loper, int ident, ALooper_callbackFunc cb, void* data) {
   (void)manager;
   (void)loper;
@@ -121,15 +119,6 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
   return nullptr;
 }
 
-ASensorManager* hook_ASensorManager_getInstance() {
-  LOGE("(Sensors) Blocked ASensorManager_getInstance!");
-  return nullptr;
-}
-
-ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
-  LOGE("(Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
-  return nullptr;
-}
 
 // ==========================================
 // JNI tripwires for Seccomp
@@ -158,26 +147,43 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 }
 
 void registerDobbySensorsHooks() {
-  // RTLD_NOLOAD = "Don't load, just find if it's there"
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
+  if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
+
   if (!handle) {
-    // 2. If NOLOAD fails, it's a namespace issue. Try a hard dlopen.
-    handle = dlopen("libandroid.so", RTLD_NOW);
+    LOGE("Failed to get handle to libandroid.so. Aborting for safety!");
+    _exit(-1);
   }
 
-  void* getInstPkg = dlsym(handle, "ASensorManager_getInstanceForPackage");
+  const char* symbols[] = {
+      "ASensorManager_getInstance",
+      "ASensorManager_getInstanceForPackage",
+      "ASensorManager_getSensorList",
+      "ASensorManager_getDefaultSensor",
+      "ASensorManager_createEventQueue"};
 
-  if (getInstPkg) {
-    LOGD("Bipan hooking getInstanceForPackage at: %p", getInstPkg);
-    int res = DobbyHook(getInstPkg, (void*)hook_ASensorManager_getInstanceForPackage, (void**)&orig_ASensorManager_getInstanceForPackage);
-    if (res != 0) {
-      LOGE("Dobby FAILED to hook getInstanceForPackage!");
-    } else {
-      __builtin___clear_cache((char*)getInstPkg, (char*)getInstPkg + 32);
-      LOGD("Dobby SUCCESS at %p", getInstPkg);
-  }
-  } else {
-    LOGE("Failed to find getInstanceForPackage!");
+  void* hooks[] = {
+      (void*)hook_ASensorManager_getInstance,
+      (void*)hook_ASensorManager_getInstanceForPackage,
+      (void*)hook_ASensorManager_getSensorList,
+      (void*)hook_ASensorManager_getDefaultSensor,
+      (void*)hook_ASensorManager_createEventQueue};
+
+  void** originals[] = {
+      (void**)&orig_ASensorManager_getInstance,
+      (void**)&orig_ASensorManager_getInstanceForPackage,
+      (void**)&orig_ASensorManager_getSensorList,
+      (void**)&orig_ASensorManager_getDefaultSensor,
+      (void**)&orig_ASensorManager_createEventQueue};
+
+  for (int i = 0; i < NATIVE_SENSORS_FUNCTIONS_COUNT; i++) {
+    void* addr = dlsym(handle, symbols[i]);
+    if (addr) {
+      if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
+        __builtin___clear_cache((char*)addr, (char*)addr + 32);
+        LOGD("(Sensors) Hooked %s at %p", symbols[i], addr);
+      }
+    }
   }
   dlclose(handle);
 }
