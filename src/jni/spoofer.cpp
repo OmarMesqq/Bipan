@@ -36,7 +36,7 @@ int uname_spoofer(struct utsname* buf) {
  */
 int create_spoofed_file(const char* fake_content) {
   // memfd_create requires a name, but it hopefully doesn't appear in the filesystem
-  int fd = syscall(__NR_memfd_create, "Q4Blp8TKdag5", MFD_CLOEXEC);
+  int fd = (int) syscall(__NR_memfd_create, "Q4Blp8TKdag5", MFD_CLOEXEC);
 
   if (fd >= 0) {
     write(fd, fake_content, strlen(fake_content));
@@ -71,7 +71,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   char buf[4096];
   long bytes_read;
   char line[4096];
-  int line_pos = 0;
+  unsigned long line_pos = 0;
 
   while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
     for (int i = 0; i < bytes_read; i++) {
@@ -102,7 +102,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         if (!has_magisk && !has_zygisk && !has_bipan && !is_fake_jit && !is_deleted_zero && !is_anon_exec) {
           // Line is clean: write it to the fake file
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
+          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
@@ -141,7 +141,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   char buf[4096];
   long bytes_read;
   char line[4096];
-  int line_pos = 0;
+  unsigned long line_pos = 0;
 
   // FSM flag: tracks whether we are currently inside a "dirty" memory region
   bool skip_current_region = false;
@@ -188,7 +188,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         // If we are NOT in a bad region, write the line (whether it's a header or a metric)
         if (!skip_current_region) {
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
+          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
@@ -228,7 +228,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
   char buf[4096];
   long bytes_read;
   char line[4096];
-  int line_pos = 0;
+  unsigned long line_pos = 0;
 
   while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
     for (int i = 0; i < bytes_read; i++) {
@@ -255,7 +255,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
 
         if (!has_magisk && !has_zygisk && !has_bipan && !has_ksu && !has_apatch && !has_core_mirror && !is_cert_overlay) {
           // Line is clean: write it to the fake file
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, line_pos, 0, 0);
+          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
