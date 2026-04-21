@@ -21,6 +21,9 @@ static void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 static void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
 static void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
+
+static ASensorManager* (*orig_ASensorManager_getInstance)();
+static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*);
 static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
@@ -57,7 +60,7 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
 }
 
 // ==========================================
-// Sensors hooks (Java and Native)
+// Java Sensors hooks
 // ==========================================
 
 jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstance, jobject sensor, jint index) {
@@ -92,6 +95,10 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   return -1;
 }
 
+// ==========================================
+// Native Sensors hooks
+// ==========================================
+
 ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager, ALooper* loper, int ident, ALooper_callbackFunc cb, void* data) {
   (void)manager;
   (void)loper;
@@ -111,6 +118,16 @@ int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** lis
 ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
   (void)manager;
   (void)type;
+  return nullptr;
+}
+
+ASensorManager* hook_ASensorManager_getInstance() {
+  LOGE("(Sensors) Blocked ASensorManager_getInstance!");
+  return nullptr;
+}
+
+ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
+  LOGE("(Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
   return nullptr;
 }
 
@@ -141,21 +158,28 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 }
 
 void registerDobbySensorsHooks() {
-  void* getList_addr = dlsym(RTLD_DEFAULT, "ASensorManager_getSensorList");
-  void* getDefault_addr = dlsym(RTLD_DEFAULT, "ASensorManager_getDefaultSensor");
-  void* createQueue_addr = dlsym(RTLD_DEFAULT, "ASensorManager_createEventQueue");
-
-  if (getList_addr) {
-    DobbyHook(getList_addr, (void*)hook_ASensorManager_getSensorList, (void**)&orig_ASensorManager_getSensorList);
-  }
-  if (getDefault_addr) {
-    DobbyHook(getDefault_addr, (void*)hook_ASensorManager_getDefaultSensor, (void**)&orig_ASensorManager_getDefaultSensor);
-  }
-  if (createQueue_addr) {
-    DobbyHook(createQueue_addr, (void*)hook_ASensorManager_createEventQueue, (void**)&orig_ASensorManager_createEventQueue);
+  // RTLD_NOLOAD = "Don't load, just find if it's there"
+  void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
+  if (!handle) {
+    // 2. If NOLOAD fails, it's a namespace issue. Try a hard dlopen.
+    handle = dlopen("libandroid.so", RTLD_NOW);
   }
 
-  LOGD("Native sensor hooks applied");
+  void* getInstPkg = dlsym(handle, "ASensorManager_getInstanceForPackage");
+
+  if (getInstPkg) {
+    LOGD("Bipan hooking getInstanceForPackage at: %p", getInstPkg);
+    int res = DobbyHook(getInstPkg, (void*)hook_ASensorManager_getInstanceForPackage, (void**)&orig_ASensorManager_getInstanceForPackage);
+    if (res != 0) {
+      LOGE("Dobby FAILED to hook getInstanceForPackage!");
+    } else {
+      __builtin___clear_cache((char*)getInstPkg, (char*)getInstPkg + 32);
+      LOGD("Dobby SUCCESS at %p", getInstPkg);
+  }
+  } else {
+    LOGE("Failed to find getInstanceForPackage!");
+  }
+  dlclose(handle);
 }
 
 void registerDobbyLinkerHooks() {

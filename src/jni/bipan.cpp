@@ -65,6 +65,8 @@ class Bipan : public zygisk::ModuleBase {
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
+      registerDobbyLinkerHooks();
+      registerDobbySensorsHooks();
       LOGI("Library loaded at: %p", (void*)&__executable_start);
       spoofBuildFields();
       injectAndStartJavaPayload();
@@ -100,8 +102,6 @@ class Bipan : public zygisk::ModuleBase {
       close(sv[0]);  // Close broker's end
 #endif
       registerSignalHandler();
-      registerDobbyLinkerHooks();
-      registerDobbySensorsHooks();
 
       JNINativeMethod event_queue_methods[] = {
           {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};

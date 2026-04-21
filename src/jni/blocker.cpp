@@ -104,9 +104,10 @@ bool filterIPv4LanAccess(uint32_t ip4) {
   }
 
   // Loopback (127.0.0.0/8)
-  // if ((ip4 & 0xFF000000) == 0x7F000000) {
-  //   return true;
-  // }
+  if ((ip4 & 0xFF000000) == 0x7F000000) {
+    LOGW("Allowing app to bind/listen on IPv4 loopback");
+    return false;
+  }
 
   if ((ip4 & 0xFF000000) == 0x0A000000) {
     // 10.0.0.0/8 (Class A Private)
@@ -151,13 +152,14 @@ bool filterIPv6LanAccess(uint8_t* ip6) {
   }
 
   // Loopback (::1)
-  // bool is_loopback = (ip6[15] == 1);
-  // for (int i = 0; i < 15; i++) {
-  //   if (ip6[i] != 0) is_loopback = false;
-  // }
-  // if (is_loopback) {
-  //   return true;
-  // }
+  bool is_loopback = (ip6[15] == 1);
+  for (int i = 0; i < 15; i++) {
+    if (ip6[i] != 0) is_loopback = false;
+  }
+  if (is_loopback) {
+    LOGW("Allowing app to bind/listen on IPv6 loopback");
+    return false;
+  }
 
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
