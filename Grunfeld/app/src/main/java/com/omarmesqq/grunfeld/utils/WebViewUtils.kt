@@ -2,24 +2,23 @@ package com.omarmesqq.grunfeld.utils
 
 import android.net.http.SslError
 import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
-import android.webkit.CookieManager
-import android.webkit.SslErrorHandler
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebStorage
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.Throwable
 
 private const val TAG = "WebViewUtils"
 private const val BRIDGE_NAME = "GrunfeldBridge"
@@ -206,6 +205,50 @@ object WebViewUtils {
             }
             return send.apply(this, arguments);
         };
+        
+        // 4. Hook navigator.sendBeacon
+        if (navigator.sendBeacon) {
+            const originalSendBeacon = navigator.sendBeacon;
+            navigator.sendBeacon = function(url, data) {
+                // Beacon is usually used for analytics/POST-like data
+                // We notify the bridge but return true to simulate success
+                GrunfeldBridge.performInterceptedRequest(
+                    url, 
+                    data || "", 
+                    "application/octet-stream", 
+                    true, 
+                    -1, 
+                    'POST'
+                );
+                return true; 
+            };
+        }
+
+        // 5. Hook WebSocket
+        const OriginalWebSocket = window.WebSocket;
+        window.WebSocket = function(url, protocols) {
+            const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
+
+            // Hook the 'send' method to intercept outgoing messages
+            const originalSend = ws.send;
+            ws.send = function(data) {
+                // Notify Kotlin about the outgoing WebSocket frame
+                // Note: We use a custom 'method' string like "WS_SEND" to help Kotlin identify it
+                GrunfeldBridge.performInterceptedRequest(
+                    url, 
+                    data, 
+                    "websocket/frame", 
+                    true, 
+                    -1, 
+                    "WS_SEND"
+                );
+                return originalSend.apply(this, arguments);
+            };
+
+            return ws;
+        };
+        // Maintain the prototype chain so 'instanceof' checks don't fail
+        window.WebSocket.prototype = OriginalWebSocket.prototype;
 
         // Kotlin calls this
         window.grunfeldResolve = function(id, dataB64) {
