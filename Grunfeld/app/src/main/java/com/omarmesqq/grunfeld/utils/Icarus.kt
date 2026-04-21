@@ -1,28 +1,25 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.R.attr.mimeType
 import android.content.Context
 import android.webkit.CookieManager
-import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import androidx.core.net.toUri
+import com.omarmesqq.grunfeld.BuildConfig
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
+import okhttp3.logging.HttpLoggingInterceptor
+import java.net.UnknownHostException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
-import com.omarmesqq.grunfeld.BuildConfig
-import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import okhttp3.logging.HttpLoggingInterceptor
-import java.net.UnknownHostException
-import javax.net.SocketFactory
 
 private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
@@ -37,7 +34,7 @@ object Icarus {
     private const val OKHTTP_SOCKET_TAG = 8988
     private val okHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
-        .socketFactory(TaggingSocketFactory(SocketFactory.getDefault(), OKHTTP_SOCKET_TAG))
+        .socketFactory(TaggingSocketFactory(SocketFactory.getDefault()))
         .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
@@ -62,7 +59,7 @@ object Icarus {
                 val sslContext = SSLContext.getInstance("TLS")
                 sslContext.init(null, trustAllCerts, java.security.SecureRandom())
                 sslSocketFactory(
-                    TaggingSSLSocketFactory(sslContext.socketFactory, OKHTTP_SOCKET_TAG),
+                    TaggingSSLSocketFactory(sslContext.socketFactory),
                     trustAllCerts[0] as X509TrustManager
                 )
                 hostnameVerifier { _, _ -> true }
