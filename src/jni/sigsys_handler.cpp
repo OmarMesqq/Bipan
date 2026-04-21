@@ -45,7 +45,14 @@ inline static bool is_smaps(const char* pathname);
 inline static bool is_maps(const char* pathname);
 inline static bool is_mounts(const char* pathname);
 inline static size_t get_msghdr_len(const struct msghdr* msg);
+inline static void get_socket_info(int sockfd,
+                                   struct sockaddr* sockAddrStruct,
+                                   char* protocol,
+                                   int* port,
+                                   char* ipAddr,
+                                   char* family);
 inline static bool is_lan_address(struct sockaddr* addr);
+inline static bool is_network_socket(const char* family);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 
 void registerSignalHandler() {
@@ -74,18 +81,22 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
 
+  uintptr_t patch_pc = 0;
+
   switch (nr) {
     case __NR_execve:
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
-      if (is_trusted_system_caller(path, false)) {
+      if (is_trusted_system_caller(path, &patch_pc, false)) {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
       }
       LOGE("Violation: execve/execveat");
       log_violation_trace(path);
-
       ctx->uc_mcontext.regs[0] = -EACCES;
+      if (patch_pc != 0) {
+        patchInstructionWithNop(patch_pc - 4);
+      }
       break;
     }
     case __NR_uname: {
@@ -142,76 +153,56 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_bind: {
       int sockfd = (int)arg0;
-
-      struct sockaddr* addr = (struct sockaddr*)arg1;
-      if (addr == nullptr) {
+      struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
+      if (sockAddrStruct == nullptr) {
         ctx->uc_mcontext.regs[0] = -EFAULT;
         break;
       }
-      int sock_type = 0;
-      socklen_t optlen = sizeof(sock_type);
-
-      long ret = arm64_bypassed_syscall(__NR_getsockopt, sockfd, SOL_SOCKET, SO_TYPE, (long)&sock_type, (long)&optlen);
-      if (ret != 0) {
-        // Allow to fail natively
+      if (is_trusted_system_caller("(bind)", &patch_pc)) {
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
       }
 
-      const char* proto = "UNKNOWN";
-      if (sock_type == SOCK_STREAM) {
-        proto = "TCP";
-      } else if (sock_type == SOCK_DGRAM) {
-        proto = "UDP";
-      }
-
-      char ipAddrStr[INET6_ADDRSTRLEN] = {0};  // use IPv6 as its larger and fits IPv4
+      char protocol[8] = {0};
       int port = -1;
-      bool isRelevantFamily = false;
+      char ipAddr[INET6_ADDRSTRLEN] = {0};
+      char family[8] = {0};
+      get_socket_info(sockfd,
+                      sockAddrStruct,
+                      protocol,
+                      &port,
+                      ipAddr,
+                      family);
 
-      if (addr->sa_family == AF_INET) {
-        struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
-        port = ntohs(ipv4->sin_port);
-        inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddrStr, INET_ADDRSTRLEN);
-        isRelevantFamily = true;
-
-      } else if (addr->sa_family == AF_INET6) {
-        struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
-        port = ntohs(ipv6->sin6_port);
-        inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
-        isRelevantFamily = true;
-
-      }
-
-      if (isRelevantFamily) {
-        if (port == 0) { // Random high ports
-          bool is_lan_bind = false;
-          if (addr->sa_family == AF_INET) {
-            is_lan_bind = filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
-          } else if (addr->sa_family == AF_INET6) {
-            is_lan_bind = filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
-          }
+      if (is_network_socket(family)) {
+        if (port == 0) {  // Random high ports
+          bool is_lan_bind = is_lan_address(sockAddrStruct);
 
           if (is_lan_bind) {
-            LOGE("(bind) Blocking on LAN IP %s (%s)", ipAddrStr, proto);
-            log_violation_trace("(bind): LAN binding");
+            LOGE("Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+            log_violation_trace("");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
+            if (patch_pc != 0) {
+              patchInstructionWithNop(patch_pc - 4);
+            }
             break;
           }
 
           // "Client" behavior: requesting a random temporary port
-          LOGW("(bind) Allowing ephemeral bind on Port 0/%s", proto);
+          LOGW("Allowing ephemeral bind: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
           break;
         } else {
           // "Server" behavior: setting up a port for listening
-          LOGE("(bind) Spoofing success of bind on %s:%d (%s)", ipAddrStr, port, proto);
-          log_violation_trace("(bind): server behavior");
+          LOGE("Violation: server bind: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          log_violation_trace("");
           ctx->uc_mcontext.regs[0] = 0;
+          if (patch_pc != 0) {
+            patchInstructionWithNop(patch_pc - 4);
+          }
           break;
         }
       } else {
-        // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
@@ -235,7 +226,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = 0;
         break;
       } else {
-        // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
         LOGW("(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
@@ -327,7 +317,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       }
 
       // Allow everything else (AF_INET, AF_UNIX, etc.) to proceed normally
-      // TODO: https://www.youtube.com/watch?v=Zi7FKB2AU58
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       break;
     }
@@ -426,9 +415,6 @@ inline static size_t get_msghdr_len(const struct msghdr* msg) {
   return total;
 }
 
-/**
- * TODO:
- */
 inline static bool is_lan_address(struct sockaddr* addr) {
   if (addr == nullptr) return false;
   if (addr->sa_family == AF_INET) {
@@ -438,4 +424,57 @@ inline static bool is_lan_address(struct sockaddr* addr) {
     return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
   }
   return false;
+}
+
+inline static void get_socket_info(int sockfd,
+                                   struct sockaddr* sockAddrStruct,
+                                   char* protocol,
+                                   int* port,
+                                   char* ipAddr,
+                                   char* family) {
+  if (sockAddrStruct == nullptr) {
+    return;
+  }
+  int sock_type = 0;
+  socklen_t optlen = sizeof(sock_type);
+
+  long ret = arm64_bypassed_syscall(__NR_getsockopt,
+                                    sockfd, SOL_SOCKET,
+                                    SO_TYPE,
+                                    (long)&sock_type,
+                                    (long)&optlen);
+
+  if (ret != 0) {
+    LOGE("Failed to get socket info!");
+    return;
+  }
+
+  if (sock_type == SOCK_STREAM) {
+    write_to_char_buf(protocol, "TCP", 4);
+  } else if (sock_type == SOCK_DGRAM) {
+    write_to_char_buf(protocol, "UDP", 4);
+  } else {
+    write_to_char_buf(protocol, "UNKNOWN", 8);
+  }
+
+  if (sockAddrStruct->sa_family == AF_INET) {
+    struct sockaddr_in* ipv4 = (struct sockaddr_in*)sockAddrStruct;
+
+    *port = ntohs(ipv4->sin_port);
+    inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddr, INET_ADDRSTRLEN);
+    write_to_char_buf(family, "IPv4", 5);
+  } else if (sockAddrStruct->sa_family == AF_INET6) {
+    struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)sockAddrStruct;
+
+    *port = ntohs(ipv6->sin6_port);
+    inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
+    write_to_char_buf(family, "IPv6", 5);
+  } else {
+    write_to_char_buf(family, "UNKNOWN", 8);
+  }
+}
+
+inline static bool is_network_socket(const char* family) {
+  return (strcmp(family, "IPv4") == 0) ||
+         (strcmp(family, "IPv6") == 0);
 }

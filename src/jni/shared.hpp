@@ -75,4 +75,10 @@ inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
+inline void write_to_char_buf(char* dest, const char* src, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    dest[i] = src[i];
+  }
+}
+
 #endif

@@ -8,7 +8,7 @@
 
 #include "shared.hpp"
 
-static constexpr int MAX_UNWIND_DEPTH = 10;
+static constexpr int MAX_UNWIND_DEPTH = 20;
 
 // State container passed through the unwinder callbacks
 struct UnwindState {
@@ -17,6 +17,7 @@ struct UnwindState {
   uintptr_t frames[MAX_UNWIND_DEPTH];
   const char* libs[MAX_UNWIND_DEPTH];
 };
+static const char* find_culprit(const UnwindState& state, uintptr_t* out_offset, uintptr_t* out_pc);
 
 // Callback run for every frame in the stack
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
@@ -69,7 +70,7 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
   return _URC_NO_REASON;
 }
 
-inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fail = true) {
+inline bool is_trusted_system_caller(const char* target_pathname, uintptr_t* out_patch_pc = nullptr, bool log_on_fail = true) {
   UnwindState state;
   state.current_depth = 0;
   state.is_trusted = true;
@@ -78,25 +79,24 @@ inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fa
 
   _Unwind_Backtrace(unwind_callback, &state);
 
-  if (!state.is_trusted && log_on_fail) {
-    LOGE("--- Caller-ID Violation ---");
-    LOGE("%s", target_pathname);
-    LOGE("Stacktrace:");
+  // TODO: dladdr is not async-signal safe
+  if (!state.is_trusted) {
+    uintptr_t offset = 0;
+    uintptr_t pc = 0;
+    const char* culprit = find_culprit(state, &offset, &pc);
 
-    // TODO? This *may* be problematic as dladdr isn't async-signal safe, yet I haven't seen problems yet
-    for (int i = 0; i < state.current_depth; i++) {
-      uintptr_t pc = state.frames[i];
-      Dl_info info;
-
-      if (dladdr((void*)pc, &info) && info.dli_fname) {
-        // Relative offset of the offending program counter to the lib's base addr
-        uintptr_t offset = pc - (uintptr_t)info.dli_fbase;
-        LOGE("  #%d pc %p (offset 0x%lx)  %s", i, (void*)pc, offset, info.dli_fname);
-      } else {
-        LOGE("  #%d pc %p  %s", i, (void*)pc, state.libs[i]);
-      }
+    if (out_patch_pc) {
+      *out_patch_pc = pc;
     }
-    LOGE("---------------------------");
+
+    if (log_on_fail) {
+      LOGE("--- Bipan Violation ---");
+      LOGE("Action:  %s", target_pathname);
+      LOGE("Culprit: %s", culprit);
+      LOGE("PC:      %p", (void*)pc);  // Absolute address in memory
+      LOGE("Offset:  0x%lx", offset);  // Relative address for addr2line/objdump
+      LOGE("-----------------------");
+    }
   }
 
   return state.is_trusted;
@@ -104,7 +104,26 @@ inline bool is_trusted_system_caller(const char* target_pathname, bool log_on_fa
 
 // Runs the `is_trusted_system_caller` unwinder with logging on
 inline void log_violation_trace(const char* label) {
-  is_trusted_system_caller(label, true);
+  is_trusted_system_caller(label, 0, true);
+}
+
+static const char* find_culprit(const UnwindState& state, uintptr_t* out_offset, uintptr_t* out_pc) {
+  for (int i = 0; i < state.current_depth; i++) {
+    Dl_info info;
+    uintptr_t pc = state.frames[i];
+
+    if (dladdr((void*)pc, &info) && info.dli_fname) {
+      // Skip the JIT/VDSO noise to find the actual native culprit
+      if (strstr(info.dli_fname, "jit-cache") || strstr(info.dli_fname, "[vdso]")) {
+        continue;
+      }
+
+      if (out_pc) *out_pc = pc;
+      if (out_offset) *out_offset = pc - (uintptr_t)info.dli_fbase;
+      return info.dli_fname;
+    }
+  }
+  return "Unknown Source";
 }
 
 #endif

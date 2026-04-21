@@ -28,7 +28,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
     return -EFAULT;
   }
 
-  const bool isCallerTrusted = is_trusted_system_caller(pathname, false);
+  const bool isCallerTrusted = is_trusted_system_caller(pathname, nullptr, false);
   if (isCallerTrusted) {
     return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
   }
