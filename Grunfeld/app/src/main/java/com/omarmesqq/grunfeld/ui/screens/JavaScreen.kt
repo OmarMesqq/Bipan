@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -20,13 +21,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
+import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
-
 
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
-    var displayText by remember { mutableStateOf(DumpJavaInfo(context)) }
+    var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
+    var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
     val scrollState = rememberScrollState()
 
     Column(
@@ -41,6 +44,7 @@ fun JavaInfoScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
+        SectionHeader("BUILD AND SETTINGS INFO")
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -48,12 +52,26 @@ fun JavaInfoScreen() {
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Text(
-                text = displayText,
+                text = buildAndSettingsInfo,
                 modifier = Modifier
                     .padding(16.dp)
                     .verticalScroll(scrollState),
                 style = MaterialTheme.typography.bodyMedium
             )
+        }
+
+        SectionHeader("SENSORS")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = "Java Layer", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
+            Button(
+                 onClick = {
+
+                 },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Probe Sensors using Java")
+            }
         }
     }
 }

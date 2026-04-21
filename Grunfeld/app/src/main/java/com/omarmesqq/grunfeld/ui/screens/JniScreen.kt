@@ -1,28 +1,34 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import android.R.attr.onClick
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.ui.composables.CodeTitle
+import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
+import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
-
 
 @Composable
 fun JniScreen() {
-    var sensorReport by remember { mutableStateOf("Sensors not tested yet") }
+    var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
     var stealthReport by remember { mutableStateOf("Maps not tested yet") }
     // TODO: filesystem
@@ -52,15 +58,15 @@ fun JniScreen() {
             else CardDefaults.cardColors()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Sensors Privacy (NDK Layer)", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(sensorReport, "Sensors not tested yet")
+                Text(text = "NDK Layer", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
                 Button(
                     onClick = {
                         sensorReport = NativeLibWrapper.testSensors()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Test Native Sensors")
+                    Text("Probe Sensors using native code (NDK)")
                 }
             }
         }
@@ -191,88 +197,6 @@ fun JniScreen() {
                 ) {
                     Text("Install SIGSYS handler")
                 }
-            }
-        }
-    }
-}
-
-
-@Composable
-fun SectionHeader(title: String) {
-    Column(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        HorizontalDivider(
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
-        )
-    }
-}
-
-@Composable
-fun CodeTitle(text: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = MaterialTheme.shapes.extraSmall
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        )
-    }
-}
-
-@Composable
-fun ReportText(
-    text: String,
-    style: TextStyle = MaterialTheme.typography.bodyMedium,
-    modifier: Modifier = Modifier
-    ) {
-    SelectionContainer(modifier = modifier) {
-        Text(
-            text = text,
-            style = style,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-fun ReportTextWithCopy(
-    text: String,
-    initialText: String,
-    style: TextStyle = MaterialTheme.typography.bodyMedium
-) {
-    val clipboardManager = LocalClipboardManager.current
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SelectionContainer(modifier = Modifier.weight(1f)) {
-            Text(text = text, style = style)
-        }
-
-        if (text != initialText) {
-            IconButton(
-                onClick = { clipboardManager.setText(AnnotatedString(text)) },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy",
-                    modifier = Modifier.size(18.dp)
-                )
             }
         }
     }
