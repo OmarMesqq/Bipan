@@ -81,6 +81,14 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   return -1;
 }
 
+jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
+  (void)env;
+  (void)clazz;
+  (void)opPackageName;
+  LOGE("(Sensors) Blocked Java SystemSensorManager nativeCreate!");
+  return 0;
+}
+
 // ==========================================
 // Native Sensors hooks
 // ==========================================
@@ -118,7 +126,6 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
   (void)type;
   return nullptr;
 }
-
 
 // ==========================================
 // JNI tripwires for Seccomp

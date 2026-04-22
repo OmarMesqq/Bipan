@@ -25,6 +25,8 @@ using zygisk::ServerSpecializeArgs;
 
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
+constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
+constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 // Variables shared across modules
 char safe_proc_pid_path[64] = {0};
 
@@ -32,7 +34,6 @@ char safe_proc_pid_path[64] = {0};
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 #endif
-
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -103,14 +104,16 @@ class Bipan : public zygisk::ModuleBase {
 #endif
       registerSignalHandler();
 
-      JNINativeMethod event_queue_methods[] = {
+      // Java Layer Sensors hooking
+      JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
           {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
-      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, 1);
-
-      JNINativeMethod manager_methods[] = {
+      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
+      JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
           {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+          {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+          {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
           {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
-      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, 2);
+      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, JAVA_SENSORS_MANAGER_METHODS_COUNT);
 
       // This will finally trigger Seccomp before app code runs
       JNINativeMethod runtime_methods[] = {
