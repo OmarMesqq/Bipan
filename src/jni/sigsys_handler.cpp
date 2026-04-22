@@ -414,8 +414,41 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
+    case __NR_mmap: {
+      void* addr = (void*)arg0;
+      size_t length = (size_t)arg1;
+      int prot = (int)arg2;
+      int flags = (int)arg3;
+      int fd = (int)arg4;
+      off_t offset = (off_t)arg5;
+
+      if (is_trusted_system_caller("(mmap)", &patch_pc, false)) {
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        break;
+      }
+      LOGE("Violation: mmap");
+      log_violation_trace("(mmap)");
+
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+      break;
+    }
+    case __NR_mprotect: {
+      void* addr = (void*)arg0;
+      size_t len = (size_t)arg1;
+      int prot = (int)arg2;
+
+      if (is_trusted_system_caller("(mprotect)", &patch_pc, false)) {
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        break;
+      }
+      LOGE("Violation: mprotect");
+      log_violation_trace("(mprotect)");
+
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+      break;
+    }
     default: {
-      LOGE("Violation: got unexpected syscall: (%d)", nr);
+      LOGE("Violation: got unexpected syscall(%d). Allowing...", nr);
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
@@ -481,11 +514,11 @@ inline static void get_socket_info(int sockfd,
   socklen_t optlen = sizeof(sock_type);
 
   long ret = arm64_raw_syscall(__NR_getsockopt,
-                                    sockfd, SOL_SOCKET,
-                                    SO_TYPE,
-                                    (long)&sock_type,
-                                    (long)&optlen,
-                                    0);
+                               sockfd, SOL_SOCKET,
+                               SO_TYPE,
+                               (long)&sock_type,
+                               (long)&optlen,
+                               0);
 
   if (ret != 0) {
     LOGE("Failed to get socket info! Aborting!");
