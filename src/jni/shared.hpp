@@ -6,12 +6,17 @@
 #include <string>
 
 #define TAG "Bipan"
+
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+// Globals populated in entrypoint
+
+// Used in signal handler for checking if app is reading virtual filesystem
 extern char safe_proc_pid_path[64];
+// Used in hooks module to apply PC-relative seccomp in the JNI tripwires
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 
@@ -58,7 +63,6 @@ extern SharedIPC* ipc_mem;
  */
 extern int sv[2];
 #endif
-
 
 inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;

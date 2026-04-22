@@ -54,7 +54,7 @@ jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstan
   (void)clazz;
   (void)nativeInstance;
   (void)sensor;
-  LOGE("(Sensors) Blocked Java SensorManager enumeration (index %d)!", index);
+  LOGE("(Java Sensors) Blocked SensorManager enumeration (index %d)", index);
   return JNI_FALSE;
 }
 
@@ -65,7 +65,7 @@ jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint 
   (void)handle;
   (void)rateUs;
   (void)maxBatchReportLatencyUs;
-  LOGE("(Sensors) Blocked Java nativeEnableSensor! Data stream is dead.");
+  LOGE("(Java Sensors) Blocked nativeEnableSensor");
   return -1;
 }
 
@@ -77,7 +77,7 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   (void)type;
   (void)fd;
   (void)resource;
-  LOGE("(Sensors) Blocked nativeCreateDirectChannel! High-speed tracking denied.");
+  LOGE("(Java Sensors) Blocked nativeCreateDirectChannel");
   return -1;
 }
 
@@ -85,7 +85,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
   (void)env;
   (void)clazz;
   (void)opPackageName;
-  LOGE("(Sensors) Blocked Java SystemSensorManager nativeCreate!");
+  LOGE("(Java Sensors) Blocked nativeCreate");
   return 0;
 }
 
@@ -96,12 +96,12 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
 #define NATIVE_SENSORS_FUNCTIONS_COUNT 5
 
 ASensorManager* hook_ASensorManager_getInstance() {
-  LOGE("(Sensors) Blocked ASensorManager_getInstance!");
+  LOGE("(Native Sensors) Blocked ASensorManager_getInstance");
   return nullptr;
 }
 
 ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
-  LOGE("(Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
+  LOGE("(Native Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
   return nullptr;
 }
 
@@ -111,19 +111,23 @@ ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager,
   (void)ident;
   (void)cb;
   (void)data;
-  LOGE("(Sensors) Blocked Native createEventQueue! NDK app is now blind.");
+  LOGE("(Native Sensors) Blocked Native createEventQueue");
   return nullptr;
 }
 
 int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** list) {
   (void)manager;
-  if (list != nullptr) *list = nullptr;
+  if (list != nullptr) {
+    *list = nullptr;
+  }
+  LOGE("(Native Sensors) Blocked Native getSensorList");
   return 0;
 }
 
 ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
   (void)manager;
   (void)type;
+  LOGE("(Native Sensors) Blocked Native getDefaultSensor");
   return nullptr;
 }
 
@@ -133,7 +137,7 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    // Pass the global bounds into the filter installer
+    // Bipan's global bounds
     if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
       applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
       LOGD("Seccomp applied at clampGrowthLimit.");
