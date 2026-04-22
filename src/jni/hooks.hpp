@@ -4,7 +4,7 @@
 #include "filter.hpp"
 #include "shared.hpp"
 #include "zygisk.hpp"
-
+#include <stdint.h>
 using zygisk::Api;
 
 static bool linker_hooked = false;
@@ -133,9 +133,14 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applySeccomp();
+    // Pass the global bounds into the filter installer
+    if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
+      applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
+      LOGD("Seccomp applied at clampGrowthLimit.");
+    } else {
+      LOGE("Cannot apply seccomp: Library bounds are 0!");
+    }
     seccomp_applied = true;
-    LOGD("Seccomp applied at clampGrowthLimit.");
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
@@ -144,9 +149,13 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
-    applySeccomp();
+    if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
+      applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
+      LOGD("Seccomp applied at clearGrowthLimit.");
+    } else {
+      LOGE("Cannot apply seccomp: Library bounds are 0!");
+    }
     seccomp_applied = true;
-    LOGD("Seccomp applied at clearGrowthLimit.");
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);

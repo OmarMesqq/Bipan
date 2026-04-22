@@ -413,9 +413,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
   return JNI_TRUE;
 }
 
-/**
- * TODO: this is passing. should fail
- */
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
     char result_buffer[512];

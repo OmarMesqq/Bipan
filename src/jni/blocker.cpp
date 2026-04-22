@@ -19,10 +19,10 @@ void patchInstruction(uintptr_t address);
 /**
  * Blocks, lies about the existence or
  * provides a fake `memfd`'d FD for senstive
- * files. Otherwise, executes a bypassed syscall
+ * files. Otherwise, executes a raw syscall
  * to fetch FD to the file.
  */
-int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
+int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
   const char* pathname = (const char*)a1;
   if (pathname == nullptr) {
     return -EFAULT;
@@ -30,7 +30,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
 
   const bool isCallerTrusted = is_trusted_system_caller(pathname, nullptr, false);
   if (isCallerTrusted) {
-    return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+    return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
   }
 
   if (shouldSpoofExistence(pathname)) {
@@ -58,7 +58,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
   // if (shouldLog(pathname) && !isCallerTrusted) {
   //   LOGW("Untrusted caller: allowing access to %s", pathname);
   // }
-  return arm64_bypassed_syscall(sysno, a0, a1, a2, a3, a4);
+  return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
 }
 
 /**

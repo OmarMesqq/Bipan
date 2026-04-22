@@ -2,7 +2,9 @@
 #include <android/looper.h>
 #include <android/sensor.h>
 #include <dlfcn.h>
+#include <link.h>
 #include <signal.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -29,11 +31,20 @@ constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
 constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 // Variables shared across modules
 char safe_proc_pid_path[64] = {0};
+uintptr_t g_bipan_lib_start = 0;
+uintptr_t g_bipan_lib_end = 0;
 
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 #endif
+
+struct LibBounds {
+  uintptr_t start = 0;
+  uintptr_t end = 0;
+};
+
+static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -68,7 +79,18 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       registerDobbyLinkerHooks();
       registerDobbySensorsHooks();
-      LOGI("Library loaded at: %p", (void*)&__executable_start);
+      LibBounds my_lib;
+      dl_iterate_phdr(find_lib_bounds, &my_lib);
+
+      // Save them to the globals
+      g_bipan_lib_start = my_lib.start;
+      g_bipan_lib_end = my_lib.end;
+
+      // 2. Calculate size and log everything
+      size_t lib_size = my_lib.end - my_lib.start;
+      LOGI("Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
+           (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+
       spoofBuildFields();
       injectAndStartJavaPayload();
 
@@ -346,6 +368,26 @@ class Bipan : public zygisk::ModuleBase {
     }
   }
 };
+
+static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
+  auto* bounds = reinterpret_cast<LibBounds*>(data);
+
+  // Match our library base address with the loaded segment address
+  extern char __executable_start;
+  if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
+    bounds->start = info->dlpi_addr;
+
+    // Iterate through program headers to find the maximum memory span
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+      uintptr_t seg_end = bounds->start + info->dlpi_phdr[i].p_vaddr + info->dlpi_phdr[i].p_memsz;
+      if (seg_end > bounds->end) {
+        bounds->end = seg_end;
+      }
+    }
+    return 1;  // Stop iteration
+  }
+  return 0;
+}
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)

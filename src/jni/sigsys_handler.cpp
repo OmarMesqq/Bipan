@@ -88,7 +88,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     case __NR_execveat: {
       const char* path = (const char*)ctx->uc_mcontext.regs[0];
       if (is_trusted_system_caller(path, &patch_pc, false)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
       LOGE("Violation: execve/execveat");
@@ -129,7 +129,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         break;
       }
 
-      ctx->uc_mcontext.regs[0] = filterPathname(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = filterPathname(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     case __NR_rt_sigaction: {
@@ -140,13 +140,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         log_violation_trace("SIGSYS handler hijacking");
         ctx->uc_mcontext.regs[0] = 0;
       } else {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(
             nr,
             arg0,
             arg1,
             arg2,
             arg3,
-            arg4);
+            arg4,
+            arg5);
       }
 
       break;
@@ -159,7 +160,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         break;
       }
       if (is_trusted_system_caller("(bind)", &patch_pc)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
 
@@ -190,7 +191,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
           // "Client" behavior: requesting a random temporary port
           LOGW("Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         } else {
           // "Server" behavior: setting up a port for listening
           LOGE("Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
@@ -202,7 +203,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         }
       } else {
         LOGW("(bind) Allowing non-IP bind request");
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       }
       break;
     }
@@ -210,16 +211,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       int sockfd = (int)arg0;
 
       if (is_trusted_system_caller("(listen)", &patch_pc)) {
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
 
       struct sockaddr_storage sockAddrStorageStruct = {};
       socklen_t len = sizeof(sockAddrStorageStruct);
-      long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&sockAddrStorageStruct, (long)&len, 0, 0);
+      long ret = arm64_raw_syscall(__NR_getsockname, sockfd, (long)&sockAddrStorageStruct, (long)&len, 0, 0, 0);
       if (ret != 0) {
         // Fail natively...
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
 
@@ -243,7 +244,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         }
       } else {
         LOGW("(listen) Allowing for local/UNIX socket");
-        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       }
       break;
     }
@@ -252,7 +253,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct sockaddr* sockAddrStruct = (struct sockaddr*)arg4;
       if (sockAddrStruct != nullptr) {
         if (is_trusted_system_caller("(sendto)", &patch_pc)) {
-          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
           break;
         }
 
@@ -279,12 +280,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         }
       }
 
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     case __NR_getsockname: {
       // Let kernel execute the real syscall to populate the sockaddr struct
-      long ret = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
       // If it succeeded, inspect and scrub the returned struct
       if (ret == 0 && arg1 != 0) {
@@ -341,7 +342,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         break;
       }
 
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     case __NR_sendmsg: {
@@ -352,7 +353,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         struct sockaddr* sockAddrStruct = (struct sockaddr*)msg->msg_name;
 
         if (is_trusted_system_caller("(sendmsg)", &patch_pc)) {
-          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
           break;
         }
 
@@ -379,7 +380,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           break;
         }
       }
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     case __NR_readlinkat: {
@@ -410,12 +411,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       }
 
       // Otherwise, let the real readlinkat proceed
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     default: {
       LOGE("Violation: got unexpected syscall: (%d)", nr);
-      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
   }
@@ -479,11 +480,12 @@ inline static void get_socket_info(int sockfd,
   int sock_type = 0;
   socklen_t optlen = sizeof(sock_type);
 
-  long ret = arm64_bypassed_syscall(__NR_getsockopt,
+  long ret = arm64_raw_syscall(__NR_getsockopt,
                                     sockfd, SOL_SOCKET,
                                     SO_TYPE,
                                     (long)&sock_type,
-                                    (long)&optlen);
+                                    (long)&optlen,
+                                    0);
 
   if (ret != 0) {
     LOGE("Failed to get socket info! Aborting!");

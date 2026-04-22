@@ -11,74 +11,78 @@
 
 #include "shared.hpp"
 
-/**
- * Berkeley Packet Filter to
- * trap some syscalls.
- * The kernel shall return `SIGSYS` to the program.
- * For this to properly work, Bipan must stay in memory
- * to install and maintain its signal handler during the app's
- * lifetime.
- * 
- * TODO:
- * 
- * - `mmap`
- * - `mprotect`
- */
-static struct sock_filter trapFilter[] = {
-    // ---- Magic number bypass (`SECCOMP_BYPASS`) ----
-    // load the lower 32 bits of the 6th argument
-    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
-    // check if it matches our symbolic constant
-    // on match: execute next line, allowing the syscall
-    // not match: skip the allow, falling through traps
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SECCOMP_BYPASS, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
+  // 1. Break 64-bit bounds into 32-bit chunks
+  uint32_t start_hi = (uint32_t)(lib_start >> 32);
+  uint32_t start_lo = (uint32_t)(lib_start & 0xFFFFFFFF);
+  uint32_t end_lo = (uint32_t)(lib_end & 0xFFFFFFFF);
 
-    // Load syscall number into accumulator
-    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
+  // Note: This logic assumes your library does not cross a 4GB boundary
+  // (i.e., start_hi == end_hi). For small Android libs, this is 99.99% true.
+  if ((lib_start >> 32) != (lib_end >> 32)) {
+    // If it ever hits this, the BPF logic needs more complex boundary crossing checks
+    LOGE("Library crosses 4GB boundary, PC-relative seccomp may fail!");
+  }
 
-    // System info
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  struct sock_filter trapFilter[] = {
+      // Load HIGH 32 bits of Instruction Pointer (Little Endian: offset + 4)
+      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer) + 4),
+      // If High 32 bits DO NOT match, jump forward 4 instructions to normal syscall checks
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, start_hi, 0, 4),
 
-    // Binary execution
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // Load LOW 32 bits of Instruction Pointer
+      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer)),
+      // If Low 32 bits < start_lo, jump forward 2 instructions to normal syscall checks
+      BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, start_lo, 0, 2),
+      // If Low 32 bits >= end_lo, jump forward 1 instruction to normal syscall checks
+      BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, end_lo, 1, 0),
 
-    // Filesystem
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // If we survive the jumps, the IP is inside our library! Bypass allowed.
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
-    // Trap sigaction to protect Bipan's signal handler
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // Load syscall number into accumulator
+      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
-    // Networking
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_listen, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getsockname, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendmsg, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1),
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // System info
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-};
+      // Binary execution
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-void applySeccomp() {
+      // Filesystem
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      // Trap sigaction to protect Bipan's signal handler
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      // Networking
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_listen, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getsockname, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendmsg, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+  };
   // The seccomp "program"
   struct sock_fprog prog = {
       .len = 0,          // number of BPF instructions

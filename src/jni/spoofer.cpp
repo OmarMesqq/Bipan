@@ -53,17 +53,17 @@ int create_spoofed_file(const char* fake_content) {
  */
 long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   // Open the real file
-  long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     LOGE("openat memory maps failed!");
     return -1;
   }
 
   // Create a fake in-memory file
-  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
+  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
-    arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
 
@@ -73,7 +73,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   char line[4096];
   unsigned long line_pos = 0;
 
-  while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
+  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) {
         line[line_pos++] = buf[i];
@@ -102,7 +102,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         if (!has_magisk && !has_zygisk && !has_bipan && !is_fake_jit && !is_deleted_zero && !is_anon_exec) {
           // Line is clean: write it to the fake file
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
+          arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
@@ -111,8 +111,8 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   }
 
   // Cleanup
-  arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
-  arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
+  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);  // Rewind
 
   LOGW("Spoofing memory maps...");
   return fake_fd;
@@ -124,17 +124,17 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
  */
 long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   // Open the real file
-  long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     LOGE("openat memory smaps failed!");
     return -1;
   }
 
   // Create a fake in-memory file
-  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0);
+  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"F4ON5SYGiut0", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
-    arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
 
@@ -146,7 +146,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   // FSM flag: tracks whether we are currently inside a "dirty" memory region
   bool skip_current_region = false;
 
-  while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
+  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) {
         line[line_pos++] = buf[i];
@@ -188,7 +188,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         // If we are NOT in a bad region, write the line (whether it's a header or a metric)
         if (!skip_current_region) {
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
+          arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
@@ -197,8 +197,8 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   }
 
   // Cleanup
-  arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
-  arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
+  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);  // Rewind
 
   LOGW("Spoofing memory smaps...");
   return fake_fd;
@@ -211,17 +211,17 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
  */
 long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   // Open the real file
-  long real_fd = arm64_bypassed_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0);
+  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     LOGE("openat memory mounts failed!");
     return -1;
   }
 
   // Create a fake in-memory file
-  long fake_fd = arm64_bypassed_syscall(__NR_memfd_create, (long)"X7bA1Zkq9R", MFD_CLOEXEC, 0, 0, 0);
+  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"X7bA1Zkq9R", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     LOGE("memfd failed!");
-    arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
+    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
 
@@ -230,7 +230,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
   char line[4096];
   unsigned long line_pos = 0;
 
-  while ((bytes_read = arm64_bypassed_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0)) > 0) {
+  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) {
         line[line_pos++] = buf[i];
@@ -255,7 +255,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
 
         if (!has_magisk && !has_zygisk && !has_bipan && !has_ksu && !has_apatch && !has_core_mirror && !is_cert_overlay) {
           // Line is clean: write it to the fake file
-          arm64_bypassed_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0);
+          arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long) line_pos, 0, 0, 0);
         }
 
         line_pos = 0;  // Reset for next line
@@ -264,8 +264,8 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
   }
 
   // Cleanup
-  arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
-  arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
+  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);  // Rewind
 
   LOGW("Spoofing memory mounts...");
   return fake_fd;

@@ -12,19 +12,8 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 extern char safe_proc_pid_path[64];
-
-/**
- * MAGIC NUMBER:
- * TODO: implement PC-relative seccomp
- * 
- * So far, most syscalls I've intercepted only use 5 arguments +
- * NR number. Turns out you can do an "if" check in the seccomp
- * filter as to allow/trap the offenders exclusively
- * based on an arbitrary value in a given (**unused**) register.
- * A bit of hack, must I say. Syscalls that need more args
- * will bork.
- */
-#define SECCOMP_BYPASS 0xFAC101
+extern uintptr_t g_bipan_lib_start;
+extern uintptr_t g_bipan_lib_end;
 
 // #define BROKER_ARCH
 
