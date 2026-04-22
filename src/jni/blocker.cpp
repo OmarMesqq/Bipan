@@ -94,6 +94,8 @@ void patchInstruction(uintptr_t address, int return_value) {
     opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
   } else if (return_value == -11) {  // -EAGAIN
     opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
+  } else if (return_value == -2) {   // -ENOENT
+    opcode = 0x92800040;             // MOVN x0, #1 (~1 = -2)
   }
 
   *(uint32_t*)address = opcode;
@@ -107,7 +109,6 @@ void patchInstruction(uintptr_t address, int return_value) {
 }
 
 /**
- * TODO:
  * Returns `true` if IP address
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
@@ -147,7 +148,6 @@ bool filterIPv4LanAccess(uint32_t ip4) {
 }
 
 /**
- * TODO:
  * Returns `true` if IP address
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
