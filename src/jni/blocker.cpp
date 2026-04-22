@@ -1,6 +1,7 @@
 #include "blocker.hpp"
 
 #include <sys/mman.h>
+#include <syscall.h>
 
 #include <string>
 
@@ -74,8 +75,9 @@ void patchInstruction(uintptr_t address, int return_value) {
   uintptr_t page_start = address & ~0xFFF;
 
   // Make it writable
-  if (mprotect((void*)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-    LOGE("mprotect (W) failed: %s", strerror(errno));
+  long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
+  if (ret != 0) {
+    LOGE("mprotect (W) failed natively: %ld", ret);
     return;
   }
 
@@ -99,7 +101,7 @@ void patchInstruction(uintptr_t address, int return_value) {
   __builtin___clear_cache((char*)address, (char*)(address + 4));
 
   // 5. Restore original permissions page permissions: probably (RX)
-  mprotect((void*)page_start, 4096, PROT_READ | PROT_EXEC);
+  arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
 
   LOGW("Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
