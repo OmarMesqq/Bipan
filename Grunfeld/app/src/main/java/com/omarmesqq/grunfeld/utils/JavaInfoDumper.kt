@@ -83,8 +83,11 @@ fun dumpJavaSensorInfo(ctx: Context): String {
     val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     val deviceSensors: List<Sensor> = sensorManager.getSensorList(Sensor.TYPE_ALL)
 
-    return deviceSensors.joinToString(separator = "\n\n") { sensor ->
-        """
+    return if (deviceSensors.isEmpty()) {
+        "No sensors detected"
+    } else {
+        deviceSensors.joinToString(separator = "\n\n") { sensor ->
+            """
         Name: ${sensor.name}
         Vendor: ${sensor.vendor}
         Version: ${sensor.version}
@@ -93,5 +96,6 @@ fun dumpJavaSensorInfo(ctx: Context): String {
         Resolution: ${sensor.resolution}
         Max Range: ${sensor.maximumRange}
         """.trimIndent()
+        }
     }
 }
