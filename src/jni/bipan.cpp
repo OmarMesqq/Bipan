@@ -163,31 +163,32 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void injectAndStartJavaPayload() {
-    // 1. Map our C++ byte array into a Java DirectByteBuffer
+    // Map the byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
-      LOGE("inject: Failed to create DirectByteBuffer");
+      LOGE("injectAndStartJavaPayload: failed to create DirectByteBuffer!");
       return;
     }
 
-    // 2. Get the System ClassLoader (we need this as a parent delegate)
+    // Get the System ClassLoader
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID getSystemClassLoader = env->GetStaticMethodID(classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
     jobject systemClassLoader = env->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
 
-    // 3. Instantiate dalvik.system.InMemoryDexClassLoader
+    // Instantiate dalvik.system.InMemoryDexClassLoader using the system's ClassLoader
     jclass inMemoryDexClassLoaderClass = env->FindClass("dalvik/system/InMemoryDexClassLoader");
     jmethodID constructor = env->GetMethodID(inMemoryDexClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
     jobject dexClassLoader = env->NewObject(inMemoryDexClassLoaderClass, constructor, byteBuffer, systemClassLoader);
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      LOGE("inject: Failed to instantiate InMemoryDexClassLoader. Is the payload valid?");
+      LOGE("injectAndStartJavaPayload: failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
       return;
     }
 
     // 4. Ask our new ClassLoader to find your SettingsHook class
     jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    // TODO
     jstring className = env->NewStringUTF("com.omarmesqq.bipan.SettingsHook");
     jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
 

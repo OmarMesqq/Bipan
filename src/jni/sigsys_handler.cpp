@@ -113,6 +113,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       int flags = (int)ctx->uc_mcontext.regs[2];
       mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
 
+      if (is_trusted_system_caller("(openat/faccessat/newfstatat)", &patch_pc, false)) {
+        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        break;
+      }
+
       const bool is_vfs = is_maps(pathname) || is_smaps(pathname) || is_mounts(pathname);
 
       if (is_vfs) {
@@ -310,8 +315,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                         family);
 
         if (is_network_socket(family)) {
-          // LOGE("Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          // log_violation_trace("(getsockname)");
+          LOGE("Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          log_violation_trace("(getsockname)");
 
           if (sockAddrStruct->sa_family == AF_INET) {
             ((struct sockaddr_in*)sockAddrStruct)->sin_addr.s_addr = htonl(INADDR_ANY);  // 0.0.0.0

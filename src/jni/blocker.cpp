@@ -15,7 +15,7 @@ inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
 inline static bool shouldDenyAccess(const char* pathname);
 inline static const char* shouldFakeFile(const char* pathname);
-void patchInstruction(uintptr_t address);
+void patchInstruction(uintptr_t address, int return_value);
 
 /**
  * Blocks, lies about the existence or
@@ -103,7 +103,7 @@ void patchInstruction(uintptr_t address, int return_value) {
   // 5. Restore original permissions page permissions: probably (RX)
   arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
 
-  LOGW("Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
+  LOGI("Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
 
 /**
@@ -120,7 +120,7 @@ bool filterIPv4LanAccess(uint32_t ip4) {
 
   // Loopback (127.0.0.0/8)
   if ((ip4 & 0xFF000000) == 0x7F000000) {
-    LOGW("Allowing app to bind/listen on IPv4 loopback");
+    // Stopping loopback will probably break a shit ton of apps
     return false;
   }
 
@@ -172,7 +172,7 @@ bool filterIPv6LanAccess(uint8_t* ip6) {
     if (ip6[i] != 0) is_loopback = false;
   }
   if (is_loopback) {
-    LOGW("Allowing app to bind/listen on IPv6 loopback");
+    // Stopping loopback will probably break a shit ton of apps
     return false;
   }
 

@@ -201,7 +201,7 @@ void registerDobbySensorsHooks() {
     if (addr) {
       if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
         __builtin___clear_cache((char*)addr, (char*)addr + 32);
-        LOGD("(Sensors) Hooked %s at %p", symbols[i], addr);
+        LOGD("(Dobby Native Sensors) Hooked %s", symbols[i]);
       }
     }
   }
