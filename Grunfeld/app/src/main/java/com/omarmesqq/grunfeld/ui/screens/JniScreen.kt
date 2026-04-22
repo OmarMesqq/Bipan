@@ -31,10 +31,13 @@ fun JniScreen() {
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
     var stealthReport by remember { mutableStateOf("Maps not tested yet") }
-    // TODO: filesystem
+    var filesystemReport by remember { mutableStateOf("filesystem not probed yet") }
     var bindReport by remember { mutableStateOf("bind not tested yet") }
+    var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
+    var socketReport by remember { mutableStateOf("socket not tested yet") }
+    var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
     var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
 
     Column(
@@ -116,13 +119,9 @@ fun JniScreen() {
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "File System Inspection", style = MaterialTheme.typography.titleMedium)
-                Button(
-                    onClick = {
-                        NativeLibWrapper.testFileSystemProbes()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                Text(text = "Filesystem scanning", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(filesystemReport, "filesystem not probed yet")
+                Button(onClick = {  }, modifier = Modifier.fillMaxWidth()) {
                     Text("Probe filesystem")
                 }
             }
@@ -147,7 +146,7 @@ fun JniScreen() {
             }
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("listen()")
-                ReportTextWithCopy(sendtoReport, "listen not tested yet")
+                ReportTextWithCopy(listenReport, "listen not tested yet")
                 Button(
                     onClick = {
                         // NativeLibWrapper.testNetworkLeaks()
@@ -185,7 +184,7 @@ fun JniScreen() {
 
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("socket()")
-                ReportTextWithCopy(getsocknameReport, "socket not tested yet")
+                ReportTextWithCopy(socketReport, "socket not tested yet")
                 Button(
                     onClick = {
                         // NativeLibWrapper.testNetworkLeaks()
@@ -198,7 +197,7 @@ fun JniScreen() {
 
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CodeTitle("sendmsg()")
-                ReportTextWithCopy(getsocknameReport, "sendmsg not tested yet")
+                ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                 Button(
                     onClick = {
                         // NativeLibWrapper.testNetworkLeaks()
