@@ -2,6 +2,8 @@ package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
@@ -75,4 +77,21 @@ private fun dumpSettingsInfo(ctx: Context): String {
        WAIT_FOR_DEBUGGER: $waitForDebugger
        SSAID: $ssaid
     """.trimIndent()
+}
+
+fun dumpJavaSensorInfo(ctx: Context): String {
+    val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val deviceSensors: List<Sensor> = sensorManager.getSensorList(Sensor.TYPE_ALL)
+
+    return deviceSensors.joinToString(separator = "\n\n") { sensor ->
+        """
+        Name: ${sensor.name}
+        Vendor: ${sensor.vendor}
+        Version: ${sensor.version}
+        Type: ${sensor.type}
+        Power: ${sensor.power} mA
+        Resolution: ${sensor.resolution}
+        Max Range: ${sensor.maximumRange}
+        """.trimIndent()
+    }
 }

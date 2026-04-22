@@ -24,54 +24,51 @@ import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
+import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
-    val scrollState = rememberScrollState()
+
+    val screenScrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
+            .verticalScroll(screenScrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Java info",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text(text = "Java info", style = MaterialTheme.typography.headlineMedium)
 
         SectionHeader("BUILD AND SETTINGS INFO")
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Text(
                 text = buildAndSettingsInfo,
-                modifier = Modifier
-                    .padding(16.dp)
-                    .verticalScroll(scrollState),
+                modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
 
         SectionHeader("SENSORS")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(text = "Java Layer", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
             Button(
-                 onClick = {
-
-                 },
+                onClick = { javaSensorsReport = dumpJavaSensorInfo(context) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Probe Sensors using Java")
             }
+            ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
         }
     }
 }
