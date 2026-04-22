@@ -1,10 +1,10 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
-import android.os.Build
-import android.provider.Settings.Global
-import android.provider.Settings
 import android.content.Context
+import android.os.Build
+import android.provider.Settings
+import android.provider.Settings.Global
 
 
 fun DumpJavaInfo(context: Context): String {
