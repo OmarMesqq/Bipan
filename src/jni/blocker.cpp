@@ -14,7 +14,7 @@ inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
 inline static bool shouldDenyAccess(const char* pathname);
 inline static const char* shouldFakeFile(const char* pathname);
-void patchInstructionWithNop(uintptr_t address);
+void patchInstruction(uintptr_t address);
 
 /**
  * Blocks, lies about the existence or
@@ -69,26 +69,39 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4) {
  * PC_call = PC_logged - 4
  * and do nop(PC_call)
  */
-void patchInstructionWithNop(uintptr_t address) {
-  // 1. Find the start of the page (4KB align)
+void patchInstruction(uintptr_t address, int return_value) {
+  // Find the start of the page (4KB align)
   uintptr_t page_start = address & ~0xFFF;
 
-  // 2. Make page writable
+  // Make it writable
   if (mprotect((void*)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-    LOGE("mprotect failed: %s", strerror(errno));
+    LOGE("mprotect (W) failed: %s", strerror(errno));
     return;
   }
 
-  // 3. Write NOP (0x1f2003d5 in ARM64 Little Endian)
-  *(uint32_t*)address = 0xd503201f;
+  // Let's default to NOP
+  uint32_t opcode = 0xd503201f;
 
-  // 4. Clear CPU Cache
+  if (return_value >= 0 && return_value <= 65535) {
+    // DYNAMIC ASSEMBLER: Generate 'MOV x0, #return_value' on the fly!
+    // Base opcode for MOV x0 is 0xD2800000. We shift the value by 5 bits to place it in the 'imm16' field.
+    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
+  } else if (return_value == -13) {  // -EACCES
+    opcode = 0x92800180;             // MOVN x0, #12 (~12 = -13)
+  } else if (return_value == -99) {  // -EADDRNOTAVAIL
+    opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
+  } else if (return_value == -11) {  // -EAGAIN
+    opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
+  }
+
+  *(uint32_t*)address = opcode;
+
   __builtin___clear_cache((char*)address, (char*)(address + 4));
 
-  // 5. Restore original permissions (R-X)
+  // 5. Restore original permissions page permissions: probably (RX)
   mprotect((void*)page_start, 4096, PROT_READ | PROT_EXEC);
 
-  LOGW("Proactive Patch: Offset %p is now a NOP.", (void*)address);
+  LOGW("Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
 
 /**

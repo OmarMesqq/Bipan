@@ -113,9 +113,14 @@ static const char* find_culprit(const UnwindState& state, uintptr_t* out_offset,
     uintptr_t pc = state.frames[i];
 
     if (dladdr((void*)pc, &info) && info.dli_fname) {
-      // Skip the JIT/VDSO noise to find the actual native culprit
-      if (strstr(info.dli_fname, "jit-cache") || strstr(info.dli_fname, "[vdso]")) {
-        continue;
+      const char* fname = info.dli_fname;
+      if (strstr(fname, "jit-cache") || strstr(fname, "[vdso]") ||
+          strncmp(fname, "/system/", 8) == 0 ||
+          strncmp(fname, "/vendor/", 8) == 0 ||
+          strncmp(fname, "/product/", 9) == 0 ||
+          strncmp(fname, "/apex/", 6) == 0 ||
+          strncmp(fname, "/system_ext/", 12) == 0) {
+        continue;  // not what we look for: keep digging down the stack, my friend...
       }
 
       if (out_pc) *out_pc = pc;

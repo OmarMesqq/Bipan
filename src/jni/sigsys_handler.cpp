@@ -93,9 +93,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       }
       LOGE("Violation: execve/execveat");
       log_violation_trace(path);
-      ctx->uc_mcontext.regs[0] = -EACCES;
+      ctx->uc_mcontext.regs[0] = -EAGAIN;
       if (patch_pc != 0) {
-        patchInstructionWithNop(patch_pc - 4);
+        patchInstruction(patch_pc - 4, -EAGAIN);
       }
       break;
     }
@@ -180,92 +180,101 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
           if (is_lan_bind) {
             LOGE("Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            log_violation_trace("");
+            log_violation_trace("(bind)");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
             if (patch_pc != 0) {
-              patchInstructionWithNop(patch_pc - 4);
+              patchInstruction(patch_pc - 4, -EADDRNOTAVAIL);
             }
             break;
           }
 
           // "Client" behavior: requesting a random temporary port
-          LOGW("Allowing ephemeral bind: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          LOGW("Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-          break;
         } else {
           // "Server" behavior: setting up a port for listening
-          LOGE("Violation: server bind: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("");
+          LOGE("Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          log_violation_trace("(bind)");
           ctx->uc_mcontext.regs[0] = 0;
           if (patch_pc != 0) {
-            patchInstructionWithNop(patch_pc - 4);
+            patchInstruction(patch_pc - 4, 0);
           }
-          break;
         }
       } else {
         LOGW("(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        break;
       }
+      break;
     }
     case __NR_listen: {
       int sockfd = (int)arg0;
 
-      struct sockaddr_storage addr;
-      socklen_t len = sizeof(addr);
-      long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&addr, (long)&len, 0, 0);
+      if (is_trusted_system_caller("(listen)", &patch_pc)) {
+        ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+        break;
+      }
 
+      struct sockaddr_storage sockAddrStorageStruct = {};
+      socklen_t len = sizeof(sockAddrStorageStruct);
+      long ret = arm64_bypassed_syscall(__NR_getsockname, sockfd, (long)&sockAddrStorageStruct, (long)&len, 0, 0);
       if (ret != 0) {
         // Fail natively...
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
         break;
       }
-      if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
-        log_violation_trace("(listen): network socket");
-        LOGE("(listen) spoofing success");
+
+      char protocol[8] = {0};
+      int port = -1;
+      char ipAddr[INET6_ADDRSTRLEN] = {0};
+      char family[8] = {0};
+      get_socket_info(sockfd,
+                      (struct sockaddr*)&sockAddrStorageStruct,
+                      protocol,
+                      &port,
+                      ipAddr,
+                      family);
+
+      if (is_network_socket(family)) {
+        LOGE("Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+        log_violation_trace("(listen)");
         ctx->uc_mcontext.regs[0] = 0;
-        break;
+        if (patch_pc != 0) {
+          patchInstruction(patch_pc - 4, 0);
+        }
       } else {
         LOGW("(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
-        break;
       }
+      break;
     }
     case __NR_sendto: {
-      struct sockaddr* dest_addr = (struct sockaddr*)arg4;
-      if (dest_addr != nullptr) {
-        int dest_port = -1;
-        char ipAddrStr[INET6_ADDRSTRLEN] = {0};
-        const char* proto = "UNKNOWN";
-        bool is_lan = false;
-
-        if (dest_addr->sa_family == AF_INET) {
-          struct sockaddr_in* ipv4 = (struct sockaddr_in*)dest_addr;
-          dest_port = ntohs(ipv4->sin_port);
-          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
-          inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddrStr, INET_ADDRSTRLEN);
-          proto = "IPv4";
-
-          is_lan = filterIPv4LanAccess(ip4);
-        } else if (dest_addr->sa_family == AF_INET6) {
-          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)dest_addr;
-          dest_port = ntohs(ipv6->sin6_port);
-          uint8_t* ip6 = ipv6->sin6_addr.s6_addr;
-          inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddrStr, INET6_ADDRSTRLEN);
-          proto = "IPv6";
-
-          is_lan = filterIPv6LanAccess(ip6);
+      int sockfd = (int)arg0;
+      struct sockaddr* sockAddrStruct = (struct sockaddr*)arg4;
+      if (sockAddrStruct != nullptr) {
+        if (is_trusted_system_caller("(sendto)", &patch_pc)) {
+          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          break;
         }
 
-        if (is_lan && dest_port == 53) {
-          LOGW("(sendto) Permitting local DNS query to %s:%d (%s)", ipAddrStr, dest_port, proto);
-          is_lan = false;
-        }
+        char protocol[8] = {0};
+        int port = -1;
+        char ipAddr[INET6_ADDRSTRLEN] = {0};
+        char family[8] = {0};
 
-        if (is_lan) {
-          LOGE("(sendto) %s LAN probing to address %s spoofed", proto, ipAddrStr);
-          log_violation_trace("(sendto) LAN probing");
+        get_socket_info(sockfd,
+                        sockAddrStruct,
+                        protocol,
+                        &port,
+                        ipAddr,
+                        family);
+
+        if (is_network_socket(family)) {
+          LOGE("Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          log_violation_trace("(sendto)");
           ctx->uc_mcontext.regs[0] = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
+          if (patch_pc != 0) {
+            patchInstruction(patch_pc - 4, (int)arg2);
+          }
           break;
         }
       }
@@ -279,25 +288,38 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
       // If it succeeded, inspect and scrub the returned struct
       if (ret == 0 && arg1 != 0) {
-        struct sockaddr* addr = (struct sockaddr*)arg1;
+        if (is_trusted_system_caller("(getsockname)", &patch_pc, false)) {
+          ctx->uc_mcontext.regs[0] = ret;
+          break;
+        }
 
-        if (addr->sa_family == AF_INET) {
-          struct sockaddr_in* ipv4 = (struct sockaddr_in*)addr;
-          uint32_t ip4 = ntohl(ipv4->sin_addr.s_addr);
+        int sockfd = (int)arg0;
+        struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
 
-          if (filterIPv4LanAccess(ip4)) {
-            LOGE("(getsockname) LAN leak prevented: Spoofed IPv4 address");
-            log_violation_trace("(getsockname): LAN leak IPv4");
-            ipv4->sin_addr.s_addr = htonl(INADDR_ANY);
+        char protocol[8] = {0};
+        int port = -1;
+        char ipAddr[INET6_ADDRSTRLEN] = {0};
+        char family[8] = {0};
+
+        get_socket_info(sockfd,
+                        sockAddrStruct,
+                        protocol,
+                        &port,
+                        ipAddr,
+                        family);
+
+        if (is_network_socket(family)) {
+          // LOGE("Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          // log_violation_trace("(getsockname)");
+
+          if (sockAddrStruct->sa_family == AF_INET) {
+            ((struct sockaddr_in*)sockAddrStruct)->sin_addr.s_addr = htonl(INADDR_ANY);  // 0.0.0.0
+
+          } else if (sockAddrStruct->sa_family == AF_INET6) {
+            memset(&(((struct sockaddr_in6*)sockAddrStruct)->sin6_addr), 0, 16);  // ::
           }
-        } else if (addr->sa_family == AF_INET6) {
-          struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)addr;
-
-          if (filterIPv6LanAccess(ipv6->sin6_addr.s6_addr)) {
-            LOGE("(getsockname) LAN leak prevented: Spoofed IPv6 address");
-            log_violation_trace("(getsockname): LAN leak IPv6");
-            memset(&ipv6->sin6_addr, 0, sizeof(ipv6->sin6_addr));
-          }
+          ctx->uc_mcontext.regs[0] = ret;
+          break;
         }
       }
 
@@ -309,14 +331,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       int type = (int)arg1;    // SOCK_STREAM, SOCK_RAW, etc.
       int protocol = (int)arg2;
 
-      if (domain == 16) {  // 16 is the constant for AF_NETLINK
+      if (domain == AF_NETLINK) {
         LOGE("(socket) Blocking AF_NETLINK");
-        log_violation_trace("(socket): AF_NETLINK");
+        is_trusted_system_caller("(socket) AF_NETLINK", &patch_pc);
         ctx->uc_mcontext.regs[0] = -EACCES;
+        if (patch_pc != 0) {
+          patchInstruction(patch_pc - 4, -EACCES);  // Spoof Permission Denied!
+        }
         break;
       }
 
-      // Allow everything else (AF_INET, AF_UNIX, etc.) to proceed normally
       ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       break;
     }
@@ -325,21 +349,33 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct msghdr* msg = (struct msghdr*)arg1;
 
       if (msg != nullptr && msg->msg_name != nullptr) {
-        struct sockaddr* dest_addr = (struct sockaddr*)msg->msg_name;
+        struct sockaddr* sockAddrStruct = (struct sockaddr*)msg->msg_name;
 
-        // Reuse your LAN check logic here
-        bool is_lan = false;
-        if (dest_addr->sa_family == AF_INET) {
-          uint32_t ip4 = ntohl(((struct sockaddr_in*)dest_addr)->sin_addr.s_addr);
-          is_lan = filterIPv4LanAccess(ip4);
-        } else if (dest_addr->sa_family == AF_INET6) {
-          is_lan = filterIPv6LanAccess(((struct sockaddr_in6*)dest_addr)->sin6_addr.s6_addr);
+        if (is_trusted_system_caller("(sendmsg)", &patch_pc)) {
+          ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
+          break;
         }
 
-        if (is_lan) {
-          LOGE("(sendmsg) LAN probing via sendmsg spoofed");
+        char protocol[8] = {0};
+        int port = -1;
+        char ipAddr[INET6_ADDRSTRLEN] = {0};
+        char family[8] = {0};
+
+        get_socket_info(sockfd,
+                        sockAddrStruct,
+                        protocol,
+                        &port,
+                        ipAddr,
+                        family);
+
+        if (is_network_socket(family)) {
+          LOGE("Violation: (sendmsg): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          log_violation_trace("(sendmsg)");
           // Fool the app: return the length it tried to send
           ctx->uc_mcontext.regs[0] = (long)get_msghdr_len(msg);
+          if (patch_pc != 0) {
+            patchInstruction(patch_pc - 4, (int)get_msghdr_len(msg));
+          }
           break;
         }
       }
@@ -379,7 +415,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     default: {
       LOGE("Violation: got unexpected syscall: (%d)", nr);
-      ctx->uc_mcontext.regs[0] = -ENOSYS;  // mimic the kernel's response
+      ctx->uc_mcontext.regs[0] = arm64_bypassed_syscall(nr, arg0, arg1, arg2, arg3, arg4);
       break;
     }
   }
@@ -415,6 +451,11 @@ inline static size_t get_msghdr_len(const struct msghdr* msg) {
   return total;
 }
 
+/**
+ * Returns `true` if `sa_family` of given socket struct `addr`
+ * is either IPv4 (`AF_INET`) or IPv6 (`AF_INET6`) **AND**
+ * its address falls within LAN IP ranges defined by RFCs
+ */
 inline static bool is_lan_address(struct sockaddr* addr) {
   if (addr == nullptr) return false;
   if (addr->sa_family == AF_INET) {
@@ -445,8 +486,8 @@ inline static void get_socket_info(int sockfd,
                                     (long)&optlen);
 
   if (ret != 0) {
-    LOGE("Failed to get socket info!");
-    return;
+    LOGE("Failed to get socket info! Aborting!");
+    _exit(-1);
   }
 
   if (sock_type == SOCK_STREAM) {

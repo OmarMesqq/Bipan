@@ -114,7 +114,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
   arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
 
-  LOGW("Spoofed memory maps");
+  LOGW("Spoofing memory maps...");
   return fake_fd;
 }
 
@@ -200,7 +200,7 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
   arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
 
-  LOGW("Spoofed memory smaps");
+  LOGW("Spoofing memory smaps...");
   return fake_fd;
 }
 
@@ -267,6 +267,6 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
   arm64_bypassed_syscall(__NR_close, real_fd, 0, 0, 0, 0);
   arm64_bypassed_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0);  // Rewind
 
-  LOGW("Spoofed memory mounts");
+  LOGW("Spoofing memory mounts...");
   return fake_fd;
 }
