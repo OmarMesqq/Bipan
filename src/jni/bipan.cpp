@@ -1,3 +1,10 @@
+#include <android/dlext.h>
+#include <android/looper.h>
+#include <android/sensor.h>
+#include <dlfcn.h>
+#include <link.h>
+#include <signal.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -7,7 +14,9 @@
 #include <vector>
 
 #include "broker.hpp"
-#include "filter.hpp"
+#include "dobby.h"
+#include "hooks.hpp"
+#include "settings_hook_payload.h"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "zygisk.hpp"
@@ -16,40 +25,26 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
+// Variables "owned" exclusively by the entrypoint (this module)
+extern "C" char __executable_start;  // Thanks, linker
+constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
+constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
+// Variables shared across modules
+char safe_proc_pid_path[64] = {0};
+uintptr_t g_bipan_lib_start = 0;
+uintptr_t g_bipan_lib_end = 0;
+
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 #endif
-char safe_proc_pid_path[64] = {0};
-static bool seccomp_applied = false;
 
-// Globals to store the original JNI function pointers
-void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
-void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
+struct LibBounds {
+  uintptr_t start = 0;
+  uintptr_t end = 0;
+};
 
-
-void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
-  if (!seccomp_applied) {
-    applySeccomp();
-    seccomp_applied = true;
-    LOGW("Filter applied at clampGrowthLimit");
-  }
-  if (orig_clampGrowthLimit) {
-    orig_clampGrowthLimit(env, obj);
-  }
-}
-
-
-void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
-  if (!seccomp_applied) {
-    applySeccomp();
-    seccomp_applied = true;
-    LOGW("Filter applied at clearGrowthLimit");
-  }
-  if (orig_clearGrowthLimit) {
-    orig_clearGrowthLimit(env, obj);
-  }
-}
+static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -71,7 +66,7 @@ class Bipan : public zygisk::ModuleBase {
     isTargetApp = isTarget(raw_process_name);
 
     if (isTargetApp) {
-      LOGW("preAppSpecialize: will apply sandbox for %s", raw_process_name);
+      LOGD("preAppSpecialize: will apply sandbox for %s", raw_process_name);
       snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
     }
 
@@ -82,9 +77,24 @@ class Bipan : public zygisk::ModuleBase {
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
-      spoofBuildFields();
+      registerDobbyLinkerHooks();
+      registerDobbySensorsHooks();
+      LibBounds my_lib;
+      dl_iterate_phdr(find_lib_bounds, &my_lib);
 
-      #ifdef BROKER_ARCH
+      // Save them to the globals
+      g_bipan_lib_start = my_lib.start;
+      g_bipan_lib_end = my_lib.end;
+
+      // 2. Calculate size and log everything
+      size_t lib_size = my_lib.end - my_lib.start;
+      LOGI("Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
+           (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+
+      spoofBuildFields();
+      injectAndStartJavaPayload();
+
+#ifdef BROKER_ARCH
       ipc_mem = (SharedIPC*)(mmap(
           NULL,
           sizeof(SharedIPC),
@@ -113,22 +123,29 @@ class Bipan : public zygisk::ModuleBase {
       }
 
       close(sv[0]);  // Close broker's end
-      #endif
-      registerSigSysHandler();
+#endif
+      registerSignalHandler();
 
-      // Hook JNI methods that will trip app code as soon as they're done
-      // Source: https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/base/core/java/android/app/ActivityThread.java;l=8061?q=handleBindApplication&ss=android%2Fplatform%2Fsuperproject
-      // Set up the tripwire to delay Seccomp until app execution
-      JNINativeMethod methods[] = {
+      // Java Layer Sensors hooking
+      JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
+          {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
+      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
+      JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
+          {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+          {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+          {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
+          {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
+      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, JAVA_SENSORS_MANAGER_METHODS_COUNT);
+
+      // This will finally trigger Seccomp before app code runs
+      JNINativeMethod runtime_methods[] = {
           {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
           {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};
-
-      // Inject our functions into the VMRuntime class
-      api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", methods, 2);
+      api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", runtime_methods, 2);
 
       // Zygisk populates fnPtr with the original function pointer after hooking
-      orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(methods[0].fnPtr);
-      orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(methods[1].fnPtr);
+      orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[0].fnPtr);
+      orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
     }
   }
 
@@ -143,6 +160,67 @@ class Bipan : public zygisk::ModuleBase {
     if (!isTargetApp) {
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
     }
+  }
+
+  void injectAndStartJavaPayload() {
+    // Map the byte array into a Java DirectByteBuffer
+    jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
+    if (byteBuffer == nullptr) {
+      LOGE("injectAndStartJavaPayload: failed to create DirectByteBuffer!");
+      return;
+    }
+
+    // Get the System ClassLoader
+    jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    jmethodID getSystemClassLoader = env->GetStaticMethodID(classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject systemClassLoader = env->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
+
+    // Instantiate dalvik.system.InMemoryDexClassLoader using the system's ClassLoader
+    jclass inMemoryDexClassLoaderClass = env->FindClass("dalvik/system/InMemoryDexClassLoader");
+    jmethodID constructor = env->GetMethodID(inMemoryDexClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
+    jobject dexClassLoader = env->NewObject(inMemoryDexClassLoaderClass, constructor, byteBuffer, systemClassLoader);
+
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      LOGE("injectAndStartJavaPayload: failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
+      return;
+    }
+
+    // 4. Ask our new ClassLoader to find your SettingsHook class
+    jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    // TODO
+    jstring className = env->NewStringUTF("com.omarmesqq.bipan.SettingsHook");
+    jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
+
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      LOGE("inject: Failed to load class com.omarmesqq.bipan.SettingsHook");
+    } else {
+      jclass payloadClass = static_cast<jclass>(payloadClassObj);
+
+      // 5. Execute the static install() method!
+      if (payloadClass != nullptr) {
+        jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
+        if (installMethod != nullptr) {
+          env->CallStaticVoidMethod(payloadClass, installMethod);
+
+          if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("inject: Exception thrown inside SettingsHook.install()!");
+          } else {
+            LOGD("Bipan: Fileless Java Payload successfully injected and executing!");
+          }
+        }
+      }
+    }
+
+    // 6. Clean up JNI references to prevent memory leaks in the target process
+    env->DeleteLocalRef(className);
+    env->DeleteLocalRef(dexClassLoader);
+    env->DeleteLocalRef(systemClassLoader);
+    env->DeleteLocalRef(inMemoryDexClassLoaderClass);
+    env->DeleteLocalRef(classLoaderClass);
+    env->DeleteLocalRef(byteBuffer);
   }
 
   bool isTarget(const char* process) {
@@ -167,13 +245,6 @@ class Bipan : public zygisk::ModuleBase {
     return false;
   }
 
-  /**
-   * Do some IPC with the companion handler
-   * to get the list of target processes whose
-   * fields should be spoofed. Yes, this runs on every app launch,
-   * but hopefully it's O(1) as I'm using an ordered_set
-   * to gather target apps.
-   */
   void fetchTargetProcesses() {
     int fd = api->connectCompanion();
     if (fd < 0) {
@@ -298,6 +369,26 @@ class Bipan : public zygisk::ModuleBase {
     }
   }
 };
+
+static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
+  auto* bounds = reinterpret_cast<LibBounds*>(data);
+
+  // Match our library base address with the loaded segment address
+  extern char __executable_start;
+  if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
+    bounds->start = info->dlpi_addr;
+
+    // Iterate through program headers to find the maximum memory span
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+      uintptr_t seg_end = bounds->start + info->dlpi_phdr[i].p_vaddr + info->dlpi_phdr[i].p_memsz;
+      if (seg_end > bounds->end) {
+        bounds->end = seg_end;
+      }
+    }
+    return 1;  // Stop iteration
+  }
+  return 0;
+}
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)

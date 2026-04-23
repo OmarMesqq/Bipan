@@ -1,82 +1,238 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.ui.composables.CodeTitle
+import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
+import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun JniScreen() {
-    // 1. Change to mutableStateOf so we can update it later
-    var jniData by remember { mutableStateOf("No data loaded yet.") }
-
-    // State for signal handler status
-    var handlerStatus by remember { mutableStateOf("Not installed") }
+    var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
+    var unameReport by remember { mutableStateOf("Uname not fetched yet") }
+    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
+    var filesystemReport by remember { mutableStateOf("filesystem not probed yet") }
+    var bindReport by remember { mutableStateOf("bind not tested yet") }
+    var listenReport by remember { mutableStateOf("listen not tested yet") }
+    var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
+    var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
+    var socketReport by remember { mutableStateOf("socket not tested yet") }
+    var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
+    var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Native Security",
+            text = "JNI info",
             style = MaterialTheme.typography.headlineMedium
         )
 
-        // Uname Card
+        SectionHeader("SENSORS")
         Card(
             modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            colors = if (sensorReport.contains("LEAK"))
+                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            else CardDefaults.cardColors()
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(text = "Uname Info", style = MaterialTheme.typography.titleMedium)
-
-                // Display the current state of jniData
-                Text(text = jniData, style = MaterialTheme.typography.bodyLarge)
-
-                // 2. Added button to trigger the JNI call
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "NDK Layer", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
                 Button(
                     onClick = {
-                        jniData = try {
-                            NativeLibWrapper.getUname()
-                        } catch (e: Exception) {
-                            "Error: ${e.message}"
-                        }
+                        sensorReport = NativeLibWrapper.testSensors()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Fetch Uname via Syscall")
+                    Text("Probe Sensors using native code (NDK)")
                 }
             }
         }
 
-        // Signal Handler Card
+        SectionHeader("SYSTEM INFO")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(unameReport, "Uname not fetched yet")
+                Button(onClick = { unameReport = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Get uname")
+                }
+            }
+        }
+
+        SectionHeader("STEALTH")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (stealthReport.contains("!!"))
+                    MaterialTheme.colorScheme.errorContainer
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(text = "Signal Handling", style = MaterialTheme.typography.titleMedium)
-
-                Text(text = "Status: $handlerStatus")
+                Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(stealthReport, "Maps not tested yet")
 
                 Button(
+                    onClick = { stealthReport = NativeLibWrapper.scanMaps() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Scan /proc/self/maps")
+                }
+            }
+        }
+
+        SectionHeader("FILESYSTEM")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "Filesystem scanning", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(filesystemReport, "filesystem not probed yet")
+                Button(onClick = {  }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Probe filesystem")
+                }
+            }
+        }
+
+        SectionHeader("NETWORKING")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("bind()")
+                ReportTextWithCopy(bindReport, "bind not tested yet")
+                Button(
                     onClick = {
-                        val success = NativeLibWrapper.installSigsysHandler()
-                        handlerStatus = if (success) "Installed Successfully" else "Installation Failed"
+                        bindReport = NativeLibWrapper.testBind()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Install SIGSYS Handler")
+                    Text("Bind on LAN (IPv4/IPv6 and TCP/UDP)")
+                }
+            }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("listen()")
+                ReportTextWithCopy(listenReport, "listen not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("listen")
+                }
+            }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("sendto()")
+                ReportTextWithCopy(sendtoReport, "sendto not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sendto LAN")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("getsockname()")
+                ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("getsockname on LAN info")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("socket()")
+                ReportTextWithCopy(socketReport, "socket not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("socket")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("sendmsg()")
+                ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
+                Button(
+                    onClick = {
+                        // NativeLibWrapper.testNetworkLeaks()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sendmsg")
+                }
+            }
+        }
+
+        SectionHeader("MISC")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Signal Handler", style = MaterialTheme.typography.titleMedium)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = signalHandlerStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                            Button(
+                    onClick = {
+                        val success = NativeLibWrapper.installSigsysHandler()
+                        signalHandlerStatus = if (success) "Active" else "Failed"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Install SIGSYS handler")
                 }
             }
         }

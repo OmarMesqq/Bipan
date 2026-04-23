@@ -6,22 +6,19 @@
 #include <string>
 
 #define TAG "Bipan"
+
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-/**
- * MAGIC NUMBER:
- * TODO:
- * 
- * So far, most syscalls I've intercepted only use 5 arguments +
- * NR number. Turns out you can do an "if" check in the seccomp
- * filter as to allow/trap the offenders exclusively
- * based on an arbitrary value in a given (**unused**) register.
- * A bit of hack, must I say. Syscalls that need more args
- * will bork.
- */
-#define SECCOMP_BYPASS 0xFAC101
+// Globals populated in entrypoint
+
+// Used in signal handler for checking if app is reading virtual filesystem
+extern char safe_proc_pid_path[64];
+// Used in hooks module to apply PC-relative seccomp in the JNI tripwires
+extern uintptr_t g_bipan_lib_start;
+extern uintptr_t g_bipan_lib_end;
 
 // #define BROKER_ARCH
 
@@ -67,11 +64,14 @@ extern SharedIPC* ipc_mem;
 extern int sv[2];
 #endif
 
-// For traversing /proc/<PID>/maps
-extern char safe_proc_pid_path[64];
-
 inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
+}
+
+inline void write_to_char_buf(char* dest, const char* src, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    dest[i] = src[i];
+  }
 }
 
 #endif

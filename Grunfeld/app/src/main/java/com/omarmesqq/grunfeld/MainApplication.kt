@@ -5,17 +5,14 @@ import android.content.res.Configuration
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
-import com.omarmesqq.grunfeld.utils.UIUtils.showToastAndLog
-import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.net.InetAddress
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewOutcomeReceiver
 import androidx.webkit.WebViewStartUpConfig
 import androidx.webkit.WebViewStartUpResult
 import androidx.webkit.WebViewStartupException
+import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
+import com.omarmesqq.grunfeld.utils.Avocado
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import java.util.concurrent.Executors
 
 
@@ -31,7 +28,8 @@ class MainApplication: Application() {
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
-            showToastAndLog(this, "App is debuggable...")
+            Avocado.init(this)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "App is debuggable...", shouldToast = true)
             StrictMode.setThreadPolicy(
                 ThreadPolicy.Builder()
                     .detectCustomSlowCalls()
@@ -73,39 +71,39 @@ class MainApplication: Application() {
             config,
             object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
                 override fun onResult(result: WebViewStartUpResult) {
-                    Log.d(TAG, "Chromium engine successfully pre-warmed in the background!")
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"Chromium engine successfully pre-warmed in the \"background\"")
                 }
 
                 override fun onError(error: WebViewStartupException) {
-                    Log.e(TAG, "Failed to pre-warm Chromium: $error" )
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error, shouldToast = true)
                 }
             }
         )
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            showToastAndLog(this, "CRITICAL_ERROR: Uncaught exception in ${thread.name}: $throwable")
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "CRITICAL_ERROR: Uncaught exception in ${thread.name}", tr= throwable, shouldToast = true)
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        showToastAndLog(this, "onConfigurationChanged")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onConfigurationChanged", shouldToast = true)
     }
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         // Release any resources that can be rebuilt quickly when the app returns to the foreground
         if (level >= TRIM_MEMORY_BACKGROUND) {
-            showToastAndLog(this, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
         }
         // Release UI elements
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
-            showToastAndLog(this, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
         }
         else {
-            showToastAndLog(this, "onTrimMemory unknown level: $level")
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory unknown level: $level", shouldToast = true)
         }
     }
 
@@ -114,6 +112,6 @@ class MainApplication: Application() {
      */
     override fun onLowMemory() {
         super.onLowMemory()
-        showToastAndLog(this, "onLowMemory")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onLowMemory", shouldToast = true)
     }
 }

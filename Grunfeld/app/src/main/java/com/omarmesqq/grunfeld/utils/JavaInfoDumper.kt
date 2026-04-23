@@ -1,10 +1,22 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.os.Build
+import android.provider.Settings
+import android.provider.Settings.Global
+
+
+fun DumpJavaInfo(context: Context): String {
+    val buildInfo = dumpBuildInfo()
+    val settingsInfo = dumpSettingsInfo(context)
+    return "$buildInfo\n\n$settingsInfo"
+}
 
 @SuppressLint("WrongConstant")
-fun DumpBuildInfo(): String {
+private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}
             BOOTLOADER: ${Build.BOOTLOADER}
@@ -43,4 +55,47 @@ fun DumpBuildInfo(): String {
             SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
             SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
             """.trimIndent()
+}
+
+
+private fun dumpSettingsInfo(ctx: Context): String {
+    val cr = ctx.contentResolver
+
+    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
+
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT)
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER)
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+
+    return """
+       DEVICE_NAME: $deviceName
+       DEV_SETTINGS_ON: $devSettingsOn
+       ADB_ENABLED: $adbEnabled
+       BOOT_COUNT: $bootCount
+       WAIT_FOR_DEBUGGER: $waitForDebugger
+       SSAID: $ssaid
+    """.trimIndent()
+}
+
+fun dumpJavaSensorInfo(ctx: Context): String {
+    val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val deviceSensors: List<Sensor> = sensorManager.getSensorList(Sensor.TYPE_ALL)
+
+    return if (deviceSensors.isEmpty()) {
+        "No sensors detected"
+    } else {
+        deviceSensors.joinToString(separator = "\n\n") { sensor ->
+            """
+        Name: ${sensor.name}
+        Vendor: ${sensor.vendor}
+        Version: ${sensor.version}
+        Type: ${sensor.type}
+        Power: ${sensor.power} mA
+        Resolution: ${sensor.resolution}
+        Max Range: ${sensor.maximumRange}
+        """.trimIndent()
+        }
+    }
 }

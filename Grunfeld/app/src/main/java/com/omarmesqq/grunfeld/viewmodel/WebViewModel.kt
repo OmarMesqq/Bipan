@@ -1,21 +1,26 @@
 package com.omarmesqq.grunfeld.viewmodel
 
 import android.content.Context
-import android.util.Log
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
+    // https://browserleaks.com/
+    // https://httpbin.org/
+    // https://deviceinfo.me/
+    private val initialUrl = "https://browserleaks.com/"
     var webView: WebView? = null
 
     // UI States
     var canGoBack = mutableStateOf(false)
     var isLoading = mutableStateOf(true)
-    var urlText = mutableStateOf("https://browserleaks.com/")
+    var urlText = mutableStateOf(initialUrl)
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
             webView = WebView(context.applicationContext).apply {
@@ -25,7 +30,6 @@ class WebViewModel : ViewModel() {
                 )
 
                 WebViewUtils.configureSettings(this, canGoBack, isLoading, urlText)
-
                 loadUrl(urlText.value)
             }
         }
@@ -42,6 +46,13 @@ class WebViewModel : ViewModel() {
         webView?.loadUrl(formattedUrl)
     }
 
+    fun clearAndReset() {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "clearAndReset", shouldToast = true)
+        WebViewUtils.fullCleanup(webView)
+        urlText.value = "about:blank"
+        webView?.loadUrl("about:blank")
+    }
+
     override fun onCleared() {
         super.onCleared()
         WebViewUtils.fullCleanup(webView)
@@ -52,6 +63,6 @@ class WebViewModel : ViewModel() {
             destroy()
         }
         webView = null
-        Log.w(TAG, "onCleared finished. WebView destroyed")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "onCleared: automatically destroyed WebView")
     }
 }

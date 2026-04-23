@@ -4,6 +4,10 @@ module/targets/
 src/libs/
 src/obj/
 *.so
-TODO
 .idea
 .DS_Store
+*.class
+*.dex
+
+# Generated each time SettingsHook.java changes
+settings_hook_payload.h
