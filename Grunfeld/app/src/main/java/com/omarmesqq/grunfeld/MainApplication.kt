@@ -29,7 +29,7 @@ class MainApplication: Application() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
             Avocado.init(this)
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "App is debuggable...", shouldToast = true)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "DEBUG build", shouldToast = true)
             StrictMode.setThreadPolicy(
                 ThreadPolicy.Builder()
                     .detectCustomSlowCalls()

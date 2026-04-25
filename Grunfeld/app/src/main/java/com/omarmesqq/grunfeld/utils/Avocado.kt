@@ -37,7 +37,7 @@ object Avocado {
         if (BuildConfig.DEBUG && shouldToast) {
             // Get main Looper so we can show Toast on Main Thread
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(appContext, "$tag: $msg", Toast.LENGTH_SHORT).show()
+                Toast.makeText(appContext, msg, Toast.LENGTH_SHORT).show()
             }
         }
     }
