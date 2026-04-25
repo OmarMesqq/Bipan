@@ -55,7 +55,6 @@ class MainApplication: Application() {
                     .detectLeakedSqlLiteObjects()
                     .permitNonSdkApiUsage() // LeakCanary violates this
                     .detectUnsafeIntentLaunch()
-                    .detectUntaggedSockets()
                     .detectActivityLeaks()
                     .penaltyLog()
                     .build()

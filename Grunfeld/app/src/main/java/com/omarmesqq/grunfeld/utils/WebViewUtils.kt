@@ -14,6 +14,7 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.Beelzebub.feast
 
 private const val TAG = "WebViewUtils"
 
@@ -88,7 +89,13 @@ object WebViewUtils {
                 if (url.contains("cookieconsent-js.js")) {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
-                return null
+
+                val response = feast(view.context, request)
+                if (response == null) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Hoarding skipped or failed for ${request.url}. Falling back to WebView.")
+                }
+
+                return response
             }
             override fun onReceivedSslError(
                 view: WebView?,
@@ -115,7 +122,10 @@ object WebViewUtils {
     fun fullCleanup(webView: WebView?) {
         val cookieManager = CookieManager.getInstance()
         cookieManager.removeAllCookies { }
+        cookieManager.flush() // Force disk sync
+
         WebStorage.getInstance().deleteAllData()
+        
         webView?.apply {
             clearCache(true)
             clearHistory()
