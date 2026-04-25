@@ -175,12 +175,12 @@ object Icarus {
                 )
             }
         } catch (e: UnknownHostException) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: DNS query: ${e.stackTraceToString()}", shouldToast = true)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "DNS query failed for $urlString:\n${e.stackTraceToString()}", shouldToast = false)
             WebResourceResponse(
                 "text/plain",
                 "UTF-8",
-                200,
-                "OK",
+                404,
+                "Not found",
                 CORS_HEADERS,
                 "".byteInputStream()
             )
