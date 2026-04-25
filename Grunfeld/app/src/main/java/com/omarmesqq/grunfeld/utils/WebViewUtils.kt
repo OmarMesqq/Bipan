@@ -21,11 +21,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "WebViewUtils"
-private const val BRIDGE_NAME = "GrunfeldBridge"
 
 object WebViewUtils {
-    private lateinit var trueUserAgent: String
-    private val spoofedUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1"
     fun configureSettings(
         webView: WebView,
         canGoBack: MutableState<Boolean>,
@@ -40,7 +37,6 @@ object WebViewUtils {
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
         webView.settings.apply {
-            blockNetworkLoads = true
             javaScriptEnabled = true
             domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
@@ -52,11 +48,7 @@ object WebViewUtils {
             setGeolocationEnabled(false)
             setSupportZoom(false)
             mixedContentMode = MIXED_CONTENT_NEVER_ALLOW
-            trueUserAgent = userAgentString
         }
-
-        // Native-JS Bridge for monkey patching
-        webView.addJavascriptInterface(GrunfeldWebNativeIface(webView, urlText, trueUserAgent), BRIDGE_NAME)
 
         webView.webViewClient = object : WebViewClient() {
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -66,8 +58,6 @@ object WebViewUtils {
             }
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                // Inject JS at every page load
-                view?.evaluateJavascript(getMonkeyPatchJS(), null)
                 isLoading.value = true
                 if (url != null) {
                     urlText.value = url
@@ -78,14 +68,18 @@ object WebViewUtils {
                 isLoading.value = false
 
                 if (url != null && url.contains("deviceinfo.me")) {
-                    view?.let { detectAllDeviceInfoProps(it) }
+                    view?.let {
+                        detectAllDeviceInfoProps(it)
+                    }
                 }
             }
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                if (view == null || request == null) return null
+                if (view == null || request == null) {
+                    return null
+                }
 
                 val url = request.url?.toString() ?: ""
                 val path = request.url?.path?.lowercase() ?: ""
@@ -95,17 +89,11 @@ object WebViewUtils {
                     return WebResourceResponse("image/png", "UTF-8", null)
                 }
 
-                val bodyMethods = listOf("POST", "PUT", "PATCH", "DELETE")
-                if (request.method?.uppercase() in bodyMethods) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Blocked native ${request.method} leak to ${request.url}", shouldToast = true)
-                    return WebResourceResponse("text/plain", "UTF-8", 405, "Method Not Allowed", null, "".byteInputStream())
-                }
-
                 // Stop Cookie Consent banner
                 if (url.contains("cookieconsent-js.js")) {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
-                return Icarus.handleRequest(view.context, request, urlText.value, trueUserAgent)
+                return null
             }
             override fun onReceivedSslError(
                 view: WebView?,
@@ -113,9 +101,8 @@ object WebViewUtils {
                 error: SslError?
             ) {
                 if (BuildConfig.DEBUG) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "onReceivedSslError: $error", shouldToast = true)
-                    // handler?.proceed()
-                    throw Throwable()
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "onReceivedSslError: $error")
+                     handler?.proceed()
                 } else {
                     super.onReceivedSslError(view, handler, error)
                 }
@@ -128,113 +115,6 @@ object WebViewUtils {
                 return super.onConsoleMessage(consoleMessage)
             }
         }
-    }
-
-    private fun getMonkeyPatchJS(): String {
-        return """
-(function() {
-    if (window.bridgeInitialized) return;
-    window.bridgeInitialized = true;
-    window.grunfeldCallbacks = {};
-    let requestId = 0;
-
-    const b64DecodeUnicode = (str) => {
-        try {
-            return decodeURIComponent(atob(str).split('').map(function(c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-        } catch(e) { return atob(str); }
-    };
-
-    // 1. Hook Forms (Force all to Bridge)
-    HTMLFormElement.prototype.submit = function() {
-        const method = this.method.toUpperCase();
-        const params = new URLSearchParams(new FormData(this)).toString();
-        GrunfeldBridge.performInterceptedRequest(this.action, params, "application/x-www-form-urlencoded", true, -1, method);
-    };
-
-    // 2. Hook Fetch (TOTAL INTERCEPTION)
-    window.fetch = function(input, init) {
-    const id = requestId++;
-    const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
-    const url = (typeof input === 'string') ? input : input.url;
-    const body = (init && init.body) ? init.body : "";
-    const contentType = (init && init.headers && init.headers['Content-Type']) ? init.headers['Content-Type'] : "";
-
-    return new Promise((resolve, reject) => {
-        // Store both paths so we can choose to fail the request later
-        window.grunfeldCallbacks[id] = { resolve, reject };
-
-        // Route everything to Kotlin
-        GrunfeldBridge.performInterceptedRequest(url, body, contentType, false, id, method);
-    });
-};
-
-    // 3. Hook XMLHttpRequest (TOTAL INTERCEPTION)
-    const XHR = XMLHttpRequest.prototype;
-    const originalOpen = XHR.open;
-    const originalSend = XHR.send;
-
-    XHR.open = function(method, url) {
-        this._method = method.uppercase();
-        this._url = url;
-        return originalOpen.apply(this, arguments);
-    };
-
-    XHR.send = function(data) {
-        const id = requestId++;
-        window.grunfeldCallbacks[id] = (respB64) => {
-            if (respB64 === "ERROR") {
-                this.dispatchEvent(new Event('error'));
-                return;
-            }
-            const decoded = b64DecodeUnicode(respB64);
-            Object.defineProperty(this, 'readyState', { value: 4 });
-            Object.defineProperty(this, 'status', { value: 200 });
-            Object.defineProperty(this, 'responseText', { value: decoded });
-            Object.defineProperty(this, 'response', { value: decoded });
-            if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
-            this.dispatchEvent(new Event('load'));
-        };
-        GrunfeldBridge.performInterceptedRequest(this._url, data || "", "", false, id, this._method);
-    };
-
-    // 4. Hook navigator.sendBeacon
-    if (navigator.sendBeacon) {
-        navigator.sendBeacon = function(url, data) {
-            GrunfeldBridge.performInterceptedRequest(url, data || "", "application/octet-stream", true, -1, 'POST');
-            return true; 
-        };
-    }
-
-    // 5. Hook WebSocket
-    const OriginalWebSocket = window.WebSocket;
-    window.WebSocket = function(url, protocols) {
-        const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
-        const originalSend = ws.send;
-        ws.send = function(data) {
-            GrunfeldBridge.performInterceptedRequest(url, data, "websocket/frame", true, -1, "WS_SEND");
-            return originalSend.apply(this, arguments);
-        };
-        return ws;
-    };
-    window.WebSocket.prototype = OriginalWebSocket.prototype;
-
-    window.grunfeldResolve = function(id, dataB64, isError) {
-    if (window.grunfeldCallbacks[id]) {
-        if (isError) {
-            // This is the trigger! 
-            // It makes the Promise fail, which BrowserLeaks' script 
-            // interprets as the protocol being "Disabled".
-            window.grunfeldCallbacks[id].reject("Handshake Blocked");
-        } else {
-            window.grunfeldCallbacks[id].resolve(dataB64);
-        }
-        delete window.grunfeldCallbacks[id];
-    }
-};
-})();
-""".trimIndent()
     }
 
     fun fullCleanup(webView: WebView?) {
@@ -282,48 +162,7 @@ object WebViewUtils {
     """.trimIndent()
 
         webView.evaluateJavascript(js) { result ->
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "JS Injection worked. Res: $result")
-        }
-    }
-
-    private class GrunfeldWebNativeIface(
-        private val webView: WebView,
-        private val currentUrlState: MutableState<String>,
-        private val userAgent: String
-    ) {
-        @JavascriptInterface
-        fun performInterceptedRequest(
-            url: String,
-            body: String,
-            contentType: String,
-            isNavigation: Boolean,
-            callbackId: Int,
-            method: String
-        ) {
-            CoroutineScope(Dispatchers.IO).launch {
-                val allowedHost = currentUrlState.value
-                val responseData = Icarus.executeManualBodyRequest(url, body, contentType, allowedHost, method, userAgent)
-
-                val base64Data = android.util.Base64.encodeToString(
-                    responseData?.toByteArray(Charsets.UTF_8),
-                    android.util.Base64.NO_WRAP
-                ) ?: ""
-
-                withContext(Dispatchers.Main) {
-                    if (responseData == "NETWORK_ERROR") {
-                        // Send a specific flag that our JS Bridge knows means "Hard Fail"
-                        webView.evaluateJavascript("window.grunfeldResolve($callbackId, null, true)", null)
-                    }
-                    else if (isNavigation) {
-                        webView.loadDataWithBaseURL(url, base64Data, "text/html", "base64", url)
-                    } else {
-                        webView.evaluateJavascript(
-                            "window.grunfeldResolve($callbackId, '$base64Data')",
-                            null
-                        )
-                    }
-                }
-            }
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "detectAllDeviceInfoProps injection worked. Res: $result")
         }
     }
 }
