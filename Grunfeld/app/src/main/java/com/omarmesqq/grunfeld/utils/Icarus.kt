@@ -31,7 +31,6 @@ object Icarus {
      */
     private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     private const val TIMEOUT = 30L // seconds
-    private const val OKHTTP_SOCKET_TAG = 8988
     private val okHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .socketFactory(TaggingSocketFactory(SocketFactory.getDefault()))
@@ -80,7 +79,6 @@ object Icarus {
     ): WebResourceResponse? {
         val uri = request.url
         val urlString = uri.toString()
-        // Assume GET as default I guess
         val method = request.method?.uppercase() ?: "GET"
 
         if (!isHostAllowed(urlString, currentUrl)) {
@@ -95,7 +93,7 @@ object Icarus {
             val responseHeaders = mutableMapOf(
                 "Access-Control-Allow-Origin" to "*",
                 "Access-Control-Allow-Methods" to "GET, POST, OPTIONS, PUT, DELETE, PATCH",
-                "Access-Control-Allow-Headers" to requestedHeaders, // Dynamic fix
+                "Access-Control-Allow-Headers" to requestedHeaders,
                 "Access-Control-Max-Age" to "3600"
             )
             return WebResourceResponse("text/plain", "UTF-8", 200, "OK", responseHeaders, "".byteInputStream())
@@ -157,17 +155,17 @@ object Icarus {
                     bodyStream = scrubbed.byteInputStream(Charsets.UTF_8)
                 }
 
-                return WebResourceResponse(
+                WebResourceResponse(
                     mimeType,
                     encoding,
                     response.code,
                     response.message.ifEmpty { "OK" },
-                    flatHeaders, // Use the correct flat Map here!
+                    flatHeaders,
                     bodyStream
                 )
             } else { // 400s and 500s
                 avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Response unsuccessful: code ${response.code}", shouldToast = true)
-                return WebResourceResponse(
+                WebResourceResponse(
                     "text/plain",
                     "UTF-8",
                     response.code,
@@ -177,8 +175,8 @@ object Icarus {
                 )
             }
         } catch (e: UnknownHostException) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: DNS query failed for $urlString", shouldToast = true)
-            return WebResourceResponse(
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: DNS query: ${e.stackTraceToString()}", shouldToast = true)
+            WebResourceResponse(
                 "text/plain",
                 "UTF-8",
                 200,
@@ -188,7 +186,7 @@ object Icarus {
             )
         } catch (e: Exception) { // Catastrophic failure...
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "handleRequest: Exception\n${e.stackTraceToString()}", shouldToast = true)
-            return WebResourceResponse(
+            WebResourceResponse(
                 "text/plain",
                 "UTF-8",
                 504,
