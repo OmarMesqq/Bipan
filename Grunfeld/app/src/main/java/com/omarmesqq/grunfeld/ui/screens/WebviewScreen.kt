@@ -59,7 +59,10 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     val predefinedSites = listOf(
         "https://start.duckduckgo.com/",
         "https://deviceinfo.me/",
-        "https://browserleaks.com/"
+        "https://browserleaks.com/",
+        "https://www.cloudflare.com/ssl/encrypted-sni/",
+        "https://cloudflare-quic.com/",
+        "https://1.1.1.1/help"
     )
 
     BackHandler(enabled = true) {
