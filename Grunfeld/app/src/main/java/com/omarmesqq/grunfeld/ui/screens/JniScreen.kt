@@ -61,7 +61,7 @@ fun JniScreen() {
             else CardDefaults.cardColors()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "NDK Layer", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
                 ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
                 Button(
                     onClick = {
@@ -69,7 +69,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Probe Sensors using native code (NDK)")
+                    Text("Probe Sensors using native code")
                 }
             }
         }

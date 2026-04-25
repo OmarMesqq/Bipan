@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,7 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omarmesqq.grunfeld.viewmodel.WebViewModel
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     val context = LocalContext.current
@@ -46,6 +54,14 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     val isLoading by webViewModel.isLoading
     val urlText by webViewModel.urlText
 
+    // Dropdown State
+    var expanded by remember { mutableStateOf(false) }
+    val predefinedSites = listOf(
+        "https://deviceinfo.me/",
+        "https://httpbin.org/",
+        "https://browserleaks.com/"
+    )
+
     BackHandler(enabled = true) {
         webView?.goBack()
     }
@@ -55,22 +71,59 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
         ) {
-            // Native search bar
-            OutlinedTextField(
-                value = urlText,
-                onValueChange = { webViewModel.urlText.value = it },
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-                label = { Text("Type URL") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        webViewModel.navigateToUrl(urlText)
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
-                    }
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth().padding(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = urlText,
+                    onValueChange = { webViewModel.urlText.value = it },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    label = { Text("Type or Select URL") },
+                    singleLine = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            webViewModel.navigateToUrl(urlText)
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                            expanded = false
+                        }
+                    )
                 )
-            )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    predefinedSites.forEach { site ->
+                        DropdownMenuItem(
+                            text = { Text(site) },
+                            onClick = {
+                                webViewModel.urlText.value = site
+                                webViewModel.navigateToUrl(site)
+                                expanded = false
+                                focusManager.clearFocus()
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
+                }
+            }
+
+            if (isLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+
 
             // Container for webview
             Box(
@@ -102,15 +155,6 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
                         contentDescription = "Clear Session",
                         tint = Color.Black,
                         modifier = Modifier.size(24.dp) // Icon size
-                    )
-                }
-
-                // Good ol' throbber in middle of screen
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
             }
