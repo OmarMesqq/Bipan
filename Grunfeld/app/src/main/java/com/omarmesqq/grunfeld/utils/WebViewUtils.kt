@@ -132,133 +132,109 @@ object WebViewUtils {
 
     private fun getMonkeyPatchJS(): String {
         return """
-    (function() {
-        if (window.bridgeInitialized) return;
-        window.bridgeInitialized = true;
-        window.grunfeldCallbacks = {};
-        let requestId = 0;
+(function() {
+    if (window.bridgeInitialized) return;
+    window.bridgeInitialized = true;
+    window.grunfeldCallbacks = {};
+    let requestId = 0;
 
-        const b64DecodeUnicode = (str) => {
+    const b64DecodeUnicode = (str) => {
+        try {
             return decodeURIComponent(atob(str).split('').map(function(c) {
                 return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
             }).join(''));
-        };
+        } catch(e) { return atob(str); }
+    };
 
-        const bodyVerbs = ['POST', 'PUT', 'PATCH', 'DELETE'];
+    // 1. Hook Forms (Force all to Bridge)
+    HTMLFormElement.prototype.submit = function() {
+        const method = this.method.toUpperCase();
+        const params = new URLSearchParams(new FormData(this)).toString();
+        GrunfeldBridge.performInterceptedRequest(this.action, params, "application/x-www-form-urlencoded", true, -1, method);
+    };
 
-        // 1. Hook Forms
-        const originalSubmit = HTMLFormElement.prototype.submit;
-        HTMLFormElement.prototype.submit = function() {
-            const method = this.method.toUpperCase();
-            if (bodyVerbs.includes(method)) {
-                const params = new URLSearchParams(new FormData(this)).toString();
-                GrunfeldBridge.performInterceptedRequest(this.action, params, "application/x-www-form-urlencoded", true, -1, method);
+    // 2. Hook Fetch (TOTAL INTERCEPTION)
+    window.fetch = function(input, init) {
+    const id = requestId++;
+    const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
+    const url = (typeof input === 'string') ? input : input.url;
+    const body = (init && init.body) ? init.body : "";
+    const contentType = (init && init.headers && init.headers['Content-Type']) ? init.headers['Content-Type'] : "";
+
+    return new Promise((resolve, reject) => {
+        // Store both paths so we can choose to fail the request later
+        window.grunfeldCallbacks[id] = { resolve, reject };
+
+        // Route everything to Kotlin
+        GrunfeldBridge.performInterceptedRequest(url, body, contentType, false, id, method);
+    });
+};
+
+    // 3. Hook XMLHttpRequest (TOTAL INTERCEPTION)
+    const XHR = XMLHttpRequest.prototype;
+    const originalOpen = XHR.open;
+    const originalSend = XHR.send;
+
+    XHR.open = function(method, url) {
+        this._method = method.uppercase();
+        this._url = url;
+        return originalOpen.apply(this, arguments);
+    };
+
+    XHR.send = function(data) {
+        const id = requestId++;
+        window.grunfeldCallbacks[id] = (respB64) => {
+            if (respB64 === "ERROR") {
+                this.dispatchEvent(new Event('error'));
                 return;
             }
-            originalSubmit.apply(this, arguments);
+            const decoded = b64DecodeUnicode(respB64);
+            Object.defineProperty(this, 'readyState', { value: 4 });
+            Object.defineProperty(this, 'status', { value: 200 });
+            Object.defineProperty(this, 'responseText', { value: decoded });
+            Object.defineProperty(this, 'response', { value: decoded });
+            if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
+            this.dispatchEvent(new Event('load'));
         };
+        GrunfeldBridge.performInterceptedRequest(this._url, data || "", "", false, id, this._method);
+    };
 
-        // 2. Hook Fetch
-        const originalFetch = window.fetch;
-        window.fetch = function(input, init) {
-            const method = (init && init.method) ? init.method.toUpperCase() : 'GET';
-            if (bodyVerbs.includes(method)) {
-                const id = requestId++;
-                const url = (typeof input === 'string') ? input : input.url;
-                return new Promise((resolve) => {
-                    window.grunfeldCallbacks[id] = (respB64) => {
-                        const decoded = b64DecodeUnicode(respB64);
-                        resolve(new Response(decoded, { status: 200 }));
-                    };
-                    GrunfeldBridge.performInterceptedRequest(url, init.body || "", init.headers && init.headers['Content-Type'] ? init.headers['Content-Type'] : "", false, id, method);
-                });
-            }
-            return originalFetch.apply(this, arguments);
+    // 4. Hook navigator.sendBeacon
+    if (navigator.sendBeacon) {
+        navigator.sendBeacon = function(url, data) {
+            GrunfeldBridge.performInterceptedRequest(url, data || "", "application/octet-stream", true, -1, 'POST');
+            return true; 
         };
+    }
 
-        // 3. Hook XMLHttpRequest
-        const XHR = XMLHttpRequest.prototype;
-        const send = XHR.send;
-        const open = XHR.open;
-
-        XHR.open = function(method, url) {
-            this._method = method.toUpperCase();
-            this._url = url;
-            return open.apply(this, arguments);
+    // 5. Hook WebSocket
+    const OriginalWebSocket = window.WebSocket;
+    window.WebSocket = function(url, protocols) {
+        const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
+        const originalSend = ws.send;
+        ws.send = function(data) {
+            GrunfeldBridge.performInterceptedRequest(url, data, "websocket/frame", true, -1, "WS_SEND");
+            return originalSend.apply(this, arguments);
         };
+        return ws;
+    };
+    window.WebSocket.prototype = OriginalWebSocket.prototype;
 
-        XHR.send = function(data) {
-            if (bodyVerbs.includes(this._method)) {
-                const id = requestId++;
-                window.grunfeldCallbacks[id] = (respB64) => {
-                    const decoded = b64DecodeUnicode(respB64);
-                    Object.defineProperty(this, 'readyState', { value: 4 });
-                    Object.defineProperty(this, 'status', { value: 200 });
-                    Object.defineProperty(this, 'responseText', { value: decoded });
-                    Object.defineProperty(this, 'response', { value: decoded });
-                    if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
-                    if (typeof this.onload === 'function') this.onload();
-                };
-                // XHR doesn't expose Content-Type easily before send, default to empty or extract if needed.
-                GrunfeldBridge.performInterceptedRequest(this._url, data || "", "", false, id, this._method);
-                return;
-            }
-            return send.apply(this, arguments);
-        };
-        
-        // 4. Hook navigator.sendBeacon
-        if (navigator.sendBeacon) {
-            const originalSendBeacon = navigator.sendBeacon;
-            navigator.sendBeacon = function(url, data) {
-                // Beacon is usually used for analytics/POST-like data
-                // We notify the bridge but return true to simulate success
-                GrunfeldBridge.performInterceptedRequest(
-                    url, 
-                    data || "", 
-                    "application/octet-stream", 
-                    true, 
-                    -1, 
-                    'POST'
-                );
-                return true; 
-            };
+    window.grunfeldResolve = function(id, dataB64, isError) {
+    if (window.grunfeldCallbacks[id]) {
+        if (isError) {
+            // This is the trigger! 
+            // It makes the Promise fail, which BrowserLeaks' script 
+            // interprets as the protocol being "Disabled".
+            window.grunfeldCallbacks[id].reject("Handshake Blocked");
+        } else {
+            window.grunfeldCallbacks[id].resolve(dataB64);
         }
-
-        // 5. Hook WebSocket
-        const OriginalWebSocket = window.WebSocket;
-        window.WebSocket = function(url, protocols) {
-            const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
-
-            // Hook the 'send' method to intercept outgoing messages
-            const originalSend = ws.send;
-            ws.send = function(data) {
-                // Notify Kotlin about the outgoing WebSocket frame
-                // Note: We use a custom 'method' string like "WS_SEND" to help Kotlin identify it
-                GrunfeldBridge.performInterceptedRequest(
-                    url, 
-                    data, 
-                    "websocket/frame", 
-                    true, 
-                    -1, 
-                    "WS_SEND"
-                );
-                return originalSend.apply(this, arguments);
-            };
-
-            return ws;
-        };
-        // Maintain the prototype chain so 'instanceof' checks don't fail
-        window.WebSocket.prototype = OriginalWebSocket.prototype;
-
-        // Kotlin calls this
-        window.grunfeldResolve = function(id, dataB64) {
-            if (window.grunfeldCallbacks[id]) {
-                window.grunfeldCallbacks[id](dataB64);
-                delete window.grunfeldCallbacks[id];
-            }
-        };
-    })();
-    """.trimIndent()
+        delete window.grunfeldCallbacks[id];
+    }
+};
+})();
+""".trimIndent()
     }
 
     fun fullCleanup(webView: WebView?) {
@@ -334,7 +310,11 @@ object WebViewUtils {
                 ) ?: ""
 
                 withContext(Dispatchers.Main) {
-                    if (isNavigation) {
+                    if (responseData == "NETWORK_ERROR") {
+                        // Send a specific flag that our JS Bridge knows means "Hard Fail"
+                        webView.evaluateJavascript("window.grunfeldResolve($callbackId, null, true)", null)
+                    }
+                    else if (isNavigation) {
                         webView.loadDataWithBaseURL(url, base64Data, "text/html", "base64", url)
                     } else {
                         webView.evaluateJavascript(

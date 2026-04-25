@@ -20,6 +20,8 @@ import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
+import okhttp3.ConnectionSpec
+import okhttp3.TlsVersion
 
 private const val TAG = "Icarus"
 private const val REQUEST_LOGGING_TAG = "Icarus-Logger"
@@ -31,8 +33,13 @@ object Icarus {
      */
     private val CORS_HEADERS = mapOf("Access-Control-Allow-Origin" to "*")
     private const val TIMEOUT = 30L // seconds
+    private val tlsSpec = ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
+        .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2)
+        .build()
+
     private val okHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
+        .connectionSpecs(listOf(tlsSpec))
         .socketFactory(TaggingSocketFactory(SocketFactory.getDefault()))
         .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT, TimeUnit.SECONDS)
@@ -55,7 +62,7 @@ object Icarus {
                     override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
                 })
 
-                val sslContext = SSLContext.getInstance("TLS")
+                val sslContext = SSLContext.getInstance("TLSv1.3")
                 sslContext.init(null, trustAllCerts, java.security.SecureRandom())
                 sslSocketFactory(
                     TaggingSSLSocketFactory(sslContext.socketFactory),
@@ -140,6 +147,8 @@ object Icarus {
                 // 2. PERMISSIVE CORS: Force origin and headers to avoid preflight blocks
                 flatHeaders["Access-Control-Allow-Origin"] = "*"
                 flatHeaders["Access-Control-Allow-Headers"] = "*"
+                flatHeaders.remove("access-control-allow-origin")
+
 
                 val contentType = response.header("Content-Type", "text/html; charset=utf-8")
                 val mimeType = contentType?.split(";")?.get(0) ?: "text/html"
@@ -206,12 +215,20 @@ object Icarus {
 
             val mediaType = contentType.toMediaTypeOrNull() ?: "application/x-www-form-urlencoded".toMediaType()
             val requestBody = body.toRequestBody(mediaType)
+            val upperMethod = method.uppercase()
+
 
             val okRequestBuilder = Request.Builder()
                 .url(urlString)
-                .method(method.uppercase(), requestBody)
                 .header("User-Agent", userAgent)
                 .header("Priority", "u=0, i")
+
+            if (upperMethod in listOf("POST", "PUT", "PATCH", "DELETE")) {
+                val mediaType = contentType.toMediaTypeOrNull() ?: "application/x-www-form-urlencoded".toMediaType()
+                okRequestBuilder.method(upperMethod, body.toRequestBody(mediaType))
+            } else {
+                okRequestBuilder.method(upperMethod, null)
+            }
 
             val cookies = CookieManager.getInstance().getCookie(urlString)
             if (!cookies.isNullOrEmpty()) {
@@ -234,7 +251,7 @@ object Icarus {
             }
         } catch (e: Exception) {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "executeManualBodyRequest: Exception", tr = e, shouldToast = true)
-            "<html><body>Icarus Bridge Error: ${e.message}</body></html>"
+            return "NETWORK_ERROR"
         }
     }
 
