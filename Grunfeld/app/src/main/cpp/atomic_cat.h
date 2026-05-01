@@ -7,7 +7,9 @@
 #include <fcntl.h>
 #include <sys/uio.h>
 #include <string.h>
+#include <time.h>
+#include <android/log.h>
 
-void write_to_logcat_async(const char* tag, const char* msg);
+void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* msg);
 
 #endif // ATOMIC_CAT_H

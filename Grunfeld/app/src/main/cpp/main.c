@@ -39,7 +39,7 @@ __attribute__((constructor))
 void grunfeld_early_init() {
     LOGW("---------------------------------------------------");
     LOGW("Grunfeld Constructor: Library mapped into memory.");
-    write_to_logcat_async(TAG, ">>>>>>>>HELLO!<<<<<<<<");
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, ">>>>>>>>HELLO!<<<<<<<<");
 
     // Try to get native data asap
     ASensorManager* sm = ASensorManager_getInstanceForPackage(PACKAGE_NAME);

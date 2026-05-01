@@ -1,41 +1,54 @@
 #include "atomic_cat.h"
 
-// Android log priorities
-#define ASYNC_LOG_INFO 4
+// Force the compiler to remove padding
+struct __attribute__((packed)) log_header {
+    uint8_t id;          // Offset 0
+    uint16_t tid;        // Offset 1
+    uint32_t tv_sec;     // Offset 3
+    uint32_t tv_nsec;    // Offset 7
+}; // Total size: 11 bytes
 
-void write_to_logcat_async(const char* tag, const char* msg) {
-    // 1. Open the log daemon socket
-    // We use SOCK_DGRAM and SOCK_CLOEXEC for safety
+void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* msg) {
     int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    if (fd < 0) return;
+    if (fd < 0) {
+        return;
+    }
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
+    // Note: The leading '\0' makes it an abstract socket namespace address
+    // but logdw is usually a filesystem node.
     strncpy(addr.sun_path, "/dev/socket/logdw", sizeof(addr.sun_path) - 1);
 
-    // 2. Connect to the log daemon
     if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         close(fd);
         return;
     }
 
-    // 3. Prepare the structured packet
-    // Logcat expects: [Log ID (1 byte)] [Priority (1 byte)] [Tag\0] [Message\0]
-    char log_id = 0; // 0 = Main Log
-    char priority = ASYNC_LOG_INFO;
+    // Prepare Header
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
 
-    struct iovec vec[4];
-    vec[0].iov_base = &log_id;
-    vec[0].iov_len = 1;
+    struct log_header header;
+    header.id = 0; // 0 = LOG_ID_MAIN
+    header.tid = (uint16_t)gettid();
+    header.tv_sec = (uint32_t)now.tv_sec;
+    header.tv_nsec = (uint32_t)now.tv_nsec;
+
+    uint8_t priority = prio;
+
+    // Use 5 vectors for the atomic write
+    struct iovec vec[5];
+    vec[0].iov_base = &header;
+    vec[0].iov_len = sizeof(header);
     vec[1].iov_base = &priority;
     vec[1].iov_len = 1;
     vec[2].iov_base = (void*)tag;
-    vec[2].iov_len = strlen(tag) + 1; // Include null terminator
+    vec[2].iov_len = strlen(tag) + 1;
     vec[3].iov_base = (void*)msg;
-    vec[3].iov_len = strlen(msg) + 1; // Include null terminator
+    vec[3].iov_len = strlen(msg) + 1;
 
-    // 4. Use writev for an atomic, async-safe write
     writev(fd, vec, 4);
 
     close(fd);
