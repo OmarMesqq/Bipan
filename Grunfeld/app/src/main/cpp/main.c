@@ -38,14 +38,13 @@ __attribute__((constructor))
 void grunfeld_early_init() {
     LOGW("---------------------------------------------------");
     LOGW("Grunfeld Constructor: Library mapped into memory.");
-    LOGW("Checking if hooks are already active at this point...");
 
     // Try to get native data asap
     ASensorManager* sm = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
     if (sm == NULL) {
         LOGI("Constructor check: SensorManager is NULL (Hooks likely active)");
     } else {
-        LOGE("Constructor check: SensorManager is VALID (LEAK or Hooks not yet applied)");
+        LOGE("Constructor check: SensorManager is VALID (LEAK)");
     }
     LOGW("---------------------------------------------------");
 }
@@ -165,6 +164,11 @@ JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobject thiz) {
     // TODO: sigprocmask
 
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_hashTextSection(JNIEnv *env, jobject thiz) {
+    //TODO
 }
 
 JNIEXPORT jstring JNICALL
