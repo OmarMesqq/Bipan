@@ -1,3 +1,11 @@
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include <string.h>
+#include <time.h>
+
 #include "atomic_cat.h"
 
 // Force the compiler to remove padding

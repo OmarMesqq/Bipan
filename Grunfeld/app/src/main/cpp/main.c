@@ -1,25 +1,17 @@
 #include <android/log.h>
 #include <android/sensor.h>
 #include <android/looper.h>
-#include <errno.h>
 #include <jni.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <linux/filter.h>
-#include <sys/utsname.h>
 #include <linux/fcntl.h>
 #include <time.h>
-#include <sys/un.h>
+
 #include "atomic_cat.h"
 #include "socket_helper.h"
 
