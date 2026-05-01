@@ -9,6 +9,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+#include "utils.hpp"
 
 /**
  * Credits to:

@@ -11,10 +11,10 @@
 #include <sys/stat.h>
 #include <syscall.h>
 #include <unistd.h>
-
+#include "utils.hpp"
+#include "logger.hpp"
 #include <atomic>
 
-#include "assembly.hpp"
 #include "blocker.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
@@ -26,12 +26,24 @@ struct SpoofedFD {
   char original_path[256];
 };
 
-// Use a fixed array instead of std::map to avoid malloc
+// Fixed array to avoid heap
 static SpoofedFD global_spoofed_fds[128];
 static std::atomic<int> spoofed_fd_count{0};
 
-// Atomic spinlock (Async-Signal-Safe)
+// Atomic spinlock (AS safe)
 static std::atomic_flag fds_lock = ATOMIC_FLAG_INIT;
+
+struct kernel_sigaction {
+  void (*sa_handler)(int, siginfo_t*, void*);
+  unsigned long sa_flags;
+  void (*sa_restorer)(void);
+  uint64_t sa_mask;
+};
+
+
+static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
+static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context);
+static void sigsegv_recovery_handler(int sig, siginfo_t* info, void* void_context);
 
 void storeSpoofedFD(int fd, const char* original_path) {
   // Acquire spinlock
@@ -53,61 +65,55 @@ void storeSpoofedFD(int fd, const char* original_path) {
   fds_lock.clear(std::memory_order_release);  // Release
 }
 
-struct kernel_sigaction {
-  void (*sa_handler)(int, siginfo_t*, void*);
-  unsigned long sa_flags;
-  void (*sa_restorer)(void);
-  uint64_t sa_mask;
-};
-
-inline static bool is_smaps(const char* pathname);
-inline static bool is_maps(const char* pathname);
-inline static bool is_mounts(const char* pathname);
-inline static size_t get_msghdr_len(const struct msghdr* msg);
-inline static void get_socket_info(int sockfd,
-                                   struct sockaddr* sockAddrStruct,
-                                   char* protocol,
-                                   int* port,
-                                   char* ipAddr,
-                                   char* family);
-inline static bool is_lan_address(struct sockaddr* addr);
-inline static bool is_network_socket(const char* family);
-static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context);
+// Store original handlers to forward ART signals
+static struct kernel_sigaction old_sa_segv = {};
 
 void registerSignalHandler() {
-  struct kernel_sigaction sa = {};
-  sa.sa_handler = sigsys_handler;
-  sa.sa_flags = SA_SIGINFO;
+  struct kernel_sigaction sa_SYS = {};
+  sa_SYS.sa_handler = sigsys_handler;
+  sa_SYS.sa_flags = SA_SIGINFO;
   long ret = 0;
 
   // Register signal directly with kernel to bypass libsigchain.so
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
   }
 
   // Register for SIGILL
-  struct kernel_sigaction sa_ill = {};
-  sa_ill.sa_handler = sigill_diagnostic_handler;
-  sa_ill.sa_flags = SA_SIGINFO;
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ill, 0, 8, 0, 0);
+  struct kernel_sigaction sa_ILL = {};
+  sa_ILL.sa_handler = sigill_diagnostic_handler;
+  sa_ILL.sa_flags = SA_SIGINFO;
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ILL, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGILL handler. Aborting for safety!");
     _exit(1);
   }
+
+  // 3. Register SIGSEGV and SAVE the old handler (ART)
+  struct kernel_sigaction sa_SEGV = {};
+  sa_SEGV.sa_handler = sigsegv_recovery_handler;
+  sa_SEGV.sa_flags = SA_SIGINFO;
+
+  // The (long)&old_sa_segv captures ART's existing handler
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, (long)&old_sa_segv, 8, 0, 0);
+
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSEGV handler.");
+    _exit(1);
+  }
 }
 
-static thread_local bool b_in_handler = false;
+static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // 1. REENTRANCY GUARD
-  if (b_in_handler) {
+  if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "!!!Recursed signal handler! Aborting");
     arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
     return;
   }
-  b_in_handler = true;
+  in_sigsys_handler = true;
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
@@ -449,7 +455,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
             ctx->uc_mcontext.regs[0] = to_copy;
             fds_lock.clear(std::memory_order_release);
-            b_in_handler = false;  // Remember to unlock guard before returning
+            in_sigsys_handler = false;  // Remember to unlock guard before returning
             return;
           }
         }
@@ -497,7 +503,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
   }
-  b_in_handler = false;
+  in_sigsys_handler = false;
 }
 
 static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context) {
@@ -531,102 +537,59 @@ static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_conte
   _exit(-1);
 }
 
-inline static bool is_smaps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/smaps") != nullptr);
-}
-inline static bool is_maps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/maps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/maps") != nullptr);
-}
-inline static bool is_mounts(const char* pathname) {
-  return (strcmp(pathname, "/proc/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mounts") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/mounts") != nullptr);
-}
-
-inline static size_t get_msghdr_len(const struct msghdr* msg) {
-  size_t total = 0;
-  if (msg && msg->msg_iov) {
-    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
-      total += msg->msg_iov[i].iov_len;
-    }
-  }
-  return total;
-}
-
-/**
- * Returns `true` if `sa_family` of given socket struct `addr`
- * is either IPv4 (`AF_INET`) or IPv6 (`AF_INET6`) **AND**
- * its address falls within LAN IP ranges defined by RFCs
- */
-inline static bool is_lan_address(struct sockaddr* addr) {
-  if (addr == nullptr) return false;
-  if (addr->sa_family == AF_INET) {
-    return filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
-  }
-  if (addr->sa_family == AF_INET6) {
-    return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
-  }
-  return false;
-}
-
-inline static void get_socket_info(int sockfd,
-                                   struct sockaddr* sockAddrStruct,
-                                   char* protocol,
-                                   int* port,
-                                   char* ipAddr,
-                                   char* family) {
-  if (sockAddrStruct == nullptr) {
+static thread_local bool in_sigsegv_handler = false;
+static void sigsegv_recovery_handler(int sig, siginfo_t* info, void* void_context) {
+  if (in_sigsegv_handler) {
+    arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
     return;
   }
-  int sock_type = 0;
-  socklen_t optlen = sizeof(sock_type);
+  in_sigsegv_handler = true;
 
-  long ret = arm64_raw_syscall(__NR_getsockopt,
-                               sockfd, SOL_SOCKET,
-                               SO_TYPE,
-                               (long)&sock_type,
-                               (long)&optlen,
-                               0);
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  uintptr_t fault_pc = ctx->uc_mcontext.pc;
+  uintptr_t return_address = 0;
 
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get socket info! Aborting!");
-    _exit(-1);
+  // 1. Identify if this is a Meta library (libessential, libwa_log, etc)
+  if (!is_trusted_system_caller("(SIGSEGV_CHECK)", nullptr, false)) {
+    // 2. Try to find where we should go back to
+    is_trusted_system_caller("(SIGSEGV_RECOVERY)", &return_address, false);
+
+    // 3. THE FIX: If the return address is the same as the fault address,
+    // or very close, the current instruction IS the problem.
+    if (return_address == 0 || return_address == fault_pc) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Bipan: Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
+
+      // Lobotomize the instruction that actually triggered the SEGV
+      patchInstruction(fault_pc, 0);
+
+      // Force the CPU to the NEXT instruction (+4 bytes in ARM64)
+      ctx->uc_mcontext.pc = fault_pc + 4;
+      ctx->uc_mcontext.regs[0] = 0;  // Set return to 0 (Success)
+
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Bipan: Loop broken. Advanced to %p", (void*)ctx->uc_mcontext.pc);
+    } else {
+      // Standard recovery for function calls (suicide jumps)
+      uintptr_t suicide_call_site = return_address - 4;
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Bipan: Neutralizing call site %p", (void*)suicide_call_site);
+
+      patchInstruction(suicide_call_site, 0);
+      ctx->uc_mcontext.pc = return_address;
+      ctx->uc_mcontext.regs[0] = 0;
+    }
+
+    in_sigsegv_handler = false;
+    return;
   }
 
-  if (sock_type == SOCK_STREAM) {
-    write_to_char_buf(protocol, "TCP", 4);
-  } else if (sock_type == SOCK_DGRAM) {
-    write_to_char_buf(protocol, "UDP", 4);
-  } else {
-    write_to_char_buf(protocol, "UNKNOWN", 8);
+  // 4. FORWARDING (Java NPEs, ART logic)
+  in_sigsegv_handler = false;
+  if (old_sa_segv.sa_handler != nullptr &&
+      old_sa_segv.sa_handler != (void*)SIG_DFL &&
+      old_sa_segv.sa_handler != (void*)SIG_IGN) {
+    old_sa_segv.sa_handler(sig, info, void_context);
+    return;
   }
 
-  if (sockAddrStruct->sa_family == AF_INET) {
-    struct sockaddr_in* ipv4 = (struct sockaddr_in*)sockAddrStruct;
-
-    *port = ntohs(ipv4->sin_port);
-    inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddr, INET_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv4", 5);
-  } else if (sockAddrStruct->sa_family == AF_INET6) {
-    struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)sockAddrStruct;
-
-    *port = ntohs(ipv6->sin6_port);
-    inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv6", 5);
-  } else {
-    write_to_char_buf(family, "UNKNOWN", 8);
-  }
+  _exit(-1);
 }
 
-inline static bool is_network_socket(const char* family) {
-  return (strcmp(family, "IPv4") == 0) ||
-         (strcmp(family, "IPv6") == 0);
-}

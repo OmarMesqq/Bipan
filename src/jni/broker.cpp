@@ -15,7 +15,6 @@
 
 #include "spoofer.hpp"
 #include "synchronization.hpp"
-#include "assembly.hpp"
 
 void startBroker(int sock) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);

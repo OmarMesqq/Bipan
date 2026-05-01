@@ -8,7 +8,6 @@
 
 #include <string>
 
-#include "assembly.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 

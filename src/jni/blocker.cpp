@@ -3,14 +3,15 @@
 #include <sys/mman.h>
 #include <syscall.h>
 
+#include <atomic>
 #include <string>
 
-#include "assembly.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "spoofer.hpp"
 #include "unwinder.hpp"
+#include "utils.hpp"
 
 inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
@@ -63,6 +64,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
   return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
 }
 
+static std::atomic<uintptr_t> last_neutralized_pc{0};
 /**
  * We patch the call site with a `nop`.
  * Bipan logs the violation as the PC at bottommost frame,
@@ -71,6 +73,9 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
  * and do nop(PC_call)
  */
 void patchInstruction(uintptr_t address, int return_value) {
+  if (last_neutralized_pc.exchange(address) == address) {
+    return;
+  }
   // Find the start of the page (4KB align)
   uintptr_t page_start = address & ~0xFFF;
 
@@ -106,87 +111,6 @@ void patchInstruction(uintptr_t address, int return_value) {
   arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
 
   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
-}
-
-/**
- * Returns `true` if IP address
- * `ip4` is in any of
- * the IPv4 LAN ranges. `false` otherwise
- */
-bool filterIPv4LanAccess(uint32_t ip4) {
-  // Unspecified address (0.0.0.0)
-  if (ip4 == 0x00000000) {
-    return true;
-  }
-
-  // Loopback (127.0.0.0/8)
-  if ((ip4 & 0xFF000000) == 0x7F000000) {
-    // Stopping loopback will probably break a shit ton of apps
-    return false;
-  }
-
-  if ((ip4 & 0xFF000000) == 0x0A000000) {
-    // 10.0.0.0/8 (Class A Private)
-    return true;
-  } else if ((ip4 & 0xFFF00000) == 0xAC100000) {
-    // 172.16.0.0/12 (Class B Private)
-    return true;
-  } else if ((ip4 & 0xFFFF0000) == 0xC0A80000) {
-    // 192.168.0.0/16 (Class C Private)
-    return true;
-  } else if ((ip4 & 0xF0000000) == 0xE0000000) {
-    // 224.0.0.0/4 (Multicast)
-    return true;
-  } else if (ip4 == 0xFFFFFFFF) {
-    // 255.255.255.255 (Broadcast)
-    return true;
-  } else if ((ip4 & 0xFFFF0000) == 0xA9FE0000) {
-    // 169.254.0.0/16 (Link-Local/ APIPA (Automatic Private IP Addressing))
-    return true;
-  }
-  return false;
-}
-
-/**
- * Returns `true` if IP address
- * pointed by `ip6` is in any of
- * the IPv6 LAN ranges. `false` otherwise
- */
-bool filterIPv6LanAccess(uint8_t* ip6) {
-  if (!ip6) {
-    return false;
-  }
-
-  // Unspecified (::)
-  bool is_unspecified = true;
-  for (int i = 0; i < 16; i++) {
-    if (ip6[i] != 0) is_unspecified = false;
-  }
-  if (is_unspecified) {
-    return true;
-  }
-
-  // Loopback (::1)
-  bool is_loopback = (ip6[15] == 1);
-  for (int i = 0; i < 15; i++) {
-    if (ip6[i] != 0) is_loopback = false;
-  }
-  if (is_loopback) {
-    // Stopping loopback will probably break a shit ton of apps
-    return false;
-  }
-
-  if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
-    // fe80::/10 (Link-Local)
-    return true;
-  } else if ((ip6[0] & 0xFE) == 0xFC) {
-    // fc00::/7 (Unique Local)
-    return true;
-  } else if (ip6[0] == 0xFF) {
-    // ff00::/8 (Multicast)
-    return true;
-  }
-  return false;
 }
 
 inline static bool shouldLog(const char* pathname) {
