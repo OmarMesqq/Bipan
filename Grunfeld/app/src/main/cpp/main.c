@@ -45,6 +45,8 @@ void grunfeld_early_init() {
 
 static int is_noise(const char* path);
 static void hashTextSection();
+const char* proto_to_str(int proto);
+const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
@@ -152,157 +154,80 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobj
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[2048] = {0};
+    char report[8192] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    // 1. Client behavior: IPv4, TCP, random ephemeral port (0): Should fail
-    #define LAN_ADDR_1 "192.168.1.1"
-    SockFactoryRes res1 = CreateSocket(IPv4, TCP, LAN_ADDR_1, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res1.sock,
-            (long) &res1.sas.sas4,
-            sizeof(res1.sas.sas4),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv4 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+    // Possible addresses to bind (6)
+    #define IPV4_LOCALHOST "127.0.0.1"
+    #define IPV6_LOCALHOST "::1"
+    #define IPV4_ANY "0.0.0.0"
+    #define IPV6_ANY "::"
+    #define LOCALHOST_LAN_IP "192.168.68.106"
 
-    // 2. Client behavior: IPv4, UDP, LAN addr, random ephemeral port (0): Should fail
-    #define LAN_ADDR_2 "192.168.1.50"
-    SockFactoryRes res2 = CreateSocket(IPv4, UDP, LAN_ADDR_2, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res2.sock,
-            (long) &res2.sas.sas4,
-            sizeof(res2.sas.sas4),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv4 UDP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+    // Ports to bind to (2)
 
-    // 3. Client behavior: IPv6, TCP, LAN addr, random ephemeral port (0): should fail
-    #define LAN_ADDR_3 "fe80::10b4:f5ff:fecc:ee2a"
-    SockFactoryRes res3 = CreateSocket(IPv6, TCP, LAN_ADDR_3, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res3.sock,
-            (long) &res3.sas.sas6,
-            sizeof(res3.sas.sas6),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv6 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+    // Protocols: TCP and UDP (2)
 
-    // 4. Client behavior: IPv6, UDP, LAN addr, random ephemeral port (0): should fail
-    #define LAN_ADDR_4 "fe80::10b4:f5ff:fecc:ee2a"
-    SockFactoryRes res4 = CreateSocket(IPv6, UDP, LAN_ADDR_4, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res4.sock,
-            (long) &res4.sas.sas6,
-            sizeof(res4.sas.sas6),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv6 UDP LAN (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+    // Family: IPv4 and IPv6 (2)
 
-    // 5. Server behavior: IPv4, TCP, listening on arbitrary port (8080): should fail
-    SockFactoryRes res5 = CreateSocket(IPv4, TCP, "0.0.0.0", ARBITRARY_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res5.sock,
-            (long) &res5.sas.sas4,
-            sizeof(res5.sas.sas4),
-            0, 0, 0
-    );
+    const char* addrs[] = {
+            IPV4_LOCALHOST,
+            IPV6_LOCALHOST,
+            IPV4_ANY,
+            IPV6_ANY,
+            LOCALHOST_LAN_IP
+    };
+    const int ports[] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
+    const int protocols[] = { TCP, UDP };
+    const int families[] = { IPv4, IPv6, Unix };
 
-    // Bipan spoofs `bind`s success (return 0) but don't actually let it happen
-    snprintf(entry, sizeof(entry), "Server Bind (Port %d): %s\n", ARBITRARY_PORT, (ret == 0 ? "SPOOFED ✅" : "FAILED ❌"));
-    strcat(report, entry);
+    SockFactoryRes res = {0};
+    for (int fam_idx = 0; fam_idx < 3; fam_idx++) {
+        int fam = families[fam_idx];
 
+        if (fam == Unix) {
+            // Run Unix tests separately (they don't need the IP address loop)
+            for (int proto = 0; proto < 2; proto++) {
+                res = CreateSocket(Unix, protocols[proto], 0, 0, LOCAL_SOCKET);
+                ret = arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sasUn, sizeof(res.sas.sasUn), 0,0,0);
 
-    // 6. "Legitimate" use: local/UNIX TCP for IPC for example: should pass
-    SockFactoryRes res6 = CreateSocket(Unix, TCP, 0, 0, LOCAL_SOCKET);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res6.sock,
-            (long) &res6.sas.sasUn,
-            sizeof(res6.sas.sasUn),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "Unix Domain IPC: %s\n", (ret == 0 ? "ALLOWED ✅" : "BLOCKED ❌"));
-    strcat(report, entry);
+                snprintf(entry, sizeof(entry), "UNIX | %s | res: %ld\n", proto_to_str(protocols[proto]), ret);
+                strcat(report, entry);
 
+                unlink(LOCAL_SOCKET);
+                close(res.sock);
+            }
+            continue;
+        }
 
-    // 7. Loopback binding IPv4 TCP
-    #define LAN_ADDR_5 "127.0.0.1"
-    SockFactoryRes res7 = CreateSocket(IPv4, TCP, LAN_ADDR_5, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res7.sock,
-            (long) &res7.sas.sas4,
-            sizeof(res7.sas.sas4),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv4 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+        // IP-based tests
+        for (int addr_idx = 0; addr_idx < 5; addr_idx++) {
+            const char* addr_str = addrs[addr_idx];
 
-    // 8. Loopback binding IPv6 TCP
-    #define LAN_ADDR_6 "::1"
-    SockFactoryRes res8 = CreateSocket(IPv6, TCP, LAN_ADDR_6, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res8.sock,
-            (long) &res8.sas.sas6,
-            sizeof(res8.sas.sas6),
-            0, 0, 0
-    );
+            // Simple check: Don't try IPv4 strings with IPv6 family and vice versa
+            bool is_v6_str = (strchr(addr_str, ':') != NULL);
+            if ((fam == IPv4 && is_v6_str) || (fam == IPv6 && !is_v6_str && strcmp(addr_str, "localhost") != 0)) {
+                continue;
+            }
 
-    snprintf(entry, sizeof(entry), "IPv6 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+            for (int port_idx = 0; port_idx < 2; port_idx++) {
+                for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
+                    res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0);
 
+                    ret = (fam == IPv4)
+                               ? arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas4, sizeof(res.sas.sas4), 0,0,0)
+                               : arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas6, sizeof(res.sas.sas6), 0,0,0);
 
-    // 9. Loopback binding IPv4 UDP
-    #define LAN_ADDR_7 "127.0.0.1"
-    SockFactoryRes res9 = CreateSocket(IPv4, UDP, LAN_ADDR_7, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res9.sock,
-            (long) &res9.sas.sas4,
-            sizeof(res9.sas.sas4),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv4 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
+                    snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %ld\n",
+                             addr_str, ports[port_idx], proto_to_str(protocols[proto_idx]), fam_to_str(fam), ret);
+                    strcat(report, entry);
 
-    // 10. Loopback binding IPv6 UDP
-    #define LAN_ADDR_8 "::1"
-    SockFactoryRes res10 = CreateSocket(IPv6, UDP, LAN_ADDR_8, RANDOM_EPHEMERAL_PORT, 0);
-    ret = arm64_raw_syscall(
-            __NR_bind,
-            res10.sock,
-            (long) &res10.sas.sas6,
-            sizeof(res10.sas.sas6),
-            0, 0, 0
-    );
-    snprintf(entry, sizeof(entry), "IPv6 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-
-    close(res1.sock);
-    close(res2.sock);
-    close(res3.sock);
-    close(res4.sock);
-    close(res5.sock);
-    unlink(res6.sas.sasUn.sun_path);
-    close(res6.sock);
-    close(res7.sock);
-    close(res8.sock);
-    close(res9.sock);
-    close(res10.sock);
-
+                    close(res.sock);
+                }
+            }
+        }
+    }
     return (*env)->NewStringUTF(env, report);
 }
 
@@ -510,6 +435,23 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
              count, status_msg, queue_msg);
 
     return (*env)->NewStringUTF(env, result_buffer);
+}
+
+const char* proto_to_str(int proto) {
+    switch (proto) {
+        case TCP: return "TCP";
+        case UDP: return "UDP";
+        default:  return "UNKNOWN_PROTO";
+    }
+}
+
+const char* fam_to_str(int fam) {
+    switch (fam) {
+        case IPv4: return "IPv4";
+        case IPv6: return "IPv6";
+        case Unix: return "Unix";
+        default:   return "UNKNOWN_FAM";
+    }
 }
 
 static int is_noise(const char* path) {

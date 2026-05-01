@@ -50,7 +50,6 @@ typedef struct {
 #define RANDOM_EPHEMERAL_PORT 0 // client behavior
 #define ARBITRARY_PORT 8080 // server behavior
 
-#define TAG "GrunfeldNativeSocketFactory"
 
 SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath);
 

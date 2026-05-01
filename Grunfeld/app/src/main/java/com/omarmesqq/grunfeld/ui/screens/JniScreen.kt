@@ -141,7 +141,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Bind on LAN (IPv4/IPv6 and TCP/UDP)")
+                    Text("bind")
                 }
             }
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
