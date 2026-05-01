@@ -1,58 +1,67 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
-/**
- * https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp;drc=b4e3e2b6b71d284a1731c3729576d793861089a8;l=533
- */
+#include <android/log.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <time.h>
+#include <unistd.h>
 
-int async_safe_write_log(int priority, const char* tag, const char* msg) {
-  int main_log_fd = open_log_socket();
-  if (main_log_fd == -1) {
-    // Try stderr instead.
-    return write_stderr(tag, msg);
+// Force the compiler to remove padding
+struct __attribute__((packed)) log_header {
+  uint8_t id;        // Offset 0
+  uint16_t tid;      // Offset 1
+  uint32_t tv_sec;   // Offset 3
+  uint32_t tv_nsec;  // Offset 7
+};  // Total size: 11 bytes
+
+inline void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* msg) {
+  int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) {
+    return;
   }
 
-  iovec vec[6];
-  char log_id = (priority == ANDROID_LOG_FATAL) ? LOG_ID_CRASH : LOG_ID_MAIN;
-  vec[0].iov_base = &log_id;
-  vec[0].iov_len = sizeof(log_id);
-  uint16_t tid = gettid();
-  vec[1].iov_base = &tid;
-  vec[1].iov_len = sizeof(tid);
-  timespec ts;
-  clock_gettime(CLOCK_REALTIME, &ts);
-  log_time realtime_ts;
-  realtime_ts.tv_sec = ts.tv_sec;
-  realtime_ts.tv_nsec = ts.tv_nsec;
-  vec[2].iov_base = &realtime_ts;
-  vec[2].iov_len = sizeof(realtime_ts);
+  struct sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  // Note: The leading '\0' makes it an abstract socket namespace address
+  // but logdw is usually a filesystem node.
+  strncpy(addr.sun_path, "/dev/socket/logdw", sizeof(addr.sun_path) - 1);
 
-  vec[3].iov_base = &priority;
-  vec[3].iov_len = 1;
-  vec[4].iov_base = const_cast<char*>(tag);
-  vec[4].iov_len = strlen(tag) + 1;
-  vec[5].iov_base = const_cast<char*>(msg);
-  vec[5].iov_len = strlen(msg) + 1;
+  if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    close(fd);
+    return;
+  }
 
-  int result = TEMP_FAILURE_RETRY(writev(main_log_fd, vec, sizeof(vec) / sizeof(vec[0])));
-  __close(main_log_fd);
-  return result;
-}
+  // Prepare Header
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
 
-int async_safe_format_log_va_list(int priority, const char* tag, const char* format, va_list args) {
-  ErrnoRestorer errno_restorer;
-  char buffer[1024];
-  BufferOutputStream os(buffer, sizeof(buffer));
-  out_vformat(os, format, args);
-  return async_safe_write_log(priority, tag, buffer);
-}
+  struct log_header header;
+  header.id = 0;  // 0 = LOG_ID_MAIN
+  header.tid = (uint16_t)gettid();
+  header.tv_sec = (uint32_t)now.tv_sec;
+  header.tv_nsec = (uint32_t)now.tv_nsec;
 
-int async_safe_format_log(int priority, const char* tag, const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  int result = async_safe_format_log_va_list(priority, tag, format, args);
-  va_end(args);
-  return result;
+  uint8_t priority = prio;
+
+  // Use 5 vectors for the atomic write
+  struct iovec vec[5];
+  vec[0].iov_base = &header;
+  vec[0].iov_len = sizeof(header);
+  vec[1].iov_base = &priority;
+  vec[1].iov_len = 1;
+  vec[2].iov_base = (void*)tag;
+  vec[2].iov_len = strlen(tag) + 1;
+  vec[3].iov_base = (void*)msg;
+  vec[3].iov_len = strlen(msg) + 1;
+
+  writev(fd, vec, 4);
+
+  close(fd);
 }
 
 #endif
