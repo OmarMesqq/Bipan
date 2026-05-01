@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import com.omarmesqq.grunfeld.BuildConfig
 
 enum class AVOCADO_LOG_LEVEL {
     AVOCADO_ERROR,
@@ -34,7 +33,7 @@ object Avocado {
             AVOCADO_LOG_LEVEL.AVOCADO_VERBOSE -> Log.v(combinedTag, msg, tr)
         }
 
-        if (BuildConfig.DEBUG && shouldToast) {
+        if (shouldToast) {
             // Get main Looper so we can show Toast on Main Thread
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(appContext, msg, Toast.LENGTH_SHORT).show()
