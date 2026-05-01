@@ -6,11 +6,11 @@
 #include <string>
 
 #include "assembly.hpp"
+#include "logger.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "spoofer.hpp"
 #include "unwinder.hpp"
-#include "logger.hpp"
 
 inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
@@ -36,7 +36,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
   }
 
   if (shouldSpoofExistence(pathname)) {
-    LOGW("Spoofing existence of %s", pathname);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Spoofing existence of %s", pathname);
     log_violation_trace(pathname);
     return -ENOENT;
   }
@@ -51,15 +51,15 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
   }
 
   if (shouldDenyAccess(pathname)) {
-    LOGW("Denying access to %s", pathname);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Denying access to %s", pathname);
     log_violation_trace(pathname);
     return -EACCES;
   }
 
   // TODO: too noisy! bionic kills us. Should find an async-signal safe logging solution
-  if (shouldLog(pathname) && !isCallerTrusted) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing access to: %s", pathname);
-  }
+  // if (shouldLog(pathname) && !isCallerTrusted) {
+  //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing access to: %s", pathname);
+  // }
   return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
 }
 
@@ -77,7 +77,7 @@ void patchInstruction(uintptr_t address, int return_value) {
   // Make it writable
   long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
   if (ret != 0) {
-    LOGE("mprotect (W) failed natively: %ld", ret);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "mprotect (W) failed natively: %ld", ret);
     return;
   }
 
@@ -105,7 +105,7 @@ void patchInstruction(uintptr_t address, int return_value) {
   // 5. Restore original permissions page permissions: probably (RX)
   arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
 
-  LOGI("Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
 
 /**
@@ -222,9 +222,8 @@ inline static bool shouldSpoofExistence(const char* pathname) {
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // Root
-      strstr(pathname, "libzygisk.so") != nullptr ||
+      strstr(pathname, "zygisk") != nullptr ||
       strstr(pathname, "magisk") != nullptr ||
-      strstr(pathname, "magiskpolicy") != nullptr ||
       strstr(pathname, "resetprop") != nullptr ||
       strstr(pathname, "supolicy") != nullptr ||
       // Weird ahh binaries
@@ -243,33 +242,16 @@ inline static bool shouldSpoofExistence(const char* pathname) {
       starts_with(pathname, "/system/bin/modprobe") ||
       starts_with(pathname, "/system/bin/vmstat") ||
       starts_with(pathname, "/system/bin/df") ||
-      // Custom ROM
-      (strstr(pathname, "lineage") != nullptr) ||
-      (strstr(pathname, "Lineage") != nullptr) ||
-      starts_with(pathname, "/etc/security/otacerts.zip")));
+      strstr(pathname, "otacerts") != nullptr));
 }
 
 inline static bool shouldDenyAccess(const char* pathname) {
-  return ((starts_with(pathname, "/dev/__properties__/u:object_r:vendor_default_prop:s") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:telephony_config_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:serialno_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:custom_version_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:fingerprint_prop:s0") ||
-           starts_with(pathname, "/dev/__properties__/u:object_r:bootloader_prop:s0") ||
-           starts_with(pathname, "/dev/socket") ||
-           starts_with(pathname, "/product/fonts") ||
-           starts_with(pathname, "/system/fonts") ||
+  return ((starts_with(pathname, "/dev/socket") ||
            // Phone's EFS
            starts_with(pathname, "/mnt/vendor/efs") ||
            starts_with(pathname, "/mnt/vendor/cpefs") ||
            starts_with(pathname, "/mnt/pass_through") ||
            // CPU, temperature and platform info
-           starts_with(pathname, "/sys/devices/system/cpu") ||
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
@@ -309,6 +291,19 @@ inline static const char* shouldFakeFile(const char* pathname) {
   }
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
+  }
+  // Stuff SELinux doesn't protect from
+  if (
+      local_strstr(pathname, "vendor_default_prop") ||
+      local_strstr(pathname, "binder_cache_telephony_server_prop") ||
+      local_strstr(pathname, "telephony_config_prop") ||
+      local_strstr(pathname, "telephony_status_prop") ||
+      local_strstr(pathname, "userdebug_or_eng_prop") ||
+      local_strstr(pathname, "radio_control_prop") ||
+      local_strstr(pathname, "fingerprint_prop") ||
+      local_strstr(pathname, "bootloader_prop")) {
+    // Dummy binary blob for the property service
+    return "\1\0\0\0\0\0\0\0";
   }
   return nullptr;
 }
