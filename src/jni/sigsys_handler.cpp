@@ -12,12 +12,7 @@
 #include <syscall.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <cerrno>
-#include <cstdint>
-#include <cstring>
-#include <map>
-#include <mutex>
+#include <atomic>
 
 #include "assembly.hpp"
 #include "blocker.hpp"
@@ -26,12 +21,36 @@
 #include "synchronization.hpp"
 #include "unwinder.hpp"
 
-std::map<int, std::string> spoofed_fds;
-std::mutex fds_mutex;
+struct SpoofedFD {
+  int fd;
+  char original_path[256];
+};
+
+// Use a fixed array instead of std::map to avoid malloc
+static SpoofedFD global_spoofed_fds[128];
+static std::atomic<int> spoofed_fd_count{0};
+
+// Atomic spinlock (Async-Signal-Safe)
+static std::atomic_flag fds_lock = ATOMIC_FLAG_INIT;
 
 void storeSpoofedFD(int fd, const char* original_path) {
-  std::lock_guard<std::mutex> lock(fds_mutex);
-  spoofed_fds[fd] = original_path;
+  // Acquire spinlock
+  while (fds_lock.test_and_set(std::memory_order_acquire));
+
+  int idx = spoofed_fd_count.load();
+  if (idx < 128) {
+    global_spoofed_fds[idx].fd = fd;
+    // Use local_strncpy or similar
+    size_t i = 0;
+    while (original_path[i] && i < 255) {
+      global_spoofed_fds[idx].original_path[i] = original_path[i];
+      i++;
+    }
+    global_spoofed_fds[idx].original_path[i] = '\0';
+    spoofed_fd_count.store(idx + 1);
+  }
+
+  fds_lock.clear(std::memory_order_release);  // Release
 }
 
 struct kernel_sigaction {
@@ -54,23 +73,41 @@ inline static void get_socket_info(int sockfd,
 inline static bool is_lan_address(struct sockaddr* addr);
 inline static bool is_network_socket(const char* family);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
+static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context);
 
 void registerSignalHandler() {
   struct kernel_sigaction sa = {};
   sa.sa_handler = sigsys_handler;
   sa.sa_flags = SA_SIGINFO;
+  long ret = 0;
 
-  // Talk directly to the kernel in order to avoid libsigchain
-  // sizeof(sigset_t) should be 8 bytes on aarch64
-  long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
-
+  // Register signal directly with kernel to bypass libsigchain.so
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
   }
+
+  // Register for SIGILL
+  struct kernel_sigaction sa_ill = {};
+  sa_ill.sa_handler = sigill_diagnostic_handler;
+  sa_ill.sa_flags = SA_SIGINFO;
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ill, 0, 8, 0, 0);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGILL handler. Aborting for safety!");
+    _exit(1);
+  }
 }
 
+static thread_local bool b_in_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
+  // 1. REENTRANCY GUARD
+  if (b_in_handler) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "!!!Recursed signal handler! Aborting");
+    arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
+    return;
+  }
+  b_in_handler = true;
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;  // syscalls go in x8 in aarch64
 
@@ -185,7 +222,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           bool is_lan_bind = is_lan_address(sockAddrStruct);
 
           if (is_lan_bind) {
-            
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
             log_violation_trace("(bind)");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
@@ -317,7 +353,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
         if (is_network_socket(family)) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(getsockname)");
+          // log_violation_trace("(getsockname)");
 
           if (sockAddrStruct->sa_family == AF_INET) {
             ((struct sockaddr_in*)sockAddrStruct)->sin_addr.s_addr = htonl(INADDR_ANY);  // 0.0.0.0
@@ -390,33 +426,35 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
     case __NR_readlinkat: {
-      int dirfd = (int)arg0;
       const char* pathname = (const char*)arg1;
       char* buf = (char*)arg2;
       size_t bufsiz = (size_t)arg3;
 
-      // Check if the app is trying to readlink an FD
-      if (pathname != nullptr && strstr(pathname, "/proc/self/fd/") != nullptr) {
-        int target_fd = atoi(pathname + 14);  // Extract FD number after "/proc/self/fd/"
+      if (pathname && local_strstr(pathname, "/proc/self/fd/")) {
+        int target_fd = local_atoi(pathname + 14);
 
-        std::lock_guard<std::mutex> lock(fds_mutex);
-        if (spoofed_fds.count(target_fd)) {
-          std::string original = spoofed_fds[target_fd];
+        // Spinlock instead of Mutex
+        while (fds_lock.test_and_set(std::memory_order_acquire));
 
-          // TODO: too noisy!
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
+        int count = spoofed_fd_count.load();
+        for (int i = 0; i < count; i++) {
+          if (global_spoofed_fds[i].fd == target_fd) {
+            const char* orig = global_spoofed_fds[i].original_path;
+            size_t len = 0;
+            while (orig[len]) len++;
 
-          // Manually fill the buffer with the "honest" path
-          size_t len = std::min(bufsiz - 1, original.length());
-          memcpy(buf, original.c_str(), len);
-          buf[len] = '\0';
+            size_t to_copy = (len < bufsiz - 1) ? len : bufsiz - 1;
+            for (size_t j = 0; j < to_copy; j++) buf[j] = orig[j];
+            buf[to_copy] = '\0';
 
-          ctx->uc_mcontext.regs[0] = len;  // Return length of string
-          break;
+            ctx->uc_mcontext.regs[0] = to_copy;
+            fds_lock.clear(std::memory_order_release);
+            b_in_handler = false;  // Remember to unlock guard before returning
+            return;
+          }
         }
+        fds_lock.clear(std::memory_order_release);
       }
-
-      // Otherwise, let the real readlinkat proceed
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
@@ -433,7 +471,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         break;
       }
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mmap");
-      log_violation_trace("(mmap)");
+      // log_violation_trace("(mmap)");
 
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
@@ -448,7 +486,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         break;
       }
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mprotect");
-      log_violation_trace("(mprotect)");
+      // log_violation_trace("(mprotect)");
 
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
@@ -459,6 +497,38 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       break;
     }
   }
+  b_in_handler = false;
+}
+
+static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context) {
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  uintptr_t fault_pc = ctx->uc_mcontext.pc;
+  uintptr_t return_address = 0;
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "SIGILL at %p. Attempting recovery...", (void*)fault_pc);
+
+  is_trusted_system_caller("(SIGILL_RECOVERY)", &return_address, false);
+
+  if (return_address != 0) {
+    uintptr_t suicide_call_site = return_address - 4;
+
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Patching suicide site %p. Redirecting to %p",
+                          (void*)suicide_call_site, (void*)return_address);
+
+    // Tell me lies...forever (NOP caller)
+    patchInstruction(suicide_call_site, 0);
+
+    // Set current CPU PC to return address. It's as if the crash never occurred!
+    ctx->uc_mcontext.pc = return_address;
+
+    ctx->uc_mcontext.regs[0] = 0;  // "Success"
+
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Resurrection successful. App resuming...");
+    return;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Recovery failed (No valid caller). Killing process.");
+  _exit(-1);
 }
 
 inline static bool is_smaps(const char* pathname) {
