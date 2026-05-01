@@ -65,7 +65,7 @@ void registerSignalHandler() {
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
 
   if (ret != 0) {
-    LOGE("Failed to set SIGSYS handler. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
   }
 }
@@ -91,7 +91,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      LOGE("Violation: execve/execveat");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: execve/execveat");
       log_violation_trace(path);
       ctx->uc_mcontext.regs[0] = -EAGAIN;
       if (patch_pc != 0) {
@@ -101,7 +101,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     case __NR_uname: {
       struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-      LOGD("Spoofing uname");
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Spoofing uname");
       ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
       break;
     }
@@ -141,7 +141,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       int signum = arg0;
 
       if (signum == SIGSYS) {
-        LOGE("App tried to install SIGSYS handler! Spoofing success...");
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App tried to install SIGSYS handler! Spoofing success...");
         log_violation_trace("SIGSYS handler hijacking");
         ctx->uc_mcontext.regs[0] = 0;
       } else {
@@ -185,7 +185,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           bool is_lan_bind = is_lan_address(sockAddrStruct);
 
           if (is_lan_bind) {
-            LOGE("Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+            
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
             log_violation_trace("(bind)");
             ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
             if (patch_pc != 0) {
@@ -195,11 +196,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           }
 
           // "Client" behavior: requesting a random temporary port
-          LOGW("Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         } else {
           // "Server" behavior: setting up a port for listening
-          LOGE("Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           log_violation_trace("(bind)");
           ctx->uc_mcontext.regs[0] = 0;
           if (patch_pc != 0) {
@@ -207,7 +208,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           }
         }
       } else {
-        LOGW("(bind) Allowing non-IP bind request");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(bind) Allowing non-IP bind request");
         ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       }
       break;
@@ -241,14 +242,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                       family);
 
       if (is_network_socket(family)) {
-        LOGE("Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
         log_violation_trace("(listen)");
         ctx->uc_mcontext.regs[0] = 0;
         if (patch_pc != 0) {
           patchInstruction(patch_pc - 4, 0);
         }
       } else {
-        LOGW("(listen) Allowing for local/UNIX socket");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) Allowing for local/UNIX socket");
         ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       }
       break;
@@ -275,7 +276,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                         family);
 
         if (is_network_socket(family)) {
-          LOGE("Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           log_violation_trace("(sendto)");
           ctx->uc_mcontext.regs[0] = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
           if (patch_pc != 0) {
@@ -315,7 +316,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                         family);
 
         if (is_network_socket(family)) {
-          LOGE("Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           log_violation_trace("(getsockname)");
 
           if (sockAddrStruct->sa_family == AF_INET) {
@@ -338,7 +339,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       int protocol = (int)arg2;
 
       if (domain == AF_NETLINK) {
-        LOGE("(socket) Blocking AF_NETLINK");
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket) Blocking AF_NETLINK");
         is_trusted_system_caller("(socket) AF_NETLINK", &patch_pc);
         ctx->uc_mcontext.regs[0] = -EACCES;
         if (patch_pc != 0) {
@@ -375,7 +376,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                         family);
 
         if (is_network_socket(family)) {
-          LOGE("Violation: (sendmsg): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (sendmsg): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           log_violation_trace("(sendmsg)");
           // Fool the app: return the length it tried to send
           ctx->uc_mcontext.regs[0] = (long)get_msghdr_len(msg);
@@ -403,7 +404,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
           std::string original = spoofed_fds[target_fd];
 
           // TODO: too noisy!
-          // LOGW("(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
 
           // Manually fill the buffer with the "honest" path
           size_t len = std::min(bufsiz - 1, original.length());
@@ -431,7 +432,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      LOGE("Violation: mmap");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mmap");
       log_violation_trace("(mmap)");
 
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
@@ -446,14 +447,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      LOGE("Violation: mprotect");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mprotect");
       log_violation_trace("(mprotect)");
 
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
     default: {
-      LOGE("Violation: got unexpected syscall(%d). Allowing...", nr);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: got unexpected syscall(%d). Allowing...", nr);
       ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
       break;
     }
@@ -526,7 +527,7 @@ inline static void get_socket_info(int sockfd,
                                0);
 
   if (ret != 0) {
-    LOGE("Failed to get socket info! Aborting!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get socket info! Aborting!");
     _exit(-1);
   }
 

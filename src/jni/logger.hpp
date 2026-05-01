@@ -10,6 +10,13 @@
 #include <time.h>
 #include <unistd.h>
 
+/**
+ * Credits to:
+ * https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
+ */
+
+#define LOGCAT_SOCKET_PATH "/dev/socket/logdw"
+
 // Force the compiler to remove padding
 struct __attribute__((packed)) log_header {
   uint8_t id;        // Offset 0
@@ -18,8 +25,8 @@ struct __attribute__((packed)) log_header {
   uint32_t tv_nsec;  // Offset 7
 };  // Total size: 11 bytes
 
-inline void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* msg) {
-  int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
+  int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     return;
   }
@@ -27,29 +34,25 @@ inline void write_to_logcat_async(android_LogPriority prio, const char* tag, con
   struct sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  // Note: The leading '\0' makes it an abstract socket namespace address
-  // but logdw is usually a filesystem node.
-  strncpy(addr.sun_path, "/dev/socket/logdw", sizeof(addr.sun_path) - 1);
+  strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-  if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-    close(fd);
+  if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
+    arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
     return;
   }
 
-  // Prepare Header
   struct timespec now;
   clock_gettime(CLOCK_REALTIME, &now);
 
   struct log_header header;
-  header.id = 0;  // 0 = LOG_ID_MAIN
+  header.id = 0;  // MAIN
   header.tid = (uint16_t)gettid();
   header.tv_sec = (uint32_t)now.tv_sec;
   header.tv_nsec = (uint32_t)now.tv_nsec;
 
-  uint8_t priority = prio;
+  uint8_t priority = (uint8_t)prio;
 
-  // Use 5 vectors for the atomic write
-  struct iovec vec[5];
+  struct iovec vec[4];
   vec[0].iov_base = &header;
   vec[0].iov_len = sizeof(header);
   vec[1].iov_base = &priority;
@@ -59,9 +62,22 @@ inline void write_to_logcat_async(android_LogPriority prio, const char* tag, con
   vec[3].iov_base = (void*)msg;
   vec[3].iov_len = strlen(msg) + 1;
 
-  writev(fd, vec, 4);
+  // Atomic write to socket
+  arm64_raw_syscall(__NR_writev, fd, (long)vec, 4, 0, 0, 0);
+  arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+}
 
-  close(fd);
+// 3. The Public Formatted Function
+inline void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
+  char buffer[1024];  // Local stack buffer, no malloc
+
+  va_list args;
+  va_start(args, fmt);
+  // Format the string into our local buffer
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  write_to_logcat_raw(prio, tag, buffer);
 }
 
 #endif

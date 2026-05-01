@@ -10,6 +10,7 @@
 #include "sigsys_handler.hpp"
 #include "spoofer.hpp"
 #include "unwinder.hpp"
+#include "logger.hpp"
 
 inline static bool shouldLog(const char* pathname);
 inline static bool shouldSpoofExistence(const char* pathname);
@@ -56,14 +57,13 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
   }
 
   // TODO: too noisy! bionic kills us. Should find an async-signal safe logging solution
-  // if (shouldLog(pathname) && !isCallerTrusted) {
-  //   LOGW("Untrusted caller: allowing access to %s", pathname);
-  // }
+  if (shouldLog(pathname) && !isCallerTrusted) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing access to: %s", pathname);
+  }
   return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
 }
 
 /**
- * TODO:
  * We patch the call site with a `nop`.
  * Bipan logs the violation as the PC at bottommost frame,
  * and every instruction in ARM64 is 4 bytes we just do:
@@ -195,8 +195,6 @@ inline static bool shouldLog(const char* pathname) {
       !starts_with(pathname, "/product/app/webview") &&
       !starts_with(pathname, "/apex/com.android") &&
       !starts_with(pathname, "/storage/emulated/0") &&
-      !starts_with(pathname, "/product/fonts") &&
-      !starts_with(pathname, "/system/fonts") &&
       !starts_with(pathname, "/dev/ashmem") &&
       !starts_with(pathname, "/dev/urandom") &&
       !starts_with(pathname, "/dev/random") &&
@@ -263,6 +261,9 @@ inline static bool shouldDenyAccess(const char* pathname) {
            starts_with(pathname, "/dev/__properties__/u:object_r:custom_version_prop:s0") ||
            starts_with(pathname, "/dev/__properties__/u:object_r:fingerprint_prop:s0") ||
            starts_with(pathname, "/dev/__properties__/u:object_r:bootloader_prop:s0") ||
+           starts_with(pathname, "/dev/socket") ||
+           starts_with(pathname, "/product/fonts") ||
+           starts_with(pathname, "/system/fonts") ||
            // Phone's EFS
            starts_with(pathname, "/mnt/vendor/efs") ||
            starts_with(pathname, "/mnt/vendor/cpefs") ||
@@ -283,7 +284,7 @@ inline static const char* shouldFakeFile(const char* pathname) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
   }
   if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
-    return "127.0.0.1       localhost\n::1\n";
+    return "127.0.0.1       localhost\n::1       localhost\n";
   }
   if (strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
