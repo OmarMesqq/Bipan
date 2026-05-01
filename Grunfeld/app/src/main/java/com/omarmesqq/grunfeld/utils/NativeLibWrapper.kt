@@ -9,5 +9,7 @@ object NativeLibWrapper {
     external fun testSensors(): String
     external fun scanMaps(): String
 
+    external fun scanDevProperties()
+
     external fun removeBipan()
 }

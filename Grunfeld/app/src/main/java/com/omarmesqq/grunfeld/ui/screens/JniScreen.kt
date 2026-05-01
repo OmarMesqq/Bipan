@@ -31,7 +31,7 @@ fun JniScreen() {
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
     var stealthReport by remember { mutableStateOf("Maps not tested yet") }
-    var filesystemReport by remember { mutableStateOf("filesystem not probed yet") }
+    var devPropertiesReport by remember { mutableStateOf("dev properties not probed yet") }
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
@@ -119,10 +119,12 @@ fun JniScreen() {
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Filesystem scanning", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(filesystemReport, "filesystem not probed yet")
-                Button(onClick = {  }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Probe filesystem")
+                Text(text = "/dev/__properties__", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(devPropertiesReport, "dev properties not probed yet")
+                Button(onClick = {
+                        NativeLibWrapper.scanDevProperties()
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Test SELinux enforcement")
                 }
             }
         }

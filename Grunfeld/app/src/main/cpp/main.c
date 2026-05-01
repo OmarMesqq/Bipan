@@ -88,6 +88,42 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
     }
 }
 
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanDevProperties(JNIEnv *env, jobject thiz) {
+
+    char buffer[512];
+    const char* paths[11] = {
+                    "/dev/__properties__/u:object_r:vendor_default_prop:s",
+                    "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0",
+                    "/dev/__properties__/u:object_r:telephony_config_prop:s0",
+                    "/dev/__properties__/u:object_r:telephony_status_prop:s0",
+                    "/dev/__properties__/u:object_r:serialno_prop:s0",
+                    "/dev/__properties__/u:object_r:build_bootimage_prop:s0",
+                    "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0",
+                    "/dev/__properties__/u:object_r:radio_control_prop:s0",
+                    "/dev/__properties__/u:object_r:custom_version_prop:s0",
+                    "/dev/__properties__/u:object_r:fingerprint_prop:s0",
+                    "/dev/__properties__/u:object_r:bootloader_prop:s0",
+    };
+
+    for (int i = 0; i < 11; i++) {
+        long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
+
+        if (fd < 0) {
+            LOGD("[Dev Properties Probe] Failed to open %s (Error: %ld)", paths[i], fd);
+        } else {
+            long bytes = arm64_raw_syscall(__NR_read, fd, (long)buffer, sizeof(buffer) - 1, 0, 0, 0);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                LOGD("[Dev Properties Probe] Contents of %s: %s...", paths[i], buffer);
+            } else {
+                LOGD("[Dev Properties Probe] Failed to show bytes of %s", paths[i]);
+            }
+            arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+        }
+    }
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject thiz) {
     FILE* fp = fopen("/proc/self/maps", "r");
