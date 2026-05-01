@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22.1)
 project(GrunfeldProject)
 
 # Define the library
-add_library(grunfeld SHARED main.c)
+add_library(grunfeld SHARED main.c atomic_cat.c)
 
 target_compile_options(grunfeld PRIVATE
     -O3
