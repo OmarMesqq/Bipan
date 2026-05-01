@@ -1,5 +1,7 @@
 #include "socket_helper.h"
 
+#include <string.h>
+
 SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath) {
     int sock = socket(fam, sockType, 0);
 

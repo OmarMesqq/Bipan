@@ -158,19 +158,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     char entry[256] = {0};
     long ret = 0;
 
-    // Possible addresses to bind (6)
+    // Possible addresses to bind (5)
     #define IPV4_LOCALHOST "127.0.0.1"
     #define IPV6_LOCALHOST "::1"
     #define IPV4_ANY "0.0.0.0"
     #define IPV6_ANY "::"
     #define LOCALHOST_LAN_IP "192.168.68.106"
-
-    // Ports to bind to (2)
-
-    // Protocols: TCP and UDP (2)
-
-    // Family: IPv4 and IPv6 (2)
-
     const char* addrs[] = {
             IPV4_LOCALHOST,
             IPV6_LOCALHOST,
@@ -178,8 +171,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             IPV6_ANY,
             LOCALHOST_LAN_IP
     };
+
+    // Ports to bind to (2)
     const int ports[] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
+
+    // Protocols: TCP and UDP (2)
     const int protocols[] = { TCP, UDP };
+    
+    // Family: IPv4 and IPv6 (2)
     const int families[] = { IPv4, IPv6, Unix };
 
     SockFactoryRes res = {0};
