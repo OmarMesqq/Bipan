@@ -21,6 +21,7 @@
 #include <time.h>
 #include <sys/un.h>
 #include "atomic_cat.h"
+#include "socket_helper.h"
 
 
 #define TAG "GrunfeldNative"
@@ -34,42 +35,23 @@
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
+#define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 __attribute__((constructor))
 void grunfeld_early_init() {
-    LOGW("---------------------------------------------------");
-    LOGW("Grunfeld Constructor: Library mapped into memory.");
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, ">>>>>>>>HELLO!<<<<<<<<");
-
-    // Try to get native data asap
-    ASensorManager* sm = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
-    if (sm == NULL) {
-        LOGI("Constructor check: SensorManager is NULL (Hooks likely active)");
-    } else {
-        LOGE("Constructor check: SensorManager is VALID (LEAK)");
-    }
-    LOGW("---------------------------------------------------");
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Grunfeld early init");
 }
 
 
-static int is_noise(const char* path) {
-    if (!path || strlen(path) == 0) return 0;
-    const char* filters[] = {
-            "/apex/",
-            "/system/",
-            "/vendor/",
-            "/product/",
-            "/dev/",
-            "/data/"
-    };
-    for (int i = 0; i < 6; i++) {
-        if (strstr(path, filters[i])) return 1;
-    }
-    return 0;
-}
-
+static int is_noise(const char* path);
+static void hashTextSection();
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+
+JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    return JNI_VERSION_1_6;
+}
+
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
@@ -169,156 +151,157 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobj
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_hashTextSection(JNIEnv *env, jobject thiz) {
-    //TODO
-}
-
-JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
     char report[2048] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    #define IPv4_FAMILY AF_INET
-    #define IPv6_FAMILY AF_INET6
-    #define SOCK_TYPE_TCP SOCK_STREAM
-    #define SOCK_TYPE_UDP SOCK_DGRAM
-    #define RANDOM_EPHEMERAL_PORT 0 // client behavior
-    #define ARBITRARY_PORT 8080 // server behavior
-
     // 1. Client behavior: IPv4, TCP, random ephemeral port (0): Should fail
     #define LAN_ADDR_1 "192.168.1.1"
-    int s1 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a1 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_1, &a1.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s1, (long)&a1, sizeof(a1), 0, 0, 0);
+    SockFactoryRes res1 = CreateSocket(IPv4, TCP, LAN_ADDR_1, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res1.sock,
+            (long) &res1.sas.sas4,
+            sizeof(res1.sas.sas4),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv4 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 2. Client behavior: IPv4, UDP, LAN addr, random ephemeral port (0): Should fail
     #define LAN_ADDR_2 "192.168.1.50"
-    int s2 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in a2 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_2, &a2.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s2, (long)&a2, sizeof(a2), 0, 0, 0);
+    SockFactoryRes res2 = CreateSocket(IPv4, UDP, LAN_ADDR_2, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res2.sock,
+            (long) &res2.sas.sas4,
+            sizeof(res2.sas.sas4),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv4 UDP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 3. Client behavior: IPv6, TCP, LAN addr, random ephemeral port (0): should fail
     #define LAN_ADDR_3 "fe80::10b4:f5ff:fecc:ee2a"
-    int s3 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a3 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_3, &a3.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s3, (long)&a3, sizeof(a3), 0, 0, 0);
+    SockFactoryRes res3 = CreateSocket(IPv6, TCP, LAN_ADDR_3, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res3.sock,
+            (long) &res3.sas.sas6,
+            sizeof(res3.sas.sas6),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv6 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 4. Client behavior: IPv6, UDP, LAN addr, random ephemeral port (0): should fail
     #define LAN_ADDR_4 "fe80::10b4:f5ff:fecc:ee2a"
-    int s4 = socket(IPv6_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in6 a4 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_4, &a4.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s4, (long)&a4, sizeof(a4), 0, 0, 0);
+    SockFactoryRes res4 = CreateSocket(IPv6, UDP, LAN_ADDR_4, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res4.sock,
+            (long) &res4.sas.sas6,
+            sizeof(res4.sas.sas6),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv6 UDP LAN (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 5. Server behavior: IPv4, TCP, listening on arbitrary port (8080): should fail
-    int s5 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a5 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(ARBITRARY_PORT)
-    };
-    a5.sin_addr.s_addr = htonl(INADDR_ANY);
-    ret = arm64_raw_syscall(__NR_bind, s5, (long)&a5, sizeof(a5), 0, 0, 0);
+    SockFactoryRes res5 = CreateSocket(IPv4, TCP, "0.0.0.0", ARBITRARY_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res5.sock,
+            (long) &res5.sas.sas4,
+            sizeof(res5.sas.sas4),
+            0, 0, 0
+    );
+
     // Bipan spoofs `bind`s success (return 0) but don't actually let it happen
     snprintf(entry, sizeof(entry), "Server Bind (Port %d): %s\n", ARBITRARY_PORT, (ret == 0 ? "SPOOFED ✅" : "FAILED ❌"));
     strcat(report, entry);
 
 
-    // 6. "Legitimate" use: local/UNIX TCP  on random port for IPC (example): should pass
-    int s6 = socket(AF_UNIX, SOCK_TYPE_TCP, 0);
-    struct sockaddr_un a6 = {
-            .sun_family = AF_UNIX
-    };
-    strncpy(a6.sun_path, "/data/data/com.omarmesqq.grunfeld/ipc_socket", sizeof(a6.sun_path)-1);
-    ret = arm64_raw_syscall(__NR_bind, s6, (long)&a6, sizeof(a6), 0, 0, 0);
+    // 6. "Legitimate" use: local/UNIX TCP for IPC for example: should pass
+    SockFactoryRes res6 = CreateSocket(Unix, TCP, 0, 0, LOCAL_SOCKET);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res6.sock,
+            (long) &res6.sas.sasUn,
+            sizeof(res6.sas.sasUn),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "Unix Domain IPC: %s\n", (ret == 0 ? "ALLOWED ✅" : "BLOCKED ❌"));
     strcat(report, entry);
 
 
     // 7. Loopback binding IPv4 TCP
     #define LAN_ADDR_5 "127.0.0.1"
-    int s7 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a7 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_5, &a7.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s7, (long)&a7, sizeof(a7), 0, 0, 0);
+    SockFactoryRes res7 = CreateSocket(IPv4, TCP, LAN_ADDR_5, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res7.sock,
+            (long) &res7.sas.sas4,
+            sizeof(res7.sas.sas4),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv4 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 8. Loopback binding IPv6 TCP
     #define LAN_ADDR_6 "::1"
-    int s8 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a8 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_6, &a8.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s8, (long)&a8, sizeof(a8), 0, 0, 0);
+    SockFactoryRes res8 = CreateSocket(IPv6, TCP, LAN_ADDR_6, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res8.sock,
+            (long) &res8.sas.sas6,
+            sizeof(res8.sas.sas6),
+            0, 0, 0
+    );
+
     snprintf(entry, sizeof(entry), "IPv6 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
 
     // 9. Loopback binding IPv4 UDP
     #define LAN_ADDR_7 "127.0.0.1"
-    int s9 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in a9 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_7, &a9.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s9, (long)&a9, sizeof(a9), 0, 0, 0);
+    SockFactoryRes res9 = CreateSocket(IPv4, UDP, LAN_ADDR_7, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res9.sock,
+            (long) &res9.sas.sas4,
+            sizeof(res9.sas.sas4),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv4 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
     // 10. Loopback binding IPv6 UDP
     #define LAN_ADDR_8 "::1"
-    int s10 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a10 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_8, &a10.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s10, (long)&a10, sizeof(a10), 0, 0, 0);
+    SockFactoryRes res10 = CreateSocket(IPv6, UDP, LAN_ADDR_8, RANDOM_EPHEMERAL_PORT, 0);
+    ret = arm64_raw_syscall(
+            __NR_bind,
+            res10.sock,
+            (long) &res10.sas.sas6,
+            sizeof(res10.sas.sas6),
+            0, 0, 0
+    );
     snprintf(entry, sizeof(entry), "IPv6 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
     strcat(report, entry);
 
 
-    close(s1);
-    close(s2);
-    close(s3);
-    close(s4);
-    close(s5);
-    unlink(a6.sun_path);
-    close(s6);
-    close(s7);
-    close(s8);
-    close(s9);
-    close(s10);
+    close(res1.sock);
+    close(res2.sock);
+    close(res3.sock);
+    close(res4.sock);
+    close(res5.sock);
+    unlink(res6.sas.sasUn.sun_path);
+    close(res6.sock);
+    close(res7.sock);
+    close(res8.sock);
+    close(res9.sock);
+    close(res10.sock);
 
     return (*env)->NewStringUTF(env, report);
 }
@@ -364,10 +347,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env,
     }
 
     close(sock);
-}
-
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    return JNI_VERSION_1_6;
 }
 
 JNIEXPORT jstring JNICALL
@@ -531,6 +510,26 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
              count, status_msg, queue_msg);
 
     return (*env)->NewStringUTF(env, result_buffer);
+}
+
+static int is_noise(const char* path) {
+    if (!path || strlen(path) == 0) return 0;
+    const char* filters[] = {
+            "/apex/",
+            "/system/",
+            "/vendor/",
+            "/product/",
+            "/dev/",
+            "/data/"
+    };
+    for (int i = 0; i < 6; i++) {
+        if (strstr(path, filters[i])) return 1;
+    }
+    return 0;
+}
+
+static void hashTextSection() {
+
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
