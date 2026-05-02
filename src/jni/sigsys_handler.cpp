@@ -113,12 +113,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
 
-  // Provide Context for the Root Broker
-  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
-  ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-
   lock_ipc();
 
+  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
+  ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   ipc_mem->nr = nr;
   ipc_mem->arg0 = arg0;
   ipc_mem->arg1 = arg1;
@@ -131,7 +129,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
 
-  // THE GHOST FD PRE-CREATION
+  // Create FD beforehand to prevent SELinux from complaining untrusted->privileged
   int pre_fd = -1;
 
   // 1. Serialize Strings (Safe to use my_strncpy since they are null-terminated paths)

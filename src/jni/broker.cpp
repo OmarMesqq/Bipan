@@ -19,7 +19,7 @@
 #include "utils.hpp"
 
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Bipan Violation ---");
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- BipanBroker Violation ---");
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
@@ -51,10 +51,17 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   return "[Unknown Source]";
 }
 
+/**
+ * Allowlists everything from:
+ * - `/system`
+ * - `/vendor`
+ * - `/apex`
+ *
+ * WebView is denied (`/product`)
+ */
 static bool is_trusted_library(const std::string& lib_path) {
   return (lib_path.find("/system/") == 0 ||
           lib_path.find("/vendor/") == 0 ||
-          lib_path.find("/product/") == 0 ||
           lib_path.find("/apex/") == 0);
 }
 
@@ -77,6 +84,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
+    // TODO: eventually allow trusted callers
     switch (nr) {
       case __NR_execve:
       case __NR_execveat: {
@@ -176,7 +184,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_bind: {
-        if (!is_trusted && sock_payload && is_lan_address(sock_payload)) {
+        if (sock_payload && is_lan_address(sock_payload)) {
           log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EADDRNOTAVAIL;
           ipc_mem->action = ACTION_USE_RET;
@@ -185,16 +193,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_listen: {
-        if (!is_trusted) {
-          ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        }
+        ipc_mem->action = ACTION_EXECUTE_NATIVE;
+        log_violation("(listen)", culprit_lib, ipc_mem->caller_pc, offset);
         break;
       }
 
       case __NR_sendto:
       case __NR_sendmsg: {
-        if (!is_trusted && sock_payload && is_lan_address(sock_payload)) {
-          log_violation("(sendto/msg)", culprit_lib, ipc_mem->caller_pc, offset);
+        if (sock_payload && is_lan_address(sock_payload)) {
+          log_violation("(sendto/sendmsg)", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
           ipc_mem->action = ACTION_USE_RET;
         }
@@ -202,12 +209,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_getsockname: {
-        if (!is_trusted) ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
+        ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
+        log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
         break;
       }
 
       case __NR_socket: {
-        if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
+        if (ipc_mem->arg0 == AF_NETLINK) {
           log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
