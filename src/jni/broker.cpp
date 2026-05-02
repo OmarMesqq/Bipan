@@ -243,12 +243,12 @@ void startBroker(int sock) {
       }
       case __NR_getsockname: {
         // Let kernel execute the real syscall to populate the sockaddr struct
-        long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        long realsockname = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
         // If it succeeded, inspect and scrub the returned struct
-        if (ret == 0 && arg1 != 0) {
+        if (realsockname == 0 && arg1 != 0) {
           if (is_trusted_system_caller("(getsockname)", &patch_pc, false)) {
-            ret = ret;
+            ret = realsockname;
             break;
           }
 
@@ -277,12 +277,12 @@ void startBroker(int sock) {
             } else if (sockAddrStruct->sa_family == AF_INET6) {
               memset(&(((struct sockaddr_in6*)sockAddrStruct)->sin6_addr), 0, 16);  // ::
             }
-            ret = ret;
+            ret = realsockname;
             break;
           }
         }
 
-        ret = ret;
+        ret = realsockname;
         break;
       }
       case __NR_socket: {
