@@ -23,14 +23,16 @@ enum BROKER_STATUS {
 };
 
 typedef struct {
+  volatile int lock;
   volatile int status;
 
   int nr;  // syscall number
+  long arg0, arg1, arg2, arg3, arg4, arg5;
 
-  // arguments
-  long arg0;
-  char path[256];  // arg1 is a string pointer, so this takes its contents
-  long arg2, arg3, arg4, arg5;
+  // Payloads to cross the process boundary
+  char string_payload[256];      // Paths (/sbin/su, etc)
+  uint8_t struct_payload[128];   // sockaddrs
+  uint8_t out_buffer[512];       // Returned data (uname, readlinkat)
 
   long ret;  // return value provided by kernel
 } SharedIPC;
