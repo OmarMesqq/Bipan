@@ -9,6 +9,7 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <syscall.h>
 #include <unistd.h>
 
@@ -99,13 +100,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
 
-  // 1. REENTRANCY GUARD
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] Recursed signal handler! Allowing syscall number %d", nr);
-    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr,
-                                                 ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1],
-                                                 ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3],
-                                                 ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
+    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1], ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3], ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
     return;
   }
   in_sigsys_handler = true;
@@ -117,9 +113,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
 
+  // Provide Context for the Root Broker
+  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
+  ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+
   lock_ipc();
 
-  // 2. Pack Registers
   ipc_mem->nr = nr;
   ipc_mem->arg0 = arg0;
   ipc_mem->arg1 = arg1;
@@ -127,33 +126,50 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
-  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
-  ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
 
-  // 3. Serialize Pointer Data (FREESTANDING ONLY)
   my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
 
-  if (nr == __NR_openat || nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
+  // THE GHOST FD PRE-CREATION
+  int pre_fd = -1;
+
+  // 1. Serialize Strings (Safe to use my_strncpy since they are null-terminated paths)
+  if (nr == __NR_openat) {
+    pre_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+    ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
+    if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
     if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     if (arg0 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
-  } else if (nr == __NR_bind || nr == __NR_sendto || nr == __NR_getsockname) {
-    long sock_ptr = (nr == __NR_sendto) ? arg4 : arg1;
-    if (sock_ptr != 0) {
-      // Assuming max sockaddr is 128 bytes (sockaddr_storage)
-      // We cast to char* for byte-by-byte copy
-      my_strncpy((char*)ipc_mem->struct_payload, (const char*)sock_ptr, 127);
-    }
+  }
+
+  // 2. Serialize Binary Structures using my_memcpy and EXACT lengths
+  long sock_ptr = 0;
+  long sock_len = 0;
+
+  if (nr == __NR_bind) {
+    sock_ptr = arg1;
+    sock_len = arg2;
+  } else if (nr == __NR_sendto) {
+    sock_ptr = arg4;
+    sock_len = arg5;
   } else if (nr == __NR_sendmsg) {
     struct msghdr* msg = (struct msghdr*)arg1;
     if (msg && msg->msg_name) {
-      my_strncpy((char*)ipc_mem->struct_payload, (const char*)msg->msg_name, 127);
+      sock_ptr = (long)msg->msg_name;
+      sock_len = msg->msg_namelen;
     }
   }
 
-  // 4. Wake Broker & Wait
+  // Getsockname populates the struct on return, no need to send it upfront
+  if (sock_ptr != 0 && sock_len > 0) {
+    size_t copy_len = (sock_len > 127) ? 127 : (size_t)sock_len;
+    my_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
+  }
+
+  // Wake Broker & Wait
   ipc_mem->status = REQUEST_SYSCALL;
   futex_wake(&ipc_mem->status);
 
@@ -161,31 +177,41 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
   }
 
-  // 5. Deserialize Outputs and Handle FDs
-  long result = ipc_mem->ret;
+  long result = 0;
+  int action = ipc_mem->action;
 
-  if (nr == __NR_openat && result == 0) {
-    // Broker returned 0 to indicate a successful FD teleport.
-    result = recv_fd(sv[1]);
-    if (result >= 0) {
-      storeSpoofedFD(result, ipc_mem->string_payload);
+  // ROUTE THE ACTION
+  if (action == ACTION_EXECUTE_NATIVE) {
+    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup unused ghost
+    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+  } else if (action == ACTION_USE_RET) {
+    if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup if Broker gave -EACCES
     }
-  } else if (nr == __NR_uname && result == 0) {
-    // Copy spoofed utsname back to target pointer
-    my_strncpy((char*)arg0, (char*)ipc_mem->out_buffer, sizeof(ipc_mem->out_buffer) - 1);
-  } else if (nr == __NR_readlinkat && result > 0) {
-    // Copy resolved symlink back to target buffer
-    my_strncpy((char*)arg2, (char*)ipc_mem->out_buffer, (size_t)result);
-  } else if (nr == __NR_getsockname && result == 0) {
-    my_strncpy((char*)arg1, (char*)ipc_mem->struct_payload, 127);
+    result = ipc_mem->ret;
+
+    // DESERIALIZE Outputs safely using exact lengths
+    if (nr == __NR_uname && result == 0) {
+      my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
+    } else if (nr == __NR_readlinkat && result > 0) {
+      my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
+    }
+  } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
+    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    if (result == 0 && arg1 != 0) {
+      struct sockaddr* s = (struct sockaddr*)arg1;
+      if (s->sa_family == AF_INET)
+        ((struct sockaddr_in*)s)->sin_addr.s_addr = 0;
+      else if (s->sa_family == AF_INET6)
+        my_memset(&(((struct sockaddr_in6*)s)->sin6_addr), 0, 16);
+    }
   }
 
-  // 6. Release Lock
   ipc_mem->status = IDLE;
   unlock_ipc();
 
   ctx->uc_mcontext.regs[0] = result;
-
   in_sigsys_handler = false;
 }
 

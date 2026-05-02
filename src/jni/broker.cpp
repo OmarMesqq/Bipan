@@ -17,7 +17,6 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "utils.hpp"
-#include "blocker.hpp"
 
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Bipan Violation ---");
@@ -72,12 +71,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     const char* path_payload = ipc_mem->string_payload;
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
-    // 1. Resolve Culprit and exact Offset!
     uintptr_t offset = 0;
     std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
     bool is_trusted = is_trusted_library(culprit_lib);
 
-    // Default: Tell Target App to execute the syscall natively
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
     switch (nr) {
@@ -90,55 +87,61 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      
+
       case __NR_uname: {
         struct utsname spoofed_buf;
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Spoofing uname for %s", culprit_lib.c_str());
         ipc_mem->ret = uname_spoofer(&spoofed_buf);
-        if (ipc_mem->ret == 0) {
-            memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
-        }
+        if (ipc_mem->ret == 0) memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
         ipc_mem->action = ACTION_USE_RET;
         break;
       }
 
       case __NR_openat: {
         if (!is_trusted) {
-            if (shouldDenyAccess(path_payload)) {
-                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-                ipc_mem->ret = -EACCES;
-                ipc_mem->action = ACTION_USE_RET;
-            } else if (shouldSpoofExistence(path_payload)) {
-                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-                ipc_mem->ret = -ENOENT;
-                ipc_mem->action = ACTION_USE_RET;
-            } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload)) {
-                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-                
-                int fake_fd = -1;
-                if (is_maps(path_payload)) fake_fd = clean_proc_maps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
-                else if (is_smaps(path_payload)) fake_fd = clean_proc_smaps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
-                else fake_fd = clean_proc_mounts(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
-                
-                if (fake_fd >= 0) {
-                    send_fd(sock, fake_fd);
-                    close(fake_fd); // Close local daemon copy
-                    ipc_mem->action = ACTION_RECV_FD;
-                    ipc_mem->ret = 0;
-                } else {
-                    ipc_mem->action = ACTION_USE_RET;
-                    ipc_mem->ret = fake_fd;
-                }
-            } else if (const char* fake_content = shouldFakeFile(path_payload)) {
-                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-                int fake_fd = create_spoofed_file(fake_content);
-                if (fake_fd >= 0) {
-                    send_fd(sock, fake_fd);
-                    close(fake_fd);
-                    ipc_mem->action = ACTION_RECV_FD;
-                    ipc_mem->ret = 0;
-                }
+          if (shouldDenyAccess(path_payload)) {
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -EACCES;
+            ipc_mem->action = ACTION_USE_RET;
+          } else if (shouldSpoofExistence(path_payload)) {
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -ENOENT;
+            ipc_mem->action = ACTION_USE_RET;
+          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+
+            // Broker generates the fake file locally
+            int fake_fd = -1;
+            if (is_maps(path_payload))
+              fake_fd = clean_proc_maps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+            else if (is_smaps(path_payload))
+              fake_fd = clean_proc_smaps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+            else if (is_mounts(path_payload))
+              fake_fd = clean_proc_mounts(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+            else
+              fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
+
+            if (fake_fd >= 0) {
+              // GHOST FILL: Root opens the Target's pre_fd and fills it!
+              int target_fd = ipc_mem->arg5;
+              char proc_path[64];
+              snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
+
+              int root_fd = open(proc_path, O_WRONLY);
+              if (root_fd >= 0) {
+                char buf[4096];
+                ssize_t n;
+                lseek(fake_fd, 0, SEEK_SET);
+                while ((n = read(fake_fd, buf, sizeof(buf))) > 0) write(root_fd, buf, n);
+                close(root_fd);
+              }
+              close(fake_fd);  // Cleanup daemon's copy
+
+              ipc_mem->ret = target_fd;  // Tell Target to use the FD it already has!
+            } else {
+              ipc_mem->ret = -EACCES;
             }
+            ipc_mem->action = ACTION_USE_RET;
+          }
         }
         break;
       }
@@ -147,17 +150,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_newfstatat: {
         if (!is_trusted) {
           if (shouldDenyAccess(path_payload)) {
-             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-             ipc_mem->ret = -EACCES;
-             ipc_mem->action = ACTION_USE_RET;
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -EACCES;
+            ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
-             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-             ipc_mem->ret = -ENOENT;
-             ipc_mem->action = ACTION_USE_RET;
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -ENOENT;
+            ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-             ipc_mem->ret = 0; // Fake Success
-             ipc_mem->action = ACTION_USE_RET;
+            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = 0;
+            ipc_mem->action = ACTION_USE_RET;
           }
         }
         break;
@@ -165,26 +168,25 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       case __NR_rt_sigaction: {
         if (ipc_mem->arg0 == SIGSYS) {
-            log_violation("SIGSYS hijacking", culprit_lib, ipc_mem->caller_pc, offset);
-            ipc_mem->ret = 0;
-            ipc_mem->action = ACTION_USE_RET;
+          log_violation("SIGSYS hijacking", culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }
 
       case __NR_bind: {
-        if (!is_trusted && is_lan_address(sock_payload)) {
-            log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
-            ipc_mem->ret = -EADDRNOTAVAIL;
-            ipc_mem->action = ACTION_USE_RET;
+        if (!is_trusted && sock_payload && is_lan_address(sock_payload)) {
+          log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = -EADDRNOTAVAIL;
+          ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }
 
       case __NR_listen: {
         if (!is_trusted) {
-           // Let Target natively execute, blocking listen is handled by bind mostly.
-           ipc_mem->action = ACTION_EXECUTE_NATIVE;
+          ipc_mem->action = ACTION_EXECUTE_NATIVE;
         }
         break;
       }
@@ -192,27 +194,23 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_sendto:
       case __NR_sendmsg: {
         if (!is_trusted && sock_payload && is_lan_address(sock_payload)) {
-            log_violation("(sendto/msg)", culprit_lib, ipc_mem->caller_pc, offset);
-            // Lie and say bytes were sent
-            ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
-            ipc_mem->action = ACTION_USE_RET;
+          log_violation("(sendto/msg)", culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
+          ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }
 
       case __NR_getsockname: {
-        if (!is_trusted) {
-            // Tell target to execute it natively, then scrub it!
-            ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-        }
+        if (!is_trusted) ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
         break;
       }
 
       case __NR_socket: {
         if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
-            log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
-            ipc_mem->ret = -EACCES;
-            ipc_mem->action = ACTION_USE_RET;
+          log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = -EACCES;
+          ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }

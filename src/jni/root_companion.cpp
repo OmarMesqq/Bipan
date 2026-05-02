@@ -48,7 +48,6 @@ static void companion_handler(int sock) {
 
   // 2. Route the request
   if (cmd == CMD_FETCH_TARGETS) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Fetching targets via root companion...\n");
     handle_fetch_targets(sock);
   } else if (cmd == CMD_START_BROKER) {
     // Receive the Memory FD from the Target App
