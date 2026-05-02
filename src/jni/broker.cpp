@@ -47,9 +47,7 @@ void startBroker(int sock) {
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: execve/execveat");
         log_violation_trace(path);
         ret = -EAGAIN;
-        if (patch_pc != 0) {
-          patchInstruction(patch_pc - 4, -EAGAIN);
-        }
+        
         break;
       }
       case __NR_uname: {
@@ -141,9 +139,7 @@ void startBroker(int sock) {
               write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
               log_violation_trace("(bind)");
               ret = -EADDRNOTAVAIL;
-              if (patch_pc != 0) {
-                patchInstruction(patch_pc - 4, -EADDRNOTAVAIL);
-              }
+              
               break;
             }
 
@@ -155,9 +151,7 @@ void startBroker(int sock) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
             log_violation_trace("(bind)");
             ret = 0;
-            if (patch_pc != 0) {
-              patchInstruction(patch_pc - 4, 0);
-            }
+            
           }
         } else {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(bind) Allowing non-IP bind request");
@@ -197,9 +191,7 @@ void startBroker(int sock) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
           log_violation_trace("(listen)");
           ret = 0;
-          if (patch_pc != 0) {
-            patchInstruction(patch_pc - 4, 0);
-          }
+          
         } else {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) Allowing for local/UNIX socket");
           ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
@@ -231,9 +223,7 @@ void startBroker(int sock) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
             log_violation_trace("(sendto)");
             ret = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
-            if (patch_pc != 0) {
-              patchInstruction(patch_pc - 4, (int)arg2);
-            }
+            
             break;
           }
         }
@@ -294,9 +284,7 @@ void startBroker(int sock) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket) Blocking AF_NETLINK");
           is_trusted_system_caller("(socket) AF_NETLINK", &patch_pc);
           ret = -EACCES;
-          if (patch_pc != 0) {
-            patchInstruction(patch_pc - 4, -EACCES);  // Spoof Permission Denied!
-          }
+          
           break;
         }
 
@@ -332,43 +320,8 @@ void startBroker(int sock) {
             log_violation_trace("(sendmsg)");
             // Fool the app: return the length it tried to send
             ret = (long)get_msghdr_len(msg);
-            if (patch_pc != 0) {
-              patchInstruction(patch_pc - 4, (int)get_msghdr_len(msg));
-            }
             break;
           }
-        }
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-      case __NR_readlinkat: {
-        const char* pathname = (const char*)arg1;
-        char* buf = (char*)arg2;
-        size_t bufsiz = (size_t)arg3;
-
-        if (pathname && local_strstr(pathname, "/proc/self/fd/")) {
-          int target_fd = local_atoi(pathname + 14);
-
-          // Spinlock
-          while (fds_lock.test_and_set(std::memory_order_acquire));
-
-          int count = spoofed_fd_count.load();
-          for (int i = 0; i < count; i++) {
-            if (global_spoofed_fds[i].fd == target_fd) {
-              const char* orig = global_spoofed_fds[i].original_path;
-              size_t len = 0;
-              while (orig[len]) len++;
-
-              size_t to_copy = (len < bufsiz - 1) ? len : bufsiz - 1;
-              for (size_t j = 0; j < to_copy; j++) buf[j] = orig[j];
-              buf[to_copy] = '\0';
-
-              ret = to_copy;
-              fds_lock.clear(std::memory_order_release);
-              return;
-            }
-          }
-          fds_lock.clear(std::memory_order_release);
         }
         ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
