@@ -21,67 +21,25 @@ static void baz(void);
 static void applySeccomp(void);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void unwinder(uintptr_t pc, uintptr_t sp);
-static uintptr_t get_sub_imm(uint32_t inst);
-static uintptr_t get_stp_imm(uint32_t inst);
 
-#define IS_SUB_SP_IMM(inst) ((inst & 0xffc003ff) == 0xd10003ff)
-#define IS_STR_X30_PRE(inst) ((inst & 0xfff00fff) == 0xf8100fe3)  // str x30, [sp, #imm]!
-
-static uintptr_t get_sub_imm(uint32_t inst) {
-  // Extracts the 12-bit immediate from 'sub sp, sp, #imm'
-  return (inst >> 10) & 0xfff;
-}
-
-static uintptr_t get_stp_imm(uint32_t inst) {
-  // Extract 7-bit signed offset, multiply by 8 (AArch64 scaling)
-  int64_t imm = (inst >> 15) & 0x7f;
-  if (imm & 0x40) imm |= ~0x7f;  // Sign extend
-  return (uintptr_t)(imm * -8);  // We want the positive magnitude
-}
+#define MAX_FRAMES 20
+#define MAX_INSTRUCTIONS 2048
 
 static void unwinder(uintptr_t pc, uintptr_t sp) {
   printf("Starting Unwind from PC: %p, SP: %p\n", (void*)pc, (void*)sp);
+  printf("\n--- STACK HEXDUMP (Top (SP) at %p) ---\n", (void*)sp);
+  printf("  Offset  |      Address      |        Value        |  Note\n");
+  printf("----------|-------------------|---------------------|-------\n");
 
-  for (int frame = 0; frame < 10; frame++) {
-    uint32_t* search_ptr = (uint32_t*)pc;
-    uintptr_t frame_size = 0;
+  uint32_t* search_ptr = (uint32_t*)pc;
+  for (int i = 0; i < MAX_INSTRUCTIONS; i++) {
+    uintptr_t addr = (uintptr_t)&search_ptr[i];
+    uintptr_t val = search_ptr[i];
 
-    // Scan backwards to find the prologue
-    // Limit search to 100 instructions so we don't scan forever
-    for (int i = 0; i < 1024; i++) {
-      uint32_t inst = *(--search_ptr);
-
-      if (IS_SUB_SP_IMM(inst)) {
-        frame_size = get_sub_imm(inst);
-        break;
-      }
-      if (IS_STR_X30_PRE(inst)) {
-        // This instruction stores LR and moves SP in one go
-        // Simplified: extraction logic for signed offsets is trickier
-        frame_size = 16;
-        break;
-      }
-      // If we hit a 'ret' (0xd65f03c0), we went too far
-      if (inst == 0xd65f03c0) break;
-    }
-
-    if (frame_size == 0) {
-      printf("Could not find prologue for frame %d. Stopping.\n", frame);
-      break;
-    }
-
-    // The "Jump" logic:
-    // 1. Return address is usually at the top of the stack frame
-    uintptr_t* lr_location = (uintptr_t*)(sp + frame_size - 16);
-    uintptr_t next_pc = *lr_location;
-    uintptr_t next_sp = sp + frame_size;
-
-    printf("Frame %d: PC=%p, Next SP=%p\n", frame, (void*)next_pc, (void*)next_sp);
-
-    pc = next_pc;
-    sp = next_sp;
-    if (pc == 0) break;
+    printf(" +%04zx    | %p | %016lx\n",
+           i * sizeof(uintptr_t), (void*)addr, (unsigned long)val);
   }
+  printf("--- END DUMP ---\n\n");
 }
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
