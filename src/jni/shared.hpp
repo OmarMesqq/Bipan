@@ -15,9 +15,7 @@ extern uintptr_t g_bipan_lib_end;
 
 extern char package_name[256];
 
-#define BROKER_ARCH
 
-#ifdef BROKER_ARCH
 enum BROKER_STATUS {
   IDLE = 0,
   REQUEST_SYSCALL = 1,
@@ -53,7 +51,7 @@ extern SharedIPC* ipc_mem;
  * valid ones in the main process.
  */
 extern int sv[2];
-#endif
+
 
 /**
  * Android log priority values, in increasing order of priority.

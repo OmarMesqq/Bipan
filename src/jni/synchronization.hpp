@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "shared.hpp"
+#include "logger.hpp"
 #include "utils.hpp"
 
 /**

@@ -34,11 +34,9 @@ char safe_proc_pid_path[64] = {0};
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
 char package_name[256] = {0};
-
-#ifdef BROKER_ARCH
+// Broker
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
-#endif
 
 struct LibBounds {
   uintptr_t start = 0;
@@ -96,12 +94,11 @@ class Bipan : public zygisk::ModuleBase {
       // 2. Calculate size and log everything
       size_t lib_size = my_lib.end - my_lib.start;
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
-           (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+                            (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
       spoofBuildFields();
       injectAndStartJavaPayload();
 
-#ifdef BROKER_ARCH
       ipc_mem = (SharedIPC*)(mmap(
           NULL,
           sizeof(SharedIPC),
@@ -130,7 +127,7 @@ class Bipan : public zygisk::ModuleBase {
       }
 
       close(sv[0]);  // Close broker's end
-#endif
+
       registerSignalHandler();
 
       // Java Layer Sensors hooking
