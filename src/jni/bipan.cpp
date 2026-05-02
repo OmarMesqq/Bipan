@@ -33,6 +33,7 @@ constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 char safe_proc_pid_path[64] = {0};
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
+char package_name[256] = {0};
 
 #ifdef BROKER_ARCH
 SharedIPC* ipc_mem = nullptr;
@@ -68,6 +69,12 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       LOGD("preAppSpecialize: will apply sandbox for %s", raw_process_name);
       snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
+      size_t i = 0;
+      while (raw_process_name[i] && i < 255) {
+        package_name[i] = raw_process_name[i];
+        i++;
+      }
+      package_name[i] = '\0';
     }
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);

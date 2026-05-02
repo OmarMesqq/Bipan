@@ -20,6 +20,8 @@ extern char safe_proc_pid_path[64];
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 
+extern char package_name[256];
+
 // #define BROKER_ARCH
 
 #ifdef BROKER_ARCH

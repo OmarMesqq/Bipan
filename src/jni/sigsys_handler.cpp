@@ -11,15 +11,16 @@
 #include <sys/stat.h>
 #include <syscall.h>
 #include <unistd.h>
-#include "utils.hpp"
-#include "logger.hpp"
+
 #include <atomic>
 
 #include "blocker.hpp"
+#include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "unwinder.hpp"
+#include "utils.hpp"
 
 struct SpoofedFD {
   int fd;
@@ -40,10 +41,9 @@ struct kernel_sigaction {
   uint64_t sa_mask;
 };
 
-
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context);
-static void sigsegv_recovery_handler(int sig, siginfo_t* info, void* void_context);
+static void sigill_handler(int sig, siginfo_t* info, void* void_context);
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
 
 void storeSpoofedFD(int fd, const char* original_path) {
   // Acquire spinlock
@@ -81,41 +81,35 @@ void registerSignalHandler() {
     _exit(1);
   }
 
-  // Register for SIGILL
-  struct kernel_sigaction sa_ILL = {};
-  sa_ILL.sa_handler = sigill_diagnostic_handler;
-  sa_ILL.sa_flags = SA_SIGINFO;
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ILL, 0, 8, 0, 0);
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGILL handler. Aborting for safety!");
-    _exit(1);
-  }
-
-  // 3. Register SIGSEGV and SAVE the old handler (ART)
-  struct kernel_sigaction sa_SEGV = {};
-  sa_SEGV.sa_handler = sigsegv_recovery_handler;
-  sa_SEGV.sa_flags = SA_SIGINFO;
-
-  // The (long)&old_sa_segv captures ART's existing handler
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, (long)&old_sa_segv, 8, 0, 0);
-
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSEGV handler.");
-    _exit(1);
+  bool is_insta = local_strstr(package_name, "com.instagram.android");
+  bool is_whatsapp = local_strstr(package_name, "com.whatsapp");
+  if (is_insta) {
+    struct kernel_sigaction sa_ILL = {};
+    sa_ILL.sa_handler = sigill_handler;
+    sa_ILL.sa_flags = SA_SIGINFO;
+    arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ILL, 0, 8, 0, 0);
+  } else if (is_whatsapp) {
+    struct kernel_sigaction sa_SEGV = {.sa_handler = sigsegv_handler, .sa_flags = SA_SIGINFO};
+    arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, (long)&old_sa_segv, 8, 0, 0);
   }
 }
 
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  int nr = info->si_syscall;
+  
   // 1. REENTRANCY GUARD
   if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "!!!Recursed signal handler! Aborting");
-    arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
+    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, 
+        ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1], 
+        ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3], 
+        ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
     return;
   }
   in_sigsys_handler = true;
-  ucontext_t* ctx = (ucontext_t*)void_context;
-  int nr = info->si_syscall;  // syscalls go in x8 in aarch64
+  
 
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
@@ -506,7 +500,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   in_sigsys_handler = false;
 }
 
-static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_context) {
+static void sigill_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
   uintptr_t fault_pc = ctx->uc_mcontext.pc;
   uintptr_t return_address = 0;
@@ -538,7 +532,7 @@ static void sigill_diagnostic_handler(int sig, siginfo_t* info, void* void_conte
 }
 
 static thread_local bool in_sigsegv_handler = false;
-static void sigsegv_recovery_handler(int sig, siginfo_t* info, void* void_context) {
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
   if (in_sigsegv_handler) {
     arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
     return;
@@ -592,4 +586,3 @@ static void sigsegv_recovery_handler(int sig, siginfo_t* info, void* void_contex
 
   _exit(-1);
 }
-
