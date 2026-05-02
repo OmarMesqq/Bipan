@@ -19,6 +19,7 @@
 #include "settings_hook_payload.h"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
+#include "synchronization.hpp"
 #include "zygisk.hpp"
 
 using zygisk::Api;
@@ -37,6 +38,7 @@ char package_name[256] = {0};
 // Broker
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
+int g_broker_socket = -1;
 
 struct LibBounds {
   uintptr_t start = 0;
@@ -52,11 +54,11 @@ class Bipan : public zygisk::ModuleBase {
   void onLoad(Api* api_ptr, JNIEnv* env_ptr) override {
     this->api = api_ptr;
     this->env = env_ptr;
-    fetchTargetProcesses();
   }
 
   void preAppSpecialize(AppSpecializeArgs* args) override {
-    // Filter the process: only spoof some packages
+    fetchTargetProcesses();
+
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "preAppSpecialize: process name is nil. Aborting.");
@@ -73,6 +75,42 @@ class Bipan : public zygisk::ModuleBase {
         i++;
       }
       package_name[i] = '\0';
+
+      g_broker_socket = api->connectCompanion();
+      if (g_broker_socket < 0) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion!");
+      }
+      // 1. Tell the companion daemon we want to start a Broker thread
+      int cmd = 2;  // CMD_START_BROKER
+      write(g_broker_socket, &cmd, sizeof(cmd));
+
+      // 2. Create the RAM-backed IPC memory
+      int memfd = arm64_raw_syscall(__NR_memfd_create, (long)"bipan_ipc", MFD_CLOEXEC, 0, 0, 0, 0);
+      if (memfd < 0) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "memfd_create failed");
+        _exit(1);
+      }
+
+      ftruncate(memfd, sizeof(SharedIPC));
+
+      // 3. Map it locally for the Target App
+      ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
+      if (ipc_mem == MAP_FAILED) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC!");
+        _exit(1);
+      }
+
+      ipc_mem->status = IDLE;
+      ipc_mem->lock = 0;
+
+      // 4. Teleport the FD to the Root Companion
+      send_fd(g_broker_socket, memfd);
+
+      // Close our local FD handle (the memory remains mapped via mmap)
+      close(memfd);
+
+      // 5. Save the socket so sigsys_handler can recv_fd() openat results
+      sv[1] = g_broker_socket;
     }
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
@@ -97,36 +135,7 @@ class Bipan : public zygisk::ModuleBase {
                             (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
       spoofBuildFields();
-      injectAndStartJavaPayload();
-
-      ipc_mem = (SharedIPC*)(mmap(
-          NULL,
-          sizeof(SharedIPC),
-          PROT_READ | PROT_WRITE,
-          MAP_SHARED | MAP_ANONYMOUS,
-          -1, 0));
-
-      if (ipc_mem == MAP_FAILED) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to allocate shared memory for IPC!");
-        _exit(1);
-      }
-
-      ipc_mem->status = IDLE;
-
-      if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to socketpair");
-        _exit(1);
-      }
-
-      pid_t pid = fork();
-      if (pid == 0) {
-        close(sv[1]);        // Close target's end
-        startBroker(sv[0]);  // Pass the socket to broker loop
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker loop stopped!");
-        _exit(-1);
-      }
-
-      close(sv[0]);  // Close broker's end
+      bootstrapJavaPayload();
 
       registerSignalHandler();
 
@@ -166,11 +175,11 @@ class Bipan : public zygisk::ModuleBase {
     }
   }
 
-  void injectAndStartJavaPayload() {
+  void bootstrapJavaPayload() {
     // Map the byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "injectAndStartJavaPayload: failed to create DirectByteBuffer!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to create DirectByteBuffer!");
       return;
     }
 
@@ -186,19 +195,18 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "injectAndStartJavaPayload: failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
       return;
     }
 
     // 4. Ask our new ClassLoader to find your SettingsHook class
     jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    // TODO
     jstring className = env->NewStringUTF("com.omarmesqq.bipan.SettingsHook");
     jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "inject: Failed to load class com.omarmesqq.bipan.SettingsHook");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load class com.omarmesqq.bipan.SettingsHook");
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
@@ -210,15 +218,14 @@ class Bipan : public zygisk::ModuleBase {
 
           if (env->ExceptionCheck()) {
             env->ExceptionClear();
-            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "inject: Exception thrown inside SettingsHook.install()!");
+            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Exception thrown inside Java payload install()!");
           } else {
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan: Fileless Java Payload successfully injected and executing!");
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Fileless Java code injected and executing!");
           }
         }
       }
     }
 
-    // 6. Clean up JNI references to prevent memory leaks in the target process
     env->DeleteLocalRef(className);
     env->DeleteLocalRef(dexClassLoader);
     env->DeleteLocalRef(systemClassLoader);
@@ -256,35 +263,21 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    while (true) {
-      // Read length of the string first (4 bytes or less)
-      uint32_t len;
-      ssize_t pkgLenRet = read(fd, &len, sizeof(len));
+    // Tell the companion we want to fetch the targets list
+    int cmd = CMD_FETCH_TARGETS;
+    write(fd, &cmd, sizeof(cmd));
 
-      if (pkgLenRet <= 0) {
-        if (pkgLenRet < 0) {
-          write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: error reading package name's length (errno %d)", errno);
-        } else {
-          write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: fd %d returned EOF", fd);
-        }
-        break;
-      }
-
-      // Expected end of list signal from the companion
+    uint32_t len;
+    while (read(fd, &len, sizeof(len)) == sizeof(len)) {
       if (len == 0) {
-        break;
+        break;  // done
       }
-
-      // Read the string
-      std::string pkgName(len, '\0');
-      ssize_t pkgNameRet = read(fd, &pkgName[0], len);
-      if (pkgNameRet != (ssize_t)len) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: failed to read complete package name. Expected: %zd. Got: %zd", (ssize_t)len, pkgNameRet);
-        break;
+      std::string target(len, '\0');
+      if (read(fd, target.data(), len) == len) {
+        targetsSet.insert(target);
       }
-      targetsSet.insert(pkgName);
     }
-    close(fd);
+    close(fd);  // Close the temporary socket
   }
 
   void setField(jclass clazz, const char* fieldName, const char* value) {

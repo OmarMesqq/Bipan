@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -15,9 +16,50 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
-#include "unwinder.hpp"
+#include "utils.hpp"
+#include "blocker.hpp"
 
-void startBroker(int sock) {
+static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Bipan Violation ---");
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
+}
+
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
+
+  std::ifstream maps(path);
+  std::string line;
+
+  while (std::getline(maps, line)) {
+    uintptr_t start, end;
+    size_t offset_in_file;
+    // Extract start, end, and the file offset from the maps line
+    if (sscanf(line.c_str(), "%lx-%lx %*s %lx", &start, &end, &offset_in_file) >= 2) {
+      if (pc >= start && pc < end) {
+        if (out_offset) *out_offset = (pc - start) + offset_in_file;
+        size_t slash = line.find('/');
+        if (slash != std::string::npos) return line.substr(slash);
+        return "[Anonymous Memory]";
+      }
+    }
+  }
+  if (out_offset) *out_offset = 0;
+  return "[Unknown Source]";
+}
+
+static bool is_trusted_library(const std::string& lib_path) {
+  return (lib_path.find("/system/") == 0 ||
+          lib_path.find("/vendor/") == 0 ||
+          lib_path.find("/product/") == 0 ||
+          lib_path.find("/apex/") == 0);
+}
+
+void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
 
   while (true) {
@@ -26,353 +68,154 @@ void startBroker(int sock) {
     }
     __sync_synchronize();
 
-    long ret = -ENOSYS;
-    uintptr_t patch_pc = 0;
     int nr = ipc_mem->nr;
-    long arg0 = ipc_mem->arg0;
-    long arg1 = ipc_mem->arg1;
-    long arg2 = ipc_mem->arg2;
-    long arg3 = ipc_mem->arg3;
-    long arg4 = ipc_mem->arg4;
-    long arg5 = ipc_mem->arg5;
+    const char* path_payload = ipc_mem->string_payload;
+    struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
+
+    // 1. Resolve Culprit and exact Offset!
+    uintptr_t offset = 0;
+    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
+    bool is_trusted = is_trusted_library(culprit_lib);
+
+    // Default: Tell Target App to execute the syscall natively
+    ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
     switch (nr) {
       case __NR_execve:
       case __NR_execveat: {
-        const char* path = (const char*)arg0;
-        if (is_trusted_system_caller(path, &patch_pc, false)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
+        if (!is_trusted) {
+          log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = -EAGAIN;
+          ipc_mem->action = ACTION_USE_RET;
         }
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: execve/execveat");
-        log_violation_trace(path);
-        ret = -EAGAIN;
-        
         break;
       }
+      
       case __NR_uname: {
-        struct utsname* buf = (struct utsname*)arg0;
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Spoofing uname");
-        ret = uname_spoofer(buf);
+        struct utsname spoofed_buf;
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Spoofing uname for %s", culprit_lib.c_str());
+        ipc_mem->ret = uname_spoofer(&spoofed_buf);
+        if (ipc_mem->ret == 0) {
+            memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
+        }
+        ipc_mem->action = ACTION_USE_RET;
         break;
       }
-      case __NR_faccessat:
-      case __NR_newfstatat:
+
       case __NR_openat: {
-        int dirfd = (int)arg0;
-        const char* pathname = (const char*)arg1;
-        int flags = (int)arg2;
-        mode_t mode = (mode_t)arg3;
-
-        if (is_trusted_system_caller("(openat/faccessat/newfstatat)", &patch_pc, false)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
+        if (!is_trusted) {
+            if (shouldDenyAccess(path_payload)) {
+                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+                ipc_mem->ret = -EACCES;
+                ipc_mem->action = ACTION_USE_RET;
+            } else if (shouldSpoofExistence(path_payload)) {
+                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+                ipc_mem->ret = -ENOENT;
+                ipc_mem->action = ACTION_USE_RET;
+            } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload)) {
+                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+                
+                int fake_fd = -1;
+                if (is_maps(path_payload)) fake_fd = clean_proc_maps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+                else if (is_smaps(path_payload)) fake_fd = clean_proc_smaps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+                else fake_fd = clean_proc_mounts(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+                
+                if (fake_fd >= 0) {
+                    send_fd(sock, fake_fd);
+                    close(fake_fd); // Close local daemon copy
+                    ipc_mem->action = ACTION_RECV_FD;
+                    ipc_mem->ret = 0;
+                } else {
+                    ipc_mem->action = ACTION_USE_RET;
+                    ipc_mem->ret = fake_fd;
+                }
+            } else if (const char* fake_content = shouldFakeFile(path_payload)) {
+                log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+                int fake_fd = create_spoofed_file(fake_content);
+                if (fake_fd >= 0) {
+                    send_fd(sock, fake_fd);
+                    close(fake_fd);
+                    ipc_mem->action = ACTION_RECV_FD;
+                    ipc_mem->ret = 0;
+                }
+            }
         }
-
-        const bool is_vfs = is_maps(pathname) || is_smaps(pathname) || is_mounts(pathname);
-
-        if (is_vfs) {
-          if (is_maps(pathname)) {
-            ret = clean_proc_maps(dirfd, pathname, flags, mode);
-            log_violation_trace(pathname);
-          } else if (is_smaps(pathname)) {
-            ret = clean_proc_smaps(dirfd, pathname, flags, mode);
-            log_violation_trace(pathname);
-          } else {
-            ret = clean_proc_mounts(dirfd, pathname, flags, mode);
-            log_violation_trace(pathname);
-          }
-          break;
-        }
-
-        ret = filterPathname(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
+
+      case __NR_faccessat:
+      case __NR_newfstatat: {
+        if (!is_trusted) {
+          if (shouldDenyAccess(path_payload)) {
+             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+             ipc_mem->ret = -EACCES;
+             ipc_mem->action = ACTION_USE_RET;
+          } else if (shouldSpoofExistence(path_payload)) {
+             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+             ipc_mem->ret = -ENOENT;
+             ipc_mem->action = ACTION_USE_RET;
+          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+             ipc_mem->ret = 0; // Fake Success
+             ipc_mem->action = ACTION_USE_RET;
+          }
+        }
+        break;
+      }
+
       case __NR_rt_sigaction: {
-        int signum = arg0;
-
-        if (signum == SIGSYS) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App tried to install SIGSYS handler! Spoofing success...");
-          log_violation_trace("SIGSYS handler hijacking");
-          ret = 0;
-        } else {
-          ret = arm64_raw_syscall(
-              nr,
-              arg0,
-              arg1,
-              arg2,
-              arg3,
-              arg4,
-              arg5);
+        if (ipc_mem->arg0 == SIGSYS) {
+            log_violation("SIGSYS hijacking", culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = 0;
+            ipc_mem->action = ACTION_USE_RET;
         }
-
         break;
       }
+
       case __NR_bind: {
-        int sockfd = (int)arg0;
-        struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
-        if (sockAddrStruct == nullptr) {
-          ret = -EFAULT;
-          break;
-        }
-        if (is_trusted_system_caller("(bind)", &patch_pc)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
-        }
-
-        char protocol[8] = {0};
-        int port = -1;
-        char ipAddr[INET6_ADDRSTRLEN] = {0};
-        char family[8] = {0};
-        get_socket_info(sockfd,
-                        sockAddrStruct,
-                        protocol,
-                        &port,
-                        ipAddr,
-                        family);
-
-        if (is_network_socket(family)) {
-          if (port == 0) {  // Random high ports
-            bool is_lan_bind = is_lan_address(sockAddrStruct);
-
-            if (is_lan_bind) {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-              log_violation_trace("(bind)");
-              ret = -EADDRNOTAVAIL;
-              
-              break;
-            }
-
-            // "Client" behavior: requesting a random temporary port
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          } else {
-            // "Server" behavior: setting up a port for listening
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            log_violation_trace("(bind)");
-            ret = 0;
-            
-          }
-        } else {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(bind) Allowing non-IP bind request");
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        if (!is_trusted && is_lan_address(sock_payload)) {
+            log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -EADDRNOTAVAIL;
+            ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }
+
       case __NR_listen: {
-        int sockfd = (int)arg0;
-
-        if (is_trusted_system_caller("(listen)", &patch_pc)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
-        }
-
-        struct sockaddr_storage sockAddrStorageStruct = {};
-        socklen_t len = sizeof(sockAddrStorageStruct);
-        long ret = arm64_raw_syscall(__NR_getsockname, sockfd, (long)&sockAddrStorageStruct, (long)&len, 0, 0, 0);
-        if (ret != 0) {
-          // Fail natively...
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
-        }
-
-        char protocol[8] = {0};
-        int port = -1;
-        char ipAddr[INET6_ADDRSTRLEN] = {0};
-        char family[8] = {0};
-        get_socket_info(sockfd,
-                        (struct sockaddr*)&sockAddrStorageStruct,
-                        protocol,
-                        &port,
-                        ipAddr,
-                        family);
-
-        if (is_network_socket(family)) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(listen)");
-          ret = 0;
-          
-        } else {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) Allowing for local/UNIX socket");
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        if (!is_trusted) {
+           // Let Target natively execute, blocking listen is handled by bind mostly.
+           ipc_mem->action = ACTION_EXECUTE_NATIVE;
         }
         break;
       }
-      case __NR_sendto: {
-        int sockfd = (int)arg0;
-        struct sockaddr* sockAddrStruct = (struct sockaddr*)arg4;
-        if (sockAddrStruct != nullptr) {
-          if (is_trusted_system_caller("(sendto)", &patch_pc)) {
-            ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-            break;
-          }
 
-          char protocol[8] = {0};
-          int port = -1;
-          char ipAddr[INET6_ADDRSTRLEN] = {0};
-          char family[8] = {0};
-
-          get_socket_info(sockfd,
-                          sockAddrStruct,
-                          protocol,
-                          &port,
-                          ipAddr,
-                          family);
-
-          if (is_network_socket(family)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            log_violation_trace("(sendto)");
-            ret = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
-            
-            break;
-          }
-        }
-
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-      case __NR_getsockname: {
-        // Let kernel execute the real syscall to populate the sockaddr struct
-        long realsockname = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-
-        // If it succeeded, inspect and scrub the returned struct
-        if (realsockname == 0 && arg1 != 0) {
-          if (is_trusted_system_caller("(getsockname)", &patch_pc, false)) {
-            ret = realsockname;
-            break;
-          }
-
-          int sockfd = (int)arg0;
-          struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
-
-          char protocol[8] = {0};
-          int port = -1;
-          char ipAddr[INET6_ADDRSTRLEN] = {0};
-          char family[8] = {0};
-
-          get_socket_info(sockfd,
-                          sockAddrStruct,
-                          protocol,
-                          &port,
-                          ipAddr,
-                          family);
-
-          if (is_network_socket(family)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            // log_violation_trace("(getsockname)");
-
-            if (sockAddrStruct->sa_family == AF_INET) {
-              ((struct sockaddr_in*)sockAddrStruct)->sin_addr.s_addr = htonl(INADDR_ANY);  // 0.0.0.0
-
-            } else if (sockAddrStruct->sa_family == AF_INET6) {
-              memset(&(((struct sockaddr_in6*)sockAddrStruct)->sin6_addr), 0, 16);  // ::
-            }
-            ret = realsockname;
-            break;
-          }
-        }
-
-        ret = realsockname;
-        break;
-      }
-      case __NR_socket: {
-        int domain = (int)arg0;  // AF_INET, AF_NETLINK, etc.
-        int type = (int)arg1;    // SOCK_STREAM, SOCK_RAW, etc.
-        int protocol = (int)arg2;
-
-        if (domain == AF_NETLINK) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket) Blocking AF_NETLINK");
-          is_trusted_system_caller("(socket) AF_NETLINK", &patch_pc);
-          ret = -EACCES;
-          
-          break;
-        }
-
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
+      case __NR_sendto:
       case __NR_sendmsg: {
-        int sockfd = (int)arg0;
-        struct msghdr* msg = (struct msghdr*)arg1;
-
-        if (msg != nullptr && msg->msg_name != nullptr) {
-          struct sockaddr* sockAddrStruct = (struct sockaddr*)msg->msg_name;
-
-          if (is_trusted_system_caller("(sendmsg)", &patch_pc)) {
-            ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-            break;
-          }
-
-          char protocol[8] = {0};
-          int port = -1;
-          char ipAddr[INET6_ADDRSTRLEN] = {0};
-          char family[8] = {0};
-
-          get_socket_info(sockfd,
-                          sockAddrStruct,
-                          protocol,
-                          &port,
-                          ipAddr,
-                          family);
-
-          if (is_network_socket(family)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: (sendmsg): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            log_violation_trace("(sendmsg)");
-            // Fool the app: return the length it tried to send
-            ret = (long)get_msghdr_len(msg);
-            break;
-          }
+        if (!is_trusted && sock_payload && is_lan_address(sock_payload)) {
+            log_violation("(sendto/msg)", culprit_lib, ipc_mem->caller_pc, offset);
+            // Lie and say bytes were sent
+            ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
+            ipc_mem->action = ACTION_USE_RET;
         }
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      case __NR_mmap: {
-        void* addr = (void*)arg0;
-        size_t length = (size_t)arg1;
-        int prot = (int)arg2;
-        int flags = (int)arg3;
-        int fd = (int)arg4;
-        off_t offset = (off_t)arg5;
 
-        if (is_trusted_system_caller("(mmap)", &patch_pc, false)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
+      case __NR_getsockname: {
+        if (!is_trusted) {
+            // Tell target to execute it natively, then scrub it!
+            ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
         }
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mmap");
-        // log_violation_trace("(mmap)");
-
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      case __NR_mprotect: {
-        void* addr = (void*)arg0;
-        size_t len = (size_t)arg1;
-        int prot = (int)arg2;
 
-        if (is_trusted_system_caller("(mprotect)", &patch_pc, false)) {
-          ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
+      case __NR_socket: {
+        if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
+            log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -EACCES;
+            ipc_mem->action = ACTION_USE_RET;
         }
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: mprotect");
-        // log_violation_trace("(mprotect)");
-
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
         break;
       }
-      default: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: got unexpected syscall(%d). Allowing...", nr);
-        ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-    }
-
-    ipc_mem->ret = ret;
-    if (ret >= 0) {
-      send_fd(sock, (int)ret);  // Teleport it
-      close((int)ret);          // Close broker's local copy to prevent -24
-      ipc_mem->ret = 0;         // Signal success to target
-    } else {
-      ipc_mem->ret = ret;  // Signal error to target
     }
 
     __sync_synchronize();

@@ -127,6 +127,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
+  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
+  ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
 
   // 3. Serialize Pointer Data (FREESTANDING ONLY)
   my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));

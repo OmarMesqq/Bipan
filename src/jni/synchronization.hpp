@@ -12,42 +12,32 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "shared.hpp"
 #include "logger.hpp"
+#include "shared.hpp"
 #include "utils.hpp"
 
 /**
  * The Broker calls this to "teleport" an FD to the Target.
  */
 inline void send_fd(int socket, int fd) {
-  struct msghdr msg;
-  my_memset(&msg, 0, sizeof(msg));  // Freestanding initialization
-
-  struct cmsghdr* cmsg;
-  char buf[CMSG_SPACE(sizeof(int))];
-  my_memset(buf, 0, sizeof(buf));
-
-  // Linux requires at least 1 byte of real data to send control messages
-  struct iovec io = {
-      .iov_base = (void*)"!",
-      .iov_len = 1};
+  struct msghdr msg = {};
+  char buf[CMSG_SPACE(sizeof(int))] = {0};
+  char dummy = '!';
+  struct iovec io = {.iov_base = &dummy, .iov_len = 1};
 
   msg.msg_iov = &io;
   msg.msg_iovlen = 1;
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  cmsg = CMSG_FIRSTHDR(&msg);
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   cmsg->cmsg_level = SOL_SOCKET;
-  cmsg->cmsg_type = SCM_RIGHTS;  // This is the "Magic" flag for FDs
+  cmsg->cmsg_type = SCM_RIGHTS;
   cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-
-  // Pack the FD into the control message data payload
   *((int*)CMSG_DATA(cmsg)) = fd;
 
-  // Use raw syscall instead of libc sendmsg
-  if (arm64_raw_syscall(__NR_sendmsg, socket, (long)&msg, 0, 0, 0, 0) < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "send_fd failed! Socket: %d | FD: %d", socket, fd);
+  if (sendmsg(socket, &msg, 0) < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "send_fd failed! Socket: %d | FD: %d | Err: %s", socket, fd, strerror(errno));
   }
 }
 

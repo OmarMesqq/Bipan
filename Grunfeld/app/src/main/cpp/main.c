@@ -37,8 +37,8 @@ void grunfeld_early_init() {
 
 static int is_noise(const char* path);
 static void hashTextSection();
-const char* proto_to_str(int proto);
-const char* fam_to_str(int fam);
+static const char* proto_to_str(int proto);
+static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
@@ -470,7 +470,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_buffer);
 }
 
-const char* proto_to_str(int proto) {
+static const char* proto_to_str(int proto) {
     switch (proto) {
         case TCP: return "TCP";
         case UDP: return "UDP";
@@ -478,7 +478,7 @@ const char* proto_to_str(int proto) {
     }
 }
 
-const char* fam_to_str(int fam) {
+static const char* fam_to_str(int fam) {
     switch (fam) {
         case IPv4: return "IPv4";
         case IPv6: return "IPv6";
