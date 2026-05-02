@@ -1,7 +1,7 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
-#include <android/log.h>
+
 #include <fcntl.h>
 #include <string.h>
 #include <sys/socket.h>

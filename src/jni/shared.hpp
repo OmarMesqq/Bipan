@@ -1,16 +1,9 @@
 #ifndef BIPAN_SHARED_H
 #define BIPAN_SHARED_H
 
-#include <android/log.h>
-
 #include <string>
 
 #define TAG "Bipan"
-
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 // Globals populated in entrypoint
 
@@ -66,5 +59,28 @@ extern SharedIPC* ipc_mem;
 extern int sv[2];
 #endif
 
+/**
+ * Android log priority values, in increasing order of priority.
+ */
+typedef enum android_LogPriority {
+  /** For internal use only.  */
+  ANDROID_LOG_UNKNOWN = 0,
+  /** The default priority, for internal use only.  */
+  ANDROID_LOG_DEFAULT, /* only for SetMinPriority() */
+  /** Verbose logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_VERBOSE,
+  /** Debug logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_DEBUG,
+  /** Informational logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_INFO,
+  /** Warning logging. For use with recoverable failures. */
+  ANDROID_LOG_WARN,
+  /** Error logging. For use with unrecoverable failures. */
+  ANDROID_LOG_ERROR,
+  /** Fatal logging. For use when aborting. */
+  ANDROID_LOG_FATAL,
+  /** For internal use only.  */
+  ANDROID_LOG_SILENT, /* only for SetMinPriority(); must be last */
+} android_LogPriority;
 
 #endif

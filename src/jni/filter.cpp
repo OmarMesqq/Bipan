@@ -7,7 +7,7 @@
 #include <syscall.h>
 #include <unistd.h>
 #include <sys/mman.h>
-
+#include "logger.hpp"
 #include <cerrno>
 
 #include "shared.hpp"
@@ -22,7 +22,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // (i.e., start_hi == end_hi). For small Android libs, this is 99.99% true.
   if ((lib_start >> 32) != (lib_end >> 32)) {
     // If it ever hits this, the BPF logic needs more complex boundary crossing checks
-    LOGE("Library crosses 4GB boundary, PC-relative seccomp may fail!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Library crosses 4GB boundary, PC-relative seccomp may fail!");
   }
 
   struct sock_filter trapFilter[] = {
@@ -124,7 +124,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // Promise the kernel we won't ask for elevated privileges.
   // This is necessary as this function will be run in Zygote (non-root)
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-    LOGE("applySeccomp: prctl failed: %d", errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: prctl failed: %d", errno);
     return;
   }
 
@@ -134,6 +134,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
    */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
-    LOGE("applySeccomp: failed to apply seccomp (errno %d)", errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: failed to apply seccomp (errno %d)", errno);
   }
 }

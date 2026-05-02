@@ -41,7 +41,7 @@ inline void send_fd(int socket, int fd) {
   *((int*)CMSG_DATA(cmsg)) = fd;
 
   if (sendmsg(socket, &msg, 0) < 0) {
-    LOGE("send_fd failed: %s (errno: %d) | FD to send: %d | Socket: %d\n",
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "send_fd failed: %s (errno: %d) | FD to send: %d | Socket: %d\n",
          strerror(errno), errno, fd, socket);
   }
 }

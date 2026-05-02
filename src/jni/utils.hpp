@@ -2,6 +2,7 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
+#include <syscall.h>
 #include "shared.hpp"
 
 #pragma clang diagnostic push
@@ -10,7 +11,7 @@
 /**
  * Executes a raw system call on ARM64
  */
-inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+__attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
   register long x8 __asm__("x8") = sysno;
   register long x0 __asm__("x0") = a0;
   register long x1 __asm__("x1") = a1;

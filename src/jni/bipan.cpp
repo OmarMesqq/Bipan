@@ -61,13 +61,13 @@ class Bipan : public zygisk::ModuleBase {
     // Filter the process: only spoof some packages
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
-      LOGE("preAppSpecialize: process name is nil. Aborting.");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "preAppSpecialize: process name is nil. Aborting.");
       return;
     }
     isTargetApp = isTarget(raw_process_name);
 
     if (isTargetApp) {
-      LOGD("preAppSpecialize: will apply sandbox for %s", raw_process_name);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
       snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
       size_t i = 0;
       while (raw_process_name[i] && i < 255) {
@@ -95,7 +95,7 @@ class Bipan : public zygisk::ModuleBase {
 
       // 2. Calculate size and log everything
       size_t lib_size = my_lib.end - my_lib.start;
-      LOGI("Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
            (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
       spoofBuildFields();
@@ -110,14 +110,14 @@ class Bipan : public zygisk::ModuleBase {
           -1, 0));
 
       if (ipc_mem == MAP_FAILED) {
-        LOGE("Failed to allocate shared memory for IPC!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to allocate shared memory for IPC!");
         _exit(1);
       }
 
       ipc_mem->status = IDLE;
 
       if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
-        LOGE("Failed to socketpair");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to socketpair");
         _exit(1);
       }
 
@@ -125,7 +125,7 @@ class Bipan : public zygisk::ModuleBase {
       if (pid == 0) {
         close(sv[1]);        // Close target's end
         startBroker(sv[0]);  // Pass the socket to broker loop
-        LOGE("Broker loop stopped!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker loop stopped!");
         _exit(-1);
       }
 
@@ -173,7 +173,7 @@ class Bipan : public zygisk::ModuleBase {
     // Map the byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
-      LOGE("injectAndStartJavaPayload: failed to create DirectByteBuffer!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "injectAndStartJavaPayload: failed to create DirectByteBuffer!");
       return;
     }
 
@@ -189,7 +189,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      LOGE("injectAndStartJavaPayload: failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "injectAndStartJavaPayload: failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
       return;
     }
 
@@ -201,7 +201,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      LOGE("inject: Failed to load class com.omarmesqq.bipan.SettingsHook");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "inject: Failed to load class com.omarmesqq.bipan.SettingsHook");
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
@@ -213,9 +213,9 @@ class Bipan : public zygisk::ModuleBase {
 
           if (env->ExceptionCheck()) {
             env->ExceptionClear();
-            LOGE("inject: Exception thrown inside SettingsHook.install()!");
+            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "inject: Exception thrown inside SettingsHook.install()!");
           } else {
-            LOGD("Bipan: Fileless Java Payload successfully injected and executing!");
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan: Fileless Java Payload successfully injected and executing!");
           }
         }
       }
@@ -255,7 +255,7 @@ class Bipan : public zygisk::ModuleBase {
   void fetchTargetProcesses() {
     int fd = api->connectCompanion();
     if (fd < 0) {
-      LOGE("fetchTargetProcesses: unexpected file descriptor %d", fd);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
       return;
     }
 
@@ -266,9 +266,9 @@ class Bipan : public zygisk::ModuleBase {
 
       if (pkgLenRet <= 0) {
         if (pkgLenRet < 0) {
-          LOGE("fetchTargetProcesses: error reading package name's length (errno %d)", errno);
+          write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: error reading package name's length (errno %d)", errno);
         } else {
-          LOGE("fetchTargetProcesses: fd %d returned EOF", fd);
+          write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: fd %d returned EOF", fd);
         }
         break;
       }
@@ -282,7 +282,7 @@ class Bipan : public zygisk::ModuleBase {
       std::string pkgName(len, '\0');
       ssize_t pkgNameRet = read(fd, &pkgName[0], len);
       if (pkgNameRet != (ssize_t)len) {
-        LOGE("fetchTargetProcesses: failed to read complete package name. Expected: %zd. Got: %zd", (ssize_t)len, pkgNameRet);
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: failed to read complete package name. Expected: %zd. Got: %zd", (ssize_t)len, pkgNameRet);
         break;
       }
       targetsSet.insert(pkgName);
@@ -296,13 +296,13 @@ class Bipan : public zygisk::ModuleBase {
     // Check for exceptions (e.g., field doesn't exist on this Android version)
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      LOGE("setField: failed to find field: %s", fieldName);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "setField: failed to find field: %s", fieldName);
       return;
     }
 
     jstring newStr = env->NewStringUTF(value);
     if (newStr == nullptr) {
-      LOGE("setField: failed create new Java String for value: %s", value);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "setField: failed create new Java String for value: %s", value);
       return;
     }
 
@@ -316,7 +316,7 @@ class Bipan : public zygisk::ModuleBase {
     jclass buildClass = env->FindClass("android/os/Build");
     if (buildClass == nullptr) {
       env->ExceptionClear();
-      LOGE("spoofBuildFields: could not find android.os.Build class!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "spoofBuildFields: could not find android.os.Build class!");
       return;
     }
 
@@ -344,7 +344,7 @@ class Bipan : public zygisk::ModuleBase {
     jclass versionClass = env->FindClass("android/os/Build$VERSION");
     if (versionClass == nullptr) {
       env->ExceptionClear();
-      LOGE("spoofBuildFields: could not find android.os.Build.VERSION class!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "spoofBuildFields: could not find android.os.Build.VERSION class!");
       return;
     }
 

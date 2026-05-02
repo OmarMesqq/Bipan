@@ -101,7 +101,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   
   // 1. REENTRANCY GUARD
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "!!!Recursed signal handler! Aborting");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] Recursed signal handler! Allowing syscall number %d", nr);
     ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, 
         ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1], 
         ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3], 

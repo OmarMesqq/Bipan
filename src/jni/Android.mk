@@ -36,7 +36,4 @@ LOCAL_LDFLAGS := -Wl,--gc-sections \
                  -Wl,--icf=all \
                  -flto
 
-# "Local Linker Libraries": dynamically link to liblog.so (for use of logcat)
-LOCAL_LDLIBS := -llog 
-
 include $(BUILD_SHARED_LIBRARY)

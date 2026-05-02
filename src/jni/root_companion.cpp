@@ -1,6 +1,6 @@
 #include <dirent.h>
 #include <unistd.h>
-
+#include "logger.hpp"
 #include <string>
 
 #include "shared.hpp"
@@ -29,7 +29,7 @@ static void companion_handler(int fd) {
     }
     closedir(dir);
   } else {
-    LOGE("companion_handler: failed to read targets dir (%s)!", TARGETS_DIR);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "companion_handler: failed to read targets dir (%s)!", TARGETS_DIR);
     return;
   }
 
