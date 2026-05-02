@@ -1,9 +1,10 @@
 #include "socket_helper.h"
 
 #include <string.h>
+#include <unistd.h>
 
-SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath) {
-    int sock = socket(fam, sockType, 0);
+SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto) {
+    int sock = socket(fam, sockType, proto);
 
     if (fam == IPv4) {
         struct sockaddr_in sas4 = {
@@ -29,7 +30,7 @@ SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* addre
                 .sas.sas6 = sas6
         };
         return res;
-    } else {
+    } else if (fam == Unix) {
         struct sockaddr_un sasUn = {
                 .sun_family = AF_UNIX
         };
@@ -38,6 +39,19 @@ SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* addre
                 .sock = sock,
                 .fam = fam,
                 .sas.sasUn = sasUn
+        };
+        return res;
+    } else {
+        struct sockaddr_nl sasNetlink;
+        memset(&sasNetlink, 0, sizeof(sasNetlink));
+        sasNetlink.nl_family = Netlink;
+        sasNetlink.nl_pid = getpid();
+        sasNetlink.nl_groups = 0;
+
+        SockFactoryRes res = {
+                .sock = sock,
+                .fam = fam,
+                .sas.sasNetlink = sasNetlink
         };
         return res;
     }

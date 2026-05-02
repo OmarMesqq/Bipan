@@ -212,7 +212,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
         if (fam == Unix) {
             // Run Unix tests separately (they don't need the IP address loop)
             for (int proto = 0; proto < 2; proto++) {
-                res = CreateSocket(Unix, protocols[proto], 0, 0, LOCAL_SOCKET);
+                res = CreateSocket(Unix, protocols[proto], 0, 0, LOCAL_SOCKET, 0);
                 ret = arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sasUn, sizeof(res.sas.sasUn), 0,0,0);
 
                 snprintf(entry, sizeof(entry), "UNIX | %s | res: %ld\n", proto_to_str(protocols[proto]), ret);
@@ -236,7 +236,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
 
             for (int port_idx = 0; port_idx < 2; port_idx++) {
                 for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
-                    res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0);
+                    res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0, 0);
 
                     ret = (fam == IPv4)
                                ? arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas4, sizeof(res.sas.sas4), 0,0,0)
@@ -255,6 +255,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
 }
 
 JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[256] = {0};
+    long ret = 0;
+
+    SockFactoryRes res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    return (*env)->NewStringUTF(env, "OK");
+}
+
+JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
     char report[8192] = {0};
     char entry[256] = {0};
@@ -263,7 +273,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobje
 
     const int port_ssdp_upnp = 1900;
     const char* ipv4_multicast_addr = "239.255.255.250";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0);
+    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
 
     long ret = arm64_raw_syscall(__NR_sendto, res.sock, (long)msg, (long)strlen(msg), 0, (long)&res.sas.sas4, sizeof(res.sas.sas4));
 
@@ -282,7 +292,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
     const int port_dns = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0);
+    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
 
     // use standard connect (Bipan allows public internet)
     connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4));

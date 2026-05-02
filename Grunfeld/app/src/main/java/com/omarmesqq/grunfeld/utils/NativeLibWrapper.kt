@@ -7,6 +7,7 @@ object NativeLibWrapper {
     external fun testBind(): String
     external fun testSendto(): String
     external fun testGetsockname(): String
+    external fun testSocket(): String
     external fun testSensors(): String
     external fun scanMaps(): String
 

@@ -3,17 +3,24 @@
 
 #include <arpa/inet.h>
 #include <sys/un.h>
+#include <linux/netlink.h>
 
 typedef enum {
     TCP = SOCK_STREAM,
-    UDP = SOCK_DGRAM
+    UDP = SOCK_DGRAM,
+    Raw = SOCK_RAW
 } SockType;
 
 typedef enum {
     IPv4 = AF_INET,
     IPv6 = AF_INET6,
-    Unix = AF_UNIX
+    Unix = AF_UNIX,
+    Netlink = AF_NETLINK
 } SockFamily;
+
+typedef enum {
+    NetlinkRoute = NETLINK_ROUTE
+} SockProto;
 
 typedef struct {
     int sock;
@@ -22,6 +29,7 @@ typedef struct {
         struct sockaddr_in sas4;
         struct sockaddr_in6 sas6;
         struct sockaddr_un sasUn;
+        struct sockaddr_nl sasNetlink;
     } sas;
 } SockFactoryRes;
 
@@ -30,6 +38,6 @@ typedef struct {
 #define ARBITRARY_PORT 8080 // server behavior
 
 
-SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath);
+SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto);
 
 #endif //SOCKET_HELPER_H

@@ -189,7 +189,7 @@ fun JniScreen() {
                 ReportTextWithCopy(socketReport, "socket not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        socketReport = NativeLibWrapper.testSocket()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
