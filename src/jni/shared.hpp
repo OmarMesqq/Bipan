@@ -15,7 +15,7 @@ extern uintptr_t g_bipan_lib_end;
 
 extern char package_name[256];
 
-// #define BROKER_ARCH
+#define BROKER_ARCH
 
 #ifdef BROKER_ARCH
 enum BROKER_STATUS {
@@ -37,10 +37,6 @@ typedef struct {
   long ret;  // return value provided by kernel
 } SharedIPC;
 
-/**
- * The declarations below are initialized once in Bipan's Zygote injection:
- * `bipan.cpp`
- */
 
 /**
  * IPC memory map between main process

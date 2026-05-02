@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include <syscall.h>
+
 #include "shared.hpp"
 
 #pragma clang diagnostic push
@@ -282,6 +283,34 @@ inline bool is_network_socket(const char* family) {
          (strcmp(family, "IPv6") == 0);
 }
 
+__attribute__((always_inline)) static inline size_t my_strlen(const char* s) {
+  size_t len = 0;
+  while (s[len]) len++;
+  return len;
+}
 
+__attribute__((always_inline)) static inline void* my_memset(void* s, int c, size_t n) {
+  unsigned char* p = (unsigned char*)s;
+  while (n--) *p++ = (unsigned char)c;
+  return s;
+}
+
+__attribute__((always_inline)) static inline char* my_strncpy(char* dest, const char* src, size_t n) {
+  size_t i;
+  for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
+  for (; i < n; i++) dest[i] = '\0';
+  return dest;
+}
+
+__attribute__((always_inline)) static inline void my_reverse(char* str, int len) {
+  int i = 0, j = len - 1;
+  while (i < j) {
+    char t = str[i];
+    str[i] = str[j];
+    str[j] = t;
+    i++;
+    j--;
+  }
+}
 
 #endif
