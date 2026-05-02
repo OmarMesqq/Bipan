@@ -31,7 +31,7 @@
 
 __attribute__((constructor))
 void grunfeld_early_init() {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Grunfeld early init");
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "early attribute constructor init");
 }
 
 
@@ -43,6 +43,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "JNI_OnLoad");
     return JNI_VERSION_1_6;
 }
 
@@ -110,14 +111,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanDevProperties(JNIEnv *env
         long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
 
         if (fd < 0) {
-            LOGD("[Dev Properties Probe] Failed to open %s (Error: %ld)", paths[i], fd);
+            LOGE("[Dev Properties Probe] Failed to open %s (Error: %ld)", paths[i], fd);
         } else {
             long bytes = arm64_raw_syscall(__NR_read, fd, (long)buffer, sizeof(buffer) - 1, 0, 0, 0);
             if (bytes > 0) {
                 buffer[bytes] = '\0';
                 LOGD("[Dev Properties Probe] Contents of %s: %s...", paths[i], buffer);
             } else {
-                LOGD("[Dev Properties Probe] Failed to show bytes of %s", paths[i]);
+                LOGE("[Dev Properties Probe] Failed to show bytes of %s", paths[i]);
             }
             arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
         }
@@ -186,28 +187,23 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     char entry[256] = {0};
     long ret = 0;
 
-    // Possible addresses to bind (5)
-    #define IPV4_LOCALHOST "127.0.0.1"
-    #define IPV6_LOCALHOST "::1"
-    #define IPV4_ANY "0.0.0.0"
-    #define IPV6_ANY "::"
-    #define LOCALHOST_LAN_IP "192.168.68.106"
-    const char* addrs[] = {
-            IPV4_LOCALHOST,
-            IPV6_LOCALHOST,
-            IPV4_ANY,
-            IPV6_ANY,
-            LOCALHOST_LAN_IP
+    // Addresses for IP socks to be bound to
+    const char* addrs[5] = {
+            "127.0.0.1", // IPv4 localhost
+            "::1", // IPv6 localhost
+            "0.0.0.0", // IPv4 unspecified
+            "::", // IPv6 unspecified
+            "192.168.68.106" // example of phone's own LAN IP
     };
 
-    // Ports to bind to (2)
-    const int ports[] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
+    // Ports for IP socks to be bound to
+    const int ports[2] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
 
-    // Protocols: TCP and UDP (2)
-    const int protocols[] = { TCP, UDP };
+    // Protocols
+    const int protocols[2] = { TCP, UDP };
     
-    // Family: IPv4 and IPv6 (2)
-    const int families[] = { IPv4, IPv6, Unix };
+    // Families: IPv4, IPv6, and local/unix domain
+    const int families[3] = { IPv4, IPv6, Unix };
 
     SockFactoryRes res = {0};
     for (int fam_idx = 0; fam_idx < 3; fam_idx++) {
@@ -258,47 +254,57 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env, jobject thiz) {
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[256] = {0};
     // sendto (Multicast / LAN Discovery)
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    struct sockaddr_in target = {
-            .sin_family = AF_INET,
-            .sin_port = htons(1900), // SSDP Port
-            .sin_addr.s_addr = inet_addr("239.255.255.250") // Multicast
-    };
     const char* msg = "M-SEARCH * HTTP/1.1";
 
-    long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, (long)strlen(msg), 0, (long)&target, sizeof(target));
-    LOGD("[NET] sendto LAN result: %ld (Expect spoofed byte count: %zu)", ret, strlen(msg));
+    const int port_ssdp_upnp = 1900;
+    const char* ipv4_multicast_addr = "239.255.255.250";
+    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0);
 
-    // getsockname (LAN IP Leak Prevention)
-    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the
-    // socket to see if it leaks the local IP
-    struct sockaddr_in cf_dns = {
-            .sin_family = AF_INET,
-            .sin_port = htons(53),
-            .sin_addr.s_addr = inet_addr("1.1.1.1")
-    };
+    long ret = arm64_raw_syscall(__NR_sendto, res.sock, (long)msg, (long)strlen(msg), 0, (long)&res.sas.sas4, sizeof(res.sas.sas4));
+
+    snprintf(entry, sizeof(entry), "\"sent\" bytes to LAN: %ld (Expected: %zu)\n", ret, strlen(msg));
+    strcat(report, entry);
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
+    long ret = 0;
+    char report[8192] = {0};
+    char entry[256] = {0};
+
+    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
+    const int port_dns = 53;
+    const char* cloudflareDnsIp4 = "1.1.1.1";
+    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0);
 
     // use standard connect (Bipan allows public internet)
-    connect(sock, (struct sockaddr*)&cf_dns, sizeof(cf_dns));
+    connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4));
 
     // getsockname
     struct sockaddr_in leaked_addr;
     socklen_t len = sizeof(leaked_addr);
 
-    // The kernel WILL return the real LAN IP here.
-    // Bipan should catch it, log the violation, and scrub it to 0.0.0.0.
-    ret = arm64_raw_syscall(__NR_getsockname, sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+    // The kernel WILL return the real LAN IP here. Bipan should catch it, log the violation, and scrub it to 0.0.0.0.
+    ret = arm64_raw_syscall(__NR_getsockname, res.sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        LOGD("[NET] getsockname result: %s (If 0.0.0.0, Bipan successfully scrubbed a REAL leak)", ip);
+        snprintf(entry, sizeof(entry), "socket IP: %s(Expect \"scrubbed\" value )\n", ip);
+    } else {
+        snprintf(entry, sizeof(entry), "failed with ret: %ld\n", ret);
     }
 
-    close(sock);
+    strcat(report, entry);
+    close(res.sock);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL

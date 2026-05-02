@@ -163,7 +163,7 @@ fun JniScreen() {
                 ReportTextWithCopy(sendtoReport, "sendto not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        sendtoReport = NativeLibWrapper.testSendto()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -176,7 +176,7 @@ fun JniScreen() {
                 ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        getsocknameReport = NativeLibWrapper.testGetsockname()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

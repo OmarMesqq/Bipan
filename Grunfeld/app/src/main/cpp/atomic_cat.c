@@ -16,6 +16,8 @@ struct __attribute__((packed)) log_header {
     uint32_t tv_nsec;    // Offset 7
 }; // Total size: 11 bytes
 
+static const char* LOGCAT_SOCK_PATH = "/dev/socket/logdw";
+
 void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* msg) {
     int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (fd < 0) {
@@ -25,9 +27,8 @@ void write_to_logcat_async(android_LogPriority prio, const char* tag, const char
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    // Note: The leading '\0' makes it an abstract socket namespace address
-    // but logdw is usually a filesystem node.
-    strncpy(addr.sun_path, "/dev/socket/logdw", sizeof(addr.sun_path) - 1);
+    // Note: The leading '\0' makes it an abstract socket namespace address but logdw is usually a filesystem node.
+    strncpy(addr.sun_path, LOGCAT_SOCK_PATH, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         close(fd);
@@ -44,7 +45,7 @@ void write_to_logcat_async(android_LogPriority prio, const char* tag, const char
     header.tv_sec = (uint32_t)now.tv_sec;
     header.tv_nsec = (uint32_t)now.tv_nsec;
 
-    uint8_t priority = prio;
+    uint8_t priority = (uint8_t) prio;
 
     // Use 5 vectors for the atomic write
     struct iovec vec[5];
