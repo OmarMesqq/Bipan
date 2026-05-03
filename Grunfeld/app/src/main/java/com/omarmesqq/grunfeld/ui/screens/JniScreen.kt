@@ -41,7 +41,9 @@ fun JniScreen() {
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var socketReport by remember { mutableStateOf("socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
-    var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
+    
+    var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
+    var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
 
     Column(
         modifier = Modifier
@@ -218,13 +220,13 @@ fun JniScreen() {
             }
         }
 
-        SectionHeader("MISC")
+        SectionHeader("ANTI-TAMPER")
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Signal Handler", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Attempt to overwrite SIGSYS handler", style = MaterialTheme.typography.titleMedium)
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -233,15 +235,36 @@ fun JniScreen() {
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                            Button(
+                Button(
                     onClick = {
                         val success = NativeLibWrapper.installSigsysHandler()
                         signalHandlerStatus = if (success) "Active" else "Failed"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Install SIGSYS handler")
+                    Text("sigaction SIGSYS")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = sigsysBlockStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Button(
+                    onClick = {
+                        val success = NativeLibWrapper.blockSigSys()
+                        sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sigprocmask SIGSYS")
                 }
             }
         }

@@ -235,11 +235,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
     return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobject thiz) {
-    // TODO: sigprocmask
-
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
@@ -421,12 +416,26 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
 
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
   if (ret != 0) {
-      LOGE("Failed to install SIGSYS handler (return: %ld)", ret);
       return JNI_FALSE;
   }
 
-  LOGD("Installed SIGSYS handler successfully!");
   return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobject thiz) {
+    sigset_t mask;
+
+    // 1. Initialize an empty signal set
+    sigemptyset(&mask);
+
+    // 2. Add SIGSYS to the set
+    sigaddset(&mask, SIGSYS);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
+        return JNI_FALSE;
+    } else {
+        return JNI_TRUE;
+    }
 }
 
 JNIEXPORT jstring JNICALL
