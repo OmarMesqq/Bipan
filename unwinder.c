@@ -1,14 +1,18 @@
 
 
+#include <elf.h>
+#include <fcntl.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/utsname.h>
 #include <syscall.h>
 #include <unistd.h>
@@ -33,6 +37,63 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 #define MAX_FRAMES 20
 #define MAX_INSTRUCTIONS 2048
 
+// Use 64-bit ELF structures for ARM64
+typedef Elf64_Ehdr ElfHeader;
+typedef Elf64_Shdr ElfSection;
+typedef Elf64_Sym ElfSymbol;
+
+/**
+ * Parses the physical ELF file to find a name for a relative offset.
+ * This sees STATIC labels that dladdr cannot.
+ */
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) return;
+
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    close(fd);
+    return;
+  }
+
+  // Map the ELF file into memory to parse headers
+  void* map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  close(fd);
+  if (map == MAP_FAILED) return;
+
+  ElfHeader* ehdr = (ElfHeader*)map;
+  ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
+  char* shstrtab = (char*)((uintptr_t)map + shdr[ehdr->e_shstrndx].sh_offset);
+
+  ElfSymbol* symtab = NULL;
+  char* strtab = NULL;
+  size_t sym_count = 0;
+
+  // 1. Locate Symbol Table and String Table
+  for (int i = 0; i < ehdr->e_shnum; i++) {
+    if (shdr[i].sh_type == SHT_SYMTAB) {
+      symtab = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
+      sym_count = shdr[i].sh_size / sizeof(ElfSymbol);
+    } else if (shdr[i].sh_type == SHT_STRTAB && strcmp(&shstrtab[shdr[i].sh_name], ".strtab") == 0) {
+      strtab = (char*)((uintptr_t)map + shdr[i].sh_offset);
+    }
+  }
+
+  // 2. Search for the offset in the symbols
+  if (symtab && strtab) {
+    for (size_t i = 0; i < sym_count; i++) {
+      // Check if our offset falls within this symbol's range
+      if (offset >= symtab[i].st_value && offset < (symtab[i].st_value + symtab[i].st_size)) {
+        strncpy(out_name, &strtab[symtab[i].st_name], max_len - 1);
+        goto cleanup;
+      }
+    }
+  }
+  strncpy(out_name, "???", max_len);
+
+cleanup:
+  munmap(map, st.st_size);
+}
 
 /**
  * REPLICATING dladdr:
@@ -82,9 +143,18 @@ static int manual_dladdr(uintptr_t addr, ManualDlInfo* info) {
 }
 
 static void print_resolved_frame(const char* label, uintptr_t addr) {
+  // CRITICAL: Strip ARM64 PAC (Pointer Authentication) bits
+  addr &= 0x0000FFFFFFFFFFFFULL;
+
   ManualDlInfo info;
+  char sym_name[256] = "???";
+
   if (manual_dladdr(addr, &info)) {
-    printf("%s %p -> %s (+0x%lx)\n", label, (void*)addr, info.dli_fname, info.dli_offset);
+    // Resolve static labels from the file on disk
+    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+
+    printf("%s %p -> %-15s | %s (+0x%lx)\n",
+           label, (void*)addr, sym_name, info.dli_fname, info.dli_offset);
   } else {
     printf("%s %p -> [unresolved]\n", label, (void*)addr);
   }
