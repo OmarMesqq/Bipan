@@ -20,7 +20,7 @@ enum CompanionCommand {
   CMD_START_BROKER = 2
 };
 
-enum BROKER_STATUS {
+enum BrokerStatus {
   IDLE = 0,
   REQUEST_SYSCALL = 1,
   BROKER_ANSWERED = 2

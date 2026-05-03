@@ -115,13 +115,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg5 = ctx->uc_mcontext.regs[5];
 
   lock_ipc();
-  // 1. Capture the "Root" of the trace
+
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
   ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
-  ipc_mem->target_pid = (pid_t) arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-
-  // 2. RESTORE THESE: The Broker needs to see the syscall arguments!
+  ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   ipc_mem->nr = nr;
   ipc_mem->arg0 = arg0;
   ipc_mem->arg1 = arg1;
@@ -130,7 +128,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
 
-  // Ensure payloads are clean
+  // Clean payloads
   my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
 
@@ -141,7 +139,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
     if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
@@ -150,7 +148,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (arg0 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
-  // Serialize Binary Structures with their exact lengths
+  // Serialize binary structures with their exact lengths
   long sock_ptr = 0;
   long sock_len = 0;
   struct sockaddr_storage temp_addr;  // Used for the Pre-Flight check
@@ -162,13 +160,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (nr == __NR_sendto) {
       sock_ptr = arg4;
       sock_len = arg5;
-    } else {  // __NR_sendmsg
+    } else {
       struct msghdr* msg = (struct msghdr*)arg1;
       if (msg) {
         sock_ptr = (long)msg->msg_name;
         sock_len = msg->msg_namelen;
 
-        // --- FIX 1: Securely calculate the total payload length ---
+        // Get payload's total length
         long total_len = 0;
         for (size_t i = 0; i < msg->msg_iovlen; i++) {
           total_len += msg->msg_iov[i].iov_len;
@@ -198,7 +196,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     long temp_len = sizeof(temp_addr);
     my_memset(&temp_addr, 0, sizeof(temp_addr));
 
-    // Call getsockname directly. arg0 is the sockfd.
+    // arg0 is the sockfd
     if (arm64_raw_syscall(__NR_getsockname, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
       sock_ptr = (long)&temp_addr;
       sock_len = temp_len;
@@ -243,10 +241,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
     if (result == 0 && arg1 != 0) {
       struct sockaddr* s = (struct sockaddr*)arg1;
-      if (s->sa_family == AF_INET)
+      if (s->sa_family == AF_INET) {
         ((struct sockaddr_in*)s)->sin_addr.s_addr = 0;
-      else if (s->sa_family == AF_INET6)
+      } else if (s->sa_family == AF_INET6) {
         my_memset(&(((struct sockaddr_in6*)s)->sin6_addr), 0, 16);
+      }
     }
   }
 

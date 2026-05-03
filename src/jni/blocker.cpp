@@ -10,59 +10,13 @@
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "spoofer.hpp"
-#include "unwinder.hpp"
 #include "utils.hpp"
 
-inline bool shouldLog(const char* pathname);
-inline bool shouldSpoofExistence(const char* pathname);
-inline bool shouldDenyAccess(const char* pathname);
-inline const char* shouldFakeFile(const char* pathname);
+bool shouldLog(const char* pathname);
+bool shouldSpoofExistence(const char* pathname);
+bool shouldDenyAccess(const char* pathname);
+const char* shouldFakeFile(const char* pathname);
 void patchInstruction(uintptr_t address, int return_value);
-
-/**
- * Blocks, lies about the existence or
- * provides a fake `memfd`'d FD for senstive
- * files. Otherwise, executes a raw syscall
- * to fetch FD to the file.
- */
-int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
-  const char* pathname = (const char*)a1;
-  if (pathname == nullptr) {
-    return -EFAULT;
-  }
-
-  const bool isCallerTrusted = is_trusted_system_caller(pathname, nullptr, false);
-  if (isCallerTrusted) {
-    return (int) arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
-  }
-
-  if (shouldSpoofExistence(pathname)) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Spoofing existence of %s", pathname);
-    log_violation_trace(pathname);
-    return -ENOENT;
-  }
-
-  const char* fakeFileContent = shouldFakeFile(pathname);
-  if (fakeFileContent != nullptr) {
-    int fake_fd = create_spoofed_file(fakeFileContent);
-    if (fake_fd >= 0) {
-      storeSpoofedFD(fake_fd, pathname);
-      return fake_fd;
-    }
-  }
-
-  if (shouldDenyAccess(pathname)) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Denying access to %s", pathname);
-    log_violation_trace(pathname);
-    return -EACCES;
-  }
-
-  // TODO: too noisy! bionic kills us. Should find an async-signal safe logging solution
-  // if (shouldLog(pathname) && !isCallerTrusted) {
-  //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing access to: %s", pathname);
-  // }
-  return (int) arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
-}
 
 static std::atomic<uintptr_t> last_neutralized_pc{0};
 /**
