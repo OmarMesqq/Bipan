@@ -33,7 +33,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
 
   const bool isCallerTrusted = is_trusted_system_caller(pathname, nullptr, false);
   if (isCallerTrusted) {
-    return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
+    return (int) arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
   }
 
   if (shouldSpoofExistence(pathname)) {
@@ -61,7 +61,7 @@ int filterPathname(long sysno, long a0, long a1, long a2, long a3, long a4, long
   // if (shouldLog(pathname) && !isCallerTrusted) {
   //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing access to: %s", pathname);
   // }
-  return arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
+  return (int) arm64_raw_syscall(sysno, a0, a1, a2, a3, a4, a5);
 }
 
 static std::atomic<uintptr_t> last_neutralized_pc{0};

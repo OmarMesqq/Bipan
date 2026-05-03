@@ -141,7 +141,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
     if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
