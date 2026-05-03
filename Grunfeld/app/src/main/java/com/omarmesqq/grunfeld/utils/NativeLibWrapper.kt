@@ -20,4 +20,5 @@ object NativeLibWrapper {
     external fun installSigsysHandler(): Boolean
 
     external fun blockSigSys(): Boolean
+    external fun queryProcStatus():String
 }

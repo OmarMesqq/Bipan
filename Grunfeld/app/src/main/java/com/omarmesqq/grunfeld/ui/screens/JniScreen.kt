@@ -45,6 +45,7 @@ fun JniScreen() {
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
+    var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
 
     Column(
         modifier = Modifier
@@ -285,6 +286,19 @@ fun JniScreen() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("sigprocmask SIGSYS")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                Button(
+                    onClick = {
+                        procSelfStatusReport = NativeLibWrapper.queryProcStatus()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("read /proc/self/status")
                 }
             }
         }

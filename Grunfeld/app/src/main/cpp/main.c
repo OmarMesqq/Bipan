@@ -13,6 +13,7 @@
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #include "shared.h"
 #include "socket_helper.h"
@@ -574,6 +575,53 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     } else {
         return JNI_TRUE;
     }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryPTrace(JNIEnv* env, jobject thiz) {
+    return JNI_TRUE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryProcStatus(JNIEnv* env, jobject thiz) {
+    FILE* fp = fopen("/proc/self/status", "r");
+    if (fp == NULL) {
+        return (*env)->NewStringUTF(env, "Unable to open /proc/self/status");
+    }
+
+    char report[2048] = {0};
+    char line[256] = {0};
+
+    // Define the prefixes of the relevant lines you want to keep
+    const char* relevant_prefixes[] = {
+            "Name:",
+            "State:",
+            "Pid:",
+            "PPid:",
+            "TracerPid:"
+    };
+    int num_prefixes = sizeof(relevant_prefixes) / sizeof(relevant_prefixes[0]);
+
+    // Read the status file line by line
+    while (fgets(line, sizeof(line), fp)) {
+        for (int i = 0; i < num_prefixes; i++) {
+            if (strncmp(line, relevant_prefixes[i], strlen(relevant_prefixes[i])) == 0) {
+                // Ensure buffer has enough space
+                if (strlen(report) + strlen(line) < sizeof(report) - 1) {
+                    strcat(report, line);
+                } else {
+                    // Truncate if we exceed the buffer
+                    break;
+                }
+                break;
+            }
+        }
+    }
+
+    fclose(fp);
+
+    // Return the filtered report to the JVM
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
