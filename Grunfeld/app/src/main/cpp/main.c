@@ -12,6 +12,7 @@
 #include <linux/fcntl.h>
 #include <sys/system_properties.h>
 #include <time.h>
+#include <errno.h>
 #include "shared.h"
 
 #include "atomic_cat.h"
@@ -188,10 +189,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanDevProperties(JNIEnv *env
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject thiz) {
     FILE* fp = fopen("/proc/self/maps", "r");
-    if (!fp) return (*env)->NewStringUTF(env, "Error: Could not open maps");
+    if (!fp) {
+        return (*env)->NewStringUTF(env, "Could not open maps");
+    }
 
     char line[1024];
-    char report[MAX_REPORT_SIZE] = "--- Bipan Stealth Report ---\n";
+    char report[MAX_REPORT_SIZE] = {0};
     int found_any = 0;
 
     while (fgets(line, sizeof(line), fp)) {
@@ -211,9 +214,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
 
             // Diagnostic check
             if (ptr[0] == 0x7f && ptr[1] == 'E' && ptr[2] == 'L' && ptr[3] == 'F') {
-                elf_status = "!! ELF HEADER DETECTED !!";
+                elf_status = "[!] ELF HEADER DETECTED";
             } else if (ptr[0] == 0x00 && ptr[1] == 0x00) {
-                elf_status = "Scrubbed (Safe)";
+                elf_status = "Two NULL bytes at region start";
             }
 
             // Append to our Kotlin-bound report
@@ -229,6 +232,77 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
 
     if (!found_any) {
         strcat(report, "\nNo suspicious executable regions found.\nStealth level: HIGH");
+    }
+
+    fclose(fp);
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanSmaps(JNIEnv *env, jobject thiz) {
+    FILE* fp = fopen("/proc/self/smaps", "r");
+    if (!fp) return (*env)->NewStringUTF(env, "Could not open smaps");
+
+    char line[1024];
+    char report[MAX_REPORT_SIZE] = {0};
+    int found_any = 0;
+
+    char current_addr[128] = "";
+    char current_perms[16] = "";
+    char current_path[256] = "";
+
+    while (fgets(line, sizeof(line), fp)) {
+        // 1. Detect memory region header line (contains region addresses and permissions)
+        if (strchr(line, '-') != NULL && strstr(line, " r") != NULL) {
+            char addr[128], perms[16], offset[16], dev[16], inode[16], path[256] = "";
+            int count = sscanf(line, "%s %s %s %s %s %s", addr, perms, offset, dev, inode, path);
+
+            // Filter out paths that are considered noise
+            if (is_noise(path)) {
+                current_perms[0] = '\0';
+                continue;
+            }
+
+            // Save the state for subsequent metrics lines safely
+            strcpy(current_addr, addr);
+
+            // Safety measure: Ensure we do not overflow current_perms
+            strncpy(current_perms, perms, sizeof(current_perms) - 1);
+            current_perms[sizeof(current_perms) - 1] = '\0'; // Ensure null-termination
+
+            if (count >= 6) {
+                strcpy(current_path, path);
+            } else {
+                strcpy(current_path, "Anonymous");
+            }
+            continue;
+        }
+
+        // 2. Process only executable regions
+        if (strstr(current_perms, "x") != NULL) {
+            found_any = 1;
+
+            // 3. Extract smap metrics (such as Size, Rss, Pss, KernelPageSize)
+            if (strstr(line, "Size:") || strstr(line, "Rss:") ||
+                strstr(line, "Pss:") || strstr(line, "KernelPageSize:")) {
+
+                char entry[512];
+
+                // Trim trailing newline
+                line[strcspn(line, "\r\n")] = 0;
+
+                snprintf(entry, sizeof(entry), "[Region]: %s | [Path]: %s | %s\n",
+                         current_addr, current_path, line);
+
+                if (strlen(report) + strlen(entry) < MAX_REPORT_SIZE - 1) {
+                    strcat(report, entry);
+                }
+            }
+        }
+    }
+
+    if (!found_any) {
+        strcat(report, "\nNo executable memory regions with smaps found.\n");
     }
 
     fclose(fp);
@@ -306,6 +380,24 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             }
         }
     }
+    return (*env)->NewStringUTF(env, report);
+}
+
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[256] = {0};
+    long ret = 0;
+
+    SockFactoryRes res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+
+    const int backlog = 10;
+    ret = arm64_raw_syscall(__NR_listen, res.sock, backlog, 0, 0, 0, 0);
+
+    snprintf(entry, sizeof(entry), "[listen] result: %ld, errno: %d\n", ret, errno);
+    strcat(report, entry);
+
     return (*env)->NewStringUTF(env, report);
 }
 

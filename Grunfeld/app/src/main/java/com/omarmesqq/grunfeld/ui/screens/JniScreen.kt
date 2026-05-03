@@ -33,7 +33,8 @@ fun JniScreen() {
 
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
-    var mapsReport by remember { mutableStateOf("Maps not tested yet") }
+    var mapsReport by remember { mutableStateOf("Maps not scanned yet") }
+    var smapsReport by remember { mutableStateOf("Smaps not scanned yet") }
     var devPropertiesReport by remember { mutableStateOf("dev properties not probed yet") }
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
@@ -41,7 +42,7 @@ fun JniScreen() {
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var socketReport by remember { mutableStateOf("socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
-    
+
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
 
@@ -98,7 +99,7 @@ fun JniScreen() {
                 Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
                 ReportTextWithCopy(unameReport, "Uname not fetched yet")
                 Button(onClick = { unameReport = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Get uname")
+                    Text("Fetch uname")
                 }
             }
         }
@@ -111,14 +112,33 @@ fun JniScreen() {
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(text = "Memory mappings", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(mapsReport, "Maps not tested yet")
+                Text(text = "/proc/self/maps", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(mapsReport, "Maps not scanned yet")
 
                 Button(
                     onClick = { mapsReport = NativeLibWrapper.scanMaps() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Scan /proc/self/maps")
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "/proc/self/smaps", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(smapsReport, "Smaps not scanned yet")
+
+                Button(
+                    onClick = { smapsReport = NativeLibWrapper.scanSmaps() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Scan /proc/self/smaps")
                 }
             }
         }
@@ -160,7 +180,7 @@ fun JniScreen() {
                 ReportTextWithCopy(listenReport, "listen not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        listenReport = NativeLibWrapper.testListen()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
