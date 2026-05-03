@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <linux/fcntl.h>
+#include <sys/system_properties.h>
 #include <time.h>
 #include "shared.h"
 
@@ -38,17 +39,74 @@ void grunfeld_early_init() {
 
 
 static int is_noise(const char* path);
-static void hashTextSection();
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "JNI_OnLoad");
     return JNI_VERSION_1_6;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
+
+    // 1. Read Build Info using native properties
+    char model[92], brand[92], display[92], fingerprint[128];
+    get_sys_prop("ro.product.model", model, sizeof(model), "Unknown");
+    get_sys_prop("ro.product.brand", brand, sizeof(brand), "Unknown");
+    get_sys_prop("ro.build.display.id", display, sizeof(display), "Unknown");
+    get_sys_prop("ro.build.fingerprint", fingerprint, sizeof(fingerprint), "Unknown");
+
+    // 2. Fetch ContentResolver from the Context object via JNI
+    jclass contextClass = (*env)->GetObjectClass(env, context);
+    jmethodID getContentResolver = (*env)->GetMethodID(env, contextClass, "getContentResolver", "()Landroid/content/ContentResolver;");
+    jobject contentResolver = (*env)->CallObjectMethod(env, context, getContentResolver);
+
+    // 3. Find Settings.Global class and methods
+    jclass settingsGlobalClass = (*env)->FindClass(env, "android/provider/Settings$Global");
+
+    // Get Settings.Global.DEVICE_NAME string
+    jmethodID getGlobalString = (*env)->GetStaticMethodID(env, settingsGlobalClass, "getString", "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
+    jstring deviceNameKey = (*env)->NewStringUTF(env, "device_name");
+    jstring jDeviceName = (jstring)(*env)->CallStaticObjectMethod(env, settingsGlobalClass, getGlobalString, contentResolver, deviceNameKey);
+
+    const char *cDeviceName = "Unknown";
+    if (jDeviceName != NULL) {
+        cDeviceName = (*env)->GetStringUTFChars(env, jDeviceName, 0);
+    }
+
+    // Get Settings.Global.ADB_ENABLED integer
+    jmethodID getGlobalInt = (*env)->GetStaticMethodID(env, settingsGlobalClass, "getInt", "(Landroid/content/ContentResolver;Ljava/lang/String;I)I");
+    jstring adbKey = (*env)->NewStringUTF(env, "adb_enabled");
+    jint adbEnabled = (*env)->CallStaticIntMethod(env, settingsGlobalClass, getGlobalInt, contentResolver, adbKey, -999);
+
+    // 4. Construct the final output C-string
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer),
+             "MODEL: %s\n"
+             "BRAND: %s\n"
+             "DISPLAY: %s\n"
+             "FINGERPRINT: %s\n"
+             "DEVICE_NAME: %s\n"
+             "ADB_ENABLED: %d",
+             model, brand, display, fingerprint, cDeviceName, adbEnabled);
+
+    // 5. Clean up JNI references to avoid memory leaks
+    if (jDeviceName != NULL) {
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, cDeviceName);
+        (*env)->DeleteLocalRef(env, jDeviceName);
+    }
+    (*env)->DeleteLocalRef(env, deviceNameKey);
+    (*env)->DeleteLocalRef(env, adbKey);
+    (*env)->DeleteLocalRef(env, contextClass);
+    (*env)->DeleteLocalRef(env, settingsGlobalClass);
+    (*env)->DeleteLocalRef(env, contentResolver);
+
+    return (*env)->NewStringUTF(env, buffer);
+}
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
@@ -518,13 +576,17 @@ static int is_noise(const char* path) {
     return 0;
 }
 
-static void hashTextSection() {
-
-}
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   LOGE("Should never reach here...");
   _exit(-1);
+}
+
+static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {
+    int len = __system_property_get(key, out_val);
+    if (len <= 0) {
+        strncpy(out_val, default_val, max_len);
+    }
 }
 
 #pragma clang diagnostic push

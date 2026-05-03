@@ -24,13 +24,16 @@ import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
+import androidx.compose.ui.platform.LocalContext
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun JniScreen() {
+    val context = LocalContext.current
+
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
-    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
+    var mapsReport by remember { mutableStateOf("Maps not tested yet") }
     var devPropertiesReport by remember { mutableStateOf("dev properties not probed yet") }
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
@@ -52,13 +55,23 @@ fun JniScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
+        SectionHeader("BUILD AND SETTINGS INFO")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Text(
+                text = NativeLibWrapper.getDeviceData(context),
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
         SectionHeader("SENSORS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            colors = if (sensorReport.contains("LEAK"))
-                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            else CardDefaults.cardColors()
+
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
@@ -88,24 +101,19 @@ fun JniScreen() {
             }
         }
 
-        SectionHeader("STEALTH")
+        SectionHeader("FILESYSTEM")
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (stealthReport.contains("!!"))
-                    MaterialTheme.colorScheme.errorContainer
-                else MaterialTheme.colorScheme.surfaceVariant
-            )
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(stealthReport, "Maps not tested yet")
+                Text(text = "Memory mappings", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(mapsReport, "Maps not tested yet")
 
                 Button(
-                    onClick = { stealthReport = NativeLibWrapper.scanMaps() },
+                    onClick = { mapsReport = NativeLibWrapper.scanMaps() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Scan /proc/self/maps")
@@ -113,7 +121,6 @@ fun JniScreen() {
             }
         }
 
-        SectionHeader("FILESYSTEM")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
