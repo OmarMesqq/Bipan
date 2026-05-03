@@ -56,42 +56,52 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
     return;
   }
 
-  // Map the ELF file into memory to parse headers
   void* map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   close(fd);
   if (map == MAP_FAILED) return;
 
   ElfHeader* ehdr = (ElfHeader*)map;
   ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
-  char* shstrtab = (char*)((uintptr_t)map + shdr[ehdr->e_shstrndx].sh_offset);
 
-  ElfSymbol* symtab = NULL;
-  char* strtab = NULL;
-  size_t sym_count = 0;
+  uintptr_t best_diff = (uintptr_t)-1;
+  char* found_name = NULL;
 
-  // 1. Locate Symbol Table and String Table
+  // Search both SYMTAB (Static) and DYNSYM (Dynamic)
   for (int i = 0; i < ehdr->e_shnum; i++) {
-    if (shdr[i].sh_type == SHT_SYMTAB) {
-      symtab = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
-      sym_count = shdr[i].sh_size / sizeof(ElfSymbol);
-    } else if (shdr[i].sh_type == SHT_STRTAB && strcmp(&shstrtab[shdr[i].sh_name], ".strtab") == 0) {
-      strtab = (char*)((uintptr_t)map + shdr[i].sh_offset);
-    }
-  }
+    if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
+      ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
+      size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
 
-  // 2. Search for the offset in the symbols
-  if (symtab && strtab) {
-    for (size_t i = 0; i < sym_count; i++) {
-      // Check if our offset falls within this symbol's range
-      if (offset >= symtab[i].st_value && offset < (symtab[i].st_value + symtab[i].st_size)) {
-        strncpy(out_name, &strtab[symtab[i].st_name], max_len - 1);
-        goto cleanup;
+      // sh_link automatically points to the correct string table for this symbol table
+      char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
+
+      for (size_t j = 0; j < count; j++) {
+        char* current_name = &strings[syms[j].st_name];
+
+        // TWEAK: Skip empty names, mapping symbols ($x, $d),
+        // and symbols that start after our offset.
+        if (syms[j].st_name == 0 || current_name[0] == '$' || syms[j].st_value > offset) {
+          continue;
+        }
+
+        uintptr_t diff = offset - syms[j].st_value;
+        if (diff < best_diff) {
+          best_diff = diff;
+          found_name = current_name;
+        }
       }
+
+      // If we found a perfect match (diff 0) in SYMTAB, we can stop early
+      if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) break;
     }
   }
-  strncpy(out_name, "???", max_len);
 
-cleanup:
+  if (found_name && strlen(found_name) > 0) {
+    strncpy(out_name, found_name, max_len - 1);
+  } else {
+    strncpy(out_name, "???", max_len);
+  }
+
   munmap(map, st.st_size);
 }
 
