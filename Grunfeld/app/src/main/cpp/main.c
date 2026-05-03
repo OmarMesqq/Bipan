@@ -13,9 +13,8 @@
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
-#include "shared.h"
 
-#include "atomic_cat.h"
+#include "shared.h"
 #include "socket_helper.h"
 
 jmp_buf jump_buffer;
@@ -35,7 +34,7 @@ jmp_buf jump_buffer;
 
 __attribute__((constructor))
 void grunfeld_early_init() {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "early attribute constructor init");
+    LOGI("early attribute constructor init");
 }
 
 
@@ -47,7 +46,7 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "JNI_OnLoad");
+    LOGI("JNI_OnLoad");
     return JNI_VERSION_1_6;
 }
 
