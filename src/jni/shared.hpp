@@ -33,7 +33,7 @@ enum IpcAction {
   ACTION_EXECUTE_AND_SCRUB_SOCK = 4
 };
 
-#define MAX_STACK_TRACE 20
+#define MAX_STACK_TRACE 40
 
 typedef struct {
   volatile int lock;

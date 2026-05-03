@@ -19,6 +19,7 @@
 
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "blocker.hpp"
 #include "logger.hpp"
@@ -38,6 +39,13 @@ typedef struct {
   uintptr_t dli_offset;  // Relative offset inside the file
 } ManualDlInfo;
 
+struct MapEntry {
+  uintptr_t start, end, offset;
+  std::string path;
+};
+static std::vector<MapEntry> current_maps;
+
+static void refresh_maps(pid_t pid);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset);
@@ -74,7 +82,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         for (int i = 0; i < MAX_STACK_TRACE; i++) {
           if (current_pc == 0) break;
 
-          // STRIP PAC BITS: This is why the maps lookup failed before!
+          // STRIP PAC BITS
           current_pc &= 0x0000FFFFFFFFFFFFULL;
 
           uintptr_t frame_offset = 0;
@@ -168,6 +176,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
                 ssize_t n;
                 lseek(fake_fd, 0, SEEK_SET);
                 while ((n = read(fake_fd, buf, sizeof(buf))) > 0) write(root_fd, buf, n);
+                lseek(root_fd, 0, SEEK_SET);
                 close(root_fd);
               }
               close(fake_fd);  // Cleanup daemon's copy
@@ -341,30 +350,6 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
 }
 
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
-  char path[64];
-  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
-
-  std::ifstream maps(path);
-  std::string line;
-
-  while (std::getline(maps, line)) {
-    uintptr_t start, end;
-    size_t offset_in_file;
-    // Extract start, end, and the file offset from the maps line
-    if (sscanf(line.c_str(), "%lx-%lx %*s %lx", &start, &end, &offset_in_file) >= 2) {
-      if (pc >= start && pc < end) {
-        if (out_offset) *out_offset = (pc - start) + offset_in_file;
-        size_t slash = line.find('/');
-        if (slash != std::string::npos) return line.substr(slash);
-        return "[Anonymous Memory]";
-      }
-    }
-  }
-  if (out_offset) *out_offset = 0;
-  return "[Unknown Source]";
-}
-
 static inline bool is_trusted_library(const std::string& lib_path) {
   return (lib_path.find("/system/") == 0 ||
           lib_path.find("/vendor/") == 0 ||
@@ -373,4 +358,51 @@ static inline bool is_trusted_library(const std::string& lib_path) {
 
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
   return pread(mem_fd, out, sizeof(uintptr_t), addr) == sizeof(uintptr_t);
+}
+
+static void refresh_maps(pid_t pid) {
+  current_maps.clear();
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
+
+  FILE* f = fopen(path, "re");
+  if (!f) return;
+
+  char line[512];
+  while (fgets(line, sizeof(line), f)) {
+    uintptr_t start, end, offset;
+    if (sscanf(line, "%lx-%lx %*s %lx", &start, &end, &offset) >= 2) {
+      char* slash = strchr(line, '/');
+      if (!slash) slash = strchr(line, '[');  // Catch [stack], [vdso], etc.
+
+      std::string lib = slash ? slash : "[Anonymous Memory]";
+      if (!lib.empty() && lib.back() == '\n') lib.pop_back();
+
+      current_maps.push_back({start, end, offset, lib});
+    }
+  }
+  fclose(f);
+}
+
+// --- THE FIX: Smart Cache Lookup ---
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
+  for (const auto& m : current_maps) {
+    if (pc >= m.start && pc < m.end) {
+      if (out_offset) *out_offset = (pc - m.start) + m.offset;
+      return m.path;
+    }
+  }
+
+  // CACHE MISS: A new library was loaded! Refresh maps and try exactly once more.
+  refresh_maps(pid);
+
+  for (const auto& m : current_maps) {
+    if (pc >= m.start && pc < m.end) {
+      if (out_offset) *out_offset = (pc - m.start) + m.offset;
+      return m.path;
+    }
+  }
+
+  if (out_offset) *out_offset = 0;
+  return "[Unknown Source]";
 }
