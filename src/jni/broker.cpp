@@ -17,8 +17,10 @@
 #include <syscall.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <fstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "logger.hpp"
@@ -49,11 +51,13 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
+static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 
 void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
+  std::unordered_set<uintptr_t> patched_pcs;
 
   while (true) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
@@ -66,10 +70,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
     uintptr_t offset = 0;
+    uintptr_t malicious_pc = ipc_mem->caller_pc;
     std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
     bool is_trusted = is_trusted_library(culprit_lib);
 
-    // IF PC is trusted, we must verify the ancestors remotely
+    // If the program counter is "trusted" - like libc - check its ancestors
     if (is_trusted) {
       char mem_path[64];
       snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
@@ -82,13 +87,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         for (int i = 0; i < MAX_STACK_TRACE; i++) {
           if (current_pc == 0) break;
 
-          // STRIP PAC BITS
+          // Stip arm64 PAC bits
           current_pc &= 0x0000FFFFFFFFFFFFULL;
 
           uintptr_t frame_offset = 0;
           std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
 
           if (!is_trusted_library(frame_lib)) {
+            malicious_pc = current_pc;
             culprit_lib = frame_lib;
             offset = frame_offset;
             is_trusted = false;
@@ -113,9 +119,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_execve:
       case __NR_execveat: {
         if (!is_trusted) {
-          log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: execve/execveat(%s)", ipc_mem->string_payload);
+          log_violation("execve/execveat", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EAGAIN;
           ipc_mem->action = ACTION_USE_RET;
+          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAGAIN, patched_pcs);
         }
         break;
       }
@@ -224,8 +232,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
           const char* action_name = (nr == __NR_bind) ? "(bind)" : "(connect)";
           log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
-          ipc_mem->ret = (nr == __NR_bind) ? -EADDRNOTAVAIL : -ECONNREFUSED;
+          int error_code = (nr == __NR_bind) ? -EADDRNOTAVAIL : -ECONNREFUSED;
+          ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
+          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
         }
         break;
       }
@@ -236,6 +246,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             log_violation("(listen) Blocked Network Server", culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
           } else {
             log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->action = ACTION_EXECUTE_NATIVE;
@@ -249,8 +260,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
           const char* action_name = (nr == __NR_sendto) ? "(sendto)" : "(sendmsg)";
           log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
-          ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
+          int error_code = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
+          ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
+          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
         }
         break;
       }
@@ -265,7 +278,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       case __NR_socket: {
         if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
-          // Resolve label for the log
           char sym_name[256] = "???";
           find_label_in_elf(culprit_lib.c_str(), offset, sym_name, sizeof(sym_name));
 
@@ -274,6 +286,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
+          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
         }
         break;
       }
@@ -398,7 +411,6 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   fclose(f);
 }
 
-// --- THE FIX: Smart Cache Lookup ---
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps) {
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
@@ -419,4 +431,52 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
 
   if (out_offset) *out_offset = 0;
   return "[Unknown Source]";
+}
+
+static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
+  // Seccomp traps the instruction *after* the syscall.
+  // We subtract 4 to target the actual 'svc #0' instruction.
+  uintptr_t target_addr = caller_pc - 4;
+
+  // anti reentrancy if already patched
+  if (patched_pcs.count(target_addr)) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "reentered remote patcher!");
+    return;
+  }
+
+  uint32_t opcode = 0xd503201f;  // Default to NOP
+
+  if (return_value >= 0 && return_value <= 65535) {
+    // Generate 'MOV x0, #return_value'
+    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
+  } else if (return_value == -13) {  // -EACCES
+    opcode = 0x92800180;
+  } else if (return_value == -99) {  // -EADDRNOTAVAIL
+    opcode = 0x92800C40;
+  } else if (return_value == -11) {  // -EAGAIN
+    opcode = 0x92800140;
+  } else if (return_value == -2) {  // -ENOENT
+    opcode = 0x92800040;
+  }
+
+  char mem_path[64];
+  snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", target_pid);
+
+  // Open target's memory for writing
+  int mem_fd = open(mem_path, O_WRONLY);
+  if (mem_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "failed to open app's `mem` for checking trust");
+    return;
+  }
+
+  // __builtin___clear_cache
+  ssize_t written = pwrite(mem_fd, &opcode, sizeof(opcode), target_addr);
+  close(mem_fd);
+
+  if (written == sizeof(opcode)) {
+    patched_pcs.insert(target_addr);  // put in thread local cache
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
+  } else {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
+  }
 }
