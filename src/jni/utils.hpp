@@ -325,57 +325,6 @@ __attribute__((always_inline)) static inline void* my_memcpy(void* dest, const v
   return dest;
 }
 
-inline static std::atomic<uintptr_t> last_neutralized_pc{0};
-/**
- * FIXME: this function has circular deps with `logger.hpp`
- * 
- * We patch the call site with a `nop`.
- * Bipan logs the violation as the PC at bottommost frame,
- * and every instruction in ARM64 is 4 bytes we just do:
- * PC_call = PC_logged - 4
- * and do nop(PC_call)
- */
-__attribute__((always_inline)) void inline patchInstruction(uintptr_t address, int return_value) {
-  if (last_neutralized_pc.exchange(address) == address) {
-    return;
-  }
-  // Find the start of the page (4KB align)
-  uintptr_t page_start = address & ~0xFFF;
-
-  // Make it writable
-  long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
-  if (ret != 0) {
-    // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "mprotect (W) failed natively: %ld", ret);
-    return;
-  }
-
-  // Let's default to NOP
-  uint32_t opcode = 0xd503201f;
-
-  if (return_value >= 0 && return_value <= 65535) {
-    // DYNAMIC ASSEMBLER: Generate 'MOV x0, #return_value' on the fly!
-    // Base opcode for MOV x0 is 0xD2800000. We shift the value by 5 bits to place it in the 'imm16' field.
-    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
-  } else if (return_value == -13) {  // -EACCES
-    opcode = 0x92800180;             // MOVN x0, #12 (~12 = -13)
-  } else if (return_value == -99) {  // -EADDRNOTAVAIL
-    opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
-  } else if (return_value == -11) {  // -EAGAIN
-    opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
-  } else if (return_value == -2) {   // -ENOENT
-    opcode = 0x92800040;             // MOVN x0, #1 (~1 = -2)
-  }
-
-  *(uint32_t*)address = opcode;
-
-  __builtin___clear_cache((char*)address, (char*)(address + 4));
-
-  // 5. Restore original permissions page permissions: probably (RX)
-  arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
-
-  // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
-}
-
 __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   return (
       !starts_with(pathname, "/data") &&

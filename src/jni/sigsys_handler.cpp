@@ -22,6 +22,8 @@
 #include "unwinder.hpp"
 #include "utils.hpp"
 
+inline static std::atomic<uintptr_t> last_patched_adhoc_pc{0};
+
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
   unsigned long sa_flags;
@@ -32,7 +34,7 @@ struct kernel_sigaction {
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void sigill_handler(int sig, siginfo_t* info, void* void_context);
 static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
-
+inline static void patch_instruction_in_process(uintptr_t address, int return_value);
 
 // Store original handlers to forward ART signals
 static struct kernel_sigaction old_sa_segv = {};
@@ -240,7 +242,7 @@ static void sigill_handler(int sig, siginfo_t* info, void* void_context) {
                           (void*)suicide_call_site, (void*)return_address);
 
     // Tell me lies...forever (NOP caller)
-    patchInstruction(suicide_call_site, 0);
+    patch_instruction_in_process(suicide_call_site, 0);
 
     // Set current CPU PC to return address. It's as if the crash never occurred!
     ctx->uc_mcontext.pc = return_address;
@@ -278,7 +280,7 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Bipan: Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
 
       // Lobotomize the instruction that actually triggered the SEGV
-      patchInstruction(fault_pc, 0);
+      patch_instruction_in_process(fault_pc, 0);
 
       // Force the CPU to the NEXT instruction (+4 bytes in ARM64)
       ctx->uc_mcontext.pc = fault_pc + 4;
@@ -290,7 +292,7 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
       uintptr_t suicide_call_site = return_address - 4;
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Bipan: Neutralizing call site %p", (void*)suicide_call_site);
 
-      patchInstruction(suicide_call_site, 0);
+      patch_instruction_in_process(suicide_call_site, 0);
       ctx->uc_mcontext.pc = return_address;
       ctx->uc_mcontext.regs[0] = 0;
     }
@@ -309,4 +311,49 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   _exit(-1);
+}
+
+/**
+ * TODO: this is ad-hoc for apps that trigger SIGSEGV and SIGILL. Think of better strategy
+ */
+inline static void patch_instruction_in_process(uintptr_t address, int return_value) {
+  if (last_patched_adhoc_pc.exchange(address) == address) {
+    return;
+  }
+
+  // Find the start of the page (4KB align)
+  uintptr_t page_start = address & ~0xFFF;
+
+  // Make it writable
+  long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "ad-hoc local mprotect (W) failed natively: %ld", ret);
+    return;
+  }
+
+  // Let's default to NOP
+  uint32_t opcode = 0xd503201f;
+
+  if (return_value >= 0 && return_value <= 65535) {
+    // DYNAMIC ASSEMBLER: Generate 'MOV x0, #return_value' on the fly!
+    // Base opcode for MOV x0 is 0xD2800000. We shift the value by 5 bits to place it in the 'imm16' field.
+    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
+  } else if (return_value == -13) {  // -EACCES
+    opcode = 0x92800180;             // MOVN x0, #12 (~12 = -13)
+  } else if (return_value == -99) {  // -EADDRNOTAVAIL
+    opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
+  } else if (return_value == -11) {  // -EAGAIN
+    opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
+  } else if (return_value == -2) {   // -ENOENT
+    opcode = 0x92800040;             // MOVN x0, #1 (~1 = -2)
+  }
+
+  *(uint32_t*)address = opcode;
+
+  __builtin___clear_cache((char*)address, (char*)(address + 4));
+
+  // 5. Restore original permissions page permissions: probably (RX)
+  arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
+
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Ad-hoc local patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
