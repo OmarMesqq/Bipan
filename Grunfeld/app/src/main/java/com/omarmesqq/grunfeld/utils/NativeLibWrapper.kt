@@ -15,6 +15,7 @@ object NativeLibWrapper {
     external fun testSendto(): String
     external fun testGetsockname(): String
     external fun testSocket(): String
+    external fun testSendmsg(): String
 
     external fun installSigsysHandler(): Boolean
 

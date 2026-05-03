@@ -209,7 +209,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("getsockname on LAN info")
+                    Text("getsockname")
                 }
             }
 
@@ -222,7 +222,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("socket")
+                    Text("AF_NETLINK socket")
                 }
             }
 
@@ -231,7 +231,7 @@ fun JniScreen() {
                 ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        sendmsgReport = NativeLibWrapper.testSendmsg()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

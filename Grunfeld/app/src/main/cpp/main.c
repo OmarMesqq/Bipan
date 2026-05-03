@@ -241,7 +241,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanSmaps(JNIEnv *env, jobject thiz) {
     FILE* fp = fopen("/proc/self/smaps", "r");
-    if (!fp) return (*env)->NewStringUTF(env, "Could not open smaps");
+    if (!fp) {
+        return (*env)->NewStringUTF(env, "Could not open smaps");
+    }
 
     char line[1024];
     char report[MAX_REPORT_SIZE] = {0};
@@ -445,7 +447,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
 
     // use standard connect (Bipan allows public internet)
-    connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4));
+    if (connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4)) == -1) {
+        snprintf(entry, sizeof(entry), "connect failed \n");
+        strcat(report, entry);
+        return (*env)->NewStringUTF(env, report);
+    }
 
     // getsockname
     struct sockaddr_in leaked_addr;
@@ -464,6 +470,47 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
 
     strcat(report, entry);
     close(res.sock);
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
+    if (setjmp(jump_buffer) != 0) {
+        return (*env)->NewStringUTF(env, "Socket creation failed");;
+    }
+    char report[8192] = {0};
+    char entry[256] = {0};
+
+    // 1. Create a UDP socket over IPv4 using your socket factory
+    SockFactoryRes res = CreateSocket(IPv4, UDP, "127.0.0.1", ARBITRARY_PORT, 0, 0);
+
+    // 2. Prepare the data to be sent using the Scatter/Gather (iovec) structure
+    char* data1 = "Message Header - ";
+    char* data2 = "Hello from sendmsg!";
+
+    struct iovec iov[2];
+    iov[0].iov_base = data1;
+    iov[0].iov_len = strlen(data1);
+
+    iov[1].iov_base = data2;
+    iov[1].iov_len = strlen(data2);
+
+    // 3. Prepare the msghdr structure
+    struct msghdr msg = {0};
+    msg.msg_name = &res.sas.sas4; // Destination address
+    msg.msg_namelen = sizeof(res.sas.sas4);
+    msg.msg_iov = iov;             // Pointer to the array of iovecs
+    msg.msg_iovlen = 2;            // Number of elements in the iovec array
+
+    // 4. Invoke the system call using the raw syscall wrapper
+    long ret = arm64_raw_syscall(__NR_sendmsg, res.sock, (long)&msg, 0, 0, 0, 0);
+
+    snprintf(entry, sizeof(entry), "[sendmsg] result: %ld, errno: %d\n", ret, errno);
+    strcat(report, entry);
+
+    // 5. Cleanup socket
+    close(res.sock);
+
     return (*env)->NewStringUTF(env, report);
 }
 
