@@ -114,6 +114,21 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg5 = ctx->uc_mcontext.regs[5];
 
   lock_ipc();
+  // 1. Capture the immediate return address (The Link Register x30)
+  // This is the direct culprit that called the libc wrapper.
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
+
+  // // 2. Walk the hardware Frame Pointer (x29) for deeper ancestors
+  // uintptr_t current_fp = ctx->uc_mcontext.regs[29];
+  // for (int i = 1; i < MAX_STACK_TRACE; i++) {
+  //   // Sanity check: must be non-null and 8-byte aligned
+  //   if (current_fp == 0 || (current_fp & 0x7) != 0) break;
+
+  //   // On ARM64: [FP] = Prev FP, [FP + 8] = Return Address
+  //   uintptr_t* stack = (uintptr_t*)current_fp;
+  //   ipc_mem->stack_trace[i] = stack[1];  // Capture return address
+  //   current_fp = stack[0];               // Move to previous frame
+  // }
 
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
   ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);

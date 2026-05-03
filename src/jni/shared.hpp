@@ -33,6 +33,8 @@ enum IpcAction {
   ACTION_EXECUTE_AND_SCRUB_SOCK = 4
 };
 
+#define MAX_STACK_TRACE 20
+
 typedef struct {
   volatile int lock;
   volatile int status;
@@ -50,6 +52,8 @@ typedef struct {
 
   int action;
   long ret;  // return value provided by kernel
+
+  uintptr_t stack_trace[MAX_STACK_TRACE];
 } SharedIPC;
 
 /**

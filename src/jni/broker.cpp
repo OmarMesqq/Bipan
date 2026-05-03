@@ -1,11 +1,20 @@
 #include "broker.hpp"
 
-#include <fcntl.h>
+#include <elf.h>
+#include <linux/filter.h>
 #include <linux/memfd.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
+#include <syscall.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -17,6 +26,19 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "utils.hpp"
+
+// Use 64-bit ELF structures for ARM64
+typedef Elf64_Ehdr ElfHeader;
+typedef Elf64_Shdr ElfSection;
+typedef Elf64_Sym ElfSymbol;
+
+typedef struct {
+  char dli_fname[256];   // Path to the library
+  uintptr_t dli_fbase;   // Base address of the library
+  uintptr_t dli_offset;  // Relative offset inside the file
+} ManualDlInfo;
+
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
 
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- BipanBroker Violation ---");
@@ -79,8 +101,37 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
     uintptr_t offset = 0;
-    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
-    bool is_trusted = is_trusted_library(culprit_lib);
+    std::string culprit_lib = "[Unknown]";
+    bool is_trusted = true;
+
+    // We check the PC and then every frame in the stack trace.
+    // If ANY frame comes from /data/app or /data/data, the whole chain is untrusted.
+
+    // Check the trapped PC first
+    culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
+    is_trusted = is_trusted_library(culprit_lib);
+
+    // If PC is trusted (like libc.so), look deeper into the stack trace
+    if (is_trusted) {
+      for (int i = 0; i < MAX_STACK_TRACE; i++) {
+        uintptr_t frame_pc = ipc_mem->stack_trace[i];
+        if (frame_pc == 0) break;
+
+        // PAC STRIP: Crucial for Android ARM64
+        // frame_pc &= 0x0000FFFFFFFFFFFFULL;
+
+        uintptr_t frame_offset = 0;
+        std::string frame_lib = get_culprit_so(ipc_mem->target_pid, frame_pc, &frame_offset);
+
+        // App found
+        if (!is_trusted_library(frame_lib)) {
+          culprit_lib = frame_lib;
+          offset = frame_offset;
+          is_trusted = false;
+          break;
+        }
+      }
+    }
 
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
@@ -97,10 +148,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_uname: {
-        struct utsname spoofed_buf;
-        ipc_mem->ret = uname_spoofer(&spoofed_buf);
-        if (ipc_mem->ret == 0) memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
-        ipc_mem->action = ACTION_USE_RET;
+        if (!is_trusted) {
+          struct utsname spoofed_buf;
+          ipc_mem->ret = uname_spoofer(&spoofed_buf);
+          if (ipc_mem->ret == 0) memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
+          ipc_mem->action = ACTION_USE_RET;
+        }
+
         break;
       }
 
@@ -184,7 +238,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_bind: {
-        if (sock_payload && is_lan_address(sock_payload)) {
+        if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
           log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EADDRNOTAVAIL;
           ipc_mem->action = ACTION_USE_RET;
@@ -193,14 +247,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_listen: {
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        log_violation("(listen)", culprit_lib, ipc_mem->caller_pc, offset);
+        if (!is_trusted) {
+          ipc_mem->action = ACTION_EXECUTE_NATIVE;
+          log_violation("(listen)", culprit_lib, ipc_mem->caller_pc, offset);
+        }
         break;
       }
 
       case __NR_sendto:
       case __NR_sendmsg: {
-        if (sock_payload && is_lan_address(sock_payload)) {
+        if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
           log_violation("(sendto/sendmsg)", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
           ipc_mem->action = ACTION_USE_RET;
@@ -209,14 +265,23 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
 
       case __NR_getsockname: {
-        ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-        log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
+        if (!is_trusted) {
+          ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
+          log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
+        }
+
         break;
       }
 
       case __NR_socket: {
-        if (ipc_mem->arg0 == AF_NETLINK) {
-          log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
+        if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
+          // Resolve label for the log (using your find_label_in_elf logic)
+          char sym_name[256] = "???";
+          find_label_in_elf(culprit_lib.c_str(), offset, sym_name, sizeof(sym_name));
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Bipan: Blocked NETLINK from %s (%s)",
+                                culprit_lib.c_str(), sym_name);
+
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
         }
@@ -228,4 +293,67 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
+}
+
+/**
+ * Parses the physical ELF file to find a name for a relative offset.
+ * This sees STATIC labels that dladdr cannot.
+ */
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) return;
+
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    close(fd);
+    return;
+  }
+
+  void* map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  close(fd);
+  if (map == MAP_FAILED) return;
+
+  ElfHeader* ehdr = (ElfHeader*)map;
+  ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
+
+  uintptr_t best_diff = (uintptr_t)-1;
+  char* found_name = NULL;
+
+  // Search both SYMTAB (Static) and DYNSYM (Dynamic)
+  for (int i = 0; i < ehdr->e_shnum; i++) {
+    if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
+      ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
+      size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
+
+      // sh_link automatically points to the correct string table for this symbol table
+      char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
+
+      for (size_t j = 0; j < count; j++) {
+        char* current_name = &strings[syms[j].st_name];
+
+        // TWEAK: Skip empty names, mapping symbols ($x, $d),
+        // and symbols that start after our offset.
+        if (syms[j].st_name == 0 || current_name[0] == '$' || syms[j].st_value > offset) {
+          continue;
+        }
+
+        uintptr_t diff = offset - syms[j].st_value;
+        if (diff < best_diff) {
+          best_diff = diff;
+          found_name = current_name;
+        }
+      }
+
+      // If we found a perfect match (diff 0) in SYMTAB, we can stop early
+      if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) break;
+    }
+  }
+
+  if (found_name && strlen(found_name) > 0) {
+    strncpy(out_name, found_name, max_len - 1);
+  } else {
+    strncpy(out_name, "???", max_len);
+  }
+
+  munmap(map, st.st_size);
 }
