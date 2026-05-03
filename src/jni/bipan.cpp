@@ -26,6 +26,8 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
+#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.SettingsHook"
+
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
 constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
@@ -62,7 +64,7 @@ class Bipan : public zygisk::ModuleBase {
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "preAppSpecialize: process name is nil. Aborting.");
-      return;
+      _exit(-1);
     }
     isTargetApp = isTarget(raw_process_name);
 
@@ -78,38 +80,39 @@ class Bipan : public zygisk::ModuleBase {
 
       g_broker_socket = api->connectCompanion();
       if (g_broker_socket < 0) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
+        _exit(-1);
       }
-      // 1. Tell the companion daemon we want to start a Broker thread
-      int cmd = 2;  // CMD_START_BROKER
+
+      // Tell the companion daemon we want to start a Broker thread
+      int cmd = CMD_START_BROKER;
       write(g_broker_socket, &cmd, sizeof(cmd));
 
-      // 2. Create the RAM-backed IPC memory
+      // Create the RAM-backed IPC memory
       int memfd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
       if (memfd < 0) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "memfd_create failed");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
         _exit(1);
       }
-
       ftruncate(memfd, sizeof(SharedIPC));
 
-      // 3. Map it locally for the Target App
+      // Map it locally for the Target App
       ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
       if (ipc_mem == MAP_FAILED) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
         _exit(1);
       }
 
       ipc_mem->status = IDLE;
       ipc_mem->lock = 0;
 
-      // 4. Teleport the FD to the Root Companion
+      // Teleport the FD to the Root Companion
       send_fd(g_broker_socket, memfd);
 
-      // Close our local FD handle (the memory remains mapped via mmap)
+      // Close our local FD handle
       close(memfd);
 
-      // 5. Save the socket so sigsys_handler can recv_fd() openat results
+      // Save the socket so sigsys_handler can recv_fd() openat results
       sv[1] = g_broker_socket;
     }
 
@@ -122,16 +125,13 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       registerDobbyLinkerHooks();
       registerDobbySensorsHooks();
+
       LibBounds my_lib;
       dl_iterate_phdr(find_lib_bounds, &my_lib);
-
-      // Save them to the globals
       g_bipan_lib_start = my_lib.start;
       g_bipan_lib_end = my_lib.end;
-
-      // 2. Calculate size and log everything
       size_t lib_size = my_lib.end - my_lib.start;
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Bipan Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
                             (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
       spoofBuildFields();
@@ -201,12 +201,12 @@ class Bipan : public zygisk::ModuleBase {
 
     // 4. Ask our new ClassLoader to find your SettingsHook class
     jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring className = env->NewStringUTF("com.omarmesqq.bipan.SettingsHook");
+    jstring className = env->NewStringUTF(BIPAN_JAVA_PACKAGE_NAME);
     jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load class com.omarmesqq.bipan.SettingsHook");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load class %s", BIPAN_JAVA_PACKAGE_NAME);
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 

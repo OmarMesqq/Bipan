@@ -15,7 +15,6 @@
 
 #include <atomic>
 
-#include "blocker.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
