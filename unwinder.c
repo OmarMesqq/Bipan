@@ -1,9 +1,12 @@
+
+
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
@@ -15,31 +18,97 @@ typedef struct {
   uintptr_t sp;
 } StackFrame;
 
+typedef struct {
+  char dli_fname[256];   // Path to the library
+  uintptr_t dli_fbase;   // Base address of the library
+  uintptr_t dli_offset;  // Relative offset inside the file
+} ManualDlInfo;
+
 static void foo(void);
 static void bar(void);
 static void baz(void);
 static void applySeccomp(void);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void unwinder(uintptr_t pc, uintptr_t sp);
 
 #define MAX_FRAMES 20
 #define MAX_INSTRUCTIONS 2048
 
-static void unwinder(uintptr_t pc, uintptr_t sp) {
-  printf("Starting Unwind from PC: %p, SP: %p\n", (void*)pc, (void*)sp);
-  printf("\n--- STACK HEXDUMP (Top (SP) at %p) ---\n", (void*)sp);
-  printf("  Offset  |      Address      |        Value        |  Note\n");
-  printf("----------|-------------------|---------------------|-------\n");
 
-  uint32_t* search_ptr = (uint32_t*)pc;
-  for (int i = 0; i < MAX_INSTRUCTIONS; i++) {
-    uintptr_t addr = (uintptr_t)&search_ptr[i];
-    uintptr_t val = search_ptr[i];
+/**
+ * REPLICATING dladdr:
+ * Opens /proc/self/maps, finds which region contains 'addr',
+ * and calculates the offset.
+ */
+static int manual_dladdr(uintptr_t addr, ManualDlInfo* info) {
+  FILE* f = fopen("/proc/self/maps", "re");
+  if (!f) return 0;
 
-    printf(" +%04zx    | %p | %016lx\n",
-           i * sizeof(uintptr_t), (void*)addr, (unsigned long)val);
+  char line[512];
+  int found = 0;
+
+  while (fgets(line, sizeof(line), f)) {
+    uintptr_t start, end, file_offset;
+    char perms[5];
+    // Format: start-end perms offset dev inode path
+    if (sscanf(line, "%lx-%lx %4s %lx", &start, &end, perms, &file_offset) < 4)
+      continue;
+
+    if (addr >= start && addr < end) {
+      info->dli_fbase = start;
+
+      // Calculate offset: (Actual Addr - Map Start) + File Offset
+      info->dli_offset = (addr - start) + file_offset;
+
+      // Extract the path (it starts after the inode field)
+      // We look for the first '/' or '[' (for [stack], [vdso], etc)
+      char* path_start = strchr(line, '/');
+      if (!path_start) path_start = strchr(line, '[');
+
+      if (path_start) {
+        char* newline = strchr(path_start, '\n');
+        if (newline) *newline = '\0';
+        strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
+      } else {
+        strcpy(info->dli_fname, "[anonymous memory]");
+      }
+
+      found = 1;
+      break;
+    }
   }
-  printf("--- END DUMP ---\n\n");
+
+  fclose(f);
+  return found;
+}
+
+static void print_resolved_frame(const char* label, uintptr_t addr) {
+  ManualDlInfo info;
+  if (manual_dladdr(addr, &info)) {
+    printf("%s %p -> %s (+0x%lx)\n", label, (void*)addr, info.dli_fname, info.dli_offset);
+  } else {
+    printf("%s %p -> [unresolved]\n", label, (void*)addr);
+  }
+}
+
+static void unwinder(uintptr_t fp, uintptr_t lr) {
+  // 1. The immediate caller is in the Link Register (x30)
+  print_resolved_frame("  Culprit (LR): ", lr);
+
+  // 2. Walk the Frame Pointer chain (x29)
+  for (int i = 0; i < MAX_FRAMES; ++i) {
+    if (!fp || (fp & 0x7)) break;
+
+    // On ARM64, the return address is 8 bytes above the Frame Pointer
+    uintptr_t* stack = (uintptr_t*)fp;
+    uintptr_t next_fp = stack[0];
+    uintptr_t return_addr = stack[1];
+
+    if (!return_addr) break;
+    print_resolved_frame("  Ancestor:     ", return_addr);
+
+    if (next_fp <= fp) break;  // Sanity check for stack direction
+    fp = next_fp;
+  }
 }
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
@@ -55,10 +124,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   uintptr_t pc = ctx->uc_mcontext.pc;
   uintptr_t sp = ctx->uc_mcontext.sp;
+  uintptr_t lr = ctx->uc_mcontext.regs[30];
+  uintptr_t fp = ctx->uc_mcontext.regs[29];
 
   if (nr == __NR_uname) {
     fprintf(stderr, "trapped uname\n");
-    unwinder(pc, sp);
+    unwinder(fp, lr);
   }
 }
 
