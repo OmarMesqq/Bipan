@@ -153,6 +153,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Binary Structures with their exact lengths
   long sock_ptr = 0;
   long sock_len = 0;
+  struct sockaddr_storage temp_addr; // Used for the Pre-Flight check
 
   if (nr == __NR_bind) {
     sock_ptr = arg1;
@@ -165,6 +166,17 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (msg && msg->msg_name) {
       sock_ptr = (long)msg->msg_name;
       sock_len = msg->msg_namelen;
+    }
+  } else if (nr == __NR_listen || nr == __NR_getsockname) {
+    // --- THE FIX: Pre-Flight Check ---
+    // listen() doesn't give us a sockaddr, so we must extract it from the FD
+    long temp_len = sizeof(temp_addr);
+    my_memset(&temp_addr, 0, sizeof(temp_addr));
+
+    // Call getsockname directly. arg0 is the sockfd.
+    if (arm64_raw_syscall(__NR_getsockname, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+      sock_ptr = (long)&temp_addr;
+      sock_len = temp_len;
     }
   }
 

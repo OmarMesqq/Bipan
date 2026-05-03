@@ -144,8 +144,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-            // --- THE FIX: The Perspective Shift ---
-            // Translate /proc/self/ to /proc/[target_pid]/ so the Broker reads the App's maps!
+            // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
               snprintf(real_path, sizeof(real_path), "/proc/%d/%s", ipc_mem->target_pid, path_payload + 11);
@@ -231,8 +230,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       case __NR_listen: {
         if (!is_trusted) {
-          ipc_mem->action = ACTION_EXECUTE_NATIVE;
-          log_violation("(listen)", culprit_lib, ipc_mem->caller_pc, offset);
+          if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
+            log_violation("(listen) Blocked Network Server", culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->ret = -EACCES;
+            ipc_mem->action = ACTION_USE_RET;
+          } else {
+            log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
+            ipc_mem->action = ACTION_EXECUTE_NATIVE;
+          }
         }
         break;
       }
@@ -252,7 +257,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
           log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
         }
-
         break;
       }
 
