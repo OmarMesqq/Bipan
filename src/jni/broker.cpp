@@ -111,6 +111,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (!current_fp || (current_fp & 0x7)) break;
         }
         close(mem_fd);
+      } else {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "startBroker: open /proc/<PID>/mem failed!");
       }
     }
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
@@ -119,11 +121,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_execve:
       case __NR_execveat: {
         if (!is_trusted) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Violation: execve/execveat(%s)", ipc_mem->string_payload);
-          log_violation("execve/execveat", culprit_lib, ipc_mem->caller_pc, offset);
+          const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
+          // log_violation("execve/execveat", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EAGAIN;
           ipc_mem->action = ACTION_USE_RET;
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAGAIN, patched_pcs);
         }
         break;
       }
@@ -142,15 +144,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_openat: {
         if (!is_trusted) {
           if (shouldDenyAccess(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] spoofed", path_payload);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -163,12 +167,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             int fake_fd = -1;
             if (is_maps(path_payload)) {
               fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_smaps(path_payload)) {
               fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_mounts(path_payload)) {
               fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] spoofed", path_payload);
             }
 
             if (fake_fd >= 0) {
@@ -201,16 +209,20 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_faccessat:
       case __NR_newfstatat: {
         if (!is_trusted) {
+          const char* action_name = (nr == __NR_faccessat) ? "faccessat" : "newfstatat";
           if (shouldDenyAccess(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
           }
@@ -220,7 +232,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       case __NR_rt_sigaction: {
         if (ipc_mem->arg0 == SIGSYS) {
-          log_violation("SIGSYS hijacking", culprit_lib, ipc_mem->caller_pc, offset);
+          log_violation("SIGSYS handler hijacking", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
         }
@@ -230,11 +242,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_bind:
       case __NR_connect: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          const char* action_name = (nr == __NR_bind) ? "(bind)" : "(connect)";
-          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+          const char* action_name = (nr == __NR_bind) ? "bind" : "connect";
+          // log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
           int error_code = (nr == __NR_bind) ? -EADDRNOTAVAIL : -ECONNREFUSED;
           ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(%s) denied", action_name, path_payload);
           patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
         }
         break;
@@ -243,12 +256,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_listen: {
         if (!is_trusted) {
           if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
-            log_violation("(listen) Blocked Network Server", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) blocked for IP socket");
+            // log_violation("(listen) blocked network server", culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
           } else {
-            log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
+            // log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) for non-INET socket allowed");
             ipc_mem->action = ACTION_EXECUTE_NATIVE;
           }
         }
@@ -258,8 +273,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_sendto:
       case __NR_sendmsg: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          const char* action_name = (nr == __NR_sendto) ? "(sendto)" : "(sendmsg)";
-          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+          const char* action_name = (nr == __NR_sendto) ? "sendto" : "sendmsg";
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(%s) spoofed", action_name, path_payload);
+          // log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
           int error_code = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
           ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
@@ -271,18 +287,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_getsockname: {
         if (!is_trusted) {
           ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-          log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
         }
         break;
       }
 
       case __NR_socket: {
         if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
-          char sym_name[256] = "???";
-          find_label_in_elf(culprit_lib.c_str(), offset, sym_name, sizeof(sym_name));
-
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked AF_NETLINK socket from %s (%s)",
-                                culprit_lib.c_str(), sym_name);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket AF_NETLINK) blocked");
 
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
@@ -393,7 +405,10 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   snprintf(path, sizeof(path), "/proc/%d/maps", pid);
 
   FILE* f = fopen(path, "re");
-  if (!f) return;
+  if (!f) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "failed to refresh maps");
+    return;
+  }
 
   char line[512];
   while (fgets(line, sizeof(line), f)) {
@@ -406,6 +421,8 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
       if (!lib.empty() && lib.back() == '\n') lib.pop_back();
 
       current_maps.push_back({start, end, offset, lib});
+    } else {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "sscanf failed while refreshing maps");
     }
   }
   fclose(f);
@@ -419,7 +436,7 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
     }
   }
 
-  // CACHE MISS: A new library was loaded! Refresh maps and try exactly once more.
+  // Cache MISS: something was loaded -> refresh maps and try again
   refresh_maps(pid, current_maps);
 
   for (const auto& m : current_maps) {
@@ -429,8 +446,10 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
     }
   }
 
-  if (out_offset) *out_offset = 0;
-  return "[Unknown Source]";
+  if (out_offset) {
+    *out_offset = 0;
+  }
+  return "[Unknown]";
 }
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
@@ -440,7 +459,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 
   // anti reentrancy if already patched
   if (patched_pcs.count(target_addr)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "reentered remote patcher!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] reentrancy in remote patcher!");
     return;
   }
 
@@ -465,7 +484,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   // Open target's memory for writing
   int mem_fd = open(mem_path, O_WRONLY);
   if (mem_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "failed to open app's `mem` for checking trust");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "failed to open app's memory for checking trust");
     return;
   }
 

@@ -141,7 +141,6 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
   arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
   arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Spoofing smaps: %s", pathname);
   return fake_fd;
 }
 
@@ -183,6 +182,5 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
 
   arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
   arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Spoofing mounts: %s", pathname);
   return fake_fd;
 }
