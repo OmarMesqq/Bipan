@@ -154,14 +154,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
             // Broker generates the fake file locally
             int fake_fd = -1;
-            if (is_maps(path_payload))
+            if (is_maps(path_payload)) {
               fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-            else if (is_smaps(path_payload))
+            } else if (is_smaps(path_payload)) {
               fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-            else if (is_mounts(path_payload))
+            } else if (is_mounts(path_payload)) {
               fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-            else
+            } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
+            }
 
             if (fake_fd >= 0) {
               // GHOST FILL: Root opens the Target's pre_fd and fills it!
@@ -219,10 +220,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
 
-      case __NR_bind: {
+      case __NR_bind:
+      case __NR_connect: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          log_violation("(bind)", culprit_lib, ipc_mem->caller_pc, offset);
-          ipc_mem->ret = -EADDRNOTAVAIL;
+          const char* action_name = (nr == __NR_bind) ? "(bind)" : "(connect)";
+          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = (nr == __NR_bind) ? -EADDRNOTAVAIL : -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
         }
         break;
@@ -245,7 +248,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_sendto:
       case __NR_sendmsg: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          log_violation("(sendto/sendmsg)", culprit_lib, ipc_mem->caller_pc, offset);
+          const char* action_name = (nr == __NR_sendto) ? "(sendto)" : "(sendmsg)";
+          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
           ipc_mem->action = ACTION_USE_RET;
         }
