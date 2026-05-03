@@ -297,6 +297,13 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   if (map == MAP_FAILED) return;
 
   ElfHeader* ehdr = (ElfHeader*)map;
+  // --- THE FIX: Verify ELF Magic before parsing! ---
+  // If this is an APK (ZIP), it will fail this check and safely return.
+  if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+    strncpy(out_name, "[APK/ZIP File]", max_len - 1);
+    munmap(map, st.st_size);
+    return;
+  }
   ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
 
   uintptr_t best_diff = (uintptr_t)-1;
