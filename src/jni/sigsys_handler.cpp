@@ -22,18 +22,6 @@
 #include "unwinder.hpp"
 #include "utils.hpp"
 
-struct SpoofedFD {
-  int fd;
-  char original_path[256];
-};
-
-// Fixed array to avoid heap
-static SpoofedFD global_spoofed_fds[128];
-static std::atomic<int> spoofed_fd_count{0};
-
-// Atomic spinlock (AS safe)
-static std::atomic_flag fds_lock = ATOMIC_FLAG_INIT;
-
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
   unsigned long sa_flags;
@@ -45,25 +33,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void sigill_handler(int sig, siginfo_t* info, void* void_context);
 static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
 
-void storeSpoofedFD(int fd, const char* original_path) {
-  // Acquire spinlock
-  while (fds_lock.test_and_set(std::memory_order_acquire));
-
-  int idx = spoofed_fd_count.load();
-  if (idx < 128) {
-    global_spoofed_fds[idx].fd = fd;
-    // Use local_strncpy or similar
-    size_t i = 0;
-    while (original_path[i] && i < 255) {
-      global_spoofed_fds[idx].original_path[i] = original_path[i];
-      i++;
-    }
-    global_spoofed_fds[idx].original_path[i] = '\0';
-    spoofed_fd_count.store(idx + 1);
-  }
-
-  fds_lock.clear(std::memory_order_release);  // Release
-}
 
 // Store original handlers to forward ART signals
 static struct kernel_sigaction old_sa_segv = {};
