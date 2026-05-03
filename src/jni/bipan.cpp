@@ -85,7 +85,7 @@ class Bipan : public zygisk::ModuleBase {
       write(g_broker_socket, &cmd, sizeof(cmd));
 
       // 2. Create the RAM-backed IPC memory
-      int memfd = arm64_raw_syscall(__NR_memfd_create, (long)"bipan_ipc", MFD_CLOEXEC, 0, 0, 0, 0);
+      int memfd = arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
       if (memfd < 0) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "memfd_create failed");
         _exit(1);
