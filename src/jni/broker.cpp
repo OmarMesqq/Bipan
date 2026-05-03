@@ -39,53 +39,9 @@ typedef struct {
 } ManualDlInfo;
 
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
-
-static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- BipanBroker Violation ---");
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
-}
-
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
-  char path[64];
-  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
-
-  std::ifstream maps(path);
-  std::string line;
-
-  while (std::getline(maps, line)) {
-    uintptr_t start, end;
-    size_t offset_in_file;
-    // Extract start, end, and the file offset from the maps line
-    if (sscanf(line.c_str(), "%lx-%lx %*s %lx", &start, &end, &offset_in_file) >= 2) {
-      if (pc >= start && pc < end) {
-        if (out_offset) *out_offset = (pc - start) + offset_in_file;
-        size_t slash = line.find('/');
-        if (slash != std::string::npos) return line.substr(slash);
-        return "[Anonymous Memory]";
-      }
-    }
-  }
-  if (out_offset) *out_offset = 0;
-  return "[Unknown Source]";
-}
-
-/**
- * Allowlists everything from:
- * - `/system`
- * - `/vendor`
- * - `/apex`
- *
- * WebView is denied (`/product`)
- */
-static bool is_trusted_library(const std::string& lib_path) {
-  return (lib_path.find("/system/") == 0 ||
-          lib_path.find("/vendor/") == 0 ||
-          lib_path.find("/apex/") == 0);
-}
+static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset);
+static bool is_trusted_library(const std::string& lib_path);
 
 void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
@@ -118,7 +74,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (frame_pc == 0) break;
 
         // PAC STRIP: Crucial for Android ARM64
-        // frame_pc &= 0x0000FFFFFFFFFFFFULL;
+        frame_pc &= 0x0000FFFFFFFFFFFFULL;
 
         uintptr_t frame_offset = 0;
         std::string frame_lib = get_culprit_so(ipc_mem->target_pid, frame_pc, &frame_offset);
@@ -356,4 +312,43 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   }
 
   munmap(map, st.st_size);
+}
+
+static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- BipanBroker Violation ---");
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
+}
+
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
+
+  std::ifstream maps(path);
+  std::string line;
+
+  while (std::getline(maps, line)) {
+    uintptr_t start, end;
+    size_t offset_in_file;
+    // Extract start, end, and the file offset from the maps line
+    if (sscanf(line.c_str(), "%lx-%lx %*s %lx", &start, &end, &offset_in_file) >= 2) {
+      if (pc >= start && pc < end) {
+        if (out_offset) *out_offset = (pc - start) + offset_in_file;
+        size_t slash = line.find('/');
+        if (slash != std::string::npos) return line.substr(slash);
+        return "[Anonymous Memory]";
+      }
+    }
+  }
+  if (out_offset) *out_offset = 0;
+  return "[Unknown Source]";
+}
+
+static bool is_trusted_library(const std::string& lib_path) {
+  return (lib_path.find("/system/") == 0 ||
+          lib_path.find("/vendor/") == 0 ||
+          lib_path.find("/apex/") == 0);
 }
