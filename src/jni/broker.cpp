@@ -109,7 +109,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     }
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
-    // TODO: eventually allow trusted callers
     switch (nr) {
       case __NR_execve:
       case __NR_execveat: {
@@ -258,11 +257,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       case __NR_socket: {
         if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
-          // Resolve label for the log (using your find_label_in_elf logic)
+          // Resolve label for the log
           char sym_name[256] = "???";
           find_label_in_elf(culprit_lib.c_str(), offset, sym_name, sizeof(sym_name));
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Bipan: Blocked NETLINK from %s (%s)",
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked AF_NETLINK socket from %s (%s)",
                                 culprit_lib.c_str(), sym_name);
 
           ipc_mem->ret = -EACCES;
@@ -297,8 +296,9 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   if (map == MAP_FAILED) return;
 
   ElfHeader* ehdr = (ElfHeader*)map;
-  // --- THE FIX: Verify ELF Magic before parsing! ---
-  // If this is an APK (ZIP), it will fail this check and safely return.
+
+  // Verify ELF Magic before parsing
+  // If this is an APK (ZIP), it will fail this check and safely return
   if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
     strncpy(out_name, "[APK/ZIP File]", max_len - 1);
     munmap(map, st.st_size);
@@ -321,8 +321,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
       for (size_t j = 0; j < count; j++) {
         char* current_name = &strings[syms[j].st_name];
 
-        // TWEAK: Skip empty names, mapping symbols ($x, $d),
-        // and symbols that start after our offset.
+        // Skip empty names, mapping symbols ($x, $d) and symbols that start after our offset.
         if (syms[j].st_name == 0 || current_name[0] == '$' || syms[j].st_value > offset) {
           continue;
         }
