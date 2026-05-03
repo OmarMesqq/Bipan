@@ -246,7 +246,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_sendmsg: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
           log_violation("(sendto/sendmsg)", culprit_lib, ipc_mem->caller_pc, offset);
-          ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : get_msghdr_len((struct msghdr*)ipc_mem->arg1);
+          ipc_mem->ret = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
           ipc_mem->action = ACTION_USE_RET;
         }
         break;

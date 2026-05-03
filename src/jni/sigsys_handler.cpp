@@ -153,19 +153,44 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Binary Structures with their exact lengths
   long sock_ptr = 0;
   long sock_len = 0;
-  struct sockaddr_storage temp_addr; // Used for the Pre-Flight check
+  struct sockaddr_storage temp_addr;  // Used for the Pre-Flight check
 
   if (nr == __NR_bind) {
     sock_ptr = arg1;
     sock_len = arg2;
-  } else if (nr == __NR_sendto) {
-    sock_ptr = arg4;
-    sock_len = arg5;
-  } else if (nr == __NR_sendmsg) {
-    struct msghdr* msg = (struct msghdr*)arg1;
-    if (msg && msg->msg_name) {
-      sock_ptr = (long)msg->msg_name;
-      sock_len = msg->msg_namelen;
+  } else if (nr == __NR_sendto || nr == __NR_sendmsg) {
+    if (nr == __NR_sendto) {
+      sock_ptr = arg4;
+      sock_len = arg5;
+    } else {  // __NR_sendmsg
+      struct msghdr* msg = (struct msghdr*)arg1;
+      if (msg) {
+        sock_ptr = (long)msg->msg_name;
+        sock_len = msg->msg_namelen;
+
+        // --- FIX 1: Securely calculate the total payload length ---
+        long total_len = 0;
+        for (size_t i = 0; i < msg->msg_iovlen; i++) {
+          total_len += msg->msg_iov[i].iov_len;
+        }
+        // Pass the safe length to the Broker using an unused argument (arg3)
+        ipc_mem->arg3 = total_len;
+      }
+    }
+
+    // --- FIX 2: The Connected Socket Interrogation ---
+    // If msg_name/dest is NULL, the socket is already connected.
+    // We must ask the kernel for the destination IP!
+    if (sock_ptr == 0) {
+      struct sockaddr_storage temp_addr;
+      long temp_len = sizeof(temp_addr);
+      my_memset(&temp_addr, 0, sizeof(temp_addr));
+
+      // getpeername extracts the destination IP of a connected socket
+      if (arm64_raw_syscall(__NR_getpeername, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+        sock_ptr = (long)&temp_addr;
+        sock_len = temp_len;
+      }
     }
   } else if (nr == __NR_listen || nr == __NR_getsockname) {
     // --- THE FIX: Pre-Flight Check ---
