@@ -2,9 +2,13 @@
 
 #include <string.h>
 #include <unistd.h>
+#include "shared.h"
 
 SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto) {
     int sock = socket(fam, sockType, proto);
+    if (sock == -1) {
+        longjmp(jump_buffer, 1);
+    }
 
     if (fam == IPv4) {
         struct sockaddr_in sas4 = {

@@ -11,10 +11,12 @@
 #include <sys/syscall.h>
 #include <linux/fcntl.h>
 #include <time.h>
+#include "shared.h"
 
 #include "atomic_cat.h"
 #include "socket_helper.h"
 
+jmp_buf jump_buffer;
 
 #define TAG "GrunfeldNative"
 #define MAX_REPORT_SIZE 8192
@@ -256,6 +258,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
+    if (setjmp(jump_buffer) != 0) {
+        return (*env)->NewStringUTF(env, "Socket creation failed");;
+    }
     char report[8192] = {0};
     char entry[256] = {0};
     long ret = 0;
