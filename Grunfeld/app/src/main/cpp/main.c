@@ -482,7 +482,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobj
     char entry[256] = {0};
 
     // 1. Create a UDP socket over IPv4 using your socket factory
-    SockFactoryRes res = CreateSocket(IPv4, UDP, "127.0.0.1", ARBITRARY_PORT, 0, 0);
+    SockFactoryRes res = CreateSocket(IPv4, UDP, "192.168.68.103", ARBITRARY_PORT, 0, 0);
 
     // 2. Prepare the data to be sent using the Scatter/Gather (iovec) structure
     char* data1 = "Message Header - ";
