@@ -113,7 +113,7 @@ void patchInstruction(uintptr_t address, int return_value) {
   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
 
-inline bool shouldLog(const char* pathname) {
+bool shouldLog(const char* pathname) {
   return (
       !starts_with(pathname, "/data") &&
       !starts_with(pathname, "/product/app/webview") &&
@@ -141,7 +141,7 @@ inline bool shouldLog(const char* pathname) {
       }()));
 }
 
-inline bool shouldSpoofExistence(const char* pathname) {
+bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
@@ -169,7 +169,7 @@ inline bool shouldSpoofExistence(const char* pathname) {
       strstr(pathname, "otacerts") != nullptr));
 }
 
-inline bool shouldDenyAccess(const char* pathname) {
+bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
            // Phone's EFS
            starts_with(pathname, "/mnt/vendor/efs") ||
@@ -185,7 +185,7 @@ inline bool shouldDenyAccess(const char* pathname) {
            strcmp(pathname, "/proc/vmstat") == 0));
 }
 
-inline const char* shouldFakeFile(const char* pathname) {
+const char* shouldFakeFile(const char* pathname) {
   if (strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
   }

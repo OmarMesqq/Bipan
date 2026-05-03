@@ -41,7 +41,8 @@ typedef struct {
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset);
-static bool is_trusted_library(const std::string& lib_path);
+static inline bool is_trusted_library(const std::string& lib_path);
+static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 
 void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
@@ -57,38 +58,47 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
     uintptr_t offset = 0;
-    std::string culprit_lib = "[Unknown]";
-    bool is_trusted = true;
+    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
+    bool is_trusted = is_trusted_library(culprit_lib);
 
-    // We check the PC and then every frame in the stack trace.
-    // If ANY frame comes from /data/app or /data/data, the whole chain is untrusted.
-
-    // Check the trapped PC first
-    culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
-    is_trusted = is_trusted_library(culprit_lib);
-
-    // If PC is trusted (like libc.so), look deeper into the stack trace
+    // IF PC is trusted, we must verify the ancestors remotely
     if (is_trusted) {
-      for (int i = 0; i < MAX_STACK_TRACE; i++) {
-        uintptr_t frame_pc = ipc_mem->stack_trace[i];
-        if (frame_pc == 0) break;
+      char mem_path[64];
+      snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
+      int mem_fd = open(mem_path, O_RDONLY);
 
-        // PAC STRIP: Crucial for Android ARM64
-        frame_pc &= 0x0000FFFFFFFFFFFFULL;
+      if (mem_fd >= 0) {
+        uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
+        uintptr_t current_fp = ipc_mem->caller_fp;
 
-        uintptr_t frame_offset = 0;
-        std::string frame_lib = get_culprit_so(ipc_mem->target_pid, frame_pc, &frame_offset);
+        for (int i = 0; i < MAX_STACK_TRACE; i++) {
+          if (current_pc == 0) break;
 
-        // App found
-        if (!is_trusted_library(frame_lib)) {
-          culprit_lib = frame_lib;
-          offset = frame_offset;
-          is_trusted = false;
-          break;
+          // STRIP PAC BITS: This is why the maps lookup failed before!
+          current_pc &= 0x0000FFFFFFFFFFFFULL;
+
+          uintptr_t frame_offset = 0;
+          std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset);
+
+          if (!is_trusted_library(frame_lib)) {
+            culprit_lib = frame_lib;
+            offset = frame_offset;
+            is_trusted = false;
+            break;
+          }
+
+          // Walk to the next frame in the target process
+          uintptr_t next_fp, next_lr;
+          if (!safe_read(mem_fd, current_fp, &next_fp) ||
+              !safe_read(mem_fd, current_fp + 8, &next_lr)) break;
+
+          current_fp = next_fp;
+          current_pc = next_lr;
+          if (!current_fp || (current_fp & 0x7)) break;
         }
+        close(mem_fd);
       }
     }
-
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
     // TODO: eventually allow trusted callers
@@ -126,15 +136,23 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
             log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            // --- THE FIX: The Perspective Shift ---
+            // Translate /proc/self/ to /proc/[target_pid]/ so the Broker reads the App's maps!
+            char real_path[256];
+            if (strncmp(path_payload, "/proc/self/", 11) == 0) {
+              snprintf(real_path, sizeof(real_path), "/proc/%d/%s", ipc_mem->target_pid, path_payload + 11);
+            } else {
+              strncpy(real_path, path_payload, sizeof(real_path));
+            }
 
             // Broker generates the fake file locally
             int fake_fd = -1;
             if (is_maps(path_payload))
-              fake_fd = clean_proc_maps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
             else if (is_smaps(path_payload))
-              fake_fd = clean_proc_smaps(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
             else if (is_mounts(path_payload))
-              fake_fd = clean_proc_mounts(ipc_mem->arg0, path_payload, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
             else
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
 
@@ -347,8 +365,12 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   return "[Unknown Source]";
 }
 
-static bool is_trusted_library(const std::string& lib_path) {
+static inline bool is_trusted_library(const std::string& lib_path) {
   return (lib_path.find("/system/") == 0 ||
           lib_path.find("/vendor/") == 0 ||
           lib_path.find("/apex/") == 0);
+}
+
+static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
+  return pread(mem_fd, out, sizeof(uintptr_t), addr) == sizeof(uintptr_t);
 }

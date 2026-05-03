@@ -40,6 +40,8 @@ typedef struct {
   volatile int status;
 
   uintptr_t caller_pc;
+  uintptr_t caller_fp;
+  uintptr_t caller_lr;
   pid_t target_pid;
 
   int nr;  // syscall number

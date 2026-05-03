@@ -101,7 +101,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int nr = info->si_syscall;
 
   if (in_sigsys_handler) {
-    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1], ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3], ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
+    ctx->uc_mcontext.regs[0] = -ENOSYS;
     return;
   }
   in_sigsys_handler = true;
@@ -114,24 +115,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg5 = ctx->uc_mcontext.regs[5];
 
   lock_ipc();
-  // 1. Capture the immediate return address (The Link Register x30)
-  // This is the direct culprit that called the libc wrapper.
+  // 1. Capture the "Root" of the trace
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
-
-  // // 2. Walk the hardware Frame Pointer (x29) for deeper ancestors
-  // uintptr_t current_fp = ctx->uc_mcontext.regs[29];
-  // for (int i = 1; i < MAX_STACK_TRACE; i++) {
-  //   // Sanity check: must be non-null and 8-byte aligned
-  //   if (current_fp == 0 || (current_fp & 0x7) != 0) break;
-
-  //   // On ARM64: [FP] = Prev FP, [FP + 8] = Return Address
-  //   uintptr_t* stack = (uintptr_t*)current_fp;
-  //   ipc_mem->stack_trace[i] = stack[1];  // Capture return address
-  //   current_fp = stack[0];               // Move to previous frame
-  // }
-
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
+  ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
   ipc_mem->target_pid = arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+
+  // 2. RESTORE THESE: The Broker needs to see the syscall arguments!
   ipc_mem->nr = nr;
   ipc_mem->arg0 = arg0;
   ipc_mem->arg1 = arg1;
@@ -140,14 +130,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
 
+  // Ensure payloads are clean
   my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
-  my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+
+  __sync_synchronize();
 
   // Create FD beforehand to prevent SELinux from complaining untrusted->privileged
   int pre_fd = -1;
 
-  // 1. Serialize Strings (Safe to use my_strncpy since they are null-terminated paths)
+  // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
@@ -158,7 +150,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (arg0 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
-  // 2. Serialize Binary Structures using my_memcpy and EXACT lengths
+  // Serialize Binary Structures with their exact lengths
   long sock_ptr = 0;
   long sock_len = 0;
 
@@ -176,7 +168,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
   }
 
-  // Getsockname populates the struct on return, no need to send it upfront
+  // getsockname populates the struct on return, no need to send it upfront
   if (sock_ptr != 0 && sock_len > 0) {
     size_t copy_len = (sock_len > 127) ? 127 : (size_t)sock_len;
     my_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
@@ -193,7 +185,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long result = 0;
   int action = ipc_mem->action;
 
-  // ROUTE THE ACTION
+  // Route the action
   if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup unused ghost
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
@@ -203,7 +195,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     result = ipc_mem->ret;
 
-    // DESERIALIZE Outputs safely using exact lengths
+    // Deserialize outputs with their exact lengths
     if (nr == __NR_uname && result == 0) {
       my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     } else if (nr == __NR_readlinkat && result > 0) {
