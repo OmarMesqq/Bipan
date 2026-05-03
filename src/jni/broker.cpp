@@ -43,17 +43,18 @@ struct MapEntry {
   uintptr_t start, end, offset;
   std::string path;
 };
-static std::vector<MapEntry> current_maps;
 
-static void refresh_maps(pid_t pid);
+static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps);
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset);
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 
 void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
+
+  std::vector<MapEntry> current_maps;
 
   while (true) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
@@ -66,7 +67,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
     uintptr_t offset = 0;
-    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset);
+    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
     bool is_trusted = is_trusted_library(culprit_lib);
 
     // IF PC is trusted, we must verify the ancestors remotely
@@ -86,7 +87,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           current_pc &= 0x0000FFFFFFFFFFFFULL;
 
           uintptr_t frame_offset = 0;
-          std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset);
+          std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
 
           if (!is_trusted_library(frame_lib)) {
             culprit_lib = frame_lib;
@@ -366,7 +367,7 @@ static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
   return pread(mem_fd, out, sizeof(uintptr_t), addr) == sizeof(uintptr_t);
 }
 
-static void refresh_maps(pid_t pid) {
+static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   current_maps.clear();
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/maps", pid);
@@ -391,7 +392,7 @@ static void refresh_maps(pid_t pid) {
 }
 
 // --- THE FIX: Smart Cache Lookup ---
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset) {
+static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps) {
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
       if (out_offset) *out_offset = (pc - m.start) + m.offset;
@@ -400,7 +401,7 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   }
 
   // CACHE MISS: A new library was loaded! Refresh maps and try exactly once more.
-  refresh_maps(pid);
+  refresh_maps(pid, current_maps);
 
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
