@@ -277,7 +277,7 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
     // 3. THE FIX: If the return address is the same as the fault address,
     // or very close, the current instruction IS the problem.
     if (return_address == 0 || return_address == fault_pc) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Bipan: Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
 
       // Lobotomize the instruction that actually triggered the SEGV
       patch_instruction_in_process(fault_pc, 0);
@@ -286,11 +286,11 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
       ctx->uc_mcontext.pc = fault_pc + 4;
       ctx->uc_mcontext.regs[0] = 0;  // Set return to 0 (Success)
 
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Bipan: Loop broken. Advanced to %p", (void*)ctx->uc_mcontext.pc);
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Loop broken. Advanced to %p", (void*)ctx->uc_mcontext.pc);
     } else {
       // Standard recovery for function calls (suicide jumps)
       uintptr_t suicide_call_site = return_address - 4;
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Bipan: Neutralizing call site %p", (void*)suicide_call_site);
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Neutralizing call site %p", (void*)suicide_call_site);
 
       patch_instruction_in_process(suicide_call_site, 0);
       ctx->uc_mcontext.pc = return_address;
@@ -327,7 +327,7 @@ inline static void patch_instruction_in_process(uintptr_t address, int return_va
   // Make it writable
   long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
   if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "ad-hoc local mprotect (W) failed natively: %ld", ret);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Ad-hoc local mprotect (W) failed natively: %ld", ret);
     return;
   }
 
