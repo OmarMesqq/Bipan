@@ -26,6 +26,12 @@ struct __attribute__((packed)) log_header {
   uint32_t tv_nsec;  // Offset 7
 };  // Total size: 11 bytes
 
+/**
+ * Doing unbuffered I/O and socket creation/destruction for every log
+ * is a bad idea.
+ * 
+ * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
+ */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
   int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
@@ -39,6 +45,7 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
 
   if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
     arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+    // TODO: maybe find a way of warning here?
     return;
   }
 
@@ -65,12 +72,15 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
 
   // Atomic write to socket
   arm64_raw_syscall(__NR_writev, fd, (long)vec, 4, 0, 0, 0);
+
   arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
 }
 
-// 3. The Public Formatted Function
+/**
+ * Writes a message to Android Logcat in an AS-safe way
+ */
 inline void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
-  char buffer[1024];  // Local stack buffer, no malloc
+  char buffer[1024];  // Local stack buffer, no heap
 
   va_list args;
   va_start(args, fmt);
