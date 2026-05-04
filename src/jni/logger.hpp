@@ -31,6 +31,9 @@ struct __attribute__((packed)) log_header {
  * is a bad idea.
  * 
  * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
+ * 
+ * TODO: ditch the libc wrappers in this function and use our 
+ * raw syscall function instead
  */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
   int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
