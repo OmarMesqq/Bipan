@@ -3,8 +3,10 @@ cmake_minimum_required(VERSION 3.22.1)
 project(GrunfeldProject)
 
 # Define the library
-add_library(grunfeld SHARED main.c)
+add_library(grunfeld SHARED main.c socket_helper.c)
 
+# I could make my life harder by adding -fomit-frame-pointer here,
+# but apparently people use it
 target_compile_options(grunfeld PRIVATE
     -O3
     -Wall
@@ -15,7 +17,6 @@ target_compile_options(grunfeld PRIVATE
     -Wsign-conversion
     -Wdouble-promotion
     -fvisibility=hidden
-    -fomit-frame-pointer
     -Wno-unused-parameter
 )
 

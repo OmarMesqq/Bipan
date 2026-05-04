@@ -12,47 +12,46 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "logger.hpp"
 #include "shared.hpp"
+#include "utils.hpp"
 
 /**
  * The Broker calls this to "teleport" an FD to the Target.
  */
 inline void send_fd(int socket, int fd) {
   struct msghdr msg = {};
-  struct cmsghdr* cmsg;
-  char buf[CMSG_SPACE(sizeof(int))];  // Space for the FD payload
-  memset(buf, 0, sizeof(buf));
-
-  // Linux requires at least 1 byte of real data to send control messages
-  struct iovec io = {
-      .iov_base = (void*)"!",  // cast as C++ is annoying with type safety
-      .iov_len = 1};
+  char buf[CMSG_SPACE(sizeof(int))] = {0};
+  char dummy = '!';
+  struct iovec io = {.iov_base = &dummy, .iov_len = 1};
 
   msg.msg_iov = &io;
   msg.msg_iovlen = 1;
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  cmsg = CMSG_FIRSTHDR(&msg);
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   cmsg->cmsg_level = SOL_SOCKET;
-  cmsg->cmsg_type = SCM_RIGHTS;  // This is the "Magic" flag for FDs
+  cmsg->cmsg_type = SCM_RIGHTS;
   cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-
   *((int*)CMSG_DATA(cmsg)) = fd;
 
   if (sendmsg(socket, &msg, 0) < 0) {
-    LOGE("send_fd failed: %s (errno: %d) | FD to send: %d | Socket: %d\n",
-         strerror(errno), errno, fd, socket);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "send_fd failed! Socket: %d | FD: %d | Err: %s", socket, fd, strerror(errno));
   }
 }
 
 /**
  * The Target calls this in the SIGSYS handler to "catch" the FD.
  */
-inline int recv_fd(int socket) {
-  struct msghdr msg = {};
+__attribute__((always_inline)) inline int recv_fd(int socket) {
+  struct msghdr msg;
+  my_memset(&msg, 0, sizeof(msg));  // Freestanding initialization
+
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
+  my_memset(buf, 0, sizeof(buf));
+
   char dummy[1];
   struct iovec io = {.iov_base = dummy, .iov_len = sizeof(dummy)};
 
@@ -61,7 +60,8 @@ inline int recv_fd(int socket) {
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  if (recvmsg(socket, &msg, 0) <= 0) {
+  // Use raw syscall instead of libc recvmsg!
+  if (arm64_raw_syscall(__NR_recvmsg, socket, (long)&msg, 0, 0, 0, 0) <= 0) {
     return -1;
   }
 
@@ -70,22 +70,22 @@ inline int recv_fd(int socket) {
     return -1;
   }
 
-  // The kernel has now placed a NEW FD into our table!
+  // The kernel has now placed a NEW FD into our table! Extract it.
   return *((int*)CMSG_DATA(cmsg));
 }
 
 /**
  * Puts the thread to sleep IF the value at *addr equals 'expected'
  */
-inline void futex_wait(volatile int* addr, int expected) {
-  syscall(__NR_futex, (int*)addr, FUTEX_WAIT, expected, NULL, NULL, 0);
+__attribute__((always_inline)) inline void futex_wait(volatile int* addr, int expected) {
+  arm64_raw_syscall(__NR_futex, (long)addr, FUTEX_WAIT, expected, 0, 0, 0);
 }
 
 /**
  * Wakes up exactly 1 thread that is sleeping on *addr
  */
-inline void futex_wake(volatile int* addr) {
-  syscall(__NR_futex, (int*)addr, FUTEX_WAKE, 1, NULL, NULL, 0);
+__attribute__((always_inline)) inline void futex_wake(volatile int* addr) {
+  arm64_raw_syscall(__NR_futex, (long)addr, FUTEX_WAKE, 1, 0, 0, 0);
 }
 
 static volatile int ipc_lock_state = 0;

@@ -3,13 +3,14 @@
 #include <linux/filter.h>
 #include <linux/seccomp.h>
 #include <stddef.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <syscall.h>
 #include <unistd.h>
-#include <sys/mman.h>
 
 #include <cerrno>
 
+#include "logger.hpp"
 #include "shared.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
@@ -18,11 +19,10 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   uint32_t start_lo = (uint32_t)(lib_start & 0xFFFFFFFF);
   uint32_t end_lo = (uint32_t)(lib_end & 0xFFFFFFFF);
 
-  // Note: This logic assumes your library does not cross a 4GB boundary
-  // (i.e., start_hi == end_hi). For small Android libs, this is 99.99% true.
+  // ASSUMPTION: The library does not cross a 4GB boundary (start_hi == end_hi)
   if ((lib_start >> 32) != (lib_end >> 32)) {
-    // If it ever hits this, the BPF logic needs more complex boundary crossing checks
-    LOGE("Library crosses 4GB boundary, PC-relative seccomp may fail!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Library crosses 4GB boundary, PC-relative seccomp will probably fail!");
+    _exit(-1);
   }
 
   struct sock_filter trapFilter[] = {
@@ -107,33 +107,33 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_connect, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
   };
+
   // The seccomp "program"
   struct sock_fprog prog = {
-      .len = 0,          // number of BPF instructions
-      .filter = nullptr  // Pointer to array of BPF instructions
-  };
-
-  prog = {
+      // number of BPF instructions
       .len = (unsigned short)(sizeof(trapFilter) / sizeof(trapFilter[0])),
+      // Pointer to array of BPF instructions
       .filter = trapFilter,
   };
 
-  // Promise the kernel we won't ask for elevated privileges.
-  // This is necessary as this function will be run in Zygote (non-root)
+  // Promise the kernel we won't ask for elevated privileges
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-    LOGE("applySeccomp: prctl failed: %d", errno);
-    return;
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: prctl failed: %d", errno);
+    _exit(-1);
   }
 
   /**
    * Apply seccomp across all threads - `SECCOMP_FILTER_FLAG_TSYNC` -
-   * and ask the kernel to use our filter: `SECCOMP_SET_MODE_FILTER`
+   * using a our filter: `SECCOMP_SET_MODE_FILTER`
    */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
-    LOGE("applySeccomp: failed to apply seccomp (errno %d)", errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: failed to apply seccomp (errno %d)", errno);
+    _exit(-1);
   }
 }

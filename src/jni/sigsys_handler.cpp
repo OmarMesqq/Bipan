@@ -9,30 +9,20 @@
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <syscall.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <cerrno>
-#include <cstdint>
-#include <cstring>
-#include <map>
-#include <mutex>
+#include <atomic>
 
-#include "assembly.hpp"
-#include "blocker.hpp"
+#include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "unwinder.hpp"
+#include "utils.hpp"
 
-std::map<int, std::string> spoofed_fds;
-std::mutex fds_mutex;
-
-void storeSpoofedFD(int fd, const char* original_path) {
-  std::lock_guard<std::mutex> lock(fds_mutex);
-  spoofed_fds[fd] = original_path;
-}
+inline static std::atomic<uintptr_t> last_patched_adhoc_pc{0};
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -41,38 +31,51 @@ struct kernel_sigaction {
   uint64_t sa_mask;
 };
 
-inline static bool is_smaps(const char* pathname);
-inline static bool is_maps(const char* pathname);
-inline static bool is_mounts(const char* pathname);
-inline static size_t get_msghdr_len(const struct msghdr* msg);
-inline static void get_socket_info(int sockfd,
-                                   struct sockaddr* sockAddrStruct,
-                                   char* protocol,
-                                   int* port,
-                                   char* ipAddr,
-                                   char* family);
-inline static bool is_lan_address(struct sockaddr* addr);
-inline static bool is_network_socket(const char* family);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
+static void sigill_handler(int sig, siginfo_t* info, void* void_context);
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
+inline static void patch_instruction_in_process(uintptr_t address, int return_value);
+
+// Store original handlers to forward ART signals
+static struct kernel_sigaction old_sa_segv = {};
 
 void registerSignalHandler() {
-  struct kernel_sigaction sa = {};
-  sa.sa_handler = sigsys_handler;
-  sa.sa_flags = SA_SIGINFO;
+  struct kernel_sigaction sa_SYS = {};
+  sa_SYS.sa_handler = sigsys_handler;
+  sa_SYS.sa_flags = SA_SIGINFO;
+  long ret = 0;
 
-  // Talk directly to the kernel in order to avoid libsigchain
-  // sizeof(sigset_t) should be 8 bytes on aarch64
-  long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
-
+  // Register signal directly with kernel to bypass libsigchain.so
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
-    LOGE("Failed to set SIGSYS handler. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
+  }
+
+  bool is_insta = local_strstr(package_name, "com.instagram.android");
+  bool is_whatsapp = local_strstr(package_name, "com.whatsapp");
+  if (is_insta) {
+    struct kernel_sigaction sa_ILL = {};
+    sa_ILL.sa_handler = sigill_handler;
+    sa_ILL.sa_flags = SA_SIGINFO;
+    arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ILL, 0, 8, 0, 0);
+  } else if (is_whatsapp) {
+    struct kernel_sigaction sa_SEGV = {.sa_handler = sigsegv_handler, .sa_flags = SA_SIGINFO};
+    arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, (long)&old_sa_segv, 8, 0, 0);
   }
 }
 
+static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ucontext_t* ctx = (ucontext_t*)void_context;
-  int nr = info->si_syscall;  // syscalls go in x8 in aarch64
+  int nr = info->si_syscall;
+
+  if (in_sigsys_handler) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
+    ctx->uc_mcontext.regs[0] = -ENOSYS;
+    return;
+  }
+  in_sigsys_handler = true;
 
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
@@ -81,481 +84,276 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
 
-  uintptr_t patch_pc = 0;
+  lock_ipc();
 
-  switch (nr) {
-    case __NR_execve:
-    case __NR_execveat: {
-      const char* path = (const char*)ctx->uc_mcontext.regs[0];
-      if (is_trusted_system_caller(path, &patch_pc, false)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-      LOGE("Violation: execve/execveat");
-      log_violation_trace(path);
-      ctx->uc_mcontext.regs[0] = -EAGAIN;
-      if (patch_pc != 0) {
-        patchInstruction(patch_pc - 4, -EAGAIN);
-      }
-      break;
-    }
-    case __NR_uname: {
-      struct utsname* buf = (struct utsname*)ctx->uc_mcontext.regs[0];
-      LOGD("Spoofing uname");
-      ctx->uc_mcontext.regs[0] = uname_spoofer(buf);
-      break;
-    }
-    case __NR_faccessat:
-    case __NR_newfstatat:
-    case __NR_openat: {
-      int dirfd = (int)ctx->uc_mcontext.regs[0];
-      const char* pathname = (const char*)ctx->uc_mcontext.regs[1];
-      int flags = (int)ctx->uc_mcontext.regs[2];
-      mode_t mode = (mode_t)ctx->uc_mcontext.regs[3];
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
+  ipc_mem->caller_pc = ctx->uc_mcontext.pc;
+  ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
+  ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  ipc_mem->nr = nr;
+  ipc_mem->arg0 = arg0;
+  ipc_mem->arg1 = arg1;
+  ipc_mem->arg2 = arg2;
+  ipc_mem->arg3 = arg3;
+  ipc_mem->arg4 = arg4;
+  ipc_mem->arg5 = arg5;
 
-      if (is_trusted_system_caller("(openat/faccessat/newfstatat)", &patch_pc, false)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
+  // Clean payloads
+  my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
+  my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
 
-      const bool is_vfs = is_maps(pathname) || is_smaps(pathname) || is_mounts(pathname);
+  __sync_synchronize();
 
-      if (is_vfs) {
-        if (is_maps(pathname)) {
-          ctx->uc_mcontext.regs[0] = clean_proc_maps(dirfd, pathname, flags, mode);
-          log_violation_trace(pathname);
-        } else if (is_smaps(pathname)) {
-          ctx->uc_mcontext.regs[0] = clean_proc_smaps(dirfd, pathname, flags, mode);
-          log_violation_trace(pathname);
-        } else {
-          ctx->uc_mcontext.regs[0] = clean_proc_mounts(dirfd, pathname, flags, mode);
-          log_violation_trace(pathname);
-        }
-        break;
-      }
+  // Create FD beforehand to prevent SELinux from complaining untrusted->privileged
+  int pre_fd = -1;
 
-      ctx->uc_mcontext.regs[0] = filterPathname(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    case __NR_rt_sigaction: {
-      int signum = arg0;
+  // Serialize Strings
+  if (nr == __NR_openat) {
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+    ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
+    if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
+    if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_execve || nr == __NR_execveat) {
+    if (arg0 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+  }
 
-      if (signum == SIGSYS) {
-        LOGE("App tried to install SIGSYS handler! Spoofing success...");
-        log_violation_trace("SIGSYS handler hijacking");
-        ctx->uc_mcontext.regs[0] = 0;
-      } else {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(
-            nr,
-            arg0,
-            arg1,
-            arg2,
-            arg3,
-            arg4,
-            arg5);
-      }
+  // Serialize binary structures with their exact lengths
+  long sock_ptr = 0;
+  long sock_len = 0;
+  struct sockaddr_storage temp_addr;  // Used for the Pre-Flight check
 
-      break;
-    }
-    case __NR_bind: {
-      int sockfd = (int)arg0;
-      struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
-      if (sockAddrStruct == nullptr) {
-        ctx->uc_mcontext.regs[0] = -EFAULT;
-        break;
-      }
-      if (is_trusted_system_caller("(bind)", &patch_pc)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-
-      char protocol[8] = {0};
-      int port = -1;
-      char ipAddr[INET6_ADDRSTRLEN] = {0};
-      char family[8] = {0};
-      get_socket_info(sockfd,
-                      sockAddrStruct,
-                      protocol,
-                      &port,
-                      ipAddr,
-                      family);
-
-      if (is_network_socket(family)) {
-        if (port == 0) {  // Random high ports
-          bool is_lan_bind = is_lan_address(sockAddrStruct);
-
-          if (is_lan_bind) {
-            LOGE("Violation: client bind on LAN: Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-            log_violation_trace("(bind)");
-            ctx->uc_mcontext.regs[0] = -EADDRNOTAVAIL;
-            if (patch_pc != 0) {
-              patchInstruction(patch_pc - 4, -EADDRNOTAVAIL);
-            }
-            break;
-          }
-
-          // "Client" behavior: requesting a random temporary port
-          LOGW("Allowing ephemeral (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        } else {
-          // "Server" behavior: setting up a port for listening
-          LOGE("Violation: server (bind): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(bind)");
-          ctx->uc_mcontext.regs[0] = 0;
-          if (patch_pc != 0) {
-            patchInstruction(patch_pc - 4, 0);
-          }
-        }
-      } else {
-        LOGW("(bind) Allowing non-IP bind request");
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      }
-      break;
-    }
-    case __NR_listen: {
-      int sockfd = (int)arg0;
-
-      if (is_trusted_system_caller("(listen)", &patch_pc)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-
-      struct sockaddr_storage sockAddrStorageStruct = {};
-      socklen_t len = sizeof(sockAddrStorageStruct);
-      long ret = arm64_raw_syscall(__NR_getsockname, sockfd, (long)&sockAddrStorageStruct, (long)&len, 0, 0, 0);
-      if (ret != 0) {
-        // Fail natively...
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-
-      char protocol[8] = {0};
-      int port = -1;
-      char ipAddr[INET6_ADDRSTRLEN] = {0};
-      char family[8] = {0};
-      get_socket_info(sockfd,
-                      (struct sockaddr*)&sockAddrStorageStruct,
-                      protocol,
-                      &port,
-                      ipAddr,
-                      family);
-
-      if (is_network_socket(family)) {
-        LOGE("Violation: (listen): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-        log_violation_trace("(listen)");
-        ctx->uc_mcontext.regs[0] = 0;
-        if (patch_pc != 0) {
-          patchInstruction(patch_pc - 4, 0);
-        }
-      } else {
-        LOGW("(listen) Allowing for local/UNIX socket");
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      }
-      break;
-    }
-    case __NR_sendto: {
-      int sockfd = (int)arg0;
-      struct sockaddr* sockAddrStruct = (struct sockaddr*)arg4;
-      if (sockAddrStruct != nullptr) {
-        if (is_trusted_system_caller("(sendto)", &patch_pc)) {
-          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
-        }
-
-        char protocol[8] = {0};
-        int port = -1;
-        char ipAddr[INET6_ADDRSTRLEN] = {0};
-        char family[8] = {0};
-
-        get_socket_info(sockfd,
-                        sockAddrStruct,
-                        protocol,
-                        &port,
-                        ipAddr,
-                        family);
-
-        if (is_network_socket(family)) {
-          LOGE("Violation: (sendto): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(sendto)");
-          ctx->uc_mcontext.regs[0] = (long)arg2;  // amount of bytes sent to fool the app into thinking it succeeded
-          if (patch_pc != 0) {
-            patchInstruction(patch_pc - 4, (int)arg2);
-          }
-          break;
-        }
-      }
-
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    case __NR_getsockname: {
-      // Let kernel execute the real syscall to populate the sockaddr struct
-      long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-
-      // If it succeeded, inspect and scrub the returned struct
-      if (ret == 0 && arg1 != 0) {
-        if (is_trusted_system_caller("(getsockname)", &patch_pc, false)) {
-          ctx->uc_mcontext.regs[0] = ret;
-          break;
-        }
-
-        int sockfd = (int)arg0;
-        struct sockaddr* sockAddrStruct = (struct sockaddr*)arg1;
-
-        char protocol[8] = {0};
-        int port = -1;
-        char ipAddr[INET6_ADDRSTRLEN] = {0};
-        char family[8] = {0};
-
-        get_socket_info(sockfd,
-                        sockAddrStruct,
-                        protocol,
-                        &port,
-                        ipAddr,
-                        family);
-
-        if (is_network_socket(family)) {
-          LOGE("Violation: (getsockname): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(getsockname)");
-
-          if (sockAddrStruct->sa_family == AF_INET) {
-            ((struct sockaddr_in*)sockAddrStruct)->sin_addr.s_addr = htonl(INADDR_ANY);  // 0.0.0.0
-
-          } else if (sockAddrStruct->sa_family == AF_INET6) {
-            memset(&(((struct sockaddr_in6*)sockAddrStruct)->sin6_addr), 0, 16);  // ::
-          }
-          ctx->uc_mcontext.regs[0] = ret;
-          break;
-        }
-      }
-
-      ctx->uc_mcontext.regs[0] = ret;
-      break;
-    }
-    case __NR_socket: {
-      int domain = (int)arg0;  // AF_INET, AF_NETLINK, etc.
-      int type = (int)arg1;    // SOCK_STREAM, SOCK_RAW, etc.
-      int protocol = (int)arg2;
-
-      if (domain == AF_NETLINK) {
-        LOGE("(socket) Blocking AF_NETLINK");
-        is_trusted_system_caller("(socket) AF_NETLINK", &patch_pc);
-        ctx->uc_mcontext.regs[0] = -EACCES;
-        if (patch_pc != 0) {
-          patchInstruction(patch_pc - 4, -EACCES);  // Spoof Permission Denied!
-        }
-        break;
-      }
-
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    case __NR_sendmsg: {
-      int sockfd = (int)arg0;
+  if (nr == __NR_bind || nr == __NR_connect) {
+    sock_ptr = arg1;
+    sock_len = arg2;
+  } else if (nr == __NR_sendto || nr == __NR_sendmsg) {
+    if (nr == __NR_sendto) {
+      sock_ptr = arg4;
+      sock_len = arg5;
+    } else {
       struct msghdr* msg = (struct msghdr*)arg1;
+      if (msg) {
+        sock_ptr = (long)msg->msg_name;
+        sock_len = msg->msg_namelen;
 
-      if (msg != nullptr && msg->msg_name != nullptr) {
-        struct sockaddr* sockAddrStruct = (struct sockaddr*)msg->msg_name;
-
-        if (is_trusted_system_caller("(sendmsg)", &patch_pc)) {
-          ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-          break;
+        // Get payload's total length
+        long total_len = 0;
+        for (size_t i = 0; i < msg->msg_iovlen; i++) {
+          total_len += msg->msg_iov[i].iov_len;
         }
-
-        char protocol[8] = {0};
-        int port = -1;
-        char ipAddr[INET6_ADDRSTRLEN] = {0};
-        char family[8] = {0};
-
-        get_socket_info(sockfd,
-                        sockAddrStruct,
-                        protocol,
-                        &port,
-                        ipAddr,
-                        family);
-
-        if (is_network_socket(family)) {
-          LOGE("Violation: (sendmsg): Protocol: %s, Port: %d, IP address: %s, Family: %s", protocol, port, ipAddr, family);
-          log_violation_trace("(sendmsg)");
-          // Fool the app: return the length it tried to send
-          ctx->uc_mcontext.regs[0] = (long)get_msghdr_len(msg);
-          if (patch_pc != 0) {
-            patchInstruction(patch_pc - 4, (int)get_msghdr_len(msg));
-          }
-          break;
-        }
+        // Pass the safe length to the Broker using an unused argument (arg3)
+        ipc_mem->arg3 = total_len;
       }
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
     }
-    case __NR_readlinkat: {
-      int dirfd = (int)arg0;
-      const char* pathname = (const char*)arg1;
-      char* buf = (char*)arg2;
-      size_t bufsiz = (size_t)arg3;
 
-      // Check if the app is trying to readlink an FD
-      if (pathname != nullptr && strstr(pathname, "/proc/self/fd/") != nullptr) {
-        int target_fd = atoi(pathname + 14);  // Extract FD number after "/proc/self/fd/"
+    // --- FIX 2: The Connected Socket Interrogation ---
+    // If msg_name/dest is NULL, the socket is already connected.
+    // We must ask the kernel for the destination IP!
+    if (sock_ptr == 0) {
+      struct sockaddr_storage temp_addr;
+      long temp_len = sizeof(temp_addr);
+      my_memset(&temp_addr, 0, sizeof(temp_addr));
 
-        std::lock_guard<std::mutex> lock(fds_mutex);
-        if (spoofed_fds.count(target_fd)) {
-          std::string original = spoofed_fds[target_fd];
-
-          // TODO: too noisy!
-          // LOGW("(readlinkat) Correcting symlink for spoofed FD %d -> %s", target_fd, original.c_str());
-
-          // Manually fill the buffer with the "honest" path
-          size_t len = std::min(bufsiz - 1, original.length());
-          memcpy(buf, original.c_str(), len);
-          buf[len] = '\0';
-
-          ctx->uc_mcontext.regs[0] = len;  // Return length of string
-          break;
-        }
+      // getpeername extracts the destination IP of a connected socket
+      if (arm64_raw_syscall(__NR_getpeername, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+        sock_ptr = (long)&temp_addr;
+        sock_len = temp_len;
       }
-
-      // Otherwise, let the real readlinkat proceed
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
     }
-    case __NR_mmap: {
-      void* addr = (void*)arg0;
-      size_t length = (size_t)arg1;
-      int prot = (int)arg2;
-      int flags = (int)arg3;
-      int fd = (int)arg4;
-      off_t offset = (off_t)arg5;
+  } else if (nr == __NR_listen || nr == __NR_getsockname) {
+    // --- THE FIX: Pre-Flight Check ---
+    // listen() doesn't give us a sockaddr, so we must extract it from the FD
+    long temp_len = sizeof(temp_addr);
+    my_memset(&temp_addr, 0, sizeof(temp_addr));
 
-      if (is_trusted_system_caller("(mmap)", &patch_pc, false)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-      LOGE("Violation: mmap");
-      log_violation_trace("(mmap)");
-
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    case __NR_mprotect: {
-      void* addr = (void*)arg0;
-      size_t len = (size_t)arg1;
-      int prot = (int)arg2;
-
-      if (is_trusted_system_caller("(mprotect)", &patch_pc, false)) {
-        ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        break;
-      }
-      LOGE("Violation: mprotect");
-      log_violation_trace("(mprotect)");
-
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
-    }
-    default: {
-      LOGE("Violation: got unexpected syscall(%d). Allowing...", nr);
-      ctx->uc_mcontext.regs[0] = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      break;
+    // arg0 is the sockfd
+    if (arm64_raw_syscall(__NR_getsockname, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+      sock_ptr = (long)&temp_addr;
+      sock_len = temp_len;
     }
   }
-}
 
-inline static bool is_smaps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/smaps") != nullptr);
-}
-inline static bool is_maps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/maps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/maps") != nullptr);
-}
-inline static bool is_mounts(const char* pathname) {
-  return (strcmp(pathname, "/proc/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mounts") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          strstr(pathname, "/mounts") != nullptr);
-}
+  // getsockname populates the struct on return, no need to send it upfront
+  if (sock_ptr != 0 && sock_len > 0) {
+    size_t copy_len = (sock_len > 127) ? 127 : (size_t)sock_len;
+    my_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
+  }
 
-inline static size_t get_msghdr_len(const struct msghdr* msg) {
-  size_t total = 0;
-  if (msg && msg->msg_iov) {
-    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
-      total += msg->msg_iov[i].iov_len;
+  // Wake Broker & Wait
+  ipc_mem->status = REQUEST_SYSCALL;
+  futex_wake(&ipc_mem->status);
+
+  while (ipc_mem->status != BROKER_ANSWERED) {
+    futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
+  }
+
+  long result = 0;
+  int action = ipc_mem->action;
+
+  // Route the action
+  if (action == ACTION_EXECUTE_NATIVE) {
+    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup unused ghost
+    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+  } else if (action == ACTION_USE_RET) {
+    if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup if Broker gave -EACCES
+    }
+    result = ipc_mem->ret;
+
+    // Deserialize outputs with their exact lengths
+    if (nr == __NR_uname && result == 0) {
+      my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
+    } else if (nr == __NR_readlinkat && result > 0) {
+      my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
+    }
+  } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
+    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    if (result == 0 && arg1 != 0) {
+      struct sockaddr* s = (struct sockaddr*)arg1;
+      if (s->sa_family == AF_INET) {
+        ((struct sockaddr_in*)s)->sin_addr.s_addr = 0;
+      } else if (s->sa_family == AF_INET6) {
+        my_memset(&(((struct sockaddr_in6*)s)->sin6_addr), 0, 16);
+      }
     }
   }
-  return total;
+
+  ipc_mem->status = IDLE;
+  unlock_ipc();
+
+  ctx->uc_mcontext.regs[0] = result;
+  in_sigsys_handler = false;
+}
+
+static void sigill_handler(int sig, siginfo_t* info, void* void_context) {
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  uintptr_t fault_pc = ctx->uc_mcontext.pc;
+  uintptr_t return_address = 0;
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "SIGILL at %p. Attempting recovery...", (void*)fault_pc);
+
+  is_trusted_system_caller("(SIGILL_RECOVERY)", &return_address, false);
+
+  if (return_address != 0) {
+    uintptr_t suicide_call_site = return_address - 4;
+
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Patching suicide site %p. Redirecting to %p",
+                          (void*)suicide_call_site, (void*)return_address);
+
+    // Tell me lies...forever (NOP caller)
+    patch_instruction_in_process(suicide_call_site, 0);
+
+    // Set current CPU PC to return address. It's as if the crash never occurred!
+    ctx->uc_mcontext.pc = return_address;
+
+    ctx->uc_mcontext.regs[0] = 0;  // "Success"
+
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Resurrection successful. App resuming...");
+    return;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Recovery failed (No valid caller). Killing process.");
+  _exit(-1);
+}
+
+static thread_local bool in_sigsegv_handler = false;
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
+  if (in_sigsegv_handler) {
+    arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
+    return;
+  }
+  in_sigsegv_handler = true;
+
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  uintptr_t fault_pc = ctx->uc_mcontext.pc;
+  uintptr_t return_address = 0;
+
+  // 1. Identify if this is a Meta library (libessential, libwa_log, etc)
+  if (!is_trusted_system_caller("(SIGSEGV_CHECK)", nullptr, false)) {
+    // 2. Try to find where we should go back to
+    is_trusted_system_caller("(SIGSEGV_RECOVERY)", &return_address, false);
+
+    // 3. THE FIX: If the return address is the same as the fault address,
+    // or very close, the current instruction IS the problem.
+    if (return_address == 0 || return_address == fault_pc) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
+
+      // Lobotomize the instruction that actually triggered the SEGV
+      patch_instruction_in_process(fault_pc, 0);
+
+      // Force the CPU to the NEXT instruction (+4 bytes in ARM64)
+      ctx->uc_mcontext.pc = fault_pc + 4;
+      ctx->uc_mcontext.regs[0] = 0;  // Set return to 0 (Success)
+
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Loop broken. Advanced to %p", (void*)ctx->uc_mcontext.pc);
+    } else {
+      // Standard recovery for function calls (suicide jumps)
+      uintptr_t suicide_call_site = return_address - 4;
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Neutralizing call site %p", (void*)suicide_call_site);
+
+      patch_instruction_in_process(suicide_call_site, 0);
+      ctx->uc_mcontext.pc = return_address;
+      ctx->uc_mcontext.regs[0] = 0;
+    }
+
+    in_sigsegv_handler = false;
+    return;
+  }
+
+  // 4. FORWARDING (Java NPEs, ART logic)
+  in_sigsegv_handler = false;
+  if (old_sa_segv.sa_handler != nullptr &&
+      old_sa_segv.sa_handler != (void*)SIG_DFL &&
+      old_sa_segv.sa_handler != (void*)SIG_IGN) {
+    old_sa_segv.sa_handler(sig, info, void_context);
+    return;
+  }
+
+  _exit(-1);
 }
 
 /**
- * Returns `true` if `sa_family` of given socket struct `addr`
- * is either IPv4 (`AF_INET`) or IPv6 (`AF_INET6`) **AND**
- * its address falls within LAN IP ranges defined by RFCs
+ * TODO: this is ad-hoc for apps that trigger SIGSEGV and SIGILL. Think of better strategy
  */
-inline static bool is_lan_address(struct sockaddr* addr) {
-  if (addr == nullptr) return false;
-  if (addr->sa_family == AF_INET) {
-    return filterIPv4LanAccess(ntohl(((struct sockaddr_in*)addr)->sin_addr.s_addr));
-  }
-  if (addr->sa_family == AF_INET6) {
-    return filterIPv6LanAccess(((struct sockaddr_in6*)addr)->sin6_addr.s6_addr);
-  }
-  return false;
-}
-
-inline static void get_socket_info(int sockfd,
-                                   struct sockaddr* sockAddrStruct,
-                                   char* protocol,
-                                   int* port,
-                                   char* ipAddr,
-                                   char* family) {
-  if (sockAddrStruct == nullptr) {
+inline static void patch_instruction_in_process(uintptr_t address, int return_value) {
+  if (last_patched_adhoc_pc.exchange(address) == address) {
     return;
   }
-  int sock_type = 0;
-  socklen_t optlen = sizeof(sock_type);
 
-  long ret = arm64_raw_syscall(__NR_getsockopt,
-                               sockfd, SOL_SOCKET,
-                               SO_TYPE,
-                               (long)&sock_type,
-                               (long)&optlen,
-                               0);
+  // Find the start of the page (4KB align)
+  uintptr_t page_start = address & ~0xFFF;
 
+  // Make it writable
+  long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
   if (ret != 0) {
-    LOGE("Failed to get socket info! Aborting!");
-    _exit(-1);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Ad-hoc local mprotect (W) failed natively: %ld", ret);
+    return;
   }
 
-  if (sock_type == SOCK_STREAM) {
-    write_to_char_buf(protocol, "TCP", 4);
-  } else if (sock_type == SOCK_DGRAM) {
-    write_to_char_buf(protocol, "UDP", 4);
-  } else {
-    write_to_char_buf(protocol, "UNKNOWN", 8);
+  // Let's default to NOP
+  uint32_t opcode = 0xd503201f;
+
+  if (return_value >= 0 && return_value <= 65535) {
+    // DYNAMIC ASSEMBLER: Generate 'MOV x0, #return_value' on the fly!
+    // Base opcode for MOV x0 is 0xD2800000. We shift the value by 5 bits to place it in the 'imm16' field.
+    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
+  } else if (return_value == -13) {  // -EACCES
+    opcode = 0x92800180;             // MOVN x0, #12 (~12 = -13)
+  } else if (return_value == -99) {  // -EADDRNOTAVAIL
+    opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
+  } else if (return_value == -11) {  // -EAGAIN
+    opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
+  } else if (return_value == -2) {   // -ENOENT
+    opcode = 0x92800040;             // MOVN x0, #1 (~1 = -2)
   }
 
-  if (sockAddrStruct->sa_family == AF_INET) {
-    struct sockaddr_in* ipv4 = (struct sockaddr_in*)sockAddrStruct;
+  *(uint32_t*)address = opcode;
 
-    *port = ntohs(ipv4->sin_port);
-    inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddr, INET_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv4", 5);
-  } else if (sockAddrStruct->sa_family == AF_INET6) {
-    struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)sockAddrStruct;
+  __builtin___clear_cache((char*)address, (char*)(address + 4));
 
-    *port = ntohs(ipv6->sin6_port);
-    inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv6", 5);
-  } else {
-    write_to_char_buf(family, "UNKNOWN", 8);
-  }
-}
+  // 5. Restore original permissions page permissions: probably (RX)
+  arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
 
-inline static bool is_network_socket(const char* family) {
-  return (strcmp(family, "IPv4") == 0) ||
-         (strcmp(family, "IPv6") == 0);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Ad-hoc local patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }

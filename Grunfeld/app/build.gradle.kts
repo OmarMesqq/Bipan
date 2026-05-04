@@ -69,8 +69,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.webkit)
-    implementation(libs.okhttp)
+    implementation(libs.androidx.core.splashscreen)
 
-    debugImplementation(libs.logging.interceptor)
     debugImplementation(libs.leakcanary.android)
 }

@@ -24,21 +24,28 @@ import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
+import androidx.compose.ui.platform.LocalContext
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun JniScreen() {
+    val context = LocalContext.current
+
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
-    var stealthReport by remember { mutableStateOf("Maps not tested yet") }
-    var filesystemReport by remember { mutableStateOf("filesystem not probed yet") }
+    var mapsReport by remember { mutableStateOf("Maps not scanned yet") }
+    var smapsReport by remember { mutableStateOf("Smaps not scanned yet") }
+    var devPropertiesReport by remember { mutableStateOf("dev properties not probed yet") }
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var socketReport by remember { mutableStateOf("socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
-    var signalHandlerStatus by remember { mutableStateOf("SIGSYS handler not installed yet") }
+
+    var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
+    var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
+    var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
 
     Column(
         modifier = Modifier
@@ -52,16 +59,26 @@ fun JniScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
+        SectionHeader("BUILD AND SETTINGS INFO")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Text(
+                text = NativeLibWrapper.getDeviceData(context),
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
         SectionHeader("SENSORS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            colors = if (sensorReport.contains("LEAK"))
-                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            else CardDefaults.cardColors()
+
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "NDK Layer", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
                 ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
                 Button(
                     onClick = {
@@ -69,7 +86,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Probe Sensors using native code (NDK)")
+                    Text("Probe Sensors using native code")
                 }
             }
         }
@@ -83,29 +100,24 @@ fun JniScreen() {
                 Text(text = "Uname", style = MaterialTheme.typography.titleMedium)
                 ReportTextWithCopy(unameReport, "Uname not fetched yet")
                 Button(onClick = { unameReport = NativeLibWrapper.getUname() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Get uname")
+                    Text("Fetch uname")
                 }
             }
         }
 
-        SectionHeader("STEALTH")
+        SectionHeader("FILESYSTEM")
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (stealthReport.contains("!!"))
-                    MaterialTheme.colorScheme.errorContainer
-                else MaterialTheme.colorScheme.surfaceVariant
-            )
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(text = "Anti-Forensics Scan", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(stealthReport, "Maps not tested yet")
+                Text(text = "/proc/self/maps", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(mapsReport, "Maps not scanned yet")
 
                 Button(
-                    onClick = { stealthReport = NativeLibWrapper.scanMaps() },
+                    onClick = { mapsReport = NativeLibWrapper.scanMaps() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Scan /proc/self/maps")
@@ -113,16 +125,36 @@ fun JniScreen() {
             }
         }
 
-        SectionHeader("FILESYSTEM")
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "/proc/self/smaps", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(smapsReport, "Smaps not scanned yet")
+
+                Button(
+                    onClick = { smapsReport = NativeLibWrapper.scanSmaps() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Scan /proc/self/smaps")
+                }
+            }
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "Filesystem scanning", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(filesystemReport, "filesystem not probed yet")
-                Button(onClick = {  }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Probe filesystem")
+                Text(text = "/dev/__properties__", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(devPropertiesReport, "dev properties not probed yet")
+                Button(onClick = {
+                        NativeLibWrapper.scanDevProperties()
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Test SELinux enforcement")
                 }
             }
         }
@@ -141,7 +173,7 @@ fun JniScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Bind on LAN (IPv4/IPv6 and TCP/UDP)")
+                    Text("bind")
                 }
             }
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -149,7 +181,7 @@ fun JniScreen() {
                 ReportTextWithCopy(listenReport, "listen not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        listenReport = NativeLibWrapper.testListen()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -161,7 +193,7 @@ fun JniScreen() {
                 ReportTextWithCopy(sendtoReport, "sendto not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        sendtoReport = NativeLibWrapper.testSendto()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -174,11 +206,11 @@ fun JniScreen() {
                 ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        getsocknameReport = NativeLibWrapper.testGetsockname()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("getsockname on LAN info")
+                    Text("getsockname")
                 }
             }
 
@@ -187,11 +219,11 @@ fun JniScreen() {
                 ReportTextWithCopy(socketReport, "socket not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        socketReport = NativeLibWrapper.testSocket()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("socket")
+                    Text("AF_NETLINK socket")
                 }
             }
 
@@ -200,7 +232,7 @@ fun JniScreen() {
                 ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                 Button(
                     onClick = {
-                        // NativeLibWrapper.testNetworkLeaks()
+                        sendmsgReport = NativeLibWrapper.testSendmsg()
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -209,13 +241,13 @@ fun JniScreen() {
             }
         }
 
-        SectionHeader("MISC")
+        SectionHeader("ANTI-TAMPER")
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Signal Handler", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Attempt to overwrite SIGSYS handler", style = MaterialTheme.typography.titleMedium)
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -224,15 +256,49 @@ fun JniScreen() {
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                            Button(
+                Button(
                     onClick = {
                         val success = NativeLibWrapper.installSigsysHandler()
                         signalHandlerStatus = if (success) "Active" else "Failed"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Install SIGSYS handler")
+                    Text("sigaction SIGSYS")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = sigsysBlockStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Button(
+                    onClick = {
+                        val success = NativeLibWrapper.blockSigSys()
+                        sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sigprocmask SIGSYS")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
+                ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                Button(
+                    onClick = {
+                        procSelfStatusReport = NativeLibWrapper.queryProcStatus()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("read /proc/self/status")
                 }
             }
         }

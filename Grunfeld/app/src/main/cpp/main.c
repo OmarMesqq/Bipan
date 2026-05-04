@@ -1,26 +1,24 @@
 #include <android/log.h>
 #include <android/sensor.h>
 #include <android/looper.h>
-#include <errno.h>
 #include <jni.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <linux/filter.h>
-#include <sys/utsname.h>
 #include <linux/fcntl.h>
+#include <sys/system_properties.h>
 #include <time.h>
-#include <sys/un.h>
+#include <errno.h>
+#include <stdlib.h>
 
+#include "shared.h"
+#include "socket_helper.h"
+
+jmp_buf jump_buffer;
 
 #define TAG "GrunfeldNative"
 #define MAX_REPORT_SIZE 8192
@@ -33,42 +31,83 @@
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
+#define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 __attribute__((constructor))
 void grunfeld_early_init() {
-    LOGW("---------------------------------------------------");
-    LOGW("Grunfeld Constructor: Library mapped into memory.");
-    LOGW("Checking if hooks are already active at this point...");
-
-    // Try to get native data asap
-    ASensorManager* sm = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
-    if (sm == NULL) {
-        LOGI("Constructor check: SensorManager is NULL (Hooks likely active)");
-    } else {
-        LOGE("Constructor check: SensorManager is VALID (LEAK or Hooks not yet applied)");
-    }
-    LOGW("---------------------------------------------------");
+    LOGI("early attribute constructor init");
 }
 
 
-static int is_noise(const char* path) {
-    if (!path || strlen(path) == 0) return 0;
-    const char* filters[] = {
-            "/apex/",
-            "/system/",
-            "/vendor/",
-            "/product/",
-            "/dev/",
-            "/data/"
-    };
-    for (int i = 0; i < 6; i++) {
-        if (strstr(path, filters[i])) return 1;
-    }
-    return 0;
-}
-
+static int is_noise(const char* path);
+static const char* proto_to_str(int proto);
+static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
+
+JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    LOGI("JNI_OnLoad");
+    return JNI_VERSION_1_6;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
+
+    // 1. Read Build Info using native properties
+    char model[92], brand[92], display[92], fingerprint[128];
+    get_sys_prop("ro.product.model", model, sizeof(model), "Unknown");
+    get_sys_prop("ro.product.brand", brand, sizeof(brand), "Unknown");
+    get_sys_prop("ro.build.display.id", display, sizeof(display), "Unknown");
+    get_sys_prop("ro.build.fingerprint", fingerprint, sizeof(fingerprint), "Unknown");
+
+    // 2. Fetch ContentResolver from the Context object via JNI
+    jclass contextClass = (*env)->GetObjectClass(env, context);
+    jmethodID getContentResolver = (*env)->GetMethodID(env, contextClass, "getContentResolver", "()Landroid/content/ContentResolver;");
+    jobject contentResolver = (*env)->CallObjectMethod(env, context, getContentResolver);
+
+    // 3. Find Settings.Global class and methods
+    jclass settingsGlobalClass = (*env)->FindClass(env, "android/provider/Settings$Global");
+
+    // Get Settings.Global.DEVICE_NAME string
+    jmethodID getGlobalString = (*env)->GetStaticMethodID(env, settingsGlobalClass, "getString", "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
+    jstring deviceNameKey = (*env)->NewStringUTF(env, "device_name");
+    jstring jDeviceName = (jstring)(*env)->CallStaticObjectMethod(env, settingsGlobalClass, getGlobalString, contentResolver, deviceNameKey);
+
+    const char *cDeviceName = "Unknown";
+    if (jDeviceName != NULL) {
+        cDeviceName = (*env)->GetStringUTFChars(env, jDeviceName, 0);
+    }
+
+    // Get Settings.Global.ADB_ENABLED integer
+    jmethodID getGlobalInt = (*env)->GetStaticMethodID(env, settingsGlobalClass, "getInt", "(Landroid/content/ContentResolver;Ljava/lang/String;I)I");
+    jstring adbKey = (*env)->NewStringUTF(env, "adb_enabled");
+    jint adbEnabled = (*env)->CallStaticIntMethod(env, settingsGlobalClass, getGlobalInt, contentResolver, adbKey, -999);
+
+    // 4. Construct the final output C-string
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer),
+             "MODEL: %s\n"
+             "BRAND: %s\n"
+             "DISPLAY: %s\n"
+             "FINGERPRINT: %s\n"
+             "DEVICE_NAME: %s\n"
+             "ADB_ENABLED: %d",
+             model, brand, display, fingerprint, cDeviceName, adbEnabled);
+
+    // 5. Clean up JNI references to avoid memory leaks
+    if (jDeviceName != NULL) {
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, cDeviceName);
+        (*env)->DeleteLocalRef(env, jDeviceName);
+    }
+    (*env)->DeleteLocalRef(env, deviceNameKey);
+    (*env)->DeleteLocalRef(env, adbKey);
+    (*env)->DeleteLocalRef(env, contextClass);
+    (*env)->DeleteLocalRef(env, settingsGlobalClass);
+    (*env)->DeleteLocalRef(env, contentResolver);
+
+    return (*env)->NewStringUTF(env, buffer);
+}
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *env, jobject thiz) {
@@ -111,13 +150,51 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFileSystemProbes(JNIEnv *
     }
 }
 
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanDevProperties(JNIEnv *env, jobject thiz) {
+
+    char buffer[512];
+    const char* paths[11] = {
+                    "/dev/__properties__/u:object_r:vendor_default_prop:s",
+                    "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0",
+                    "/dev/__properties__/u:object_r:telephony_config_prop:s0",
+                    "/dev/__properties__/u:object_r:telephony_status_prop:s0",
+                    "/dev/__properties__/u:object_r:serialno_prop:s0",
+                    "/dev/__properties__/u:object_r:build_bootimage_prop:s0",
+                    "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0",
+                    "/dev/__properties__/u:object_r:radio_control_prop:s0",
+                    "/dev/__properties__/u:object_r:custom_version_prop:s0",
+                    "/dev/__properties__/u:object_r:fingerprint_prop:s0",
+                    "/dev/__properties__/u:object_r:bootloader_prop:s0",
+    };
+
+    for (int i = 0; i < 11; i++) {
+        long fd = arm64_raw_syscall(__NR_openat, AT_FDCWD, (long)paths[i], O_RDONLY, 0, 0, 0);
+
+        if (fd < 0) {
+            LOGE("[Dev Properties Probe] Failed to open %s (Error: %ld)", paths[i], fd);
+        } else {
+            long bytes = arm64_raw_syscall(__NR_read, fd, (long)buffer, sizeof(buffer) - 1, 0, 0, 0);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                LOGD("[Dev Properties Probe] Contents of %s: %s...", paths[i], buffer);
+            } else {
+                LOGE("[Dev Properties Probe] Failed to show bytes of %s", paths[i]);
+            }
+            arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+        }
+    }
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject thiz) {
     FILE* fp = fopen("/proc/self/maps", "r");
-    if (!fp) return (*env)->NewStringUTF(env, "Error: Could not open maps");
+    if (!fp) {
+        return (*env)->NewStringUTF(env, "Could not open maps");
+    }
 
     char line[1024];
-    char report[MAX_REPORT_SIZE] = "--- Bipan Stealth Report ---\n";
+    char report[MAX_REPORT_SIZE] = {0};
     int found_any = 0;
 
     while (fgets(line, sizeof(line), fp)) {
@@ -137,9 +214,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
 
             // Diagnostic check
             if (ptr[0] == 0x7f && ptr[1] == 'E' && ptr[2] == 'L' && ptr[3] == 'F') {
-                elf_status = "!! ELF HEADER DETECTED !!";
+                elf_status = "[!] ELF HEADER DETECTED";
             } else if (ptr[0] == 0x00 && ptr[1] == 0x00) {
-                elf_status = "Scrubbed (Safe)";
+                elf_status = "Two NULL bytes at region start";
             }
 
             // Append to our Kotlin-bound report
@@ -161,207 +238,280 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMaps(JNIEnv *env, jobject
     return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_removeBipan(JNIEnv *env, jobject thiz) {
-    // TODO: sigprocmask
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanSmaps(JNIEnv *env, jobject thiz) {
+    FILE* fp = fopen("/proc/self/smaps", "r");
+    if (!fp) {
+        return (*env)->NewStringUTF(env, "Could not open smaps");
+    }
 
+    char line[1024];
+    char report[MAX_REPORT_SIZE] = {0};
+    int found_any = 0;
+
+    char current_addr[128] = "";
+    char current_perms[16] = "";
+    char current_path[256] = "";
+
+    while (fgets(line, sizeof(line), fp)) {
+        // 1. Detect memory region header line (contains region addresses and permissions)
+        if (strchr(line, '-') != NULL && strstr(line, " r") != NULL) {
+            char addr[128], perms[16], offset[16], dev[16], inode[16], path[256] = "";
+            int count = sscanf(line, "%s %s %s %s %s %s", addr, perms, offset, dev, inode, path);
+
+            // Filter out paths that are considered noise
+            if (is_noise(path)) {
+                current_perms[0] = '\0';
+                continue;
+            }
+
+            // Save the state for subsequent metrics lines safely
+            strcpy(current_addr, addr);
+
+            // Safety measure: Ensure we do not overflow current_perms
+            strncpy(current_perms, perms, sizeof(current_perms) - 1);
+            current_perms[sizeof(current_perms) - 1] = '\0'; // Ensure null-termination
+
+            if (count >= 6) {
+                strcpy(current_path, path);
+            } else {
+                strcpy(current_path, "Anonymous");
+            }
+            continue;
+        }
+
+        // 2. Process only executable regions
+        if (strstr(current_perms, "x") != NULL) {
+            found_any = 1;
+
+            // 3. Extract smap metrics (such as Size, Rss, Pss, KernelPageSize)
+            if (strstr(line, "Size:") || strstr(line, "Rss:") ||
+                strstr(line, "Pss:") || strstr(line, "KernelPageSize:")) {
+
+                char entry[512];
+
+                // Trim trailing newline
+                line[strcspn(line, "\r\n")] = 0;
+
+                snprintf(entry, sizeof(entry), "[Region]: %s | [Path]: %s | %s\n",
+                         current_addr, current_path, line);
+
+                if (strlen(report) + strlen(entry) < MAX_REPORT_SIZE - 1) {
+                    strcat(report, entry);
+                }
+            }
+        }
+    }
+
+    if (!found_any) {
+        strcat(report, "\nNo executable memory regions with smaps found.\n");
+    }
+
+    fclose(fp);
+    return (*env)->NewStringUTF(env, report);
 }
+
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[2048] = {0};
+    char report[8192] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    #define IPv4_FAMILY AF_INET
-    #define IPv6_FAMILY AF_INET6
-    #define SOCK_TYPE_TCP SOCK_STREAM
-    #define SOCK_TYPE_UDP SOCK_DGRAM
-    #define RANDOM_EPHEMERAL_PORT 0 // client behavior
-    #define ARBITRARY_PORT 8080 // server behavior
-
-    // 1. Client behavior: IPv4, TCP, random ephemeral port (0): Should fail
-    #define LAN_ADDR_1 "192.168.1.1"
-    int s1 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a1 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
+    // Addresses for IP socks to be bound to
+    const char* addrs[5] = {
+            "127.0.0.1", // IPv4 localhost
+            "::1", // IPv6 localhost
+            "0.0.0.0", // IPv4 unspecified
+            "::", // IPv6 unspecified
+            "192.168.68.106" // example of phone's own LAN IP
     };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_1, &a1.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s1, (long)&a1, sizeof(a1), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv4 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
+
+    // Ports for IP socks to be bound to
+    const int ports[2] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
+
+    // Protocols
+    const int protocols[2] = { TCP, UDP };
+    
+    // Families: IPv4, IPv6, and local/unix domain
+    const int families[3] = { IPv4, IPv6, Unix };
+
+    SockFactoryRes res = {0};
+    for (int fam_idx = 0; fam_idx < 3; fam_idx++) {
+        int fam = families[fam_idx];
+
+        if (fam == Unix) {
+            // Run Unix tests separately (they don't need the IP address loop)
+            for (int proto = 0; proto < 2; proto++) {
+                res = CreateSocket(Unix, protocols[proto], 0, 0, LOCAL_SOCKET, 0);
+                ret = arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sasUn, sizeof(res.sas.sasUn), 0,0,0);
+
+                snprintf(entry, sizeof(entry), "UNIX | %s | res: %ld\n", proto_to_str(protocols[proto]), ret);
+                strcat(report, entry);
+
+                unlink(LOCAL_SOCKET);
+                close(res.sock);
+            }
+            continue;
+        }
+
+        // IP-based tests
+        for (int addr_idx = 0; addr_idx < 5; addr_idx++) {
+            const char* addr_str = addrs[addr_idx];
+
+            // Simple check: Don't try IPv4 strings with IPv6 family and vice versa
+            bool is_v6_str = (strchr(addr_str, ':') != NULL);
+            if ((fam == IPv4 && is_v6_str) || (fam == IPv6 && !is_v6_str && strcmp(addr_str, "localhost") != 0)) {
+                continue;
+            }
+
+            for (int port_idx = 0; port_idx < 2; port_idx++) {
+                for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
+                    res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0, 0);
+
+                    ret = (fam == IPv4)
+                               ? arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas4, sizeof(res.sas.sas4), 0,0,0)
+                               : arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas6, sizeof(res.sas.sas6), 0,0,0);
+
+                    snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %ld\n",
+                             addr_str, ports[port_idx], proto_to_str(protocols[proto_idx]), fam_to_str(fam), ret);
+                    strcat(report, entry);
+
+                    close(res.sock);
+                }
+            }
+        }
+    }
+    return (*env)->NewStringUTF(env, report);
+}
+
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[256] = {0};
+    long ret = 0;
+
+    SockFactoryRes res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+
+    const int backlog = 10;
+    ret = arm64_raw_syscall(__NR_listen, res.sock, backlog, 0, 0, 0, 0);
+
+    snprintf(entry, sizeof(entry), "[listen] result: %ld, errno: %d\n", ret, errno);
     strcat(report, entry);
-
-    // 2. Client behavior: IPv4, UDP, LAN addr, random ephemeral port (0): Should fail
-    #define LAN_ADDR_2 "192.168.1.50"
-    int s2 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in a2 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_2, &a2.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s2, (long)&a2, sizeof(a2), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv4 UDP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-    // 3. Client behavior: IPv6, TCP, LAN addr, random ephemeral port (0): should fail
-    #define LAN_ADDR_3 "fe80::10b4:f5ff:fecc:ee2a"
-    int s3 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a3 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_3, &a3.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s3, (long)&a3, sizeof(a3), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv6 TCP LAN (Random/Ephemeral Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-    // 4. Client behavior: IPv6, UDP, LAN addr, random ephemeral port (0): should fail
-    #define LAN_ADDR_4 "fe80::10b4:f5ff:fecc:ee2a"
-    int s4 = socket(IPv6_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in6 a4 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_4, &a4.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s4, (long)&a4, sizeof(a4), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv6 UDP LAN (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-    // 5. Server behavior: IPv4, TCP, listening on arbitrary port (8080): should fail
-    int s5 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a5 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(ARBITRARY_PORT)
-    };
-    a5.sin_addr.s_addr = htonl(INADDR_ANY);
-    ret = arm64_raw_syscall(__NR_bind, s5, (long)&a5, sizeof(a5), 0, 0, 0);
-    // Bipan spoofs `bind`s success (return 0) but don't actually let it happen
-    snprintf(entry, sizeof(entry), "Server Bind (Port %d): %s\n", ARBITRARY_PORT, (ret == 0 ? "SPOOFED ✅" : "FAILED ❌"));
-    strcat(report, entry);
-
-
-    // 6. "Legitimate" use: local/UNIX TCP  on random port for IPC (example): should pass
-    int s6 = socket(AF_UNIX, SOCK_TYPE_TCP, 0);
-    struct sockaddr_un a6 = {
-            .sun_family = AF_UNIX
-    };
-    strncpy(a6.sun_path, "/data/data/com.omarmesqq.grunfeld/ipc_socket", sizeof(a6.sun_path)-1);
-    ret = arm64_raw_syscall(__NR_bind, s6, (long)&a6, sizeof(a6), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "Unix Domain IPC: %s\n", (ret == 0 ? "ALLOWED ✅" : "BLOCKED ❌"));
-    strcat(report, entry);
-
-
-    // 7. Loopback binding IPv4 TCP
-    #define LAN_ADDR_5 "127.0.0.1"
-    int s7 = socket(IPv4_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in a7 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_5, &a7.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s7, (long)&a7, sizeof(a7), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv4 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-    // 8. Loopback binding IPv6 TCP
-    #define LAN_ADDR_6 "::1"
-    int s8 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a8 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_6, &a8.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s8, (long)&a8, sizeof(a8), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv6 TCP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-
-    // 9. Loopback binding IPv4 UDP
-    #define LAN_ADDR_7 "127.0.0.1"
-    int s9 = socket(IPv4_FAMILY, SOCK_TYPE_UDP, 0);
-    struct sockaddr_in a9 = {
-            .sin_family = IPv4_FAMILY,
-            .sin_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv4_FAMILY, LAN_ADDR_7, &a9.sin_addr);
-    ret = arm64_raw_syscall(__NR_bind, s9, (long)&a9, sizeof(a9), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv4 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-    // 10. Loopback binding IPv6 UDP
-    #define LAN_ADDR_8 "::1"
-    int s10 = socket(IPv6_FAMILY, SOCK_TYPE_TCP, 0);
-    struct sockaddr_in6 a10 = {
-            .sin6_family = IPv6_FAMILY,
-            .sin6_port = htons(RANDOM_EPHEMERAL_PORT)
-    };
-    inet_pton(IPv6_FAMILY, LAN_ADDR_8, &a10.sin6_addr);
-    ret = arm64_raw_syscall(__NR_bind, s10, (long)&a10, sizeof(a10), 0, 0, 0);
-    snprintf(entry, sizeof(entry), "IPv6 UDP Loopback (Port 0): %s\n", (ret == -EADDRNOTAVAIL ? "BLOCKED ✅" : "LEAK ❌"));
-    strcat(report, entry);
-
-
-    close(s1);
-    close(s2);
-    close(s3);
-    close(s4);
-    close(s5);
-    unlink(a6.sun_path);
-    close(s6);
-    close(s7);
-    close(s8);
-    close(s9);
-    close(s10);
 
     return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNetworkLeaks(JNIEnv *env, jobject thiz) {
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
+    if (setjmp(jump_buffer) != 0) {
+        return (*env)->NewStringUTF(env, "Socket creation failed");;
+    }
+    char report[8192] = {0};
+    char entry[256] = {0};
+    long ret = 0;
+
+    SockFactoryRes res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    return (*env)->NewStringUTF(env, "OK");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[256] = {0};
     // sendto (Multicast / LAN Discovery)
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    struct sockaddr_in target = {
-            .sin_family = AF_INET,
-            .sin_port = htons(1900), // SSDP Port
-            .sin_addr.s_addr = inet_addr("239.255.255.250") // Multicast
-    };
     const char* msg = "M-SEARCH * HTTP/1.1";
 
-    long ret = arm64_raw_syscall(__NR_sendto, sock, (long)msg, (long)strlen(msg), 0, (long)&target, sizeof(target));
-    LOGD("[NET] sendto LAN result: %ld (Expect spoofed byte count: %zu)", ret, strlen(msg));
+    const int port_ssdp_upnp = 1900;
+    const char* ipv4_multicast_addr = "239.255.255.250";
+    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
 
-    // getsockname (LAN IP Leak Prevention)
-    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the
-    // socket to see if it leaks the local IP
-    struct sockaddr_in cf_dns = {
-            .sin_family = AF_INET,
-            .sin_port = htons(53),
-            .sin_addr.s_addr = inet_addr("1.1.1.1")
-    };
+    long ret = arm64_raw_syscall(__NR_sendto, res.sock, (long)msg, (long)strlen(msg), 0, (long)&res.sas.sas4, sizeof(res.sas.sas4));
+
+    snprintf(entry, sizeof(entry), "\"sent\" bytes to LAN: %ld (Expected: %zu)\n", ret, strlen(msg));
+    strcat(report, entry);
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
+    long ret = 0;
+    char report[8192] = {0};
+    char entry[256] = {0};
+
+    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
+    const int port_dns = 53;
+    const char* cloudflareDnsIp4 = "1.1.1.1";
+    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
 
     // use standard connect (Bipan allows public internet)
-    connect(sock, (struct sockaddr*)&cf_dns, sizeof(cf_dns));
+    if (connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4)) == -1) {
+        snprintf(entry, sizeof(entry), "connect failed \n");
+        strcat(report, entry);
+        return (*env)->NewStringUTF(env, report);
+    }
 
     // getsockname
     struct sockaddr_in leaked_addr;
     socklen_t len = sizeof(leaked_addr);
 
-    // The kernel WILL return the real LAN IP here.
-    // Bipan should catch it, log the violation, and scrub it to 0.0.0.0.
-    ret = arm64_raw_syscall(__NR_getsockname, sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+    // The kernel WILL return the real LAN IP here. Bipan should catch it, log the violation, and scrub it to 0.0.0.0.
+    ret = arm64_raw_syscall(__NR_getsockname, res.sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        LOGD("[NET] getsockname result: %s (If 0.0.0.0, Bipan successfully scrubbed a REAL leak)", ip);
+        snprintf(entry, sizeof(entry), "socket IP: %s(Expect \"scrubbed\" value )\n", ip);
+    } else {
+        snprintf(entry, sizeof(entry), "failed with ret: %ld\n", ret);
     }
 
-    close(sock);
+    strcat(report, entry);
+    close(res.sock);
+    return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    return JNI_VERSION_1_6;
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
+    if (setjmp(jump_buffer) != 0) {
+        return (*env)->NewStringUTF(env, "Socket creation failed");;
+    }
+    char report[8192] = {0};
+    char entry[256] = {0};
+
+    // 1. Create a UDP socket over IPv4 using your socket factory
+    SockFactoryRes res = CreateSocket(IPv4, UDP, "192.168.68.103", ARBITRARY_PORT, 0, 0);
+
+    // 2. Prepare the data to be sent using the Scatter/Gather (iovec) structure
+    char* data1 = "Message Header - ";
+    char* data2 = "Hello from sendmsg!";
+
+    struct iovec iov[2];
+    iov[0].iov_base = data1;
+    iov[0].iov_len = strlen(data1);
+
+    iov[1].iov_base = data2;
+    iov[1].iov_len = strlen(data2);
+
+    // 3. Prepare the msghdr structure
+    struct msghdr msg = {0};
+    msg.msg_name = &res.sas.sas4; // Destination address
+    msg.msg_namelen = sizeof(res.sas.sas4);
+    msg.msg_iov = iov;             // Pointer to the array of iovecs
+    msg.msg_iovlen = 2;            // Number of elements in the iovec array
+
+    // 4. Invoke the system call using the raw syscall wrapper
+    long ret = arm64_raw_syscall(__NR_sendmsg, res.sock, (long)&msg, 0, 0, 0, 0);
+
+    snprintf(entry, sizeof(entry), "[sendmsg] result: %ld, errno: %d\n", ret, errno);
+    strcat(report, entry);
+
+    // 5. Cleanup socket
+    close(res.sock);
+
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -405,12 +555,73 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
 
   long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
   if (ret != 0) {
-      LOGE("Failed to install SIGSYS handler (return: %ld)", ret);
       return JNI_FALSE;
   }
 
-  LOGD("Installed SIGSYS handler successfully!");
   return JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobject thiz) {
+    sigset_t mask;
+
+    // 1. Initialize an empty signal set
+    sigemptyset(&mask);
+
+    // 2. Add SIGSYS to the set
+    sigaddset(&mask, SIGSYS);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
+        return JNI_FALSE;
+    } else {
+        return JNI_TRUE;
+    }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryPTrace(JNIEnv* env, jobject thiz) {
+    return JNI_TRUE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryProcStatus(JNIEnv* env, jobject thiz) {
+    FILE* fp = fopen("/proc/self/status", "r");
+    if (fp == NULL) {
+        return (*env)->NewStringUTF(env, "Unable to open /proc/self/status");
+    }
+
+    char report[2048] = {0};
+    char line[256] = {0};
+
+    // Define the prefixes of the relevant lines you want to keep
+    const char* relevant_prefixes[] = {
+            "Name:",
+            "State:",
+            "Pid:",
+            "PPid:",
+            "TracerPid:"
+    };
+    int num_prefixes = sizeof(relevant_prefixes) / sizeof(relevant_prefixes[0]);
+
+    // Read the status file line by line
+    while (fgets(line, sizeof(line), fp)) {
+        for (int i = 0; i < num_prefixes; i++) {
+            if (strncmp(line, relevant_prefixes[i], strlen(relevant_prefixes[i])) == 0) {
+                // Ensure buffer has enough space
+                if (strlen(report) + strlen(line) < sizeof(report) - 1) {
+                    strcat(report, line);
+                } else {
+                    // Truncate if we exceed the buffer
+                    break;
+                }
+                break;
+            }
+        }
+    }
+
+    fclose(fp);
+
+    // Return the filtered report to the JVM
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -527,9 +738,50 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_buffer);
 }
 
+static const char* proto_to_str(int proto) {
+    switch (proto) {
+        case TCP: return "TCP";
+        case UDP: return "UDP";
+        default:  return "UNKNOWN_PROTO";
+    }
+}
+
+static const char* fam_to_str(int fam) {
+    switch (fam) {
+        case IPv4: return "IPv4";
+        case IPv6: return "IPv6";
+        case Unix: return "Unix";
+        default:   return "UNKNOWN_FAM";
+    }
+}
+
+static int is_noise(const char* path) {
+    if (!path || strlen(path) == 0) return 0;
+    const char* filters[] = {
+            "/apex/",
+            "/system/",
+            "/vendor/",
+            "/product/",
+            "/dev/",
+            "/data/"
+    };
+    for (int i = 0; i < 6; i++) {
+        if (strstr(path, filters[i])) return 1;
+    }
+    return 0;
+}
+
+
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   LOGE("Should never reach here...");
   _exit(-1);
+}
+
+static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {
+    int len = __system_property_get(key, out_val);
+    if (len <= 0) {
+        strncpy(out_val, default_val, max_len);
+    }
 }
 
 #pragma clang diagnostic push

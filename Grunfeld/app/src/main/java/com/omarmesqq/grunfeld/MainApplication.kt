@@ -2,6 +2,7 @@ package com.omarmesqq.grunfeld
 
 import android.app.Application
 import android.content.res.Configuration
+import android.os.Build
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
@@ -28,38 +29,7 @@ class MainApplication: Application() {
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
-            Avocado.init(this)
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "App is debuggable...", shouldToast = true)
-            StrictMode.setThreadPolicy(
-                ThreadPolicy.Builder()
-                    .detectCustomSlowCalls()
-                    .detectDiskReads()
-                    .detectDiskWrites()
-                    .detectExplicitGc()
-                    .detectResourceMismatches()
-                    .detectUnbufferedIo()
-                    .penaltyLog()
-                    .build()
-            )
-            StrictMode.setVmPolicy(
-                VmPolicy.Builder()
-                    .detectBlockedBackgroundActivityLaunch()
-                    .detectCleartextNetwork()
-                    .detectContentUriWithoutPermission()
-                    .detectCredentialProtectedWhileLocked()
-                    .detectFileUriExposure()
-                    .detectImplicitDirectBoot()
-                    .detectIncorrectContextUse()
-                    .detectLeakedClosableObjects()
-                    .detectLeakedRegistrationObjects()
-                    .detectLeakedSqlLiteObjects()
-                    .permitNonSdkApiUsage() // LeakCanary violates this
-                    .detectUnsafeIntentLaunch()
-                    .detectUntaggedSockets()
-                    .detectActivityLeaks()
-                    .penaltyLog()
-                    .build()
-            )
+            setupStrictMode()
         }
 
         // Pre-warm Chromium engine using bleeding edge API
@@ -113,5 +83,41 @@ class MainApplication: Application() {
     override fun onLowMemory() {
         super.onLowMemory()
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onLowMemory", shouldToast = true)
+    }
+
+    private fun setupStrictMode() {
+        Avocado.init(this)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "DEBUG build", shouldToast = true)
+        StrictMode.setThreadPolicy(
+            ThreadPolicy.Builder()
+                .detectCustomSlowCalls()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectResourceMismatches()
+                .detectUnbufferedIo()
+                .penaltyLog()
+                .build()
+        )
+        StrictMode.setVmPolicy(
+            VmPolicy.Builder()
+                .detectCleartextNetwork()
+                .detectContentUriWithoutPermission()
+                .detectCredentialProtectedWhileLocked()
+                .detectFileUriExposure()
+                .detectImplicitDirectBoot()
+                .detectIncorrectContextUse()
+                .detectLeakedClosableObjects()
+                .detectLeakedRegistrationObjects()
+                .detectLeakedSqlLiteObjects()
+                .permitNonSdkApiUsage() // LeakCanary violates this
+                .detectUnsafeIntentLaunch()
+                .detectActivityLeaks()
+                .penaltyLog()
+                .build()
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+            VmPolicy.Builder().detectBlockedBackgroundActivityLaunch()
+            ThreadPolicy.Builder().detectExplicitGc()
+        }
     }
 }

@@ -10,7 +10,6 @@ include $(PREBUILT_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
 LOCAL_SRC_FILES := bipan.cpp \
-	 									blocker.cpp \
 										broker.cpp \
 										filter.cpp \
 										root_companion.cpp \
@@ -35,8 +34,5 @@ LOCAL_LDFLAGS := -Wl,--gc-sections \
                  -Wl,--exclude-libs,ALL \
                  -Wl,--icf=all \
                  -flto
-
-# "Local Linker Libraries": dynamically link to liblog.so (for use of logcat)
-LOCAL_LDLIBS := -llog 
 
 include $(BUILD_SHARED_LIBRARY)
