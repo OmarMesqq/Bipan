@@ -53,6 +53,25 @@ static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 
+/**
+ * `BipanBroker` runs as thread of root companion, as such,
+ * it inherits its powerful capabilities.
+ * 
+ * Its role is to provide a safe space for deeply inspecting
+ * and evaluating if the trapped syscalls should executed natively
+ * or if they should have some special treatment i.e. getting a spoofed
+ * file, getting permission denied or get lied about the existence of some file
+ * (`-ENOENT`).
+ * 
+ * As this process is unseccomped we don't have to worry (so much) about recursive
+ * signal handler issues and are free to use libc wrappers here.
+ * This code should definitely be thread-safe but, perhaps not necessarily,
+ * AS-safe. 
+ * 
+ * The latter burden lies with the in-process `SIGSYS` handler which basically
+ * dispatches trapped syscall info to the broker, yields, and takes some action
+ * according the Broker's policies here defined.
+ */
 void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
 
