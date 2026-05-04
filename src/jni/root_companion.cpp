@@ -36,7 +36,21 @@ static void handle_fetch_targets(int fd) {
 }
 
 /**
- * THE MULTIPLEXER
+ * Our root companion's request handler function. This function runs in
+ * superuser daemon spawned by Zygisk.
+ * 
+ * Paraphrasing the docs, this function will run concurrently
+ * on multiple threads as [fact-check this] the root daemon will be unique
+ * across multiple Bipan targeted apps.
+ * 
+ * As the targeted app (running `Bipan`) can only "talk" to the companion
+ * in pre[XXX]Specialize methods, we implement a multiplexer here so the "door"
+ * to the companion remains open during tageted app's lifetime. The reason for this
+ * is that Bipan leverages the superuser daemon for 
+ * two crucially distinct operations in `preAppSpecialize`:
+ * 
+ * 1. Getting the target processes (`fetchTargetProcesses()`)
+ * 2. Asking the companion to start our trusted `Broker` process and registering the `sockfd` for "later talk"
  */
 static void companion_handler(int sock) {
   CompanionCommand cmd;
@@ -67,5 +81,4 @@ static void companion_handler(int sock) {
   }
 }
 
-// Register the companion handler function
 REGISTER_ZYGISK_COMPANION(companion_handler)
