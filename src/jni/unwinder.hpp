@@ -7,6 +7,7 @@
 #include <string>
 
 #include "shared.hpp"
+#include "logger.hpp"
 
 static constexpr int MAX_UNWIND_DEPTH = 20;
 
@@ -90,12 +91,12 @@ inline bool is_trusted_system_caller(const char* target_pathname, uintptr_t* out
     }
 
     if (log_on_fail) {
-      LOGE("--- Bipan Violation ---");
-      LOGE("Action:  %s", target_pathname);
-      LOGE("Culprit: %s", culprit);
-      LOGE("PC:      %p", (void*)pc);  // Absolute address in memory
-      LOGE("Offset:  0x%lx", offset);  // Relative address for addr2line/objdump
-      LOGE("-----------------------");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Bipan Violation ---");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", target_pathname);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);  // Absolute address in memory
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);  // Relative address for addr2line/objdump
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
     }
   }
 

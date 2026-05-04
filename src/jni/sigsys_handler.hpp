@@ -2,6 +2,5 @@
 #define SIGSYS_HANDLER_HPP
 
 void registerSignalHandler();
-void storeSpoofedFD(int fd, const char* original_path);
 
 #endif

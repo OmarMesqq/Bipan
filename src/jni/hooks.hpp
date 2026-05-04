@@ -3,6 +3,7 @@
 
 #include "filter.hpp"
 #include "shared.hpp"
+#include "logger.hpp"
 #include "zygisk.hpp"
 #include <stdint.h>
 using zygisk::Api;
@@ -32,14 +33,14 @@ static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    LOGW("Hook (dlopen): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
   }
   return orig_dlopen(filename, flag);
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    LOGW("Hook (android_dlopen_ext): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
   }
 
   return orig_android_dlopen_ext(filename, flag, extinfo);
@@ -54,7 +55,7 @@ jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstan
   (void)clazz;
   (void)nativeInstance;
   (void)sensor;
-  LOGE("(Java Sensors) Blocked SensorManager enumeration (index %d)", index);
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked SensorManager enumeration (index %d)", index);
   return JNI_FALSE;
 }
 
@@ -65,7 +66,7 @@ jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint 
   (void)handle;
   (void)rateUs;
   (void)maxBatchReportLatencyUs;
-  LOGE("(Java Sensors) Blocked nativeEnableSensor");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeEnableSensor");
   return -1;
 }
 
@@ -77,7 +78,7 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   (void)type;
   (void)fd;
   (void)resource;
-  LOGE("(Java Sensors) Blocked nativeCreateDirectChannel");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeCreateDirectChannel");
   return -1;
 }
 
@@ -85,7 +86,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
   (void)env;
   (void)clazz;
   (void)opPackageName;
-  LOGE("(Java Sensors) Blocked nativeCreate");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeCreate");
   return 0;
 }
 
@@ -96,12 +97,12 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
 #define NATIVE_SENSORS_FUNCTIONS_COUNT 5
 
 ASensorManager* hook_ASensorManager_getInstance() {
-  LOGE("(Native Sensors) Blocked ASensorManager_getInstance");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
   return nullptr;
 }
 
 ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
-  LOGE("(Native Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
   return nullptr;
 }
 
@@ -111,7 +112,7 @@ ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager,
   (void)ident;
   (void)cb;
   (void)data;
-  LOGE("(Native Sensors) Blocked Native createEventQueue");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native createEventQueue");
   return nullptr;
 }
 
@@ -120,14 +121,14 @@ int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** lis
   if (list != nullptr) {
     *list = nullptr;
   }
-  LOGE("(Native Sensors) Blocked Native getSensorList");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getSensorList");
   return 0;
 }
 
 ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
   (void)manager;
   (void)type;
-  LOGE("(Native Sensors) Blocked Native getDefaultSensor");
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getDefaultSensor");
   return nullptr;
 }
 
@@ -140,9 +141,9 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     // Bipan's global bounds
     if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
       applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-      LOGD("Seccomp applied at clampGrowthLimit.");
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clampGrowthLimit.");
     } else {
-      LOGE("Cannot apply seccomp: Library bounds are 0!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Cannot apply seccomp: Library bounds are 0!");
     }
     seccomp_applied = true;
   }
@@ -155,9 +156,9 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
       applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-      LOGD("Seccomp applied at clearGrowthLimit.");
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clearGrowthLimit.");
     } else {
-      LOGE("Cannot apply seccomp: Library bounds are 0!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Cannot apply seccomp: Library bounds are 0!");
     }
     seccomp_applied = true;
   }
@@ -171,7 +172,7 @@ void registerDobbySensorsHooks() {
   if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
 
   if (!handle) {
-    LOGE("Failed to get handle to libandroid.so. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to get handle to libandroid.so. Aborting for safety!");
     _exit(-1);
   }
 
@@ -201,7 +202,7 @@ void registerDobbySensorsHooks() {
     if (addr) {
       if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
         __builtin___clear_cache((char*)addr, (char*)addr + 32);
-        LOGD("(Dobby Native Sensors) Hooked %s", symbols[i]);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(Dobby Native Sensors) Hooked %s", symbols[i]);
       }
     }
   }
@@ -212,7 +213,7 @@ void registerDobbyLinkerHooks() {
   if (linker_hooked) {
     return;
   }
-  LOGD("Registering Dobby linker hooks...");
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Registering Dobby linker hooks...");
   void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
   void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
 
@@ -220,10 +221,10 @@ void registerDobbyLinkerHooks() {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
     if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
-      LOGD("Linker hooks active.");
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Linker hooks active.");
       linker_hooked = true;
     } else {
-      LOGE("Failed to setup Dobby hooks!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
   }
 }

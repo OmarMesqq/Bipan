@@ -11,10 +11,7 @@ import com.omarmesqq.grunfeld.utils.WebViewUtils
 
 private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
-    // https://browserleaks.com/
-    // https://httpbin.org/
-    // https://deviceinfo.me/
-    private val initialUrl = "https://browserleaks.com/"
+    private val initialUrl = "about:blank"
     var webView: WebView? = null
 
     // UI States
@@ -47,7 +44,7 @@ class WebViewModel : ViewModel() {
     }
 
     fun clearAndReset() {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "clearAndReset", shouldToast = true)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Cleared all site data!", shouldToast = true)
         WebViewUtils.fullCleanup(webView)
         urlText.value = "about:blank"
         webView?.loadUrl("about:blank")
@@ -63,6 +60,6 @@ class WebViewModel : ViewModel() {
             destroy()
         }
         webView = null
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "onCleared: automatically destroyed WebView")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "onCleared: destroyed WebView")
     }
 }

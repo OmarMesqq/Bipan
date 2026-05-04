@@ -1,16 +1,9 @@
 #ifndef BIPAN_SHARED_H
 #define BIPAN_SHARED_H
 
-#include <android/log.h>
-
 #include <string>
 
 #define TAG "Bipan"
-
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 // Globals populated in entrypoint
 
@@ -20,32 +13,50 @@ extern char safe_proc_pid_path[64];
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 
-// #define BROKER_ARCH
+extern char package_name[256];
 
-#ifdef BROKER_ARCH
-enum BROKER_STATUS {
+enum CompanionCommand {
+  CMD_FETCH_TARGETS = 1,
+  CMD_START_BROKER = 2
+};
+
+enum BrokerStatus {
   IDLE = 0,
   REQUEST_SYSCALL = 1,
   BROKER_ANSWERED = 2
 };
 
+enum IpcAction {
+  ACTION_EXECUTE_NATIVE = 1,
+  ACTION_USE_RET = 2,
+  ACTION_RECV_FD = 3,
+  ACTION_EXECUTE_AND_SCRUB_SOCK = 4
+};
+
+#define MAX_STACK_TRACE 40
+
 typedef struct {
+  volatile int lock;
   volatile int status;
 
+  uintptr_t caller_pc;
+  uintptr_t caller_fp;
+  uintptr_t caller_lr;
+  pid_t target_pid;
+
   int nr;  // syscall number
+  long arg0, arg1, arg2, arg3, arg4, arg5;
 
-  // arguments
-  long arg0;
-  char path[256];  // arg1 is a string pointer, so this takes its contents
-  long arg2, arg3, arg4, arg5;
+  // Payloads to cross the process boundary
+  char string_payload[256];     // Paths (/sbin/su, etc)
+  uint8_t struct_payload[128];  // sockaddrs
+  uint8_t out_buffer[512];      // Returned data (uname, readlinkat)
 
+  int action;
   long ret;  // return value provided by kernel
-} SharedIPC;
 
-/**
- * The declarations below are initialized once in Bipan's Zygote injection:
- * `bipan.cpp`
- */
+  uintptr_t stack_trace[MAX_STACK_TRACE];
+} SharedIPC;
 
 /**
  * IPC memory map between main process
@@ -62,16 +73,29 @@ extern SharedIPC* ipc_mem;
  * valid ones in the main process.
  */
 extern int sv[2];
-#endif
 
-inline bool starts_with(const char* str, const char* prefix) {
-  return strncmp(str, prefix, strlen(prefix)) == 0;
-}
-
-inline void write_to_char_buf(char* dest, const char* src, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    dest[i] = src[i];
-  }
-}
+/**
+ * Android log priority values, in increasing order of priority.
+ */
+typedef enum android_LogPriority {
+  /** For internal use only.  */
+  ANDROID_LOG_UNKNOWN = 0,
+  /** The default priority, for internal use only.  */
+  ANDROID_LOG_DEFAULT, /* only for SetMinPriority() */
+  /** Verbose logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_VERBOSE,
+  /** Debug logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_DEBUG,
+  /** Informational logging. Should typically be disabled for a release apk. */
+  ANDROID_LOG_INFO,
+  /** Warning logging. For use with recoverable failures. */
+  ANDROID_LOG_WARN,
+  /** Error logging. For use with unrecoverable failures. */
+  ANDROID_LOG_ERROR,
+  /** Fatal logging. For use when aborting. */
+  ANDROID_LOG_FATAL,
+  /** For internal use only.  */
+  ANDROID_LOG_SILENT, /* only for SetMinPriority(); must be last */
+} android_LogPriority;
 
 #endif

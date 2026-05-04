@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorManager
@@ -8,14 +7,12 @@ import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
 
-
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
     val settingsInfo = dumpSettingsInfo(context)
     return "$buildInfo\n\n$settingsInfo"
 }
 
-@SuppressLint("WrongConstant")
 private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}
@@ -60,22 +57,23 @@ private fun dumpBuildInfo(): String {
 
 private fun dumpSettingsInfo(ctx: Context): String {
     val cr = ctx.contentResolver
+    val NOT_FOUND = -999
 
     val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
-
-    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED)
-    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED)
-    val bootCount = Global.getInt(cr, Global.BOOT_COUNT)
-    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER)
     val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, NOT_FOUND)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, NOT_FOUND)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, NOT_FOUND)
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, NOT_FOUND)
 
     return """
        DEVICE_NAME: $deviceName
-       DEV_SETTINGS_ON: $devSettingsOn
-       ADB_ENABLED: $adbEnabled
-       BOOT_COUNT: $bootCount
-       WAIT_FOR_DEBUGGER: $waitForDebugger
        SSAID: $ssaid
+       DEV_SETTINGS_ON: ${if (devSettingsOn == NOT_FOUND) "Could not extract value" else devSettingsOn}
+       ADB_ENABLED: ${if (adbEnabled == NOT_FOUND) "Could not extract value" else adbEnabled}
+       BOOT_COUNT: ${if (bootCount == NOT_FOUND) "Could not extract value" else bootCount}
+       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == NOT_FOUND) "Could not extract value" else waitForDebugger}
     """.trimIndent()
 }
 
