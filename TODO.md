@@ -1,0 +1,10 @@
+- Solve stuttering
+- Run tests on installed apps
+
+- Solve recursive handler in [RootBeer](https://github.com/scottyab/rootbeer)
+  - once this passes, call RootBeer from Grunfeld
+- Investigate [packages.xml spoofing of installers](https://github.com/Pixel-Props/BetterKnownInstalled)
+- Investigate [pairipfix (app not installed from Play)](https://github.com/ahmedmani/pairipfix)
+- Implement SafetyNet/[Integrity](https://github.com/1nikolas/play-integrity-checker-app)
+- Implement [TOML configuration](https://toml.io/en/)
+- Learn more about [LSPosed](https://github.com/LSPosed/LSPosed)-like implementations
