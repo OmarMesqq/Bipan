@@ -22,7 +22,6 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object JavaScreen : Screen("java", "Java", Icons.Default.Coffee)
     object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
     object NativeScreen : Screen("native", "Native", Icons.Default.Code)
-    object NetworkScreen : Screen("network", "Network", Icons.Default.SettingsEthernet)
 }
 
 class MainActivity : ComponentActivity() {
