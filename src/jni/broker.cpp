@@ -148,7 +148,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_uname: {
         if (!is_trusted) {
           struct utsname spoofed_buf;
@@ -159,7 +158,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         break;
       }
-
       case __NR_openat: {
         if (!is_trusted) {
           if (shouldDenyAccess(path_payload)) {
@@ -224,7 +222,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_faccessat:
       case __NR_newfstatat: {
         if (!is_trusted) {
@@ -248,7 +245,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_rt_sigaction: {
         if (ipc_mem->arg0 == SIGSYS) {
           log_violation("SIGSYS handler hijacking", culprit_lib, ipc_mem->caller_pc, offset);
@@ -257,7 +253,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_bind:
       case __NR_connect: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
@@ -271,7 +266,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_listen: {
         if (!is_trusted) {
           if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
@@ -288,7 +282,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_sendto:
       case __NR_sendmsg: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
@@ -302,7 +295,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_getsockname: {
         if (!is_trusted) {
           ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
@@ -310,7 +302,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-
       case __NR_socket: {
         if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket AF_NETLINK) blocked");
@@ -319,6 +310,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
         }
+        break;
+      }
+      case __NR_mmap: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mmap) allowed");
+        break;
+      }
+      case __NR_mprotect: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mprotect) allowed");
+        break;
+      }
+      case __NR_readlinkat: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(readlinkat) allowed");
         break;
       }
     }
