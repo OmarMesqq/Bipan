@@ -10,17 +10,23 @@ import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.security.SecureRandom;
+import java.util.Map;
 
 public class SettingsHook implements InvocationHandler {
-  private final Object originalProvider;
   private static final String TAG = "BipanJava";
+  private final Object originalProvider;
+
   private static final String RANDOM_ANDROID_ID = generateRandomId();
-  private static final Set<String> ALLOWLIST =
-      new HashSet<>(Arrays.asList("com.spotify.music"));
+  private static final String FAKE_BOOT_COUNT = "43";
+  private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 500;
+
+  private static final Set<String> ALLOWLIST = new HashSet<>(
+      Arrays.asList("com.spotify.music"));
   private static String currentPackageName = "unknown";
 
   private static String generateRandomId() {
-    java.security.SecureRandom random = new java.security.SecureRandom();
+    SecureRandom random = new SecureRandom();
     byte[] bytes = new byte[8]; // 64 bits = 16 hex chars
     random.nextBytes(bytes);
     StringBuilder sb = new StringBuilder();
@@ -35,8 +41,7 @@ public class SettingsHook implements InvocationHandler {
   }
 
   @Override
-  public Object invoke(Object proxy, Method method, Object[] args)
-      throws Throwable {
+  public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     if ("call".equals(method.getName()) && args != null) {
       String callingMethod = null;
       String settingKey = null;
@@ -77,7 +82,7 @@ public class SettingsHook implements InvocationHandler {
               fakeValue = "0";
               break;
             case "boot_count":
-              fakeValue = "43";
+              fakeValue = FAKE_BOOT_COUNT;
               break;
           }
         } else if ("GET_secure".equals(callingMethod)
@@ -86,9 +91,7 @@ public class SettingsHook implements InvocationHandler {
         }
 
         if (fakeValue != null) {
-          Log.d(TAG,
-              "Spoofed Java Settings field: " + settingKey + " -> "
-                  + fakeValue);
+          Log.d(TAG, "Spoofed Settings field " + settingKey + ": " + fakeValue);
           Bundle fakeResult = new Bundle();
           fakeResult.putString("value", fakeValue);
           return fakeResult;
@@ -115,13 +118,12 @@ public class SettingsHook implements InvocationHandler {
       // 3. Get VMRuntime.setHiddenApiExemptions(String[])
       // Note the nested array: we are passing an array that contains an array.
       // This is critical.
-      Method setExemptionsMethod =
-          (Method) getDeclaredMethod.invoke(vmRuntimeClass,
-              "setHiddenApiExemptions", (Object) new Class[] {String[].class});
+      Method setExemptionsMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass,
+          "setHiddenApiExemptions", (Object) new Class[] { String[].class });
 
       // 4. Trigger the bypass
       setExemptionsMethod.invoke(
-          vmRuntime, (Object) new String[][] {new String[] {"L"}});
+          vmRuntime, (Object) new String[][] { new String[] { "L" } });
 
       Log.d(TAG, "VM Unsealed: Hidden API restrictions removed.");
     } catch (Throwable e) {
@@ -130,16 +132,15 @@ public class SettingsHook implements InvocationHandler {
         Method forName = Class.class.getDeclaredMethod("forName", String.class);
         Method getDeclaredMethod = Class.class.getDeclaredMethod(
             "getDeclaredMethod", String.class, Class[].class);
-        Class<?> vmRuntimeClass =
-            (Class<?>) forName.invoke(null, "dalvik.system.VMRuntime");
+        Class<?> vmRuntimeClass = (Class<?>) forName.invoke(null, "dalvik.system.VMRuntime");
         Method getRuntime = (Method) getDeclaredMethod.invoke(
             vmRuntimeClass, "getRuntime", (Object) null);
         Object vmRuntime = getRuntime.invoke(null);
         Method setHiddenApiExemptions = (Method) getDeclaredMethod.invoke(
             vmRuntimeClass, "setHiddenApiExemptions",
-            (Object) new Class[] {String[].class});
+            (Object) new Class[] { String[].class });
         setHiddenApiExemptions.invoke(
-            vmRuntime, new Object[] {new String[] {"L"}});
+            vmRuntime, new Object[] { new String[] { "L" } });
         Log.d(TAG, "VM Unsealed (Alt Method Success).");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
@@ -149,7 +150,7 @@ public class SettingsHook implements InvocationHandler {
 
   public static void install() {
     new Thread(() -> {
-      // Step 1: Kill the API guards before doing any reflection
+      // Kill API guards before doing any reflection
       unseal();
 
       try {
@@ -157,90 +158,84 @@ public class SettingsHook implements InvocationHandler {
         Object activityThread = null;
         Context appContext = null;
 
-        for (int i = 0; i < 500; i++) {
+        for (int i = 0; i < GET_APPLICATION_CONTEXT_MAX_RETRIES; i++) {
           Class<?> atClass = Class.forName("android.app.ActivityThread");
-          activityThread =
-              atClass.getMethod("currentActivityThread").invoke(null);
+          activityThread = atClass.getMethod("currentActivityThread").invoke(null);
           if (activityThread != null) {
             appContext = (Context) atClass.getMethod("getApplication")
-                             .invoke(activityThread);
+                .invoke(activityThread);
 
-            currentPackageName =
-                (String) atClass.getMethod("currentPackageName").invoke(null);
+            currentPackageName = (String) atClass.getMethod("currentPackageName").invoke(null);
 
-            if (appContext != null)
+            if (appContext != null) {
               break;
+            }
           }
           Thread.sleep(20);
         }
 
         if (appContext == null) {
-          Log.e(TAG, "Failed to get Application context.");
+          Log.e(TAG, "[!] Failed to get Application context");
           return;
         }
 
-        // Step 2: Warm up the Binder connection
+        // Warm up the Binder connection
         android.provider.Settings.Global.getString(
             appContext.getContentResolver(), "adb_enabled");
         android.provider.Settings.Secure.getString(
             appContext.getContentResolver(), "android_id");
 
-        String[] targetClasses = {"android.provider.Settings$Global",
+        String[] targetClasses = { "android.provider.Settings$Global",
             "android.provider.Settings$Secure",
-            "android.provider.Settings$System"};
-        Class<?> iContentProviderClass =
-            Class.forName("android.content.IContentProvider");
+            "android.provider.Settings$System" };
+        Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
 
         for (String className : targetClasses) {
           try {
             Class<?> clazz = Class.forName(className);
-            Field sNameValueCacheField =
-                clazz.getDeclaredField("sNameValueCache");
+            Field sNameValueCacheField = clazz.getDeclaredField("sNameValueCache");
             sNameValueCacheField.setAccessible(true);
             Object cache = sNameValueCacheField.get(null);
             if (cache == null)
               continue;
 
-            // Step 3: Purge cache (Now allowed because of unseal)
+            // Purge cache (now allowed because of unseal)
             try {
               Field mValuesField = cache.getClass().getDeclaredField("mValues");
               mValuesField.setAccessible(true);
               Object mValues = mValuesField.get(cache);
               if (mValues != null) {
-                // ArrayMap implements Map, so we can cast to clear it
-                ((java.util.Map) mValues).clear();
+                // Apparently, ArrayMap implements Map, so we can cast to it
+                ((Map) mValues).clear();
                 Log.d(TAG, "Cache cleared for " + className);
               }
             } catch (Throwable e) {
-              Log.e(TAG, "Could not clear cache map for " + className);
+              Log.e(TAG, "[!] Couldn't clear cache for class: " + className);
             }
 
-            Field mProviderHolderField =
-                cache.getClass().getDeclaredField("mProviderHolder");
+            Field mProviderHolderField = cache.getClass().getDeclaredField("mProviderHolder");
             mProviderHolderField.setAccessible(true);
             Object providerHolder = mProviderHolderField.get(cache);
 
-            Field mContentProviderField =
-                providerHolder.getClass().getDeclaredField("mContentProvider");
+            Field mContentProviderField = providerHolder.getClass().getDeclaredField("mContentProvider");
             mContentProviderField.setAccessible(true);
             Object original = mContentProviderField.get(providerHolder);
 
             if (original == null || Proxy.isProxyClass(original.getClass()))
               continue;
 
-            Object proxy =
-                Proxy.newProxyInstance(iContentProviderClass.getClassLoader(),
-                    new Class[] {iContentProviderClass},
-                    new SettingsHook(original));
+            Object proxy = Proxy.newProxyInstance(iContentProviderClass.getClassLoader(),
+                new Class[] { iContentProviderClass },
+                new SettingsHook(original));
 
             mContentProviderField.set(providerHolder, proxy);
             Log.d(TAG, "Successfully hijacked Binder for " + className);
           } catch (Exception e) {
-            Log.e(TAG, "Failed hijacking class: " + className, e);
+            Log.e(TAG, "[!] Failed to hijack class: " + className, e);
           }
         }
       } catch (Exception e) {
-        Log.e(TAG, "Async install fatal error", e);
+        Log.e(TAG, "[!] install fatal exception: ", e);
       }
     }).start();
   }
