@@ -32,7 +32,7 @@ fun JavaInfoScreen() {
     val context = LocalContext.current
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
-    val netInfo = remember { dumpNetworkInfo(context) }
+    var netInfo by remember { mutableStateOf("VPN status not checked yet") }
 
     val screenScrollState = rememberScrollState()
 
@@ -78,11 +78,21 @@ fun JavaInfoScreen() {
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            Text(
-                text = netInfo,
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        netInfo = dumpNetworkInfo(context)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Check VPN Status")
+                }
+
+                Text(
+                    text = netInfo,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }
