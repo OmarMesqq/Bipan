@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Necessary for WebView and socket tests   -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Necessary for full VPN logic checking   -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- For testing if BipanJava is successfully nop-ing this   -->
+    <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
 
     <application
         android:allowBackup="true"

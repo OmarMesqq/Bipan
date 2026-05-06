@@ -8,14 +8,9 @@ import java.net.NetworkInterface
 
 private  const val  TAG = "NetInfoDumper"
 fun dumpNetworkInfo(context: Context): String {
+    // ACCESS_NETWORK_STATE whatnots to get info on connectivity info of device
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    var caps: NetworkCapabilities? = null
-    try {
-        caps = cm.getNetworkCapabilities(cm.activeNetwork)
-    } catch (e: Exception) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR , TAG, "Failed to get network caps: ${e.message}", shouldToast = true)
-    }
-
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
 
     // JVM Connectivity Flags
     val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
@@ -43,8 +38,8 @@ fun dumpNetworkInfo(context: Context): String {
             }
         }
     } catch (e: Exception) {
-        interfaceList.add("Error scanning interfaces: ${e.stackTraceToString()}")
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR , TAG, "Error scanning interfaces: ${e.message}", shouldToast = true)
+        interfaceList.add("Error while scanning interfaces: ${e.message}")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR , TAG, "Error scanning interfaces", tr = e,  shouldToast = true)
     }
 
     return """
@@ -58,5 +53,5 @@ fun dumpNetworkInfo(context: Context): String {
     |[LIST OF INTERFACES]:
     |${interfaceList.joinToString("\n|")}
 """.trimMargin()
-    
+
 }
