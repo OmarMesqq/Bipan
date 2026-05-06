@@ -206,7 +206,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     } else if (nr == __NR_readlinkat && result > 0) {
       my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
     }
-  } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
+  } 
+  // TODO: fake a LAN address here?
+  else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
     if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
     if (result == 0 && arg1 != 0) {
