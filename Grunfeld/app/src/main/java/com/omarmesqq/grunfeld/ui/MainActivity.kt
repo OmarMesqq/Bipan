@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -21,6 +22,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object JavaScreen : Screen("java", "Java", Icons.Default.Coffee)
     object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
     object JniScreen : Screen("jni", "JNI", Icons.Default.Route)
+    object NetworkScreen : Screen("network", "Network", Icons.Default.SettingsEthernet)
 }
 
 class MainActivity : ComponentActivity() {
