@@ -25,12 +25,14 @@ import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
+import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
+    val netInfo = remember { dumpNetworkInfo(context) }
 
     val screenScrollState = rememberScrollState()
 
@@ -69,6 +71,18 @@ fun JavaInfoScreen() {
                 Text("Probe Sensors using Java")
             }
             ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
+        }
+
+        SectionHeader("VPN")
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Text(
+                text = netInfo,
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }
