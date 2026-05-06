@@ -27,7 +27,7 @@ Bipan's shared library will be at `src/libs/arm64-v8a/libbipan.so`.
 
 
 ## Usage
-You can skip some headache and directly create the module's zip file for flashing in Magisk by invoking the shell script `create_flashable_zip.sh` at the project's root.
+You can skip some headache and directly create the module's zip file for flashing in Magisk by invoking the shell script `build_module.sh` at the project's root.
 
 The final artifact, called `bipan.zip` will also be at the repository's root.
 
