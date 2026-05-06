@@ -20,7 +20,7 @@ import com.omarmesqq.grunfeld.ui.Screen
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
-    val items = listOf(Screen.JavaScreen, Screen.WebviewScreen, Screen.JniScreen, Screen.NetworkScreen)
+    val items = listOf(Screen.JavaScreen, Screen.WebviewScreen, Screen.NativeScreen, Screen.NetworkScreen)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -56,7 +56,7 @@ fun MainScreen() {
         ) {
             composable(Screen.JavaScreen.route) { JavaInfoScreen() }
             composable(Screen.WebviewScreen.route) { WebviewScreen() }
-            composable(Screen.JniScreen.route) { JniScreen() }
+            composable(Screen.NativeScreen.route) { NativeScreen() }
             composable(Screen.NetworkScreen.route) { NetworkScreen() }
         }
     }

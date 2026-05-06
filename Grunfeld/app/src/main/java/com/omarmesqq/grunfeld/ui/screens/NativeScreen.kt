@@ -28,7 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
-fun JniScreen() {
+fun NativeScreen() {
     val context = LocalContext.current
 
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
@@ -55,7 +55,7 @@ fun JniScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "JNI info",
+            text = "Native info",
             style = MaterialTheme.typography.headlineMedium
         )
 
