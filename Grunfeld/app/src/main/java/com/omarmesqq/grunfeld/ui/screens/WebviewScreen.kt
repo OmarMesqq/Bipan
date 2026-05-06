@@ -58,6 +58,7 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     var expanded by remember { mutableStateOf(false) }
     val predefinedSites = listOf(
         "https://start.duckduckgo.com/",
+        "https://i2dk.com/",
         "https://deviceinfo.me/",
         "https://browserleaks.com/",
         "https://www.cloudflare.com/ssl/encrypted-sni/",

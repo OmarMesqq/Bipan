@@ -5,13 +5,13 @@ project(GrunfeldProject)
 # Define the library
 add_library(grunfeld SHARED main.c socket_helper.c)
 
-# I could make my life harder by adding -fomit-frame-pointer here,
-# but apparently people use it
+# I could make my life harder by adding -fomit-frame-pointer here, but apparently most libs have frame pointers on
 target_compile_options(grunfeld PRIVATE
     -O3
     -Wall
     -Wextra
     -Winline
+    -Wpedantic
     -Wshadow
     -Wconversion
     -Wsign-conversion

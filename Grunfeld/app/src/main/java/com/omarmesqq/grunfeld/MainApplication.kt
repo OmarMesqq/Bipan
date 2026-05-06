@@ -17,7 +17,7 @@ import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import java.util.concurrent.Executors
 
 
-private  const val TAG = "MainApplication"
+private const val TAG = "MainApplication"
 
 class MainApplication: Application() {
     companion object {
