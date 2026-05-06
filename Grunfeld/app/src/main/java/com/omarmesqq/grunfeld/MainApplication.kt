@@ -28,6 +28,7 @@ class MainApplication: Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Avocado.init(this)
         if (BuildConfig.DEBUG) {
             setupStrictMode()
         }
@@ -86,7 +87,6 @@ class MainApplication: Application() {
     }
 
     private fun setupStrictMode() {
-        Avocado.init(this)
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "DEBUG build", shouldToast = true)
         StrictMode.setThreadPolicy(
             ThreadPolicy.Builder()
