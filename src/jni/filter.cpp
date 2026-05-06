@@ -13,6 +13,22 @@
 #include "logger.hpp"
 #include "shared.hpp"
 
+
+/**
+ * TODO: some more syscalls to watch for
+ * `mincore`
+ * `msync`
+ * `process_vm_readv`
+ * `mremap`
+ * 
+ * `inotify_init`
+ * `inotify_init1`
+ * `inotify_add_watch`
+ * `inotify_rm_watch`
+ * 
+ * `fanotify_init`
+ * `fanotify_mark`
+ */
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // 1. Break 64-bit bounds into 32-bit chunks
   uint32_t start_hi = (uint32_t)(lib_start >> 32);
