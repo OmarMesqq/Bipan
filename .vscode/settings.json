@@ -9,5 +9,28 @@
     "Bipan",
     "BipanJava"
   ],
-  "C_Cpp.errorSquiggles": "enabled"
+  "C_Cpp.errorSquiggles": "enabled",
+
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.import.exclusions": [
+    "Grunfeld/**" 
+  ],
+
+  "java.project.sourcePaths": [
+    "src"
+  ],
+
+  "java.project.referencedLibraries": [
+    "/Users/omar/Library/Android/sdk/platforms/android-36/android.jar"
+  ],
+
+  "java.jdt.ls.java.home": "/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home",
+      "default": true
+    }
+  ]
 }
