@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/utsname.h>
+#include <sys/ptrace.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <linux/fcntl.h>
@@ -579,6 +580,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
 
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryPTrace(JNIEnv* env, jobject thiz) {
+    long result = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+
+    // -EPERM?
+    if (result == -1) {
+        return JNI_FALSE;
+    }
+
+    // ptrace returned 0, app is "safe"
     return JNI_TRUE;
 }
 
