@@ -73,6 +73,7 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
         }
 
+        // TODO: for some reason the first click leaks ifaces, the second fails due to AF_NETLINK borking getifaddrs
         SectionHeader("VPN")
         Card(
             modifier = Modifier.fillMaxWidth(),
