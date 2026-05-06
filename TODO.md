@@ -1,5 +1,6 @@
 - Solve stuttering
 - Run tests on installed apps
+- Consider ditching `service.sh`
 
 - Solve recursive handler in [RootBeer](https://github.com/scottyab/rootbeer)
   - once this passes, call RootBeer from Grunfeld
