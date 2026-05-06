@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
@@ -46,6 +47,7 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
+    var ptraceStatus by remember { mutableStateOf("Not Tested") }
 
     Column(
         modifier = Modifier
@@ -299,6 +301,22 @@ fun NativeScreen() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("read /proc/self/status")
+                }
+            }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "PTrace Stealth Test", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "Result: $ptraceStatus",
+                    color = if (ptraceStatus == "Stealthy (Success)") Color.Green else Color.Red
+                )
+                Button(
+                    onClick = {
+                        val isStealthy = NativeLibWrapper.queryPTrace()
+                        ptraceStatus = if (isStealthy) "Stealthy (Success)" else "Detected (EPERM)"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("ptrace(PTRACE_TRACEME)")
                 }
             }
         }
