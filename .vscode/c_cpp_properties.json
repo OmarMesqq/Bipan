@@ -1,21 +1,23 @@
 {
-    "configurations": [
-        {
-            "name": "Bipan C/C++",
-            "includePath": [
-                "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/**",
-                "${workspaceFolder}/src/jni/**"
-            ],
-            "defines": [
-                "__ANDROID__",
-                "_GNU_SOURCE",
-                "__aarch64__"
-            ],
-            "compilerPath": "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
-            "cStandard": "c17",
-            "cppStandard": "c++14",
-            "intelliSenseMode": "linux-clang-arm64"
-        }
-    ],
-    "version": 4
+  "configurations": [
+    {
+      "name": "Bipan C/C++",
+      "includePath": [
+        "${workspaceFolder}/src/jni/**",
+        "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include",
+        "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/c++/v1"
+      ],
+      "defines": [
+        "__ANDROID__",
+        "_GNU_SOURCE",
+        "__aarch64__",
+        "register="
+      ],
+      "compilerPath": "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "linux-clang-arm64"
+    }
+  ],
+  "version": 4
 }
