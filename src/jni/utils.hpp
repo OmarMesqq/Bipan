@@ -362,31 +362,17 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       strstr(pathname, "magisk") != nullptr ||
       strstr(pathname, "resetprop") != nullptr ||
       strstr(pathname, "supolicy") != nullptr ||
-      // Weird ahh binaries
+      // Filesystem binaries (TODO: may break stuff)
+      starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
-      starts_with(pathname, "/system/bin/su") ||
-      starts_with(pathname, "/product/bin/su") ||
-      starts_with(pathname, "/bin/getprop") ||
-      starts_with(pathname, "/system/bin/getprop") ||
-      starts_with(pathname, "/system/bin/dumpsys") ||
-      starts_with(pathname, "/system/bin/dumpstate") ||
-      starts_with(pathname, "/system/bin/uptime") ||
-      starts_with(pathname, "/system/bin/toolbox") ||
-      starts_with(pathname, "/system/bin/toybox") ||
-      starts_with(pathname, "/system/bin/sh") ||
-      starts_with(pathname, "/system/bin/mount") ||
-      starts_with(pathname, "/system/bin/modprobe") ||
-      starts_with(pathname, "/system/bin/vmstat") ||
-      starts_with(pathname, "/system/bin/df") ||
+      starts_with(pathname, "/bin") ||
+      starts_with(pathname, "/product/bin") ||
+      starts_with(pathname, "/debug_ramdisk") ||
       strstr(pathname, "otacerts") != nullptr));
 }
 
 __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
-           // Phone's EFS
-           starts_with(pathname, "/mnt/vendor/efs") ||
-           starts_with(pathname, "/mnt/vendor/cpefs") ||
-           starts_with(pathname, "/mnt/pass_through") ||
            // CPU, temperature and platform info
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
