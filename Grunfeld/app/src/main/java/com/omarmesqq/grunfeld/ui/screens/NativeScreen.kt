@@ -47,7 +47,6 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
-    var ptraceStatus by remember { mutableStateOf("ptrace not tested yet") }
 
     Column(
         modifier = Modifier
@@ -301,19 +300,6 @@ fun NativeScreen() {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("read /proc/self/status")
-                }
-            }
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "PTrace test", style = MaterialTheme.typography.titleMedium)
-                ReportTextWithCopy(ptraceStatus, "ptrace not tested yet")
-                Button(
-                    onClick = {
-                        val wasPtraceSuccessful = NativeLibWrapper.queryPTrace()
-                        ptraceStatus = if (wasPtraceSuccessful) "No debugger found" else "Some debugger attached!"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("ptrace(PTRACE_TRACEME)")
                 }
             }
         }

@@ -35,8 +35,10 @@ jmp_buf jump_buffer;
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 __attribute__((constructor))
-void grunfeld_early_init() {
+void grunfeld_early_init(void) {
+    long ret = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
     LOGI("early attribute constructor init");
+    LOGW("ptrace result: %ld", ret);
 }
 
 
@@ -576,19 +578,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     } else {
         return JNI_TRUE;
     }
-}
-
-JNIEXPORT jboolean JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryPTrace(JNIEnv* env, jobject thiz) {
-    long result = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-
-    // -EPERM?
-    if (result == -1) {
-        return JNI_FALSE;
-    }
-
-    // ptrace returned 0, app is "safe"
-    return JNI_TRUE;
 }
 
 JNIEXPORT jstring JNICALL

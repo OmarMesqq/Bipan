@@ -26,6 +26,7 @@ import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
+import android.os.Debug.isDebuggerConnected
 
 @Composable
 fun JavaInfoScreen() {
@@ -33,6 +34,7 @@ fun JavaInfoScreen() {
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
+    val _isDebuggerConnected by remember { mutableStateOf(isDebuggerConnected()) }
 
     val screenScrollState = rememberScrollState()
 
@@ -94,6 +96,12 @@ fun JavaInfoScreen() {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+        }
+
+        SectionHeader("ANTI-TAMPER")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = "Debugger attached? test", style = MaterialTheme.typography.titleMedium)
+            Text("isDebuggerConnected: $_isDebuggerConnected")
         }
     }
 }
