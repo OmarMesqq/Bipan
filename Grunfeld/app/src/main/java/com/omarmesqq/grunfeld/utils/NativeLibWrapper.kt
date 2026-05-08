@@ -21,5 +21,4 @@ object NativeLibWrapper {
 
     external fun blockSigSys(): Boolean
     external fun queryProcStatus():String
-    external fun queryPTrace(): Boolean
 }
