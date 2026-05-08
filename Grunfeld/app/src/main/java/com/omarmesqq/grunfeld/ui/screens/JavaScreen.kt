@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +28,10 @@ import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import android.os.Debug.isDebuggerConnected
+import androidx.annotation.RequiresApi
+import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
@@ -35,6 +39,7 @@ fun JavaInfoScreen() {
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
     val _isDebuggerConnected by remember { mutableStateOf(isDebuggerConnected()) }
+    val installerInfo by remember { mutableStateOf(dumpInstallerInfo(context)) }
 
     val screenScrollState = rememberScrollState()
 
@@ -96,6 +101,12 @@ fun JavaInfoScreen() {
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
+        }
+
+        SectionHeader("BUILD AND SETTINGS INFO")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = "App installer info", style = MaterialTheme.typography.titleMedium)
+            Text(installerInfo)
         }
 
         SectionHeader("ANTI-TAMPER")
