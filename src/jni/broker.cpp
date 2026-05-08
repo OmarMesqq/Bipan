@@ -262,7 +262,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(%s) denied", action_name, path_payload);
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
+          // NOP-ing connect is breaking some stuff
+          if (nr != __NR_connect) {
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
+          }
         }
         break;
       }
