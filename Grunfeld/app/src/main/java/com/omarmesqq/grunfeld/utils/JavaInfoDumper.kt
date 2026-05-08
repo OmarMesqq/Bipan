@@ -6,6 +6,8 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
+import android.content.pm.PackageInstaller
+import androidx.annotation.RequiresApi
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -96,4 +98,36 @@ fun dumpJavaSensorInfo(ctx: Context): String {
         """.trimIndent()
         }
     }
+}
+
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+fun dumpInstallerInfo(ctx: Context): String {
+    val pm = ctx.packageManager
+    val packageName = ctx.packageName
+    val info = pm.getInstallSourceInfo(packageName)
+
+    val originator = info.originatingPackageName // The "Source" (e.g., Chrome)
+    val initiator = info.initiatingPackageName   // Who called the install
+    val installer = info.installingPackageName   // Who did the work (e.g., Play Store)
+    val updateOwner = info.updateOwnerPackageName   // Package responsible for managing updates
+
+    val packageSource = when (info.packageSource) {
+        PackageInstaller.PACKAGE_SOURCE_STORE -> "Some App Store"
+        PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE -> "Local File"
+        PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE -> "Downloaded File"
+        PackageInstaller.PACKAGE_SOURCE_OTHER -> "Other"
+        PackageInstaller.PACKAGE_SOURCE_UNSPECIFIED -> "Installer did not call PackageInstaller.SessionParams.setPackageSource(int) to specify the package source."
+        else -> "Unknown Value: ${info.packageSource}"
+    }
+
+    val legacyInstaller = pm.getInstallerPackageName(packageName)
+
+    return """
+        Originator:   $originator
+        Initiator:    $initiator
+        Installer:    $installer
+        Update Owner: $updateOwner
+        Package Source: $packageSource
+        [Legacy API] Installer: $legacyInstaller
+    """.trimIndent()
 }
