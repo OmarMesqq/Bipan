@@ -111,8 +111,8 @@ fun JavaInfoScreen() {
 
         SectionHeader("ANTI-TAMPER")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Debugger attached? test", style = MaterialTheme.typography.titleMedium)
-            Text("isDebuggerConnected: $_isDebuggerConnected")
+            Text(text = "Is adebugger is attached?", style = MaterialTheme.typography.titleMedium)
+            Text("isDebuggerConnected result: $_isDebuggerConnected")
         }
     }
 }
