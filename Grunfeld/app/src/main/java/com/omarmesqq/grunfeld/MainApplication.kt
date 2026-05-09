@@ -100,7 +100,6 @@ class MainApplication: Application() {
         )
         StrictMode.setVmPolicy(
             VmPolicy.Builder()
-                .detectCleartextNetwork()
                 .detectContentUriWithoutPermission()
                 .detectCredentialProtectedWhileLocked()
                 .detectFileUriExposure()
