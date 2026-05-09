@@ -38,8 +38,8 @@ fun JavaInfoScreen() {
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
-    val _isDebuggerConnected by remember { mutableStateOf(isDebuggerConnected()) }
-    val installerInfo by remember { mutableStateOf(dumpInstallerInfo(context)) }
+    var debuggerConnected by remember { mutableStateOf(false) }
+    var installerInfo by remember { mutableStateOf("Installer info not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -103,16 +103,34 @@ fun JavaInfoScreen() {
             }
         }
 
+        SectionHeader("ANTI-TAMPER")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(text = "Is a debugger is attached?", style = MaterialTheme.typography.titleMedium)
+            Text("$debuggerConnected")
+
+            Button(
+                onClick = {
+                    debuggerConnected = isDebuggerConnected()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("isDebuggerConnected()")
+            }
+        }
+
         SectionHeader("BUILD AND SETTINGS INFO")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "App installer info", style = MaterialTheme.typography.titleMedium)
-            Text(installerInfo)
-        }
 
-        SectionHeader("ANTI-TAMPER")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Is adebugger is attached?", style = MaterialTheme.typography.titleMedium)
-            Text("isDebuggerConnected result: $_isDebuggerConnected")
+            ReportTextWithCopy(installerInfo, "Installer info not queried")
+            Button(
+                onClick = {
+                    installerInfo = dumpInstallerInfo(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getInstallSourceInfo()")
+            }
         }
     }
 }
