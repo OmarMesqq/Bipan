@@ -89,7 +89,7 @@ class Bipan : public zygisk::ModuleBase {
       write(g_broker_socket, &cmd, sizeof(cmd));
 
       // Create the RAM-backed IPC memory
-      int memfd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
+      int memfd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
       if (memfd < 0) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
         _exit(1);
@@ -118,7 +118,10 @@ class Bipan : public zygisk::ModuleBase {
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
 
-    preSpecialize();
+    // Targets require us to on memory to catch SIGSYS
+    if (!isTargetApp) {
+      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+    }
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
@@ -167,13 +170,6 @@ class Bipan : public zygisk::ModuleBase {
   JNIEnv* env;
   std::unordered_set<std::string> targetsSet;
   bool isTargetApp;
-
-  void preSpecialize() {
-    // Targets require us to on memory to catch SIGSYS
-    if (!isTargetApp) {
-      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-    }
-  }
 
   void bootstrapJavaPayload() {
     // Map the byte array into a Java DirectByteBuffer
