@@ -305,16 +305,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_socket: {
-        // int domain = ipc_mem->arg0;
+        int domain = ipc_mem->arg0;
         // int protocol = ipc_mem->arg2;
         // const char* nl_type = get_netlink_name(protocol);
 
-        // if (domain == AF_NETLINK && !is_trusted) {
-        //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked: %s", nl_type);
-        //   ipc_mem->ret = -EACCES;
-        //   ipc_mem->action = ACTION_USE_RET;
-        //   log_violation("(socket AF_NETLINK)", culprit_lib, ipc_mem->caller_pc, offset);
-        // }
+        if (domain == AF_NETLINK) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked");
+          ipc_mem->ret = -EACCES;
+          ipc_mem->action = ACTION_USE_RET;
+          log_violation("(socket AF_NETLINK)", culprit_lib, ipc_mem->caller_pc, offset);
+        }
         break;
       }
       case __NR_mmap: {
