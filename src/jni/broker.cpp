@@ -53,8 +53,8 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
-static inline const char* get_netlink_name(int protocol);
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
+
 /**
  * `BipanBroker` runs as thread of root companion, as such,
  * it inherits its powerful capabilities.
@@ -143,10 +143,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_execveat: {
         if (!is_trusted) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
-          // log_violation("execve/execveat", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = -EAGAIN;
           ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
+          log_violation("(execve/execveat)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
@@ -154,16 +155,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (!is_trusted) {
           struct utsname spoofed_buf;
           ipc_mem->ret = uname_spoofer(&spoofed_buf);
-          if (ipc_mem->ret == 0) memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
+          memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
           ipc_mem->action = ACTION_USE_RET;
-        }
 
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "uname spoofed");
+          log_violation("(uname)", culprit_lib, ipc_mem->caller_pc, offset);
+        }
         break;
       }
       case __NR_openat: {
         if (!is_trusted) {
           if (shouldDenyAccess(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
+            // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
             // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
@@ -225,21 +228,30 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat:
-      case __NR_newfstatat: {
+      case __NR_newfstatat:
+      case __NR_statx: {
+        const char* action_name;
+        if (nr == __NR_faccessat) {
+          action_name = "faccessat";
+        } else if (nr == __NR_newfstatat) {
+          action_name = "newfstatat";
+        } else {
+          action_name = "statx";
+        }
+
+        if (shouldSpoofExistence(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+          ipc_mem->ret = -ENOENT;
+          ipc_mem->action = ACTION_USE_RET;
+          break;
+        }
         if (!is_trusted) {
-          const char* action_name = (nr == __NR_faccessat) ? "faccessat" : "newfstatat";
           if (shouldDenyAccess(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
+            // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
             // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (shouldSpoofExistence(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] spoofed", action_name, path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
-            ipc_mem->ret = -ENOENT;
-            ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
@@ -249,50 +261,81 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_rt_sigaction: {
         if (ipc_mem->arg0 == SIGSYS) {
-          log_violation("SIGSYS handler hijacking", culprit_lib, ipc_mem->caller_pc, offset);
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
+
+          log_violation("SIGSYS handler hijacking", culprit_lib, ipc_mem->caller_pc, offset);
+          log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
       case __NR_bind: {
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
+        if (!is_trusted) {
+          bool should_block = false;
+
+          if (sock_payload->sa_family == AF_INET) {
+            struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
+            uint16_t port = ntohs(sin->sin_port);
+
+            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+              should_block = true;
+            }
+          } else if (sock_payload->sa_family == AF_INET6) {
+            struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
+            uint16_t port = ntohs(sin6->sin6_port);
+
+            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+              should_block = true;
+            }
+          }
+
+          if (should_block) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Blocked bind to discovery port/LAN");
+            ipc_mem->ret = -EADDRNOTAVAIL;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
+          }
+        }
         break;
       }
       case __NR_connect: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
           char addr_str[64];
           format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked LAN scan to %s", addr_str);
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked connect to LAN address: %s", addr_str);
+          log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
       case __NR_listen: {
         if (!is_trusted) {
-          if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed for IP socket");
+          if (sock_payload->sa_family == AF_INET ||
+              sock_payload->sa_family == AF_INET6) {
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
-          } else {
-            // log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) for non-INET (IPC?) socket allowed");
+
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed for IP socket");
+            log_violation("(listen) Server behaviour", culprit_lib, ipc_mem->caller_pc, offset);
+
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
           }
         }
         break;
       }
       case __NR_sendto:
       case __NR_sendmsg: {
-        if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          const char* action_name = (nr == __NR_sendto) ? "sendto" : "sendmsg";
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(%s) spoofed", action_name, path_payload);
-          // log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+        if (is_lan_address(sock_payload) && !is_trusted) {
+          const char* action_name = (nr == __NR_sendto) ? "(sendto)" : "(sendmsg)";
           int error_code = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
           ipc_mem->ret = error_code;
           ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "%s spoofed", action_name, path_payload);
+          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+
           patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
         }
         break;
@@ -301,31 +344,19 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (!is_trusted) {
           ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
+          log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
       case __NR_socket: {
         int domain = ipc_mem->arg0;
-        // int protocol = ipc_mem->arg2;
-        // const char* nl_type = get_netlink_name(protocol);
-
         if (domain == AF_NETLINK) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked");
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked");
+          log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
         }
-        break;
-      }
-      case __NR_mmap: {
-        // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mmap) allowed");
-        break;
-      }
-      case __NR_mprotect: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mprotect) allowed");
-        break;
-      }
-      case __NR_readlinkat: {
-        // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(readlinkat) allowed");
         break;
       }
       case __NR_kill:
@@ -428,7 +459,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 }
 
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- BipanBroker Violation ---");
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
@@ -546,55 +577,6 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
-  }
-}
-
-static inline const char* get_netlink_name(int protocol) {
-  switch (protocol) {
-    case NETLINK_ROUTE:
-      return "NETLINK_ROUTE (Network Info)";
-    case NETLINK_UNUSED:
-      return "NETLINK_UNUSED";
-    case NETLINK_USERSOCK:
-      return "NETLINK_USERSOCK";
-    case NETLINK_FIREWALL:
-      return "NETLINK_FIREWALL";
-    case NETLINK_SOCK_DIAG:
-      return "NETLINK_SOCK_DIAG (Socket Monitor)";
-    case NETLINK_NFLOG:
-      return "NETLINK_NFLOG";
-    case NETLINK_XFRM:
-      return "NETLINK_XFRM";
-    case NETLINK_SELINUX:
-      return "NETLINK_SELINUX";
-    case NETLINK_ISCSI:
-      return "NETLINK_ISCSI";
-    case NETLINK_AUDIT:
-      return "NETLINK_AUDIT";
-    case NETLINK_FIB_LOOKUP:
-      return "NETLINK_FIB_LOOKUP";
-    case NETLINK_CONNECTOR:
-      return "NETLINK_CONNECTOR";
-    case NETLINK_NETFILTER:
-      return "NETLINK_NETFILTER";
-    case NETLINK_IP6_FW:
-      return "NETLINK_IP6_FW";
-    case NETLINK_DNRTMSG:
-      return "NETLINK_DNRTMSG";
-    case NETLINK_KOBJECT_UEVENT:
-      return "NETLINK_KOBJECT_UEVENT (Hardware/USB Hotplug)";
-    case NETLINK_GENERIC:
-      return "NETLINK_GENERIC";
-    case NETLINK_SCSITRANSPORT:
-      return "NETLINK_SCSITRANSPORT";
-    case NETLINK_ECRYPTFS:
-      return "NETLINK_ECRYPTFS";
-    case NETLINK_RDMA:
-      return "NETLINK_RDMA";
-    case NETLINK_CRYPTO:
-      return "NETLINK_CRYPTO";
-    default:
-      return "UNKNOWN_NETLINK_TYPE";
   }
 }
 

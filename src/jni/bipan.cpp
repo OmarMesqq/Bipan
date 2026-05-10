@@ -126,16 +126,15 @@ class Bipan : public zygisk::ModuleBase {
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
-      registerDobbyLinkerHooks();
+      // registerDobbyLinkerHooks();
       registerDobbySensorsHooks();
 
       LibBounds my_lib;
       dl_iterate_phdr(find_lib_bounds, &my_lib);
       g_bipan_lib_start = my_lib.start;
       g_bipan_lib_end = my_lib.end;
-      size_t lib_size = my_lib.end - my_lib.start;
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes",
-                            (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+      // size_t lib_size = my_lib.end - my_lib.start;
+      // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
       spoofBuildFields();
       bootstrapJavaPayload();
