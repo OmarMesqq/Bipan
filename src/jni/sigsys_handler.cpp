@@ -66,35 +66,16 @@ void registerSignalHandler() {
 }
 
 static thread_local bool in_sigsys_handler = false;
-static thread_local pid_t last_handler_pid = 0;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
-  pid_t current_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
 
-  /**
-   * TODO: alright, this works for RootBeer.
-   * Apparently it uses fork exec to inspect the root binaries.
-   * I have no clue how, but this makes the test pass and doesn't deadlock,
-   * although it's not a good idea as the child will see everything
-   */
-  if (last_handler_pid != 0 && last_handler_pid != current_pid) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Inside child process. Letting it natively run syscall %d", nr);
-    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(
-        nr,
-        ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1],
-        ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3],
-        ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
-    return;
-  }
-
-  if (in_sigsys_handler && last_handler_pid == current_pid) {
+  if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
     return;
   }
   in_sigsys_handler = true;
-  last_handler_pid = current_pid;
 
   lock_ipc();
 
@@ -129,12 +110,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+
     ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
-    if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_readlinkat) {
-    if (arg1 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_execve || nr == __NR_execveat) {
-    if (arg0 != 0) my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_faccessat ||
+             nr == __NR_newfstatat ||
+             nr == __NR_statx) {
+    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_execve ||
+             nr == __NR_execveat) {
+    my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
   // Serialize binary structures with their exact lengths
