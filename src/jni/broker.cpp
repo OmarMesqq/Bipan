@@ -316,7 +316,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mmap) allowed");
+        // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mmap) allowed");
         break;
       }
       case __NR_mprotect: {
@@ -324,7 +324,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_readlinkat: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(readlinkat) allowed");
+        // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(readlinkat) allowed");
         break;
       }
     }
