@@ -1,11 +1,11 @@
+.idea
+
+.DS_Store
+
 zygisk/
 *.zip
-module/targets/
 src/libs/
 src/obj/
-*.so
-.idea
-.DS_Store
 
 javac_out
 classes.dex
