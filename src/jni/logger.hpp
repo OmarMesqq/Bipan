@@ -1,7 +1,6 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
-
 #include <fcntl.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -9,6 +8,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+
 #include "utils.hpp"
 
 /**
@@ -26,30 +26,34 @@ struct __attribute__((packed)) log_header {
   uint32_t tv_nsec;  // Offset 7
 };  // Total size: 11 bytes
 
+static int g_log_fd = -1;
+
 /**
  * Doing unbuffered I/O and socket creation/destruction for every log
  * is a bad idea.
- * 
+ *
  * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
- * 
- * TODO: ditch the libc wrappers in this function and use our 
+ *
+ * TODO: ditch the libc wrappers in this function and use our
  * raw syscall function instead
  */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
-  int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
-  if (fd < 0) {
-    return;
-  }
+  if (g_log_fd < 0) {
+    int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
+    if (fd < 0) {
+      return;
+    }
 
-  struct sockaddr_un addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-  if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
-    arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
-    // TODO: maybe find a way of warning here?
-    return;
+    if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
+      arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+      return;
+    }
+    g_log_fd = fd;  // Store for reuse
   }
 
   struct timespec now;
@@ -74,9 +78,7 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   vec[3].iov_len = strlen(msg) + 1;
 
   // Atomic write to socket
-  arm64_raw_syscall(__NR_writev, fd, (long)vec, 4, 0, 0, 0);
-
-  arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
 }
 
 /**
