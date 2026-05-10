@@ -1,18 +1,22 @@
 package com.omarmesqq.bipan.modules;
 
 import android.content.Context;
+import android.util.Log;
+
 import com.omarmesqq.bipan.BaseHook;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 public class InstallerInfoHook implements BaseHook, InvocationHandler {
+  private static final String TAG = "InstallerHook";
   private Object originalPM;
+  private String selfPackageName = "unknown";
 
   @Override
   public void install(Context context) throws Exception {
+    this.selfPackageName = context.getPackageName();
     Class<?> activityThreadClz = Class.forName("android.app.ActivityThread");
     Method getPM = activityThreadClz.getDeclaredMethod("getPackageManager");
     getPM.setAccessible(true);
@@ -38,13 +42,21 @@ public class InstallerInfoHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    // 1. Spoof getInstallerPackageName (Legacy API)
+    // Most PackageManager methods take the target package name as the first
+    // argument
+    String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
+        ? (String) args[0]
+        : "unknown";
+
     if (method.getName().equals("getInstallerPackageName")) {
+      Log.w(TAG, "[Legacy] App is reading installer for: " + targetPkg +
+          (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
       return "com.android.vending";
     }
 
-    // 2. Spoof getInstallSourceInfo (Modern API)
     if (method.getName().equals("getInstallSourceInfo")) {
+      Log.w(TAG, "[Modern] App is reading install source info for: " + targetPkg +
+          (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
       return createFakeInstallSourceInfo();
     }
 

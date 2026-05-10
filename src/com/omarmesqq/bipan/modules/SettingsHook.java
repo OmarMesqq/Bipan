@@ -88,6 +88,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
+    currentPackageName = context.getPackageName();
     // Warm up the Binder connection
     Global.getString(context.getContentResolver(), "adb_enabled");
     Secure.getString(context.getContentResolver(), "android_id");
@@ -95,7 +96,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
     String[] targetClasses = {
         "android.provider.Settings$Global",
         "android.provider.Settings$Secure",
-        "android.provider.Settings$System" // TODO: needed?
+        "android.provider.Settings$System"
     };
 
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
@@ -116,7 +117,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
       Object mValues = mValuesField.get(cache);
       if (mValues != null) {
         // Apparently, ArrayMap implements Map, so we can cast to it
-        ((Map) mValues).clear();
+        ((Map<?, ?>) mValues).clear();
       } else {
         Log.w(TAG, "Failed to purge cache ache cleared for: " + className);
       }
