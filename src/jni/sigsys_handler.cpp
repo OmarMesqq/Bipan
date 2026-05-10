@@ -66,16 +66,20 @@ void registerSignalHandler() {
 }
 
 static thread_local bool in_sigsys_handler = false;
+static thread_local pid_t handler_pid = 0;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
+  pid_t current_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
 
-  if (in_sigsys_handler) {
+  if (in_sigsys_handler && handler_pid == current_pid) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
     return;
   }
   in_sigsys_handler = true;
+  handler_pid = current_pid;
 
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
