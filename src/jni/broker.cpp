@@ -328,6 +328,28 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(readlinkat) allowed");
         break;
       }
+      case __NR_kill:
+      case __NR_tkill:
+      case __NR_tgkill: {
+        int target_pid = (int)ipc_mem->arg0;
+        int sig = (nr == __NR_tgkill) ? (int)ipc_mem->arg2 : (int)ipc_mem->arg1;
+
+        // If the app is targeting its own process/thread with a lethal or discovery signal
+        if (sig == 9 || sig == 31 || sig == 3) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG,
+                                "Assassination Attempt Blocked: [%s] target %d with signal %d",
+                                (nr == __NR_tgkill ? "tgkill" : "kill"), target_pid, sig);
+
+          ipc_mem->ret = 0;                  // Return success to the app
+          ipc_mem->action = ACTION_USE_RET;  // Do NOT execute natively
+        }
+        break;
+      }
+      default: {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got unexpected syscall: %d. Returning ENOSYS!", nr);
+        ipc_mem->ret = -ENOSYS;
+        ipc_mem->action = ACTION_USE_RET;
+      }
     }
 
     __sync_synchronize();

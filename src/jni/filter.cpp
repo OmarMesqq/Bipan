@@ -13,19 +13,18 @@
 #include "logger.hpp"
 #include "shared.hpp"
 
-
 /**
  * TODO: some more syscalls to watch for
  * `mincore`
  * `msync`
  * `process_vm_readv`
  * `mremap`
- * 
+ *
  * `inotify_init`
  * `inotify_init1`
  * `inotify_add_watch`
  * `inotify_rm_watch`
- * 
+ *
  * `fanotify_init`
  * `fanotify_mark`
  */
@@ -106,8 +105,14 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      // Trap sigaction to protect Bipan's signal handler
+      // Anti-anti tamper
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_kill, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_tkill, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_tgkill, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Networking
