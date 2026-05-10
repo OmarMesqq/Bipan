@@ -93,25 +93,12 @@ public class WebViewHook implements BaseHook {
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
       String methodName = method.getName();
 
-      // 1. LOGGING (Squelch the noisy delegates for a bit to see the real calls)
-      // if (!methodName.contains("Delegate")) {
-      //   Log.v(TAG, "Method called: " + methodName + " (args: " + (args != null ? args.length : 0) + ")");
-      // }
-
-      // 2. JS DETECTION (Use your improved case-insensitive logic)
       if (methodName.toLowerCase().contains("javascript")) {
         if (args != null && args.length > 0 && args[0] instanceof String) {
-          Log.w(TAG, "🚨 [JS DETECTED] Method: " + methodName + " | Script: " + args[0]);
+          Log.w(TAG, "JavaScript injection found at method: " + methodName + " | Script: " + args[0]);
         }
       }
 
-      // 3. URL LOADING
-      if (methodName.equals("loadUrl") && args != null) {
-        String url = (args[0] instanceof String) ? (String) args[0] : "unknown";
-        Log.d(TAG, "App is loading URL: " + url);
-      }
-
-      // 4. THE FIX: Execute the method
       Object result;
       try {
         result = method.invoke(originalProvider, args);
@@ -119,9 +106,6 @@ public class WebViewHook implements BaseHook {
         throw e.getCause(); // Pass through real exceptions
       }
 
-      // 5. IDENTITY MANAGEMENT: If the original object returns itself, return the
-      // proxy
-      // This prevents the WebView from "escaping" the proxy during init/delegation
       if (result == originalProvider) {
         return proxyInstance;
       }
