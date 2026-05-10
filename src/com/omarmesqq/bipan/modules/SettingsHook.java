@@ -95,8 +95,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
     String[] targetClasses = {
         "android.provider.Settings$Global",
-        "android.provider.Settings$Secure",
-        "android.provider.Settings$System"
+        "android.provider.Settings$Secure"
     };
 
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
