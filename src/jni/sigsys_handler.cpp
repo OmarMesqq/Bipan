@@ -79,6 +79,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
    * although it's not a good idea as the child will see everything
    */
   if (last_handler_pid != 0 && last_handler_pid != current_pid) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Inside child process. Letting it natively run syscall %d", nr);
     ctx->uc_mcontext.regs[0] = arm64_raw_syscall(
         nr,
         ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1],
@@ -210,11 +211,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Route the action
   if (action == ACTION_EXECUTE_NATIVE) {
-    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup unused ghost
+    if (pre_fd >= 0) {
+      // Cleanup unused ghost
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    }
+
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
   } else if (action == ACTION_USE_RET) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
-      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);  // Cleanup if Broker gave -EACCES
+      // Cleanup if Broker gave -EACCES
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
     result = ipc_mem->ret;
 
