@@ -13,10 +13,10 @@
 #include <unordered_set>
 #include <vector>
 
+#include "bipan_java.h"
 #include "broker.hpp"
 #include "dobby.h"
 #include "hooks.hpp"
-#include "settings_hook_payload.h"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
@@ -26,7 +26,7 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.SettingsHook"
+#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.BipanJava"
 
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
@@ -206,7 +206,7 @@ class Bipan : public zygisk::ModuleBase {
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
-      // 5. Execute the static install() method!
+      // Call Java-side .install()
       if (payloadClass != nullptr) {
         jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
         if (installMethod != nullptr) {
