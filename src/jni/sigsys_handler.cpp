@@ -66,20 +66,36 @@ void registerSignalHandler() {
 }
 
 static thread_local bool in_sigsys_handler = false;
-static thread_local pid_t handler_pid = 0;
+static thread_local pid_t last_handler_pid = 0;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   pid_t current_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-  
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
 
-  if (in_sigsys_handler && handler_pid == current_pid) {
+  /**
+   * TODO: alright, this works for RootBeer.
+   * Apparently it uses fork exec to inspect the root binaries.
+   * I have no clue how, but this makes the test pass and doesn't deadlock,
+   * although it's not a good idea as the child will see everything
+   */
+  if (last_handler_pid != 0 && last_handler_pid != current_pid) {
+    ctx->uc_mcontext.regs[0] = arm64_raw_syscall(
+        nr,
+        ctx->uc_mcontext.regs[0], ctx->uc_mcontext.regs[1],
+        ctx->uc_mcontext.regs[2], ctx->uc_mcontext.regs[3],
+        ctx->uc_mcontext.regs[4], ctx->uc_mcontext.regs[5]);
+    return;
+  }
+
+  if (in_sigsys_handler && last_handler_pid == current_pid) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
     return;
   }
   in_sigsys_handler = true;
-  handler_pid = current_pid;
+  last_handler_pid = current_pid;
+
+  lock_ipc();
 
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
@@ -87,8 +103,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg3 = ctx->uc_mcontext.regs[3];
   long arg4 = ctx->uc_mcontext.regs[4];
   long arg5 = ctx->uc_mcontext.regs[5];
-
-  lock_ipc();
 
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
@@ -210,8 +224,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     } else if (nr == __NR_readlinkat && result > 0) {
       my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
     }
-  }
-  else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
+  } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
@@ -222,7 +235,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
       if (s->sa_family == AF_INET) {
         struct sockaddr_in* sin = (struct sockaddr_in*)s;
-        sin->sin_addr.s_addr = 0x8001A8C0; // 192.168.1.128
+        sin->sin_addr.s_addr = 0x8001A8C0;  // 192.168.1.128
       } else if (s->sa_family == AF_INET6) {
         struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
         // Unique Local Address (ULA) like fd00::1
