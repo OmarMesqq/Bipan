@@ -206,17 +206,25 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     } else if (nr == __NR_readlinkat && result > 0) {
       my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
     }
-  } 
-  // TODO: fake a LAN address here?
+  }
   else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
-    if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    if (pre_fd >= 0) {
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    }
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+
     if (result == 0 && arg1 != 0) {
       struct sockaddr* s = (struct sockaddr*)arg1;
+
       if (s->sa_family == AF_INET) {
-        ((struct sockaddr_in*)s)->sin_addr.s_addr = 0;
+        struct sockaddr_in* sin = (struct sockaddr_in*)s;
+        sin->sin_addr.s_addr = 0x8001A8C0; // 192.168.1.128
       } else if (s->sa_family == AF_INET6) {
-        my_memset(&(((struct sockaddr_in6*)s)->sin6_addr), 0, 16);
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
+        // Unique Local Address (ULA) like fd00::1
+        my_memset(&sin6->sin6_addr, 0, 16);
+        sin6->sin6_addr.s6_addr[0] = 0xfd;
+        sin6->sin6_addr.s6_addr[15] = 0x01;
       }
     }
   }
