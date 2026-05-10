@@ -2,9 +2,8 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
-#include <syscall.h>
-
 #include <sys/mman.h>
+#include <syscall.h>
 
 #include <atomic>
 #include <string>
@@ -394,22 +393,33 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
   if (strcmp(pathname, "/proc/cpuinfo") == 0) {
-    return "Processor\t: AArch64 Processor rev 0 (aarch64)\nmodel name\t: ARMv8 Processor rev 0 (v8l)\nHardware\t: Google Tensor G3\n";
+    // Reporting only 4 cores (0-3) instead of 8.
+    return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
+           "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
+           "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
+           "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
+           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";  // Generic mid-range (Snapdragon 625-ish)
   }
-  if (strcmp(pathname, "/proc/meminfo") == 0 ||
-      strcmp(pathname, "/proc/meminfo_extra") == 0) {
-    return "MemTotal:       11654320 kB\n"  // 12GB Pixel 8 Pro
-           "MemFree:         1204164 kB\n"
-           "MemAvailable:    4526384 kB\n"  // Higher available = "Healthy" system
-           "Buffers:            4256 kB\n"
-           "Cached:          3100192 kB\n"
-           "SwapCached:          248 kB\n"
-           "Active:          3475584 kB\n"
-           "Inactive:        2658376 kB\n"
-           "SwapTotal:       3145724 kB\n"  // Typical ZRAM size
-           "SwapFree:        3140000 kB\n"
-           "VmallocTotal:   263061440 kB\n"  // Standard for AArch64
-           "CmaTotal:         163840 kB\n";
+  if (strcmp(pathname, "/proc/meminfo") == 0) {
+    // Spoofing ~4GB Total RAM
+    return "MemTotal:        3901140 kB\n"
+           "MemFree:          258600 kB\n"
+           "MemAvailable:    1234768 kB\n"
+           "Buffers:            2048 kB\n"
+           "Cached:           894172 kB\n"
+           "SwapCached:            0 kB\n"
+           "Active:          1291692 kB\n"
+           "Inactive:         614884 kB\n"
+           "SwapTotal:             0 kB\n"
+           "SwapFree:              0 kB\n"
+           "VmallocTotal:   263061440 kB\n"
+           "CmaTotal:         159744 kB\n";
+  }
+  if (strcmp(pathname, "/proc/meminfo_extra") == 0) {
+    return "SystemHeap:        121880 kB\n"
+           "SystemHeapPool:     80692 kB\n"
+           "VmallocAPIsize:    125888 kB\n"
+           "ZramDevice:            4 kB\n";
   }
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
