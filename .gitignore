@@ -6,8 +6,8 @@ src/obj/
 *.so
 .idea
 .DS_Store
-*.class
-*.dex
 
-# Generated each time SettingsHook.java changes
-settings_hook_payload.h
+javac_out
+classes.dex
+# Changes everytime BipanJava is modified
+bipan_java.h
