@@ -37,7 +37,6 @@ public class BipanJava {
   private static void loadModules(Context context) {
     List<BaseHook> modules = new ArrayList<>();
 
-    // Register your modules here
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
     modules.add(new WebViewHook());
