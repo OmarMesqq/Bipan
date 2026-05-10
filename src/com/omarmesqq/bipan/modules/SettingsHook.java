@@ -17,7 +17,7 @@ import android.provider.Settings.Secure;
 import android.provider.Settings.Global;;
 
 public class SettingsHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "SettingsHook";
+  private static final String TAG = "BipanSettingsHook";
   private Object originalProvider;
 
   private static final String RANDOM_ANDROID_ID = generateRandomId();
