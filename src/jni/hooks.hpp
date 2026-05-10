@@ -1,11 +1,15 @@
 #ifndef HOOKS_HPP
 #define HOOKS_HPP
 
-#include "filter.hpp"
-#include "shared.hpp"
-#include "logger.hpp"
-#include "zygisk.hpp"
+#include <ifaddrs.h>
 #include <stdint.h>
+#include <string.h>
+
+#include "filter.hpp"
+#include "logger.hpp"
+#include "shared.hpp"
+#include "zygisk.hpp"
+
 using zygisk::Api;
 
 static bool linker_hooked = false;
@@ -26,6 +30,8 @@ static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*)
 static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
+
+static int (*orig_getifaddrs)(struct ifaddrs** ifap);
 
 // ==========================================
 // Linker hooks
@@ -152,6 +158,63 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   }
 }
 
+// ==========================================
+// getifaddrs hooks=
+// ==========================================
+int my_getifaddrs(struct ifaddrs** ifap) {
+  // 1. Call the real libc function to get the actual interface list
+  int result = orig_getifaddrs(ifap);
+
+  // If the call failed or returned an empty list, just return the result
+  if (result != 0 || ifap == nullptr || *ifap == nullptr) {
+    return result;
+  }
+
+  struct ifaddrs* prev = nullptr;
+  struct ifaddrs* curr = *ifap;
+
+  while (curr != nullptr) {
+    bool hide = false;
+
+    if (curr->ifa_name != nullptr) {
+      const char* name = curr->ifa_name;
+
+      // Define "Suspicious" interface prefixes
+      if (strstr(name, "tun") ||    // Standard VPN tunnels
+          strstr(name, "wg") ||     // WireGuard
+          strstr(name, "ppp") ||    // Point-to-Point (Old VPNs)
+          strstr(name, "p2p") ||    // Wi-Fi Direct
+          strstr(name, "dummy")) {  // Virtual interfaces
+        hide = true;
+      }
+    }
+
+    if (hide) {
+      write_to_logcat_async(ANDROID_LOG_WARN, "Bipan", "Privacy: Unlinking interface [%s]", curr->ifa_name);
+
+      // UNLINK logic
+      if (prev == nullptr) {
+        // We are at the head of the list. Move the head pointer to the next item.
+        *ifap = curr->ifa_next;
+        // Note: We don't 'free' the curr node here because getifaddrs
+        // allocates one large buffer for the whole list.
+        // freeifaddrs() will clean it up later.
+        curr = *ifap;
+      } else {
+        // Bypass the current node in the chain
+        prev->ifa_next = curr->ifa_next;
+        curr = curr->ifa_next;
+      }
+    } else {
+      // This interface is safe (wlan0, lo, etc.), keep it and move forward
+      prev = curr;
+      curr = curr->ifa_next;
+    }
+  }
+
+  return 0;
+}
+
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (!seccomp_applied) {
     if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
@@ -226,6 +289,16 @@ void registerDobbyLinkerHooks() {
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
+  }
+}
+
+void registerIfaddrsHook() {
+  void* getifaddrs_addr = dlsym(RTLD_DEFAULT, "getifaddrs");
+  if (getifaddrs_addr) {
+    DobbyHook(getifaddrs_addr, (void*)my_getifaddrs, (void**)&orig_getifaddrs);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Hooked getifaddrs successfully.");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "FAILED to resolve getifaddrs in libc!");
   }
 }
 

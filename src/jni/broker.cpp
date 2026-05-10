@@ -3,6 +3,7 @@
 #include <elf.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
+#include <linux/netlink.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -52,22 +53,23 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
-
+static inline const char* get_netlink_name(int protocol);
+static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 /**
  * `BipanBroker` runs as thread of root companion, as such,
  * it inherits its powerful capabilities.
- * 
+ *
  * Its role is to provide a safe space for deeply inspecting
  * and evaluating if the trapped syscalls should executed natively
  * or if they should have some special treatment i.e. getting a spoofed
  * file, getting permission denied or get lied about the existence of some file
  * (`-ENOENT`).
- * 
+ *
  * As this process is unseccomped we don't have to worry (so much) about recursive
  * signal handler issues and are free to use libc wrappers here.
  * This code should definitely be thread-safe but, perhaps not necessarily,
- * AS-safe. 
- * 
+ * AS-safe.
+ *
  * The latter burden lies with the in-process `SIGSYS` handler which basically
  * dispatches trapped syscall info to the broker, yields, and takes some action
  * according the Broker's policies here defined.
@@ -253,34 +255,31 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_bind:
+      case __NR_bind: {
+        ipc_mem->action = ACTION_EXECUTE_NATIVE;
+        break;
+      }
       case __NR_connect: {
         if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
-          const char* action_name = (nr == __NR_bind) ? "bind" : "connect";
-          // log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
-          int error_code = (nr == __NR_bind) ? -EADDRNOTAVAIL : -ECONNREFUSED;
-          ipc_mem->ret = error_code;
+          log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
+          char addr_str[64];
+          format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked LAN scan to %s", addr_str);
+          ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(%s) denied", action_name, path_payload);
-          // NOP-ing connect is breaking some stuff
-          if (nr != __NR_connect) {
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
-          }
         }
         break;
       }
       case __NR_listen: {
         if (!is_trusted) {
           if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) blocked for IP socket");
-            // log_violation("(listen) blocked network server", culprit_lib, ipc_mem->caller_pc, offset);
-            ipc_mem->ret = -EACCES;
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed for IP socket");
+            ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
           } else {
             // log_violation("(listen) Allowed Local IPC", culprit_lib, ipc_mem->caller_pc, offset);
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) for non-INET socket allowed");
-            ipc_mem->action = ACTION_EXECUTE_NATIVE;
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(listen) for non-INET (IPC?) socket allowed");
           }
         }
         break;
@@ -306,13 +305,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_socket: {
-        if (ipc_mem->arg0 == AF_NETLINK && !is_trusted) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(socket AF_NETLINK) blocked");
+        // int domain = ipc_mem->arg0;
+        // int protocol = ipc_mem->arg2;
+        // const char* nl_type = get_netlink_name(protocol);
 
-          ipc_mem->ret = -EACCES;
-          ipc_mem->action = ACTION_USE_RET;
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
-        }
+        // if (domain == AF_NETLINK && !is_trusted) {
+        //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked: %s", nl_type);
+        //   ipc_mem->ret = -EACCES;
+        //   ipc_mem->action = ACTION_USE_RET;
+        //   log_violation("(socket AF_NETLINK)", culprit_lib, ipc_mem->caller_pc, offset);
+        // }
         break;
       }
       case __NR_mmap: {
@@ -417,7 +419,9 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
 static inline bool is_trusted_library(const std::string& lib_path) {
   return (lib_path.find("/system/") == 0 ||
           lib_path.find("/vendor/") == 0 ||
-          lib_path.find("/apex/") == 0);
+          lib_path.find("/apex/") == 0 ||
+          lib_path.find("/product/") == 0 ||
+          lib_path.find("/system_ext/") == 0);
 }
 
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
@@ -522,5 +526,68 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
+  }
+}
+
+static inline const char* get_netlink_name(int protocol) {
+  switch (protocol) {
+    case NETLINK_ROUTE:
+      return "NETLINK_ROUTE (Network Info)";
+    case NETLINK_UNUSED:
+      return "NETLINK_UNUSED";
+    case NETLINK_USERSOCK:
+      return "NETLINK_USERSOCK";
+    case NETLINK_FIREWALL:
+      return "NETLINK_FIREWALL";
+    case NETLINK_SOCK_DIAG:
+      return "NETLINK_SOCK_DIAG (Socket Monitor)";
+    case NETLINK_NFLOG:
+      return "NETLINK_NFLOG";
+    case NETLINK_XFRM:
+      return "NETLINK_XFRM";
+    case NETLINK_SELINUX:
+      return "NETLINK_SELINUX";
+    case NETLINK_ISCSI:
+      return "NETLINK_ISCSI";
+    case NETLINK_AUDIT:
+      return "NETLINK_AUDIT";
+    case NETLINK_FIB_LOOKUP:
+      return "NETLINK_FIB_LOOKUP";
+    case NETLINK_CONNECTOR:
+      return "NETLINK_CONNECTOR";
+    case NETLINK_NETFILTER:
+      return "NETLINK_NETFILTER";
+    case NETLINK_IP6_FW:
+      return "NETLINK_IP6_FW";
+    case NETLINK_DNRTMSG:
+      return "NETLINK_DNRTMSG";
+    case NETLINK_KOBJECT_UEVENT:
+      return "NETLINK_KOBJECT_UEVENT (Hardware/USB Hotplug)";
+    case NETLINK_GENERIC:
+      return "NETLINK_GENERIC";
+    case NETLINK_SCSITRANSPORT:
+      return "NETLINK_SCSITRANSPORT";
+    case NETLINK_ECRYPTFS:
+      return "NETLINK_ECRYPTFS";
+    case NETLINK_RDMA:
+      return "NETLINK_RDMA";
+    case NETLINK_CRYPTO:
+      return "NETLINK_CRYPTO";
+    default:
+      return "UNKNOWN_NETLINK_TYPE";
+  }
+}
+
+static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len) {
+  if (addr->sa_family == AF_INET) {
+    struct sockaddr_in* sin = (struct sockaddr_in*)addr;
+    uint32_t ip = ntohl(sin->sin_addr.s_addr);
+    snprintf(out_buf, buf_len, "%d.%d.%d.%d:%d",
+             (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF,
+             ntohs(sin->sin_port));
+  } else if (addr->sa_family == AF_INET6) {
+    snprintf(out_buf, buf_len, "[IPv6 Address]");
+  } else {
+    snprintf(out_buf, buf_len, "non-IP");
   }
 }
