@@ -313,7 +313,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked");
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
-          log_violation("(socket AF_NETLINK)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
