@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 public class WebViewHook implements BaseHook {
-  private static final String TAG = "WebViewHook";
+  private static final String TAG = "BipanWebViewHook";
 
   @Override
   public void install(android.content.Context context) throws Exception {

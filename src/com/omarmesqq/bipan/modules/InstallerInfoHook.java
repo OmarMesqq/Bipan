@@ -10,7 +10,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 public class InstallerInfoHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "InstallerHook";
+  private static final String TAG = "BipanInstallerHook";
   private Object originalPM;
   private String selfPackageName = "unknown";
 
