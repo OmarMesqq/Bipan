@@ -528,7 +528,6 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
 
   while (fgets(line, sizeof(line), f)) {
     if (!isxdigit(line[0])) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "refresh_maps: skipping 'obfuscated' line: %s", line);
       continue;
     }
     line_count++;
