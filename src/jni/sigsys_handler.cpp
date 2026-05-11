@@ -77,6 +77,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
   in_sigsys_handler = true;
 
+  if (nr == __NR_sendmmsg) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lying about sendmmsg existing...");
+    ctx->uc_mcontext.regs[0] = -ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
   lock_ipc();
 
   long arg0 = ctx->uc_mcontext.regs[0];
@@ -154,7 +161,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // If msg_name/dest is NULL, the socket is already connected.
     // We must ask the kernel for the destination IP!
     if (sock_ptr == 0) {
-      struct sockaddr_storage temp_addr;
       long temp_len = sizeof(temp_addr);
       my_memset(&temp_addr, 0, sizeof(temp_addr));
 
