@@ -42,10 +42,12 @@ public class NsdManagerHook implements BaseHook {
       sCacheField.setAccessible(true);
       @SuppressWarnings("unchecked")
       Map<String, IBinder> sCache = (Map<String, IBinder>) sCacheField.get(null);
-      
+
       if (sCache != null) {
         sCache.put(Context.NSD_SERVICE, nsdBinderProxy);
         Log.i(TAG, "NsdManager Binder hijacked successfully. Waiting for IPC...");
+      } else {
+        Log.e(TAG, "sCache is null!");
       }
     } catch (Exception e) {
       Log.e(TAG, "Exception during NsdManagerHook install", e);
@@ -81,12 +83,18 @@ public class NsdManagerHook implements BaseHook {
                   new Class[] { iNsdManagerClass },
                   new INsdManagerProxyHandler(originalINsdManager, classLoader));
               Log.d(TAG, "[L1] Successfully created INsdManagerProxy");
+            } else {
+              Log.e(TAG, "originalINsdManager is null!");
             }
           } catch (Exception e) {
             Log.e(TAG, "[L1] Exception setting up INsdManagerProxy", e);
           }
+        } else {
+          Log.e(TAG, "iNsdManagerProxy is null!");
         }
         return iNsdManagerProxy != null ? iNsdManagerProxy : method.invoke(originalBinder, args);
+      } else {
+        Log.e(TAG, "Another method is being queried: " + method.getName());
       }
       return method.invoke(originalBinder, args);
     }
@@ -122,6 +130,8 @@ public class NsdManagerHook implements BaseHook {
               new Class[] { IBinder.class },
               new MessengerBinderProxyHandler(realMessenger.getBinder(), classLoader));
           return new Messenger(messengerBinderProxy);
+        } else {
+          Log.e(TAG, "[L2] realMessenger and its binder are null!");
         }
       }
 
@@ -132,16 +142,17 @@ public class NsdManagerHook implements BaseHook {
       if (result != null && "connect".equals(methodName)) {
         Log.d(TAG, "[L2] connect() returned: " + result.getClass().getName() + ". Proxying the connector!");
         Class<?>[] interfaces = result.getClass().getInterfaces();
-        
+
         if (interfaces != null && interfaces.length > 0) {
           return Proxy.newProxyInstance(
               classLoader,
               interfaces,
-              new INsdConnectorProxyHandler(result)
-          );
+              new INsdConnectorProxyHandler(result));
         } else {
           Log.w(TAG, "[L2] Return object has no interfaces. Cannot proxy.");
         }
+      } else {
+        Log.e(TAG, "Modern API: result is null and/or another method is queried: " + methodName);
       }
 
       return result;
@@ -163,7 +174,7 @@ public class NsdManagerHook implements BaseHook {
       // Catch the actual discovery payload on the connector
       if (methodName.toLowerCase().contains("discover") || methodName.toLowerCase().contains("resolve")) {
         Log.e(TAG, "[L3-Connector] BLOCKED Modern NSD action: " + methodName);
-        return getDefaultReturnValue(method.getReturnType()); // Silently drop it
+        return getDefaultReturnValue(method.getReturnType());
       }
 
       Log.d(TAG, "[L3-Connector] Forwarding method: " + methodName);
@@ -173,10 +184,14 @@ public class NsdManagerHook implements BaseHook {
 
   // Helper to safely swallow method calls
   private static Object getDefaultReturnValue(Class<?> returnType) {
-    if (returnType == boolean.class) return false;
-    if (returnType == int.class) return 0;
-    if (returnType == long.class) return 0L;
-    if (returnType == float.class || returnType == double.class) return 0.0;
+    if (returnType == boolean.class)
+      return false;
+    if (returnType == int.class)
+      return 0;
+    if (returnType == long.class)
+      return 0L;
+    if (returnType == float.class || returnType == double.class)
+      return 0.0;
     return null;
   }
 
@@ -205,9 +220,15 @@ public class NsdManagerHook implements BaseHook {
                 classLoader,
                 new Class[] { iMessengerClass },
                 new IMessengerProxyHandler(originalIMessenger));
+          } else {
+            Log.e(TAG, ".invoke(): originalIMessenger is null");
           }
+        } else {
+          Log.e(TAG, ".invoke(): iMessengerProxy is NOT null");
         }
         return iMessengerProxy != null ? iMessengerProxy : method.invoke(originalBinder, args);
+      } else {
+        Log.e(TAG, ".invoke() another method is queried: " + method.getName());
       }
       return method.invoke(originalBinder, args);
     }
@@ -238,14 +259,20 @@ public class NsdManagerHook implements BaseHook {
             try {
               Message reply = Message.obtain();
               reply.what = (msg.what == DISCOVER_SERVICES) ? DISCOVER_SERVICES_FAILED : RESOLVE_SERVICE_FAILED;
-              reply.arg1 = 0; 
+              reply.arg1 = 0;
               msg.replyTo.send(reply);
             } catch (Exception e) {
               Log.e(TAG, "[L4-Legacy] Failed to send fake reply", e);
             }
+          } else {
+            Log.e(TAG, "msg.replyTo is NULL!");
           }
           return null;
+        } else {
+          Log.e(TAG, "msg.what is something else: " + msg.what);
         }
+      } else {
+        Log.e(TAG, ".invoke(): another method is being called: " + method.getName());
       }
       return method.invoke(originalIMessenger, args);
     }
