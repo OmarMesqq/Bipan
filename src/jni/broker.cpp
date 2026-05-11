@@ -124,12 +124,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           // Walk to the next frame in the target process
           uintptr_t next_fp, next_lr;
-          if (!safe_read(mem_fd, current_fp, &next_fp) ||
-              !safe_read(mem_fd, current_fp + 8, &next_lr)) break;
+          if (
+              !safe_read(mem_fd, current_fp, &next_fp) ||
+              !safe_read(mem_fd, current_fp + 8, &next_lr)) {
+            break;
+          }
 
           current_fp = next_fp;
           current_pc = next_lr;
-          if (!current_fp || (current_fp & 0x7)) break;
+          if (!current_fp || (current_fp & 0x7)) {
+            break;
+          }
         }
         close(mem_fd);
       } else {
@@ -318,7 +323,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed for IP socket");
             log_violation("(listen) Server behaviour", culprit_lib, ipc_mem->caller_pc, offset);
 
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EACCES, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
           }
         }
         break;
