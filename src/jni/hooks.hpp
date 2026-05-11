@@ -60,7 +60,7 @@ jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstan
   (void)clazz;
   (void)nativeInstance;
   (void)sensor;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked SensorManager enumeration (index %d)", index);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted SensorManager enumeration (index %d). Neutering...", index);
   return JNI_FALSE;
 }
 
@@ -83,7 +83,7 @@ jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstanc
   (void)type;
   (void)fd;
   (void)resource;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeCreateDirectChannel");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted nativeCreateDirectChannel. Neutering...");
   return -1;
 }
 
@@ -91,7 +91,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
   (void)env;
   (void)clazz;
   (void)opPackageName;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeCreate");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted nativeCreate. Neutering...");
   return 0;
 }
 
@@ -107,7 +107,7 @@ ASensorManager* hook_ASensorManager_getInstance() {
 }
 
 ASensorManager* hook_ASensorManager_getInstanceForPackage(const char* packageName) {
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked ASensorManager_getInstanceForPackage for: %s", packageName);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) App attempted ASensorManager_getInstanceForPackage(%s). Neutering....", packageName);
   return nullptr;
 }
 
