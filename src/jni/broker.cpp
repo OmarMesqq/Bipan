@@ -147,7 +147,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
-          log_violation("(execve/execveat)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
@@ -157,9 +156,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = uname_spoofer(&spoofed_buf);
           memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
           ipc_mem->action = ACTION_USE_RET;
-
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "uname spoofed");
-          log_violation("(uname)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
@@ -290,9 +286,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
 
           if (should_block) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Blocked bind to discovery port/LAN");
             ipc_mem->ret = -EADDRNOTAVAIL;
             ipc_mem->action = ACTION_USE_RET;
+
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Blocked bind to discovery port/LAN");
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
             break;
           }
         }
@@ -344,18 +342,21 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (!is_trusted) {
           ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
-          log_violation("(getsockname)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
       case __NR_socket: {
         int domain = ipc_mem->arg0;
         if (domain == AF_NETLINK) {
-          ipc_mem->ret = -EACCES;
+          ipc_mem->ret = -EAFNOSUPPORT;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Untrusted AF_NETLINK blocked");
-          log_violation("(socket) AF_NETLINK", culprit_lib, ipc_mem->caller_pc, offset);
+          if (is_trusted) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "libc AF_NETLINK socket blocked");
+          } else {
+            log_violation("App-originated AF_NETLINK socket", culprit_lib, ipc_mem->caller_pc, offset);
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
+          }
         }
         break;
       }
