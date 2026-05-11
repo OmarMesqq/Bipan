@@ -143,6 +143,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "startBroker: open /proc/<PID>/mem failed!");
       }
     }
+
+    // Default to allow
     ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
     switch (nr) {
@@ -158,12 +160,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_uname: {
-        if (!is_trusted) {
-          struct utsname spoofed_buf;
-          ipc_mem->ret = uname_spoofer(&spoofed_buf);
-          memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
-          ipc_mem->action = ACTION_USE_RET;
-        }
+        struct utsname spoofed_buf;
+        ipc_mem->ret = uname_spoofer(&spoofed_buf);
+        memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
+        ipc_mem->action = ACTION_USE_RET;
         break;
       }
       case __NR_openat: {
@@ -267,7 +267,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          log_violation("SIGSYS handler hijacking", culprit_lib, ipc_mem->caller_pc, offset);
           log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
@@ -278,76 +277,94 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (sock_payload->sa_family == AF_INET) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
-          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) should_block = true;
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+            should_block = true;
+          }
         } else if (sock_payload->sa_family == AF_INET6) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
-          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) should_block = true;
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+            should_block = true;
+          }
         }
 
         if (should_block) {
           ipc_mem->ret = -EADDRNOTAVAIL;
           ipc_mem->action = ACTION_USE_RET;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(bind) to LAN blocked via EADDRNOTAVAIL");
 
           if (!is_trusted) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (bind) to LAN blocked and patched");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "System (bind) to LAN blocked");
           }
         }
         break;
       }
       case __NR_connect: {
-        if (sock_payload && is_lan_address(sock_payload)) {
+        bool is_discovery = false;
+
+        if (sock_payload->sa_family == AF_INET) {
+          uint16_t port = ntohs(((struct sockaddr_in*)sock_payload)->sin_port);
+          if (port == 5353 || port == 1900) is_discovery = true;
+        } else if (sock_payload->sa_family == AF_INET6) {
+          uint16_t port = ntohs(((struct sockaddr_in6*)sock_payload)->sin6_port);
+          if (port == 5353 || port == 1900) is_discovery = true;
+        }
+
+        if (is_lan_address(sock_payload) || is_discovery) {
           char addr_str[64];
           format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
+
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked connect to LAN address: %s", addr_str);
+          const char* type = is_discovery ? "discovery" : "LAN";
 
           if (!is_trusted) {
-            log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (connect) to %s blocked: %s", type, addr_str);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (connect) to %s blocked: %s", type, addr_str);
           }
         }
         break;
       }
       case __NR_listen: {
-        if (sock_payload->sa_family == AF_INET ||
-            sock_payload->sa_family == AF_INET6) {
+        if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed");
-
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed to success and patched");
           patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
         }
         break;
       }
       case __NR_sendto: {
-        if (sock_payload && (is_lan_address(sock_payload) || is_discovery_probe(sock_payload))) {
+        if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sendto) Discovery probe ghosted.");
-
           if (!is_trusted) {
-            log_violation("(sendto)", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (sendto) LAN/discovery spoofed and patched");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (sendto) LAN/discovery spoofed");
           }
         }
         break;
       }
       case __NR_sendmsg: {
-        if (sock_payload && (is_lan_address(sock_payload) || is_discovery_probe(sock_payload))) {
+        if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sendmsg) Discovery probe ghosted.");
-
           if (!is_trusted) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (sendmsg) to LAN address blocked and patched");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (sendmsg) to LAN address blocked");
           }
         }
         break;
@@ -364,9 +381,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "libc AF_NETLINK socket blocked");
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (socket) AF_NETLINK blocked");
           } else {
-            log_violation("App-originated AF_NETLINK socket", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (socket) AF_NETLINK blocked and patched");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
           }
         }
@@ -502,8 +519,7 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
   FILE* f = fopen(path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                          "CRITICAL: Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
     return;
   }
 
@@ -564,7 +580,6 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
 
   fclose(f);
 
-  // Optional: Debug log summary
   if (current_maps.empty()) {
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "refresh_maps: No maps found for PID %d", pid);
   }
