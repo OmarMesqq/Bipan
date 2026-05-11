@@ -345,7 +345,6 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       strstr(pathname, "magisk") != nullptr ||
       strstr(pathname, "resetprop") != nullptr ||
       strstr(pathname, "supolicy") != nullptr ||
-      // Filesystem binaries (TODO: may break stuff)
       starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
