@@ -54,6 +54,7 @@ static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
+static inline bool is_discovery_probe(struct sockaddr* addr);
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -271,83 +272,88 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_bind: {
-        if (!is_trusted) {
-          bool should_block = false;
+        bool should_block = false;
 
-          if (sock_payload->sa_family == AF_INET) {
-            struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
-            uint16_t port = ntohs(sin->sin_port);
+        if (sock_payload->sa_family == AF_INET) {
+          struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
+          uint16_t port = ntohs(sin->sin_port);
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) should_block = true;
+        } else if (sock_payload->sa_family == AF_INET6) {
+          struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
+          uint16_t port = ntohs(sin6->sin6_port);
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) should_block = true;
+        }
 
-            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-              should_block = true;
-            }
-          } else if (sock_payload->sa_family == AF_INET6) {
-            struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
-            uint16_t port = ntohs(sin6->sin6_port);
+        if (should_block) {
+          ipc_mem->ret = -EADDRNOTAVAIL;
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(bind) to LAN blocked via EADDRNOTAVAIL");
 
-            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-              should_block = true;
-            }
-          }
-
-          if (should_block) {
-            ipc_mem->ret = -EADDRNOTAVAIL;
-            ipc_mem->action = ACTION_USE_RET;
-
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Blocked bind to discovery port/LAN");
+          if (!is_trusted) {
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
-            break;
           }
         }
         break;
       }
       case __NR_connect: {
-        if (sock_payload && is_lan_address(sock_payload) && !is_trusted) {
+        if (sock_payload && is_lan_address(sock_payload)) {
           char addr_str[64];
           format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
 
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Blocked connect to LAN address: %s", addr_str);
-          log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
-        }
-        break;
-      }
-      case __NR_listen: {
-        if (!is_trusted) {
-          if (sock_payload->sa_family == AF_INET ||
-              sock_payload->sa_family == AF_INET6) {
-            ipc_mem->ret = 0;
-            ipc_mem->action = ACTION_USE_RET;
 
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed for IP socket");
-            log_violation("(listen) Server behaviour", culprit_lib, ipc_mem->caller_pc, offset);
-
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
+          if (!is_trusted) {
+            log_violation("(connect)", culprit_lib, ipc_mem->caller_pc, offset);
           }
         }
         break;
       }
-      case __NR_sendto:
-      case __NR_sendmsg: {
-        if (is_lan_address(sock_payload) && !is_trusted) {
-          const char* action_name = (nr == __NR_sendto) ? "(sendto)" : "(sendmsg)";
-          int error_code = (nr == __NR_sendto) ? ipc_mem->arg2 : ipc_mem->arg3;
-          ipc_mem->ret = error_code;
+      case __NR_listen: {
+        if (sock_payload->sa_family == AF_INET ||
+            sock_payload->sa_family == AF_INET6) {
+          ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "%s spoofed", action_name, path_payload);
-          log_violation(action_name, culprit_lib, ipc_mem->caller_pc, offset);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed");
 
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, error_code, patched_pcs);
+          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
+        }
+        break;
+      }
+      case __NR_sendto: {
+        if (sock_payload && (is_lan_address(sock_payload) || is_discovery_probe(sock_payload))) {
+          int ghost_len = (int)ipc_mem->arg2;
+          ipc_mem->ret = ghost_len;
+          ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sendto) Discovery probe ghosted.");
+
+          if (!is_trusted) {
+            log_violation("(sendto)", culprit_lib, ipc_mem->caller_pc, offset);
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+          }
+        }
+        break;
+      }
+      case __NR_sendmsg: {
+        if (sock_payload && (is_lan_address(sock_payload) || is_discovery_probe(sock_payload))) {
+          int ghost_len = (int)ipc_mem->arg3;
+          ipc_mem->ret = ghost_len;
+          ipc_mem->action = ACTION_USE_RET;
+
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sendmsg) Discovery probe ghosted.");
+
+          if (!is_trusted) {
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+          }
         }
         break;
       }
       case __NR_getsockname: {
-        if (!is_trusted) {
-          ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
-        }
+        ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
         break;
       }
       case __NR_socket: {
@@ -499,12 +505,16 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   char line[512];
   while (fgets(line, sizeof(line), f)) {
     uintptr_t start, end, offset;
-    if (sscanf(line, "%lx-%lx %*s %lx", &start, &end, &offset) >= 2) {
-      char* slash = strchr(line, '/');
-      if (!slash) slash = strchr(line, '[');  // Catch [stack], [vdso], etc.
+    if (sscanf(line, "%lx-%lx %*s %lx", &start, &end, &offset) == 3) {
+      char* path_ptr = strchr(line, '/');
+      if (!path_ptr) {
+        path_ptr = strchr(line, '[');  // Catch [stack], [anon], etc.
+      }
 
-      std::string lib = slash ? slash : "[Anonymous Memory]";
-      if (!lib.empty() && lib.back() == '\n') lib.pop_back();
+      std::string lib = path_ptr ? path_ptr : "[Anonymous Memory]";
+      if (!lib.empty() && lib.back() == '\n') {
+        lib.pop_back();
+      }
 
       current_maps.push_back({start, end, offset, lib});
     } else {
@@ -598,4 +608,22 @@ static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len)
   } else {
     snprintf(out_buf, buf_len, "non-IP");
   }
+}
+
+static inline bool is_discovery_probe(struct sockaddr* addr) {
+  if (!addr) return false;
+
+  // IPv4
+  if (addr->sa_family == AF_INET) {
+    uint16_t port = ntohs(((struct sockaddr_in*)addr)->sin_port);
+    return (port == 5353 || port == 1900);
+  }
+
+  // IPv6
+  if (addr->sa_family == AF_INET6) {
+    uint16_t port = ntohs(((struct sockaddr_in6*)addr)->sin6_port);
+    return (port == 5353 || port == 1900);
+  }
+
+  return false;
 }
