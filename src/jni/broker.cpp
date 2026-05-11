@@ -492,36 +492,81 @@ static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
 }
 
 static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
+  // 1. Clear the old state
   current_maps.clear();
+
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/maps", pid);
 
+  // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
   FILE* f = fopen(path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "failed to refresh maps");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
+                          "CRITICAL: Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
     return;
   }
 
-  char line[512];
+  char line[1024];  // Increased buffer to handle exceptionally long paths
+  int line_count = 0;
+
   while (fgets(line, sizeof(line), f)) {
-    uintptr_t start, end, offset;
-    if (sscanf(line, "%lx-%lx %*s %lx", &start, &end, &offset) == 3) {
-      char* path_ptr = strchr(line, '/');
-      if (!path_ptr) {
-        path_ptr = strchr(line, '[');  // Catch [stack], [anon], etc.
+    if (!isxdigit(line[0])) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "refresh_maps: skipping 'obfuscated' line: %s", line);
+      continue;
+    }
+    line_count++;
+    uintptr_t start = 0, end = 0, offset = 0;
+    int path_pos = -1;  // Initialize to -1 to detect if %n was actually hit
+
+    // Format: address(start-end) perms offset dev inode pathname
+    // Example: 7b1c428000-7b1c517000 r--p 00000000 fd:29 259069 /lib/libiconv.so
+    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n",
+                         &start, &end, &offset, &path_pos);
+
+    // Basic structural check
+    if (matches < 3) {
+      // If we see a non-empty line that doesn't match our regex, it's a parse error
+      if (line[0] != '\n' && line[0] != '\0') {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Parse failure on line %d: %s", line_count, line);
+      }
+      continue;
       }
 
-      std::string lib = path_ptr ? path_ptr : "[Anonymous Memory]";
-      if (!lib.empty() && lib.back() == '\n') {
-        lib.pop_back();
+    std::string lib_path;
+    if (path_pos != -1 && (size_t)path_pos < strlen(line)) {
+      lib_path = &line[path_pos];
+
+      // Remove trailing newline
+      if (!lib_path.empty() && lib_path.back() == '\n') {
+        lib_path.pop_back();
       }
 
-      current_maps.push_back({start, end, offset, lib});
+      // Standardize empty paths
+      if (lib_path.empty()) {
+        lib_path = "[Anonymous Memory]";
+      }
     } else {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "sscanf failed while refreshing maps");
+      lib_path = "[Anonymous Memory]";
+    }
+
+    // Safety: Verify range integrity before adding
+    if (start < end) {
+      current_maps.push_back({start, end, offset, lib_path});
+    } else {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Malformed map range at line %d: %p-%p", line_count, (void*)start, (void*)end);
     }
   }
+
+  if (ferror(f)) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Error while reading %s", path);
+  }
+
   fclose(f);
+
+  // Optional: Debug log summary
+  if (current_maps.empty()) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "refresh_maps: No maps found for PID %d", pid);
+  }
 }
 
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps) {
