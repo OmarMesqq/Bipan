@@ -1,6 +1,7 @@
 #include "broker.hpp"
 
 #include <elf.h>
+#include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
 #include <linux/netlink.h>
@@ -530,7 +531,7 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Parse failure on line %d: %s", line_count, line);
       }
       continue;
-      }
+    }
 
     std::string lib_path;
     if (path_pos != -1 && (size_t)path_pos < strlen(line)) {
