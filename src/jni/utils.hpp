@@ -340,6 +340,8 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
   return ((  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      // VPN tunnel
+      starts_with(pathname, "/sys/class/net/tun") ||
       // Root
       strstr(pathname, "zygisk") != nullptr ||
       strstr(pathname, "magisk") != nullptr ||
