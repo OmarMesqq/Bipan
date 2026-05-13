@@ -14,7 +14,7 @@ public class BipanJava {
   private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 50;
 
   /**
-   * Entrypoint of for Java-layer hooks called by Bipan in C++
+   * Entrypoint of Java-layer hooks called by Bipan in C++
    */
   public static void install() {
     new Thread(() -> {

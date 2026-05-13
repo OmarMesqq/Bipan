@@ -32,12 +32,6 @@ struct kernel_sigaction {
 };
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void sigill_handler(int sig, siginfo_t* info, void* void_context);
-static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
-inline static void patch_instruction_in_process(uintptr_t address, int return_value);
-
-// Store original handlers to forward ART signals
-static struct kernel_sigaction old_sa_segv = {};
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -50,18 +44,6 @@ void registerSignalHandler() {
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
     _exit(1);
-  }
-
-  bool is_insta = local_strstr(package_name, "com.instagram.android");
-  bool is_whatsapp = local_strstr(package_name, "com.whatsapp");
-  if (is_insta) {
-    struct kernel_sigaction sa_ILL = {};
-    sa_ILL.sa_handler = sigill_handler;
-    sa_ILL.sa_flags = SA_SIGINFO;
-    arm64_raw_syscall(__NR_rt_sigaction, SIGILL, (long)&sa_ILL, 0, 8, 0, 0);
-  } else if (is_whatsapp) {
-    struct kernel_sigaction sa_SEGV = {.sa_handler = sigsegv_handler, .sa_flags = SA_SIGINFO};
-    arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, (long)&old_sa_segv, 8, 0, 0);
   }
 }
 
@@ -248,136 +230,4 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   ctx->uc_mcontext.regs[0] = result;
   in_sigsys_handler = false;
-}
-
-static void sigill_handler(int sig, siginfo_t* info, void* void_context) {
-  ucontext_t* ctx = (ucontext_t*)void_context;
-  uintptr_t fault_pc = ctx->uc_mcontext.pc;
-  uintptr_t return_address = 0;
-
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "SIGILL at %p. Attempting recovery...", (void*)fault_pc);
-
-  is_trusted_system_caller("(SIGILL_RECOVERY)", &return_address, false);
-
-  if (return_address != 0) {
-    uintptr_t suicide_call_site = return_address - 4;
-
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Patching suicide site %p. Redirecting to %p",
-                          (void*)suicide_call_site, (void*)return_address);
-
-    // Tell me lies...forever (NOP caller)
-    patch_instruction_in_process(suicide_call_site, 0);
-
-    // Set current CPU PC to return address. It's as if the crash never occurred!
-    ctx->uc_mcontext.pc = return_address;
-
-    ctx->uc_mcontext.regs[0] = 0;  // "Success"
-
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Resurrection successful. App resuming...");
-    return;
-  }
-
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Recovery failed (No valid caller). Killing process.");
-  _exit(-1);
-}
-
-static thread_local bool in_sigsegv_handler = false;
-static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
-  if (in_sigsegv_handler) {
-    arm64_raw_syscall(__NR_exit, -1, 0, 0, 0, 0, 0);
-    return;
-  }
-  in_sigsegv_handler = true;
-
-  ucontext_t* ctx = (ucontext_t*)void_context;
-  uintptr_t fault_pc = ctx->uc_mcontext.pc;
-  uintptr_t return_address = 0;
-
-  // 1. Identify if this is a Meta library (libessential, libwa_log, etc)
-  if (!is_trusted_system_caller("(SIGSEGV_CHECK)", nullptr, false)) {
-    // 2. Try to find where we should go back to
-    is_trusted_system_caller("(SIGSEGV_RECOVERY)", &return_address, false);
-
-    // 3. THE FIX: If the return address is the same as the fault address,
-    // or very close, the current instruction IS the problem.
-    if (return_address == 0 || return_address == fault_pc) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Loop detected at %p. Force-NOPing current PC.", (void*)fault_pc);
-
-      // Lobotomize the instruction that actually triggered the SEGV
-      patch_instruction_in_process(fault_pc, 0);
-
-      // Force the CPU to the NEXT instruction (+4 bytes in ARM64)
-      ctx->uc_mcontext.pc = fault_pc + 4;
-      ctx->uc_mcontext.regs[0] = 0;  // Set return to 0 (Success)
-
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Loop broken. Advanced to %p", (void*)ctx->uc_mcontext.pc);
-    } else {
-      // Standard recovery for function calls (suicide jumps)
-      uintptr_t suicide_call_site = return_address - 4;
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Neutralizing call site %p", (void*)suicide_call_site);
-
-      patch_instruction_in_process(suicide_call_site, 0);
-      ctx->uc_mcontext.pc = return_address;
-      ctx->uc_mcontext.regs[0] = 0;
-    }
-
-    in_sigsegv_handler = false;
-    return;
-  }
-
-  // 4. FORWARDING (Java NPEs, ART logic)
-  in_sigsegv_handler = false;
-  if (old_sa_segv.sa_handler != nullptr &&
-      old_sa_segv.sa_handler != (void*)SIG_DFL &&
-      old_sa_segv.sa_handler != (void*)SIG_IGN) {
-    old_sa_segv.sa_handler(sig, info, void_context);
-    return;
-  }
-
-  _exit(-1);
-}
-
-/**
- * TODO: this is ad-hoc for apps that trigger SIGSEGV and SIGILL. Think of better strategy
- */
-inline static void patch_instruction_in_process(uintptr_t address, int return_value) {
-  if (last_patched_adhoc_pc.exchange(address) == address) {
-    return;
-  }
-
-  // Find the start of the page (4KB align)
-  uintptr_t page_start = address & ~0xFFF;
-
-  // Make it writable
-  long ret = arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, 0, 0, 0);
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Ad-hoc local mprotect (W) failed natively: %ld", ret);
-    return;
-  }
-
-  // Let's default to NOP
-  uint32_t opcode = 0xd503201f;
-
-  if (return_value >= 0 && return_value <= 65535) {
-    // DYNAMIC ASSEMBLER: Generate 'MOV x0, #return_value' on the fly!
-    // Base opcode for MOV x0 is 0xD2800000. We shift the value by 5 bits to place it in the 'imm16' field.
-    opcode = 0xD2800000 | ((uint32_t)return_value << 5);
-  } else if (return_value == -13) {  // -EACCES
-    opcode = 0x92800180;             // MOVN x0, #12 (~12 = -13)
-  } else if (return_value == -99) {  // -EADDRNOTAVAIL
-    opcode = 0x92800C40;             // MOVN x0, #98 (~98 = -99)
-  } else if (return_value == -11) {  // -EAGAIN
-    opcode = 0x92800140;             // MOVN x0, #10 (~10 = -11)
-  } else if (return_value == -2) {   // -ENOENT
-    opcode = 0x92800040;             // MOVN x0, #1 (~1 = -2)
-  }
-
-  *(uint32_t*)address = opcode;
-
-  __builtin___clear_cache((char*)address, (char*)(address + 4));
-
-  // 5. Restore original permissions page permissions: probably (RX)
-  arm64_raw_syscall(__NR_mprotect, (long)page_start, 4096, PROT_READ | PROT_EXEC, 0, 0, 0);
-
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Ad-hoc local patch succeeded: PC %p now returns %d.", (void*)address, return_value);
 }
