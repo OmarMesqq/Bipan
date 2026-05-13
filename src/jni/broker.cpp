@@ -293,10 +293,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (bind) to LAN blocked and patched");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (bind) to LAN blocked. Attempting patch...");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
           } else {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "System (bind) to LAN blocked");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
         }
         break;
@@ -334,7 +334,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(listen) spoofed to success and patched");
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success. Attempting patch...");
           patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
         }
         break;
@@ -346,10 +346,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (sendto) LAN/discovery spoofed and patched");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendto) LAN/discovery spoofed. Attempting patch...");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (sendto) LAN/discovery spoofed");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed");
           }
         }
         break;
@@ -361,17 +361,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (sendmsg) to LAN address blocked and patched");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendmsg) to LAN address blocked. Attempting patch...");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (sendmsg) to LAN address blocked");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked");
           }
         }
         break;
       }
       case __NR_getsockname: {
         ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(getsockname) scrubbed");
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
         break;
       }
       case __NR_socket: {
@@ -381,9 +381,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (socket) AF_NETLINK blocked");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (socket) AF_NETLINK blocked");
           } else {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (socket) AF_NETLINK blocked and patched");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (socket) AF_NETLINK blocked. Attempting patch...");
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
           }
         }
@@ -398,7 +398,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (sig == SIGKILL ||
             sig == SIGSYS ||
             sig == SIGQUIT) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Suicide attempt: [%s] target %d with signal %d", (nr == __NR_tgkill ? "tgkill" : "kill"), target_pid, sig);
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Suicide attempt: [%s] target %d with signal %d", (nr == __NR_tgkill ? "tgkill" : "kill"), target_pid, sig);
 
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
