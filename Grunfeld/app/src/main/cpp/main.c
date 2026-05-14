@@ -14,6 +14,7 @@
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
+#include "test_runner.h"
 #include <stdlib.h>
 
 #include "shared.h"
@@ -36,9 +37,9 @@ jmp_buf jump_buffer;
 
 __attribute__((constructor))
 void grunfeld_early_init(void) {
-    long ret = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-    LOGI("early attribute constructor init");
-    LOGW("ptrace result: %ld", ret);
+//    long ret = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+//    LOGI("early attribute constructor init");
+//    LOGW("ptrace result: %ld", ret);
 }
 
 
@@ -50,7 +51,7 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    LOGI("JNI_OnLoad");
+    run_all_tests();
     return JNI_VERSION_1_6;
 }
 

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22.1)
 project(GrunfeldProject)
 
 # Define the library
-add_library(grunfeld SHARED main.c socket_helper.c)
+add_library(grunfeld SHARED main.c socket_helper.c test_runner.c)
 
 # I could make my life harder by adding -fomit-frame-pointer here, but apparently most libs have frame pointers on
 target_compile_options(grunfeld PRIVATE
