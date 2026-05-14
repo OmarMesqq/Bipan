@@ -22,7 +22,6 @@
 #include "unwinder.hpp"
 #include "utils.hpp"
 
-inline static std::atomic<uintptr_t> last_patched_adhoc_pc{0};
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
