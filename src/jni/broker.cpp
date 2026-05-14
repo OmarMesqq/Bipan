@@ -1,10 +1,12 @@
 #include "broker.hpp"
 
+#include <arpa/inet.h>
 #include <elf.h>
 #include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
 #include <linux/netlink.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -21,6 +23,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -56,6 +59,7 @@ static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
+std::string get_sockaddr_info(const struct sockaddr* sa);
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -272,6 +276,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_bind: {
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (bind): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
         bool should_block = false;
 
         if (sock_payload->sa_family == AF_INET) {
@@ -302,6 +309,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (connect): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
         bool is_discovery = false;
 
         if (sock_payload->sa_family == AF_INET) {
@@ -330,6 +340,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_listen: {
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (listen): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
         if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
@@ -340,6 +353,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendto: {
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (sendto): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
           ipc_mem->ret = ghost_len;
@@ -355,6 +372,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendmsg: {
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (sendmsg): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
           ipc_mem->ret = ghost_len;
@@ -371,6 +392,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_getsockname: {
         // TODO: maybe Broker doesn't need to handle this
+        // std::string connection_info = get_sockaddr_info(sock_payload);
+        // std::string log_msg = "got (getsockname): " + connection_info;
+        // write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
         ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
         break;
       }
@@ -686,4 +710,32 @@ static inline bool is_discovery_probe(struct sockaddr* addr) {
   }
 
   return false;
+}
+
+std::string get_sockaddr_info(const struct sockaddr* sa) {
+  if (sa == nullptr) return "NULL Address";
+
+  char addr_str[INET6_ADDRSTRLEN];
+  uint16_t port = 0;
+
+  switch (sa->sa_family) {
+    case AF_INET: {
+      struct sockaddr_in* sin = (struct sockaddr_in*)sa;
+      inet_ntop(AF_INET, &(sin->sin_addr), addr_str, INET_ADDRSTRLEN);
+      port = ntohs(sin->sin_port);
+      return "[IPv4] " + std::string(addr_str) + ":" + std::to_string(port);
+    }
+    case AF_INET6: {
+      struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sa;
+      inet_ntop(AF_INET6, &(sin6->sin6_addr), addr_str, INET6_ADDRSTRLEN);
+      port = ntohs(sin6->sin6_port);
+      return "[IPv6] " + std::string(addr_str) + ":" + std::to_string(port);
+    }
+    case AF_UNIX:
+      return "[Local] AF_UNIX (Internal IPC)";
+    case AF_NETLINK:
+      return "[Kernel] AF_NETLINK (Interface/MAC discovery)";
+    default:
+      return "Family " + std::to_string(sa->sa_family);
+  }
 }
