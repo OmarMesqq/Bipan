@@ -370,8 +370,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_getsockname: {
+        // TODO: maybe Broker doesn't need to handle this
         ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
         break;
       }
       case __NR_socket: {

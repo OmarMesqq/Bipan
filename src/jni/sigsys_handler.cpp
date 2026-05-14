@@ -32,6 +32,7 @@ struct kernel_sigaction {
 };
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
+static void scrub_socket(struct sockaddr* s);
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -60,7 +61,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   in_sigsys_handler = true;
 
   if (nr == __NR_sendmmsg) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lying about sendmmsg existing...");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Lying about sendmmsg existing...");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
     in_sigsys_handler = false;
     return;
@@ -87,20 +88,21 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
 
-  // Clean payloads
+  // Zero-out string payloads
   my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
+  my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
 
   __sync_synchronize();
 
-  // Create FD beforehand to prevent SELinux from complaining untrusted->privileged
+  // app-side FD to be filled by Broker in relevant syscalls
   int pre_fd = -1;
 
   // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
-
-    ipc_mem->arg5 = pre_fd;  // Pass the FD to the Broker in unused arg5
+    // openat takes up to 4 args, so use arg5 as slot for the pre-FD
+    ipc_mem->arg5 = pre_fd;
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat ||
              nr == __NR_newfstatat ||
@@ -120,46 +122,49 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     sock_ptr = arg1;
     sock_len = arg2;
   } else if (nr == __NR_sendto || nr == __NR_sendmsg) {
+    long sockfd = arg0;
     if (nr == __NR_sendto) {
       sock_ptr = arg4;
       sock_len = arg5;
     } else {
       struct msghdr* msg = (struct msghdr*)arg1;
-      if (msg) {
-        sock_ptr = (long)msg->msg_name;
-        sock_len = msg->msg_namelen;
 
-        // Get payload's total length
-        long total_len = 0;
-        for (size_t i = 0; i < msg->msg_iovlen; i++) {
-          total_len += msg->msg_iov[i].iov_len;
-        }
-        // Pass the safe length to the Broker using an unused argument (arg3)
-        ipc_mem->arg3 = total_len;
+      sock_ptr = (long)msg->msg_name;
+      sock_len = msg->msg_namelen;
+
+      // get message's length
+      long total_len = 0;
+      for (size_t i = 0; i < msg->msg_iovlen; i++) {
+        total_len += msg->msg_iov[i].iov_len;
       }
+      // sendmsg takes 3 so pass its size in this empty slot
+      ipc_mem->arg3 = total_len;
     }
 
-    // --- FIX 2: The Connected Socket Interrogation ---
-    // If msg_name/dest is NULL, the socket is already connected.
-    // We must ask the kernel for the destination IP!
+    /**
+     * If msg_name inside msghdr (sendmsg) or 
+     * dest_addr (sendto) is empty, we are talking about 
+     * an already connected socket. Ask the kernel
+     * its address to prevent LAN chatter
+     */
     if (sock_ptr == 0) {
       long temp_len = sizeof(temp_addr);
       my_memset(&temp_addr, 0, sizeof(temp_addr));
 
-      // getpeername extracts the destination IP of a connected socket
-      if (arm64_raw_syscall(__NR_getpeername, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+      // getpeername gives us the destination IP of a connected socket
+      if (arm64_raw_syscall(__NR_getpeername, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
         sock_ptr = (long)&temp_addr;
         sock_len = temp_len;
       }
     }
   } else if (nr == __NR_listen || nr == __NR_getsockname) {
+    long sockfd = arg0;
     // --- THE FIX: Pre-Flight Check ---
     // listen() doesn't give us a sockaddr, so we must extract it from the FD
     long temp_len = sizeof(temp_addr);
     my_memset(&temp_addr, 0, sizeof(temp_addr));
 
-    // arg0 is the sockfd
-    if (arm64_raw_syscall(__NR_getsockname, arg0, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+    if (arm64_raw_syscall(__NR_getsockname, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
       sock_ptr = (long)&temp_addr;
       sock_len = temp_len;
     }
@@ -200,8 +205,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // Deserialize outputs with their exact lengths
     if (nr == __NR_uname && result == 0) {
       my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
-    } else if (nr == __NR_readlinkat && result > 0) {
-      my_memcpy((void*)arg2, ipc_mem->out_buffer, (size_t)result);
     }
   } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
     if (pre_fd >= 0) {
@@ -211,17 +214,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
     if (result == 0 && arg1 != 0) {
       struct sockaddr* s = (struct sockaddr*)arg1;
-
-      if (s->sa_family == AF_INET) {
-        struct sockaddr_in* sin = (struct sockaddr_in*)s;
-        sin->sin_addr.s_addr = 0x8001A8C0;  // 192.168.1.128
-      } else if (s->sa_family == AF_INET6) {
-        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
-        // Unique Local Address (ULA) like fd00::1
-        my_memset(&sin6->sin6_addr, 0, 16);
-        sin6->sin6_addr.s6_addr[0] = 0xfd;
-        sin6->sin6_addr.s6_addr[15] = 0x01;
-      }
+      scrub_socket(s);
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
     }
   }
 
@@ -230,4 +226,24 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   ctx->uc_mcontext.regs[0] = result;
   in_sigsys_handler = false;
+}
+
+static void scrub_socket(struct sockaddr* s) {
+  if (!s) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "scrub_socket: sockaddr to scrub is null!");
+    return;
+  }
+
+  if (s->sa_family == AF_INET) {
+    struct sockaddr_in* sin = (struct sockaddr_in*)s;
+
+    sin->sin_addr.s_addr = 0x8001A8C0;  // 192.168.1.128
+  } else if (s->sa_family == AF_INET6) {
+    struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
+
+    // Unique Local Address (ULA) like fd00::1
+    my_memset(&sin6->sin6_addr, 0, 16);
+    sin6->sin6_addr.s6_addr[0] = 0xfd;
+    sin6->sin6_addr.s6_addr[15] = 0x01;
+  }
 }
