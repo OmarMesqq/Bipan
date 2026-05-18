@@ -64,7 +64,8 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
         "https://cloudflare-quic.com/",
         "https://1.1.1.1/help",
         "https://amiunique.org/",
-        "https://abrahamjuliot.github.io/"
+        "https://abrahamjuliot.github.io/creepjs/",
+        "https://thetest.com/tests/browser"
     )
 
     BackHandler(enabled = true) {
