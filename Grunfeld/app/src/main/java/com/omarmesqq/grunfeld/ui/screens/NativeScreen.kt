@@ -57,7 +57,7 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
-    
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         Column(
