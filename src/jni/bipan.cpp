@@ -114,14 +114,12 @@ class Bipan : public zygisk::ModuleBase {
 
       // Save the socket so sigsys_handler can recv_fd() openat results
       sv[1] = g_broker_socket;
+    } else {
+      // Remove Bipan from non-target apps
+      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
     }
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
-
-    // Targets require us to on memory to catch SIGSYS
-    if (!isTargetApp) {
-      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-    }
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
@@ -255,7 +253,7 @@ class Bipan : public zygisk::ModuleBase {
     int fd = api->connectCompanion();
     if (fd < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
-      return;
+      _exit(-1);
     }
 
     // Tell the companion we want to fetch the targets list
