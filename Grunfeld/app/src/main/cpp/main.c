@@ -37,9 +37,7 @@ jmp_buf jump_buffer;
 
 __attribute__((constructor))
 void grunfeld_early_init(void) {
-//    long ret = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-//    LOGI("early attribute constructor init");
-//    LOGW("ptrace result: %ld", ret);
+    run_all_tests();
 }
 
 
@@ -49,11 +47,6 @@ static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
-
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    run_all_tests();
-    return JNI_VERSION_1_6;
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
