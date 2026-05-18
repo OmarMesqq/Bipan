@@ -13,6 +13,7 @@
 #include <fcntl.h>
 
 #define TAG "GrunfeldNative"
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 static void test_uname(void);
@@ -98,8 +99,6 @@ static void test_openat_denied_and_spoofed(void) {
         fd = open(spoofedPaths[i], O_RDONLY);
         assert(fd == -1);
     }
-
-    
 }
 
 static void test_openat_faked(void) {
@@ -124,7 +123,7 @@ static void test_openat_faked(void) {
         assert(bytesRead >= 0);
 
         buf[bytesRead] = '\0';
-        LOGE("test_openat_faked: contents of %s:\n%s", fakedPaths[i], buf);
+        LOGW("Contents of %s:\n%s", fakedPaths[i], buf);
 
         close(fd);
     }
