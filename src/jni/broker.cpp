@@ -336,11 +336,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           const char* type = is_discovery ? "discovery" : "LAN";
 
-          if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (connect) to %s blocked: %s", type, addr_str);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (connect) to %s blocked: %s", type, addr_str);
-          }
+          // if (!is_trusted) {
+          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (connect) to %s blocked: %s", type, addr_str);
+          // } else {
+          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (connect) to %s blocked: %s", type, addr_str);
+          // }
         }
         break;
       }
