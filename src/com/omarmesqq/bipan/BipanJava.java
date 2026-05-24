@@ -39,12 +39,6 @@ public class BipanJava {
 
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
-    modules.add(new NetworkSecurityHook());
-    modules.add(new MsysTrustHook());
-    modules.add(new MsysProviderHook());
-    modules.add(new MediaConnectionHook());
-    // modules.add(new NsdManagerHook());
-    // modules.add(new MediaRouterHook());
 
     for (BaseHook module : modules) {
       try {
