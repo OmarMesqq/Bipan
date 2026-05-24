@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
 
 # Compile the entire BipanJava suite to Java bytecode
 javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
@@ -18,6 +18,15 @@ d8 --release \
 xxd -i classes.dex > src/jni/bipan_java.h
 
 # Build the module's .so file
+BUILD_MODE="release"
+if [[ "${1:-}" == "debug" ]]; then
+  BUILD_MODE="debug"
+  export BIPAN_DEBUG=1
+else
+  export BIPAN_DEBUG=0
+fi
+echo "Building Bipan in $BUILD_MODE mode..."
+
 cd src
 ndk-build
 cd ..

@@ -20,19 +20,25 @@ LOCAL_SRC_FILES := bipan.cpp \
 # Statically link Bipan to Dobby
 LOCAL_STATIC_LIBRARIES := dobby_static
 
-LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
-									-ffunction-sections -fdata-sections \
-									-Wconversion -Wsign-conversion \
-                  -Wdouble-promotion -Winline \
-									-fno-exceptions -fno-rtti \
-                  -fvisibility=hidden -fvisibility-inlines-hidden \
-									-fomit-frame-pointer -flto \
-									-Wno-unused-parameter
+ifeq ($(BIPAN_DEBUG), 1)
+	LOCAL_CPPFLAGS := -O0 -g -Wall -Wextra -fno-exceptions -fno-rtti
+	LOCAL_LDFLAGS := 
+$(info [Bipan] Building DEBUG variant...)
+else
+	LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
+		-ffunction-sections -fdata-sections \
+		-Wconversion -Wsign-conversion \
+		-Wdouble-promotion -Winline \
+		-fno-exceptions -fno-rtti \
+		-fvisibility=hidden -fvisibility-inlines-hidden \
+		-fomit-frame-pointer -flto \
+		-Wno-unused-parameter
 
-
-LOCAL_LDFLAGS := -Wl,--gc-sections \
-                 -Wl,--exclude-libs,ALL \
-                 -Wl,--icf=all \
-                 -flto
+	LOCAL_LDFLAGS := -Wl,--gc-sections \
+		-Wl,--exclude-libs,ALL \
+		-Wl,--icf=all \
+		-flto
+$(info [Bipan] Building RELEASE variant...)
+endif
 
 include $(BUILD_SHARED_LIBRARY)
