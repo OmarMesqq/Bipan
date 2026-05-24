@@ -276,11 +276,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_bind: {
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (bind): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
+        // if (sock_payload->sa_family != AF_UNIX) {
+        //   std::string connection_info = get_sockaddr_info(sock_payload);
+        //   std::string log_msg = "got (bind): " + connection_info;
+        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+        // }
 
         bool should_block = false;
 
@@ -312,11 +312,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (connect): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
+        // if (sock_payload->sa_family != AF_UNIX) {
+        //   std::string connection_info = get_sockaddr_info(sock_payload);
+        //   std::string log_msg = "got (connect): " + connection_info;
+        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+        // }
         bool is_discovery = false;
 
         if (sock_payload->sa_family == AF_INET) {
@@ -345,11 +345,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_listen: {
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (listen): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
+        // if (sock_payload->sa_family != AF_UNIX) {
+        //   std::string connection_info = get_sockaddr_info(sock_payload);
+        //   std::string log_msg = "got (listen): " + connection_info;
+        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+        // }
+
         if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
@@ -360,11 +361,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendto: {
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (sendto): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
+        // if (sock_payload->sa_family != AF_UNIX) {
+        //   std::string connection_info = get_sockaddr_info(sock_payload);
+        //   std::string log_msg = "got (sendto): " + connection_info;
+        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+        // }
 
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
@@ -381,11 +382,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendmsg: {
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (sendmsg): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
+        // if (sock_payload->sa_family != AF_UNIX) {
+        //   std::string connection_info = get_sockaddr_info(sock_payload);
+        //   std::string log_msg = "got (sendmsg): " + connection_info;
+        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+        // }
 
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
@@ -402,12 +403,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_getsockname: {
-        // TODO: maybe Broker doesn't need to handle this
-        if (sock_payload->sa_family != AF_UNIX) {
-          std::string connection_info = get_sockaddr_info(sock_payload);
-          std::string log_msg = "got (getsockname): " + connection_info;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        }
         ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
         break;
       }

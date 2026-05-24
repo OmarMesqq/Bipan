@@ -148,6 +148,11 @@ inline bool filterIPv4LanAccess(uint32_t ip4) {
     return true;
   }
 
+  // Loopback (127.0.0.0/8)
+  if ((ip4 & 0xFF000000) == 0x7F000000) {
+    return true;
+  }
+
   if ((ip4 & 0xFF000000) == 0x0A000000) {
     // 10.0.0.0/8 (Class A Private)
     return true;
@@ -186,6 +191,15 @@ inline bool filterIPv6LanAccess(uint8_t* ip6) {
     if (ip6[i] != 0) is_unspecified = false;
   }
   if (is_unspecified) {
+    return true;
+  }
+
+  // Loopback (::1)
+  bool is_loopback = (ip6[15] == 1);
+  for (int i = 0; i < 15; i++) {
+    if (ip6[i] != 0) is_loopback = false;
+  }
+  if (is_loopback) {
     return true;
   }
 
