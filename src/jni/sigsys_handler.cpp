@@ -245,10 +245,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 }
 
 static void scrub_socket(struct sockaddr* s) {
-  if (!s) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "scrub_socket: sockaddr to scrub is null!");
-    return;
-  }
+  if (!s) return;
 
   if (s->sa_family == AF_INET) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
