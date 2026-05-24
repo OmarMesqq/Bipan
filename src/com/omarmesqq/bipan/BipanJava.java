@@ -55,7 +55,7 @@ public class BipanJava {
 
       Class<?> atClass = Class.forName("android.app.ActivityThread");
       Object activityThread = atClass.getMethod("currentActivityThread").invoke(null);
-      
+
       if (activityThread != null) {
         Context ctx = (Context) atClass.getMethod("getApplication").invoke(activityThread);
         if (ctx != null) {
@@ -118,5 +118,4 @@ public class BipanJava {
       }
     }
   }
-
 }

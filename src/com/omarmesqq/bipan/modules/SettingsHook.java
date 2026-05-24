@@ -118,7 +118,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
         // Apparently, ArrayMap implements Map, so we can cast to it
         ((Map<?, ?>) mValues).clear();
       } else {
-        Log.w(TAG, "Failed to purge cache ache cleared for: " + className);
+        Log.w(TAG, "Failed to purge cache for: " + className);
       }
 
       Field mProviderHolderField = cache.getClass().getDeclaredField("mProviderHolder");
