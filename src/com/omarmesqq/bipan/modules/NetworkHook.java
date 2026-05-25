@@ -71,7 +71,8 @@ public class NetworkHook implements BaseHook, InvocationHandler {
       addCap.setAccessible(true);
       addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
 
-      Log.d(TAG, "Successfully spoofed NetworkCapabilities object");
+      // too noisy...
+      // Log.d(TAG, "Successfully spoofed NetworkCapabilities object");
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof NetworkCapabilities via reflection", e);
     }
