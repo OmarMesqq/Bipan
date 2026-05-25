@@ -40,6 +40,7 @@ public class BipanJava {
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
     modules.add(new NetworkHook());
+    modules.add(new ScreenCaptureHook());
 
     for (BaseHook module : modules) {
       try {
