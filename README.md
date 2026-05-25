@@ -54,9 +54,10 @@ for a folder called `targets`. Inside it, you should place files named after the
 
 You can easily create empty files by invoking your rooted shell and doing something akin to:
 ```shell
-touch /data/adb/modules/bipan/targets/com.app.to.spoof
-touch /data/adb/modules/bipan/targets/com.facebook.katana
-touch /data/adb/modules/bipan/targets/org.another.app
+touch /data/adb/modules/bipan/targets/com.omarmesqq.grunfeld
+touch /data/adb/modules/bipan/targets/com.android.vending
+touch /data/adb/modules/bipan/targets/com.google.android.gms
+touch /data/adb/modules/bipan/targets/com.google.android.gms.unstable
 ```
 
 Bipan will traverse this directory when Zygote spawns, cache the package names in a hash table for $O(1)$ lookup and immediately match the current process with entries on the list.

@@ -4,9 +4,6 @@
 #include <ifaddrs.h>
 #include <stdint.h>
 #include <string.h>
-#include <sys/system_properties.h>
-
-#include <unordered_map>
 
 #include "filter.hpp"
 #include "logger.hpp"
@@ -34,10 +31,6 @@ static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
 
-static int (*orig___system_property_get)(const char* key, char* value) = nullptr;
-typedef void (*prop_callback)(void* cookie, const char* name, const char* value, uint32_t serial);
-static void (*orig___system_property_read_callback)(const prop_info* pi, prop_callback callback, void* cookie) = nullptr;
-static void (*orig___system_property_read)(const prop_info* pi, char* name, char* value) = nullptr;
 
 // ==========================================
 // Linker hooks
@@ -145,114 +138,6 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 }
 
 // ==========================================
-// libc hooks (getprop)
-// ==========================================
-
-static int hook___system_property_get(const char* key, char* value) {
-  static const std::unordered_map<std::string, std::string> safe_spoof_map = {
-      {"ro.product.model", "Pixel 8 Pro"},
-      {"ro.product.manufacturer", "google"},
-      {"ro.product.brand", "google"},
-      {"ro.product.device", "husky"},
-      {"ro.build.version.sdk", "36"},
-      {"ro.build.version.codename", "REL"},
-      {"ro.product.name", "husky"},
-      {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-      {"ro.build.tags", "release-keys"},
-      {"ro.build.type", "user"},
-      {"ro.build.id", "BP4A.251205.006"},
-      {"ro.build.user", "android-build"},
-      {"ro.build.host", "abfarm-20038"},
-      {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-      {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"}};
-
-  static const std::unordered_map<std::string, std::string> dg_only_spoof_map = {
-      {"ro.hardware", "zuma"},
-      {"ro.board.platform", "husky"},
-      {"ro.product.board", "husky"}};
-
-  // 1. Check Global Map
-  auto it = safe_spoof_map.find(key);
-  if (it != safe_spoof_map.end()) {
-    strcpy(value, it->second.c_str());
-    return strlen(value);
-  }
-
-  bool is_integrity_process = (strcmp(package_name, "com.google.ccc.abuse.droidguard") == 0 ||
-                               strcmp(package_name, "com.android.vending") == 0);
-
-  if (is_integrity_process) {
-    auto it_dg = dg_only_spoof_map.find(key);
-    if (it_dg != dg_only_spoof_map.end()) {
-      strcpy(value, it_dg->second.c_str());
-      return strlen(value);
-    }
-  }
-
-  if (strncmp(key, "ro.", 3) == 0) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(getprop hook): unspoofed .ro prop accessed: %s", key);
-  }
-
-  return orig___system_property_get(key, value);
-}
-
-// Helper to decide if we should spoof a property
-static bool get_spoofed_value(const char* key, char* value, size_t max_len) {
-  static const std::unordered_map<std::string, std::string> safe_spoof_map = {
-      {"ro.product.model", "Pixel 8 Pro"}, {"ro.product.manufacturer", "google"}, {"ro.product.brand", "google"}, {"ro.product.device", "husky"}, {"ro.build.version.sdk", "36"}, {"ro.build.version.codename", "REL"}, {"ro.product.name", "husky"}, {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"}, {"ro.build.tags", "release-keys"}, {"ro.build.type", "user"}, {"ro.build.id", "BP4A.251205.006"}};
-
-  static const std::unordered_map<std::string, std::string> dg_only_spoof_map = {
-      {"ro.hardware", "zuma"}, {"ro.board.platform", "husky"}, {"ro.product.board", "husky"}};
-
-  auto it = safe_spoof_map.find(key);
-  if (it != safe_spoof_map.end()) {
-    strncpy(value, it->second.c_str(), max_len);
-    return true;
-  }
-
-  if (strcmp(package_name, "com.google.ccc.abuse.droidguard") == 0 || strcmp(package_name, "com.android.vending") == 0) {
-    auto it_dg = dg_only_spoof_map.find(key);
-    if (it_dg != dg_only_spoof_map.end()) {
-      strncpy(value, it_dg->second.c_str(), max_len);
-      return true;
-    }
-  }
-  return false;
-}
-
-// Hook for the modern callback-based reader
-static void hook___system_property_read_callback(const prop_info* pi, prop_callback callback, void* cookie) {
-  // We capture the name/value via a custom wrapper
-  struct callback_wrapper {
-    void* original_cookie;
-    prop_callback original_callback;
-  };
-
-  callback_wrapper* wrapper = new callback_wrapper{cookie, callback};
-
-  orig___system_property_read_callback(pi, [](void* cookie, const char* name, const char* value, uint32_t serial) {
-        callback_wrapper* w = (callback_wrapper*)cookie;
-        char spoofed_val[256];
-        
-        if (get_spoofed_value(name, spoofed_val, sizeof(spoofed_val))) {
-            w->original_callback(w->original_cookie, name, spoofed_val, serial);
-        } else {
-            w->original_callback(w->original_cookie, name, value, serial);
-        } }, wrapper);
-
-  delete wrapper;
-}
-
-// Hook for legacy reader
-static void hook___system_property_read(const prop_info* pi, char* name, char* value) {
-  orig___system_property_read(pi, name, value);
-  char spoofed_val[256];
-  if (get_spoofed_value(name, spoofed_val, sizeof(spoofed_val))) {
-    strcpy(value, spoofed_val);
-  }
-}
-
-// ==========================================
 // JNI tripwires for Seccomp
 // ==========================================
 
@@ -347,48 +232,6 @@ void registerDobbyLinkerHooks() {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
   }
-}
-
-void registerDobbyPropertyHooks() {
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Registering Dobby Property hooks...");
-
-  void* libc_handle = dlopen("libc.so", RTLD_NOW);
-  if (!libc_handle) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to open libc.so!");
-    return;
-  }
-
-  // Helper struct to iterate and hook
-  struct HookTarget {
-    const char* name;
-    void* hook_func;
-    void** orig_ptr;
-  };
-
-  HookTarget targets[] = {
-      {"__system_property_get", (void*)hook___system_property_get, (void**)&orig___system_property_get},
-      {"__system_property_read_callback", (void*)hook___system_property_read_callback, (void**)&orig___system_property_read_callback},
-      {"__system_property_read", (void*)hook___system_property_read, (void**)&orig___system_property_read}};
-
-  for (const auto& target : targets) {
-    void* addr = dlsym(libc_handle, target.name);
-    if (addr) {
-      int res = DobbyHook(addr, target.hook_func, target.orig_ptr);
-      if (res == 0) {
-        // SUCCESS
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[+] Successfully hooked %s at %p", target.name, addr);
-        // Synchronize instruction cache for the hooked region
-        __builtin___clear_cache((char*)addr, (char*)addr + 64);
-      } else {
-        // FAILURE
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[-] Failed to hook %s (Dobby error: %d)", target.name, res);
-      }
-    } else {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[-] Symbol %s not found in libc!", target.name);
-    }
-  }
-
-  dlclose(libc_handle);
 }
 
 #endif
