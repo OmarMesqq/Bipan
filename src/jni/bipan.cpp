@@ -126,7 +126,6 @@ class Bipan : public zygisk::ModuleBase {
     if (isTargetApp) {
       // registerDobbyLinkerHooks();
       registerDobbySensorsHooks();
-      registerDobbyPropertyHooks();
 
       LibBounds my_lib;
       dl_iterate_phdr(find_lib_bounds, &my_lib);
