@@ -1,7 +1,7 @@
 {
   "configurations": [
     {
-      "name": "Bipan",
+      "name": "Bipan C++",
       "includePath": [
         "${workspaceFolder}/src/jni/**",
         "${env:NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include",
