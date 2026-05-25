@@ -4,6 +4,9 @@
 #include <ifaddrs.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/system_properties.h>
+
+#include <unordered_map>
 
 #include "filter.hpp"
 #include "logger.hpp"
@@ -31,6 +34,7 @@ static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
 
+static int (*orig___system_property_get)(const char* key, char* value) = nullptr;
 
 // ==========================================
 // Linker hooks
@@ -138,6 +142,58 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 }
 
 // ==========================================
+// libc hooks (getprop)
+// ==========================================
+
+static int hook___system_property_get(const char* key, char* value) {
+  static const std::unordered_map<std::string, std::string> safe_spoof_map = {
+      {"ro.product.model", "Pixel 8 Pro"},
+      {"ro.product.manufacturer", "google"},
+      {"ro.product.brand", "google"},
+      {"ro.product.device", "husky"},
+      {"ro.build.version.sdk", "36"},
+      {"ro.build.version.codename", "REL"},
+      {"ro.product.name", "husky"},
+      {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+      {"ro.build.tags", "release-keys"},
+      {"ro.build.type", "user"},
+      {"ro.build.id", "BP4A.251205.006"},
+      {"ro.build.user", "android-build"},
+      {"ro.build.host", "abfarm-20038"},
+      {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+      {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"}};
+
+  static const std::unordered_map<std::string, std::string> dg_only_spoof_map = {
+      {"ro.hardware", "zuma"},
+      {"ro.board.platform", "husky"},
+      {"ro.product.board", "husky"}};
+
+  // 1. Check Global Map
+  auto it = safe_spoof_map.find(key);
+  if (it != safe_spoof_map.end()) {
+    strcpy(value, it->second.c_str());
+    return strlen(value);
+  }
+
+  bool is_integrity_process = (strcmp(package_name, "com.google.ccc.abuse.droidguard") == 0 ||
+                               strcmp(package_name, "com.android.vending") == 0);
+
+  if (is_integrity_process) {
+    auto it_dg = dg_only_spoof_map.find(key);
+    if (it_dg != dg_only_spoof_map.end()) {
+      strcpy(value, it_dg->second.c_str());
+      return strlen(value);
+    }
+  }
+
+  if (strncmp(key, "ro.", 3) == 0) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(getprop hook): unspoofed .ro prop accessed: %s", key);
+  }
+
+  return orig___system_property_get(key, value);
+}
+
+// ==========================================
 // JNI tripwires for Seccomp
 // ==========================================
 
@@ -231,6 +287,23 @@ void registerDobbyLinkerHooks() {
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
+  }
+}
+
+void registerDobbyPropertyHooks() {
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Registering Dobby Property hooks...");
+
+  void* addr = dlsym(RTLD_DEFAULT, "__system_property_get");
+
+  if (addr) {
+    if (DobbyHook(addr, (void*)hook___system_property_get, (void**)&orig___system_property_get) == 0) {
+      __builtin___clear_cache((char*)addr, (char*)addr + 32);
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Dobby) Successfully hooked __system_property_get");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to hook __system_property_get");
+    }
+  } else {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to find __system_property_get in memory");
   }
 }
 
