@@ -39,6 +39,7 @@ public class BipanJava {
 
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
+    modules.add(new NetworkHook());
 
     for (BaseHook module : modules) {
       try {
