@@ -11,6 +11,8 @@ import androidx.annotation.RequiresApi
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import java.net.NetworkInterface
+import android.net.wifi.WifiManager
+import android.text.format.Formatter
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -161,6 +163,18 @@ fun dumpNetworkInfo(context: Context): String {
     } catch (e: Exception) {
         sb.append("[!] ERROR: ${e.message}\n")
     }
+
+    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    val info = wifiManager.connectionInfo
+    val ipAddress = Formatter.formatIpAddress(info.ipAddress)
+    val bssid = info.bssid ?: "Hidden"
+    val ssid = info.ssid ?: "Hidden"
+    val linkSpeed = info.linkSpeed // Mbps
+    sb.append("[WIFI MANAGER LEAK TEST]\n")
+    sb.append("IP Address: $ipAddress\n")
+    sb.append("BSSID: $bssid\n")
+    sb.append("SSID: $ssid\n")
+    sb.append("Link Speed: $linkSpeed Mbps\n")
 
     return sb.toString()
 }

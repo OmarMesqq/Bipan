@@ -3,6 +3,8 @@
 
     <!-- Necessary for WebView and socket tests   -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Necessary for full VPN logic checking   -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- For testing if BipanJava is successfully nop-ing this   -->
