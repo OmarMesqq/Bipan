@@ -91,16 +91,4 @@ public class ConnectivityHook implements BaseHook, InvocationHandler {
       Log.e(TAG, "Failed to spoof LinkProperties", e);
     }
   }
-
-  // private void logLinkPropertiesFields(LinkProperties lp) {
-  //   Log.d(TAG, "--- Introspecting LinkProperties Fields ---");
-  //   for (Field field : lp.getClass().getDeclaredFields()) {
-  //     field.setAccessible(true);
-  //     try {
-  //       Log.d(TAG, "Field: " + field.getName() + " | Type: " + field.getType().getName());
-  //     } catch (Exception e) {
-  //     }
-  //   }
-  //   Log.d(TAG, "------------------------------------");
-  // }
 }
