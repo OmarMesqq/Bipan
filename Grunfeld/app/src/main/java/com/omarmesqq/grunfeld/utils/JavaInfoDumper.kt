@@ -13,6 +13,8 @@ import android.net.NetworkCapabilities
 import java.net.NetworkInterface
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
+import android.net.LinkProperties
+import java.net.Inet4Address
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -140,6 +142,7 @@ fun dumpInstallerInfo(ctx: Context): String {
 
 fun dumpNetworkInfo(context: Context): String {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetwork = cm.activeNetwork
     val caps = cm.getNetworkCapabilities(cm.activeNetwork)
 
     val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
@@ -161,7 +164,7 @@ fun dumpNetworkInfo(context: Context): String {
             }
         }
     } catch (e: Exception) {
-        sb.append("[!] ERROR: ${e.message}\n")
+        sb.append("Failed to get interfaces: ${e.message}\n")
     }
 
     val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -170,11 +173,34 @@ fun dumpNetworkInfo(context: Context): String {
     val bssid = info.bssid ?: "Hidden"
     val ssid = info.ssid ?: "Hidden"
     val linkSpeed = info.linkSpeed // Mbps
-    sb.append("[WIFI MANAGER LEAK TEST]\n")
+    sb.append("\n[LEGACY WIFI MANAGER LEAK TEST]\n")
     sb.append("IP Address: $ipAddress\n")
     sb.append("BSSID: $bssid\n")
     sb.append("SSID: $ssid\n")
     sb.append("Link Speed: $linkSpeed Mbps\n")
+
+    sb.append("\n[MODERN LINK PROPERTIES LEAK TEST]\n")
+    if (activeNetwork != null) {
+        val linkProperties = cm.getLinkProperties(activeNetwork)
+        if (linkProperties != null) {
+            val addresses = linkProperties.linkAddresses
+            if (addresses.isNotEmpty()) {
+                addresses.forEach { linkAddr ->
+                    val addr = linkAddr.address
+                    sb.append("IP Address: ${addr.hostAddress}")
+                    if (addr is Inet4Address) {
+                        sb.append(" (IPv4)\n")
+                    }
+                }
+            } else {
+                sb.append("No addresses found in LinkProperties.\n")
+            }
+        } else {
+            sb.append("LinkProperties is null.\n")
+        }
+    } else {
+        sb.append("No active network to query.\n")
+    }
 
     return sb.toString()
 }
