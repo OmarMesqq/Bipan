@@ -172,11 +172,13 @@ fun dumpNetworkInfo(context: Context): String {
     val ipAddress = Formatter.formatIpAddress(info.ipAddress)
     val bssid = info.bssid ?: "Hidden"
     val ssid = info.ssid ?: "Hidden"
+    val mac = info.macAddress ?: "Hidden"
     val linkSpeed = info.linkSpeed // Mbps
     sb.append("\n[LEGACY WIFI MANAGER LEAK TEST]\n")
     sb.append("IP Address: $ipAddress\n")
     sb.append("BSSID: $bssid\n")
     sb.append("SSID: $ssid\n")
+    sb.append("MAC address: $mac\n")
     sb.append("Link Speed: $linkSpeed Mbps\n")
 
     sb.append("\n[MODERN LINK PROPERTIES LEAK TEST]\n")

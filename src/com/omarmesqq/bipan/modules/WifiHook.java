@@ -18,6 +18,7 @@ public class WifiHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
+    logWifiInfoFields();
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
     IBinder realBinder = (IBinder) getService.invoke(null, "wifi");
@@ -73,6 +74,8 @@ public class WifiHook implements BaseHook, InvocationHandler {
     try {
       // Instantiate a fresh WifiInfo object
       // WifiInfo has a hidden constructor, we use reflection to instantiate
+
+      @SuppressWarnings("deprecation")
       WifiInfo spoofedInfo = WifiInfo.class.newInstance();
 
       // Inject spoofed values
@@ -104,5 +107,15 @@ public class WifiHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.w(TAG, "Field " + fieldName + " not found, skipping.");
     }
+  }
+
+  private void logWifiInfoFields() {
+    Log.d(TAG, "--- Introspecting WifiInfo Fields ---");
+    Field[] fields = WifiInfo.class.getDeclaredFields();
+    for (Field field : fields) {
+      field.setAccessible(true);
+      Log.d(TAG, "Field Name: " + field.getName() + " | Type: " + field.getType().getName());
+    }
+    Log.d(TAG, "------------------------------------");
   }
 }
