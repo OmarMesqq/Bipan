@@ -18,7 +18,7 @@ public class WifiHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
-    logWifiInfoFields();
+    // logWifiInfoFields();
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
     IBinder realBinder = (IBinder) getService.invoke(null, "wifi");
@@ -59,63 +59,47 @@ public class WifiHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    // Execute the real call to maintain system state
     Object result = method.invoke(originalWifiService, args);
 
-    // Intercept result if it's a WifiInfo request
     if (method.getName().equals("getConnectionInfo") && result instanceof WifiInfo) {
-      return createSpoofedWifiInfo();
+      spoofWifiInfo((WifiInfo) result);
     }
 
     return result;
   }
 
-  private WifiInfo createSpoofedWifiInfo() {
+  private void spoofWifiInfo(WifiInfo info) {
     try {
-      // Instantiate a fresh WifiInfo object
-      // WifiInfo has a hidden constructor, we use reflection to instantiate
+      InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 });
+      setField(info, "mIpAddress", fakeIp);
 
-      @SuppressWarnings("deprecation")
-      WifiInfo spoofedInfo = WifiInfo.class.newInstance();
-
-      // Inject spoofed values
-      setField(spoofedInfo, "mBSSID", "02:00:00:00:00:00");
-      setField(spoofedInfo, "mSSID", "Unknown");
-
-      // Handle IP Address (try InetAddress first for modern APIs, fallback to int)
-      try {
-        byte[] ipBytes = new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 };
-        InetAddress fakeInetAddress = InetAddress.getByAddress(ipBytes);
-        setField(spoofedInfo, "mInetAddress", fakeInetAddress);
-      } catch (Exception e) {
-        // Fallback for older versions/APIs
-        setField(spoofedInfo, "mIpAddress", 0x8001A8C0);
-      }
-
-      return spoofedInfo;
+      Log.d(TAG, "Successfully patched WifiInfo instance fields in-place");
     } catch (Exception e) {
-      Log.e(TAG, "Failed to create spoofed WifiInfo", e);
-      return null;
+      Log.e(TAG, "In-place patch failed", e);
     }
   }
 
-  private void setField(Object obj, String fieldName, Object value) {
+  private void setField(Object obj, String name, Object value) {
     try {
-      Field field = WifiInfo.class.getDeclaredField(fieldName);
-      field.setAccessible(true);
-      field.set(obj, value);
+      Field f = obj.getClass().getDeclaredField(name);
+      f.setAccessible(true);
+      f.set(obj, value);
+      Log.d(TAG, "Field patched: " + name);
+    } catch (NoSuchFieldException e) {
+      Log.w(TAG, "Field not found: " + name);
     } catch (Exception e) {
-      Log.w(TAG, "Field " + fieldName + " not found, skipping.");
+      Log.e(TAG, "Failed to patch field: " + name, e);
     }
   }
 
-  private void logWifiInfoFields() {
-    Log.d(TAG, "--- Introspecting WifiInfo Fields ---");
-    Field[] fields = WifiInfo.class.getDeclaredFields();
-    for (Field field : fields) {
-      field.setAccessible(true);
-      Log.d(TAG, "Field Name: " + field.getName() + " | Type: " + field.getType().getName());
-    }
-    Log.d(TAG, "------------------------------------");
-  }
+  // private void logWifiInfoFields() {
+  // Log.d(TAG, "--- Introspecting WifiInfo Fields ---");
+  // Field[] fields = WifiInfo.class.getDeclaredFields();
+  // for (Field field : fields) {
+  // field.setAccessible(true);
+  // Log.d(TAG, "Field Name: " + field.getName() + " | Type: " +
+  // field.getType().getName());
+  // }
+  // Log.d(TAG, "------------------------------------");
+  // }
 }
