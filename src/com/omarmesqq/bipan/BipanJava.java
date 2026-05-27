@@ -45,6 +45,7 @@ public class BipanJava {
     modules.add(new NsdHook());
     modules.add(new MediaRouterHook());
     modules.add(new WifiHook());
+    modules.add(new ConnectivityHook());
 
     for (BaseHook module : modules) {
       try {
