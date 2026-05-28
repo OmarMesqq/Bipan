@@ -54,7 +54,6 @@ public class WifiHook implements BaseHook, InvocationHandler {
         });
 
     cache.put("wifi", proxyBinder);
-    Log.d(TAG, "Successfully hijacked WifiManager Binder");
   }
 
   @Override

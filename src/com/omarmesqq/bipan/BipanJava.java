@@ -50,7 +50,7 @@ public class BipanJava {
     for (BaseHook module : modules) {
       try {
         module.install(context);
-        Log.i(TAG, "Module loaded: " + module.getClass().getSimpleName());
+        Log.i(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
       } catch (Exception e) {
         Log.e(TAG, "Failed to load module: " + module.getClass().getName(), e);
       }
@@ -103,9 +103,8 @@ public class BipanJava {
       setExemptionsMethod.invoke(
           vmRuntime, (Object) new String[][] { new String[] { "L" } });
 
-      Log.d(TAG, "VM Unsealed: Hidden API restrictions removed.");
+      Log.i(TAG, "ART VM unsealed (Legacy approach)");
     } catch (Throwable e) {
-      // If the above fails, there is an alternative way for Android 15/16
       try {
         Method forName = Class.class.getDeclaredMethod("forName", String.class);
         Method getDeclaredMethod = Class.class.getDeclaredMethod(
@@ -119,7 +118,7 @@ public class BipanJava {
             (Object) new Class[] { String[].class });
         setHiddenApiExemptions.invoke(
             vmRuntime, new Object[] { new String[] { "L" } });
-        Log.d(TAG, "VM Unsealed (Alt Method Success).");
+        Log.i(TAG, "ART VM unsealed (Modern approach)");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
       }

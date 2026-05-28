@@ -73,7 +73,6 @@ static void companion_handler(int sock) {
     close(memfd);
 
     if (local_ipc_mem != MAP_FAILED) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Starting Broker via root companion...\n");
       startBroker(sock, local_ipc_mem);
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to start Broker via root companion!\n");

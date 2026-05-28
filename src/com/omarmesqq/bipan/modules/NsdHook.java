@@ -53,20 +53,19 @@ public class NsdHook implements BaseHook, InvocationHandler {
         });
 
     cache.put("servicediscovery", proxyBinder);
-    Log.d(TAG, "Successfully hijacked INsdManager Binder via servicediscovery cache.");
   }
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     String methodName = method.getName();
-    Log.i(TAG, "INsdManager call: " + methodName);
+    Log.d(TAG, "NSD Manager call: " + methodName);
 
     // We allow the connection but proxy the returned connector
     if (methodName.equals("connect")) {
       Object originalConnector = method.invoke(originalNsdService, args);
 
       if (originalConnector != null) {
-        Log.d(TAG, "Intercepted connect(). Wrapping INsdServiceConnector in a secondary proxy.");
+        Log.d(TAG, "App requested .connect() to NSD Manager. Wrapping INsdServiceConnector in a secondary proxy.");
 
         Class<?> connectorClz = Class.forName("android.net.connectivity.android.net.nsd.INsdServiceConnector");
 
@@ -111,7 +110,7 @@ public class NsdHook implements BaseHook, InvocationHandler {
         }
         return null;
       } else {
-        Log.i(TAG, "Allowing NSD method call: " + methodName);
+        Log.d(TAG, "Allowing NSD method call: " + methodName);
       }
 
       return method.invoke(realConnector, args);

@@ -213,7 +213,7 @@ class Bipan : public zygisk::ModuleBase {
             env->ExceptionClear();
             write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Exception thrown inside Java payload install()!");
           } else {
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Fileless Java code injected and executing!");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
           }
         }
       }

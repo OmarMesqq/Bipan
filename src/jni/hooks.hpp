@@ -207,7 +207,6 @@ void registerDobbySensorsHooks() {
     if (addr) {
       if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
         __builtin___clear_cache((char*)addr, (char*)addr + 32);
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(Dobby Native Sensors) Hooked %s", symbols[i]);
       }
     }
   }
