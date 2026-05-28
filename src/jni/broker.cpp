@@ -53,13 +53,15 @@ struct MapEntry {
 static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps);
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
-static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
+static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset,
+                          pid_t pid, uintptr_t lr, uintptr_t fp, std::vector<MapEntry>& maps);
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
+static void log_stack_trace(pid_t target_pid, uintptr_t caller_pc, uintptr_t lr, uintptr_t fp, std::vector<MapEntry>& current_maps);
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -254,8 +256,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         if (!is_trusted) {
           if (shouldDenyAccess(path_payload)) {
-            // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
@@ -271,7 +271,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
+          // log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         break;
       }
@@ -312,13 +312,32 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (connect): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-        bool is_discovery = false;
+        if (sock_payload && (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6)) {
+          uint16_t port = 0;
+          char addr_str[64] = {0};
 
+          if (sock_payload->sa_family == AF_INET) {
+            struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
+            port = ntohs(sin->sin_port);
+            format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
+          } else {
+            struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
+            port = ntohs(sin6->sin6_port);
+            snprintf(addr_str, sizeof(addr_str), "[IPv6]");
+          }
+
+          // Is it an outbound HTTPS or custom TLS connection? (Port 443 / Port 5222)
+          if (port == 443 || port == 5222) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "!!! TRAFFIC INTERCEPT: connect() to %s", addr_str);
+
+            // FIRE THE UNWINDER!
+            log_violation("Outbound TLS Connection Initiated", culprit_lib, ipc_mem->caller_pc, offset,
+                          ipc_mem->target_pid, ipc_mem->stack_trace[0], ipc_mem->caller_fp, current_maps);
+          }
+        }
+
+        // Keep your standard LAN blocking defenses completely untouched...
+        bool is_discovery = false;
         if (sock_payload->sa_family == AF_INET) {
           uint16_t port = ntohs(((struct sockaddr_in*)sock_payload)->sin_port);
           if (port == 5353 || port == 1900) is_discovery = true;
@@ -328,19 +347,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         if (is_lan_address(sock_payload) || is_discovery) {
-          char addr_str[64];
-          format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
-
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
-
-          const char* type = is_discovery ? "discovery" : "LAN";
-
-          // if (!is_trusted) {
-          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (connect) to %s blocked: %s", type, addr_str);
-          // } else {
-          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (connect) to %s blocked: %s", type, addr_str);
-          // }
         }
         break;
       }
@@ -520,13 +528,17 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   munmap(map, st.st_size);
 }
 
-static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
+static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset,
+                          pid_t pid, uintptr_t lr, uintptr_t fp, std::vector<MapEntry>& maps) {
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
+
+  // Call your new stack unwinder!
+  log_stack_trace(pid, pc, lr, fp, maps);
 }
 
 static inline bool is_trusted_library(const std::string& lib_path) {
@@ -746,4 +758,60 @@ std::string get_sockaddr_info(const struct sockaddr* sa) {
     default:
       return "Family " + std::to_string(sa->sa_family);
   }
+}
+
+static void log_stack_trace(pid_t target_pid, uintptr_t caller_pc, uintptr_t lr, uintptr_t fp, std::vector<MapEntry>& current_maps) {
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Stack Trace Begin ---");
+
+  char mem_path[64];
+  snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", target_pid);
+  int mem_fd = open(mem_path, O_RDONLY);
+
+  if (mem_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to open memory for unwinding");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Stack Trace End ---");
+    return;
+  }
+
+  uintptr_t current_pc = caller_pc;
+  uintptr_t current_fp = fp;
+  uintptr_t offset = 0;
+
+  // Log Frame #00: The immediate PC (where the syscall instruction was executed)
+  std::string lib = get_culprit_so(target_pid, current_pc, &offset, current_maps);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "  #00 pc %016lx  %s (offset 0x%lx)", current_pc, lib.c_str(), offset);
+
+  // Setup for the loop: the next frame's PC is the Link Register (LR)
+  current_pc = lr & 0x0000FFFFFFFFFFFFULL;
+
+  // Walk the stack (limit depth to 15 frames to avoid logcat spam or infinite loops)
+  for (int i = 1; i < 15; i++) {
+    if (current_pc == 0) break;
+
+    lib = get_culprit_so(target_pid, current_pc, &offset, current_maps);
+
+    // Optional: If you want to use your find_label_in_elf function to get the symbol name:
+    // char sym_name[256] = {0};
+    // if (lib != "[Unknown]" && lib != "[Anonymous Memory]") {
+    //   find_label_in_elf(lib.c_str(), offset, sym_name, sizeof(sym_name));
+    // }
+
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "  #%02d pc %016lx  %s (offset 0x%lx)", i, current_pc, lib.c_str(), offset);
+
+    // Read the next Frame Pointer and Link Register from the target's memory
+    uintptr_t next_fp = 0, next_lr = 0;
+    if (!safe_read(mem_fd, current_fp, &next_fp) ||
+        !safe_read(mem_fd, current_fp + 8, &next_lr)) {
+      break;  // Stop on bad memory read (end of stack)
+    }
+
+    current_fp = next_fp;
+    current_pc = next_lr & 0x0000FFFFFFFFFFFFULL;
+
+    // Stop if the frame pointer is null or unaligned
+    if (!current_fp || (current_fp & 0x7)) break;
+  }
+
+  close(mem_fd);
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "--- Stack Trace End ---");
 }
