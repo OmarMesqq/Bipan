@@ -56,7 +56,6 @@ public class ScreenCaptureHook implements BaseHook, InvocationHandler {
         });
 
     cache.put("activity_task", proxyBinder);
-    Log.d(TAG, "Hijacked ActivityTaskManager Binder");
   }
 
   @Override

@@ -15,7 +15,6 @@ public class SecurityFlagHook implements BaseHook, Application.ActivityLifecycle
   public void install(Context context) throws Exception {
     Application app = (Application) context.getApplicationContext();
     app.registerActivityLifecycleCallbacks(this);
-    Log.d(TAG, "Registered ActivityLifecycleCallbacks for FLAG_SECURE removal.");
   }
 
   @Override

@@ -46,7 +46,6 @@ public class NetworkHook implements BaseHook, InvocationHandler {
         });
 
     cache.put("connectivity", proxyBinder);
-    Log.d(TAG, "Hijacked ConnectivityService Binder");
   }
 
   @Override
@@ -71,8 +70,6 @@ public class NetworkHook implements BaseHook, InvocationHandler {
       addCap.setAccessible(true);
       addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
 
-      // too noisy...
-      // Log.d(TAG, "Successfully spoofed NetworkCapabilities object");
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof NetworkCapabilities via reflection", e);
     }

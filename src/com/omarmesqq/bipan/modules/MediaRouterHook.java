@@ -52,7 +52,6 @@ public class MediaRouterHook implements BaseHook, InvocationHandler {
         });
 
     cache.put("media_router", proxyBinder);
-    Log.d(TAG, "Successfully hijacked IMediaRouterService Binder via media_router cache.");
   }
 
   @Override
@@ -80,7 +79,7 @@ public class MediaRouterHook implements BaseHook, InvocationHandler {
       }
       return null;
     } else {
-      Log.i(TAG, "Allowing MediaRouter call: " + methodName);
+      Log.d(TAG, "Allowing MediaRouter call: " + methodName);
     }
 
     return method.invoke(originalMediaRouterService, args);

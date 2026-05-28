@@ -142,7 +142,6 @@ public class SettingsHook implements BaseHook, InvocationHandler {
           this);
 
       mContentProviderField.set(providerHolder, proxy);
-      Log.d(TAG, "Hijacked Binder for " + className);
     }
   }
 
