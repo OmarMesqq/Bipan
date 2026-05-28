@@ -10,6 +10,7 @@ import java.security.Provider;
 import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.List;
 import javax.net.ssl.ManagerFactoryParameters;
 import javax.net.ssl.TrustManager;
@@ -19,9 +20,19 @@ import javax.net.ssl.X509TrustManager;
 
 public class SslPinningHook implements BaseHook {
   private static final String TAG = "BipanJava-SslPinning";
+  private static final List<String> TARGET_APPS = Arrays.asList(
+      "com.whatsapp",
+      "com.ubercab");
 
   @Override
   public void install(Context context) throws Exception {
+    String currentPackage = context.getPackageName();
+    if (currentPackage == null || !TARGET_APPS.contains(currentPackage)) {
+      return;
+    }
+    Log.w(TAG, "=== TARGET MATCH FOUND === Engaging Bipan Crypto Interception Suites for: " + currentPackage);
+
+    
     bypassAndroidNetworkSecurityConfig(context);
     bypassObfuscatedTrustManagers(context);
   }
