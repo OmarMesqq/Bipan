@@ -38,14 +38,14 @@ static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
   }
   return orig_dlopen(filename, flag);
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
   }
 
   return orig_android_dlopen_ext(filename, flag, extinfo);
