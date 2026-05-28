@@ -85,7 +85,6 @@ public class WifiHook implements BaseHook, InvocationHandler {
       Field f = obj.getClass().getDeclaredField(name);
       f.setAccessible(true);
       f.set(obj, value);
-      Log.d(TAG, "Field patched: " + name);
     } catch (NoSuchFieldException e) {
       Log.w(TAG, "Field not found: " + name);
     } catch (Exception e) {
