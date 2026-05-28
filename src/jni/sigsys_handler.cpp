@@ -51,9 +51,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int nr = info->si_syscall;
 
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Returning ENOSYS.");
-    ctx->uc_mcontext.regs[0] = -ENOSYS;
-    return;
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Aborting!");
+    _exit(1);
   }
   in_sigsys_handler = true;
 
