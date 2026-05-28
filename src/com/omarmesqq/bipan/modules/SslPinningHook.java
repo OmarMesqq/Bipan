@@ -6,9 +6,15 @@ import android.util.Log;
 import com.omarmesqq.bipan.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.Provider;
+import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.List;
+import javax.net.ssl.ManagerFactoryParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.TrustManagerFactorySpi;
 import javax.net.ssl.X509TrustManager;
 
 public class SslPinningHook implements BaseHook {
@@ -17,13 +23,13 @@ public class SslPinningHook implements BaseHook {
   @Override
   public void install(Context context) throws Exception {
     bypassAndroidNetworkSecurityConfig(context);
+    bypassObfuscatedTrustManagers(context);
   }
 
   private void bypassAndroidNetworkSecurityConfig(Context context) {
     try {
       Class<?> applicationConfigClass = Class.forName("android.security.net.config.ApplicationConfig");
 
-      // 1. Force platform initialization routines organically
       Method getDefaultMethod = applicationConfigClass.getMethod("getDefaultInstance");
       Object applicationConfigInstance = getDefaultMethod.invoke(null);
 
@@ -40,8 +46,6 @@ public class SslPinningHook implements BaseHook {
         return;
       }
 
-      // 2. Extract the working TrustManager straight from the initialized platform
-      // singleton
       Field mTrustManagerField = applicationConfigClass.getDeclaredField("mTrustManager");
       mTrustManagerField.setAccessible(true);
       X509TrustManager originalTM = (X509TrustManager) mTrustManagerField.get(applicationConfigInstance);
@@ -51,19 +55,13 @@ public class SslPinningHook implements BaseHook {
         return;
       }
 
-      // 3. CRASH INSURANCE: Check if we already patched it to prevent loops
       if (originalTM instanceof BipanTrustManagerWrapper) {
         Log.w(TAG, "TrustManager is already wrapped by Bipan. Skipping.");
         return;
       }
 
-      // 4. Instantiate our static, compiled wrapper that native code cannot reject
       BipanTrustManagerWrapper safeWrapper = new BipanTrustManagerWrapper(originalTM);
-
-      // 5. HOT SWAP: Inject our concrete object instance back into the system
-      // property config location
       mTrustManagerField.set(applicationConfigInstance, safeWrapper);
-
       Log.i(TAG, "Successfully injected concrete static wrapper over ApplicationConfig.mTrustManager!");
 
     } catch (Exception e) {
@@ -72,10 +70,100 @@ public class SslPinningHook implements BaseHook {
   }
 
   /**
-   * Concrete implementation of the extended hidden Android TrustManager layout.
-   * This class physically defines every possible variant check signature, making
-   * it
-   * impossible for Facebook's Tigon or X509TrustManagerExtensions to reject it.
+   * Targets custom engine configurations (like Msys/X.IQr) that instantiate
+   * their own standalone TrustManagerFactory pipelines.
+   */
+  private void bypassObfuscatedTrustManagers(Context context) {
+    try {
+      // 1. Force a baseline factory instantiation to trigger the framework's internal
+      // provider cache population
+      TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+
+      // 2. Fetch the platform's primary crypto security provider context
+      Provider provider = Security.getProvider("AndroidOpenSSL");
+      if (provider == null) {
+        provider = Security.getProvider("Conscrypt");
+      }
+
+      if (provider != null) {
+        // 3. Locate the service class definition managing factory requests
+        String key = "TrustManagerFactory." + TrustManagerFactory.getDefaultAlgorithm();
+        String tmfSpiClassName = provider.getProperty(key);
+
+        if (tmfSpiClassName != null) {
+          // 4. Overwrite the Provider engine structure to distribute our custom BipanSPI
+          // factory globally
+          Provider.Service customService = new Provider.Service(
+              provider,
+              "TrustManagerFactory",
+              TrustManagerFactory.getDefaultAlgorithm(),
+              BipanTrustManagerFactorySpi.class.getName(),
+              null,
+              null) {
+            @Override
+            public Object newInstance(Object constructorParameter) {
+              return new BipanTrustManagerFactorySpi();
+            }
+          };
+
+          // Inject our service back into the cryptographic tracking runtime
+          Method putServiceMethod = Provider.class.getDeclaredMethod("putService", Provider.Service.class);
+          putServiceMethod.setAccessible(true);
+          putServiceMethod.invoke(provider, customService);
+
+          Log.i(TAG, "=== [GLOBAL SUCCESS] Overrode standard TrustManagerFactory SPI layout engine! ===");
+        }
+      }
+    } catch (Exception e) {
+      Log.e(TAG, "Failed overriding custom application trust infrastructure", e);
+    }
+  }
+
+  /**
+   * Custom Factory SPI implementation. Forces any custom instantiation loop
+   * to fetch a TrustManager chain wrapped inside our validation interceptor.
+   */
+  public static class BipanTrustManagerFactorySpi extends TrustManagerFactorySpi {
+    private X509TrustManager nativeTrustManager;
+
+    public BipanTrustManagerFactorySpi() {
+      try {
+        // Build a baseline factory to extract clean native components
+        TrustManagerFactory factory = TrustManagerFactory.getInstance("PKIX");
+        factory.init((java.security.KeyStore) null);
+        for (TrustManager tm : factory.getTrustManagers()) {
+          if (tm instanceof X509TrustManager) {
+            this.nativeTrustManager = (X509TrustManager) tm;
+            break;
+          }
+        }
+      } catch (Exception ignored) {
+      }
+    }
+
+    @Override
+    protected void engineInit(java.security.KeyStore keyStore) {
+      // No-op to avoid breaking local configurations
+    }
+
+    // FIXED: Removed the erroneous engineInit(TrustManagerFactorySpi) overload
+
+    @Override
+    protected void engineInit(ManagerFactoryParameters managerFactoryParameters) {
+      // No-op
+    }
+
+    @Override
+    protected TrustManager[] engineGetTrustManagers() {
+      if (nativeTrustManager != null) {
+        return new TrustManager[] { new BipanTrustManagerWrapper(nativeTrustManager) };
+      }
+      return new TrustManager[0];
+    }
+  }
+
+  /**
+   * Universal TrustManager Interceptor layout.
    */
   public static class BipanTrustManagerWrapper implements X509TrustManager {
     private final X509TrustManager delegate;
@@ -84,18 +172,14 @@ public class SslPinningHook implements BaseHook {
     public BipanTrustManagerWrapper(X509TrustManager original) {
       this.delegate = original;
       try {
-        // Cache the extended 3-argument check method via reflection from the original
-        // platform class
         checkServerTrusted3ArgMethod = original.getClass().getMethod(
             "checkServerTrusted", X509Certificate[].class, String.class, String.class);
         checkServerTrusted3ArgMethod.setAccessible(true);
       } catch (NoSuchMethodException e) {
-        Log.w(TAG, "Extended 3-argument checkServerTrusted method not found on delegate class.");
+        Log.d(TAG, "Extended 3-argument checkServerTrusted method not found on delegate class.");
       }
     }
 
-    // Required 3-argument hidden endpoint tracked by X509TrustManagerExtensions
-    @SuppressWarnings("unused")
     public List<X509Certificate> checkServerTrusted(X509Certificate[] chain, String authType, String host)
         throws CertificateException {
       Log.w(TAG, "Intercepted 3-arg checkServerTrusted(chain, authType, \"" + host + "\")");
@@ -108,9 +192,12 @@ public class SslPinningHook implements BaseHook {
         }
       } catch (Exception ite) {
         Throwable cause = ite instanceof java.lang.reflect.InvocationTargetException ? ite.getCause() : ite;
-        if (cause != null && cause.getMessage() != null && cause.getMessage().contains("Pin verification failed")) {
-          Log.e(TAG, "Muted Pin verification failure for host: " + host);
-          return java.util.Arrays.asList(chain); // Safe return bypassing exception pipeline
+        // Catch all variations of Path/Pin exceptions thrown by any underlying
+        // TrustManager
+        if (cause != null && cause.getMessage() != null &&
+            (cause.getMessage().contains("Pin verification failed") || cause.getMessage().contains("trust anchors"))) {
+          Log.e(TAG, "Neutralized verification failure for host target: " + host);
+          return java.util.Arrays.asList(chain);
         }
         if (cause instanceof CertificateException)
           throw (CertificateException) cause;
@@ -129,8 +216,9 @@ public class SslPinningHook implements BaseHook {
       try {
         delegate.checkServerTrusted(chain, authType);
       } catch (CertificateException e) {
-        if (e.getMessage() != null && e.getMessage().contains("Pin verification failed")) {
-          Log.e(TAG, "Muted 2-arg active Pin verification failure!");
+        if (e.getMessage() != null &&
+            (e.getMessage().contains("Pin verification failed") || e.getMessage().contains("trust anchors"))) {
+          Log.e(TAG, "Neutralized 2-arg active verification error!");
           return;
         }
         throw e;
