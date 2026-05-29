@@ -10,20 +10,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
-import java.util.List;
 
 public class DisplayMetricsHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanDisplayHook";
   private Object originalWM;
 
-  private static final List<String> TARGET_APPS = Arrays.asList(
-      "com.whatsapp",
-      "com.instagram.android",
-      "com.mercadopago.wallet",
-      "com.ubercab");
-
-  // Official Google Pixel 8 Pro Logical & Physical Panel Profile Data
   private static final int PIXEL8_WIDTH = 1344;
   private static final int PIXEL8_HEIGHT = 2992;
   private static final float PIXEL8_DENSITY = 3.5f;
@@ -33,13 +24,6 @@ public class DisplayMetricsHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
-    String currentPackage = context.getPackageName();
-    if (currentPackage == null || !TARGET_APPS.contains(currentPackage)) {
-      return;
-    }
-    Log.w(TAG, "=== TARGET MATCH FOUND === Deploying Bipan Display Sandboxing for: " + currentPackage);
-
-    // 1. Force immediate mutation over local Java layer Resources cache states
     if (context.getResources() != null) {
       mutateDisplayMetrics(context.getResources().getDisplayMetrics());
     }
