@@ -17,12 +17,20 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.TrustManagerFactorySpi;
 import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLContextSpi;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLServerSocketFactory;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Socket;
 
 public class SslPinningHook implements BaseHook {
   private static final String TAG = "BipanJava-SslPinning";
   private static final List<String> TARGET_APPS = Arrays.asList(
-      "com.whatsapp",
-      "com.ubercab");
+      "com.whatsapp");
 
   @Override
   public void install(Context context) throws Exception {
@@ -30,9 +38,8 @@ public class SslPinningHook implements BaseHook {
     if (currentPackage == null || !TARGET_APPS.contains(currentPackage)) {
       return;
     }
-    Log.w(TAG, "=== TARGET MATCH FOUND === Engaging Bipan Crypto Interception Suites for: " + currentPackage);
 
-    
+    forceDowngradeToTls12();
     bypassAndroidNetworkSecurityConfig(context);
     bypassObfuscatedTrustManagers(context);
   }
@@ -86,24 +93,18 @@ public class SslPinningHook implements BaseHook {
    */
   private void bypassObfuscatedTrustManagers(Context context) {
     try {
-      // 1. Force a baseline factory instantiation to trigger the framework's internal
-      // provider cache population
       TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
 
-      // 2. Fetch the platform's primary crypto security provider context
       Provider provider = Security.getProvider("AndroidOpenSSL");
       if (provider == null) {
         provider = Security.getProvider("Conscrypt");
       }
 
       if (provider != null) {
-        // 3. Locate the service class definition managing factory requests
         String key = "TrustManagerFactory." + TrustManagerFactory.getDefaultAlgorithm();
         String tmfSpiClassName = provider.getProperty(key);
 
         if (tmfSpiClassName != null) {
-          // 4. Overwrite the Provider engine structure to distribute our custom BipanSPI
-          // factory globally
           Provider.Service customService = new Provider.Service(
               provider,
               "TrustManagerFactory",
@@ -117,7 +118,6 @@ public class SslPinningHook implements BaseHook {
             }
           };
 
-          // Inject our service back into the cryptographic tracking runtime
           Method putServiceMethod = Provider.class.getDeclaredMethod("putService", Provider.Service.class);
           putServiceMethod.setAccessible(true);
           putServiceMethod.invoke(provider, customService);
@@ -130,17 +130,168 @@ public class SslPinningHook implements BaseHook {
     }
   }
 
-  /**
-   * Custom Factory SPI implementation. Forces any custom instantiation loop
-   * to fetch a TrustManager chain wrapped inside our validation interceptor.
-   */
+  private void forceDowngradeToTls12() {
+    try {
+      SSLContext defaultContext = SSLContext.getDefault();
+      SSLContext tlsContext = SSLContext.getInstance("TLS");
+
+      Field contextSpiField = SSLContext.class.getDeclaredField("contextSpi");
+      contextSpiField.setAccessible(true);
+
+      final SSLContextSpi originalSpi = (SSLContextSpi) contextSpiField.get(tlsContext);
+
+      if (originalSpi != null) {
+        final Method engineInitMethod = SSLContextSpi.class.getDeclaredMethod("engineInit",
+            javax.net.ssl.KeyManager[].class, TrustManager[].class, java.security.SecureRandom.class);
+        final Method engineGetSocketFactoryMethod = SSLContextSpi.class.getDeclaredMethod("engineGetSocketFactory");
+        final Method engineGetServerSocketFactoryMethod = SSLContextSpi.class
+            .getDeclaredMethod("engineGetServerSocketFactory");
+        final Method engineCreateSSLEngineMethod = SSLContextSpi.class.getDeclaredMethod("engineCreateSSLEngine");
+        final Method engineCreateSSLEngineWithHostMethod = SSLContextSpi.class
+            .getDeclaredMethod("engineCreateSSLEngine", String.class, int.class);
+        final Method engineGetServerSessionContextMethod = SSLContextSpi.class
+            .getDeclaredMethod("engineGetServerSessionContext");
+        final Method engineGetClientSessionContextMethod = SSLContextSpi.class
+            .getDeclaredMethod("engineGetClientSessionContext");
+
+        engineInitMethod.setAccessible(true);
+        engineGetSocketFactoryMethod.setAccessible(true);
+        engineGetServerSocketFactoryMethod.setAccessible(true);
+        engineCreateSSLEngineMethod.setAccessible(true);
+        engineCreateSSLEngineWithHostMethod.setAccessible(true);
+        engineGetServerSessionContextMethod.setAccessible(true);
+        engineGetClientSessionContextMethod.setAccessible(true);
+
+        // STABILIZED: Resolve baseline trust manager using generic default runtime
+        // lookups
+        X509TrustManager systemTm = null;
+        try {
+          TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          tmf.init((java.security.KeyStore) null);
+          for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+              systemTm = (X509TrustManager) tm;
+              break;
+            }
+          }
+        } catch (Exception e) {
+          Log.e(TAG, "Failed to retrieve system default trust manager reference", e);
+        }
+
+        final X509TrustManager finalSystemTm = systemTm;
+
+        // Force contextual pre-initialization using our wrapped bypass structure
+        try {
+          if (finalSystemTm != null) {
+            TrustManager[] preInitTms = new TrustManager[] { new BipanTrustManagerWrapper(finalSystemTm) };
+            engineInitMethod.invoke(originalSpi, null, preInitTms, null);
+          } else {
+            engineInitMethod.invoke(originalSpi, null, null, null);
+          }
+        } catch (Exception ignored) {
+        }
+
+        SSLSocketFactory nativeFactory = (SSLSocketFactory) engineGetSocketFactoryMethod.invoke(originalSpi);
+        final BipanSSLSocketFactory fallbackFactory = new BipanSSLSocketFactory(nativeFactory);
+
+        SSLContextSpi customSpi = new SSLContextSpi() {
+          @Override
+          protected void engineInit(javax.net.ssl.KeyManager[] km, TrustManager[] tm, java.security.SecureRandom sr)
+              throws java.security.KeyManagementException {
+            try {
+              TrustManager[] wrappedTms = tm;
+              if (tm != null) {
+                wrappedTms = new TrustManager[tm.length];
+                for (int i = 0; i < tm.length; i++) {
+                  if (tm[i] instanceof X509TrustManager && !(tm[i] instanceof BipanTrustManagerWrapper)) {
+                    wrappedTms[i] = new BipanTrustManagerWrapper((X509TrustManager) tm[i]);
+                  } else {
+                    wrappedTms[i] = tm[i];
+                  }
+                }
+              } else if (finalSystemTm != null) {
+                wrappedTms = new TrustManager[] { new BipanTrustManagerWrapper(finalSystemTm) };
+              }
+              engineInitMethod.invoke(originalSpi, km, wrappedTms, sr);
+            } catch (Exception e) {
+              throw new java.security.KeyManagementException(e);
+            }
+          }
+
+          @Override
+          protected SSLSocketFactory engineGetSocketFactory() {
+            return fallbackFactory;
+          }
+
+          @Override
+          protected SSLServerSocketFactory engineGetServerSocketFactory() {
+            try {
+              return (SSLServerSocketFactory) engineGetServerSocketFactoryMethod.invoke(originalSpi);
+            } catch (Exception e) {
+              return null;
+            }
+          }
+
+          @Override
+          protected SSLEngine engineCreateSSLEngine() {
+            try {
+              SSLEngine engine = (SSLEngine) engineCreateSSLEngineMethod.invoke(originalSpi);
+              if (engine != null)
+                engine.setEnabledProtocols(new String[] { "TLSv1.2" });
+              return engine;
+            } catch (Exception e) {
+              return null;
+            }
+          }
+
+          @Override
+          protected SSLEngine engineCreateSSLEngine(String host, int port) {
+            try {
+              SSLEngine engine = (SSLEngine) engineCreateSSLEngineWithHostMethod.invoke(originalSpi, host, port);
+              if (engine != null)
+                engine.setEnabledProtocols(new String[] { "TLSv1.2" });
+              return engine;
+            } catch (Exception e) {
+              return null;
+            }
+          }
+
+          @Override
+          protected javax.net.ssl.SSLSessionContext engineGetServerSessionContext() {
+            try {
+              return (javax.net.ssl.SSLSessionContext) engineGetServerSessionContextMethod.invoke(originalSpi);
+            } catch (Exception e) {
+              return null;
+            }
+          }
+
+          @Override
+          protected javax.net.ssl.SSLSessionContext engineGetClientSessionContext() {
+            try {
+              return (javax.net.ssl.SSLSessionContext) engineGetClientSessionContextMethod.invoke(originalSpi);
+            } catch (Exception e) {
+              return null;
+            }
+          }
+        };
+
+        contextSpiField.set(tlsContext, customSpi);
+        contextSpiField.set(defaultContext, customSpi);
+
+        Log.w(TAG,
+            "=== [TLS 1.2 INJECTION SUCCESS] Stabilized active SSLContext parameters with full trust hooks! ===");
+      }
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to apply direct field injection patch setup", e);
+    }
+  }
+
   public static class BipanTrustManagerFactorySpi extends TrustManagerFactorySpi {
     private X509TrustManager nativeTrustManager;
 
     public BipanTrustManagerFactorySpi() {
       try {
-        // Build a baseline factory to extract clean native components
-        TrustManagerFactory factory = TrustManagerFactory.getInstance("PKIX");
+        TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         factory.init((java.security.KeyStore) null);
         for (TrustManager tm : factory.getTrustManagers()) {
           if (tm instanceof X509TrustManager) {
@@ -154,14 +305,10 @@ public class SslPinningHook implements BaseHook {
 
     @Override
     protected void engineInit(java.security.KeyStore keyStore) {
-      // No-op to avoid breaking local configurations
     }
-
-    // FIXED: Removed the erroneous engineInit(TrustManagerFactorySpi) overload
 
     @Override
     protected void engineInit(ManagerFactoryParameters managerFactoryParameters) {
-      // No-op
     }
 
     @Override
@@ -173,9 +320,6 @@ public class SslPinningHook implements BaseHook {
     }
   }
 
-  /**
-   * Universal TrustManager Interceptor layout.
-   */
   public static class BipanTrustManagerWrapper implements X509TrustManager {
     private final X509TrustManager delegate;
     private Method checkServerTrusted3ArgMethod;
@@ -191,6 +335,7 @@ public class SslPinningHook implements BaseHook {
       }
     }
 
+    @SuppressWarnings("unchecked")
     public List<X509Certificate> checkServerTrusted(X509Certificate[] chain, String authType, String host)
         throws CertificateException {
       Log.w(TAG, "Intercepted 3-arg checkServerTrusted(chain, authType, \"" + host + "\")");
@@ -203,8 +348,6 @@ public class SslPinningHook implements BaseHook {
         }
       } catch (Exception ite) {
         Throwable cause = ite instanceof java.lang.reflect.InvocationTargetException ? ite.getCause() : ite;
-        // Catch all variations of Path/Pin exceptions thrown by any underlying
-        // TrustManager
         if (cause != null && cause.getMessage() != null &&
             (cause.getMessage().contains("Pin verification failed") || cause.getMessage().contains("trust anchors"))) {
           Log.e(TAG, "Neutralized verification failure for host target: " + host);
@@ -241,33 +384,62 @@ public class SslPinningHook implements BaseHook {
       return delegate.getAcceptedIssuers();
     }
   }
-}
 
-/**
- * 
- * logClassFields("android.security.net.config.NetworkSecurityTrustManager");
- * logClassFields("android.security.net.config.ApplicationConfig");
- * logClassFields("javax.net.ssl.X509TrustManager");
- * 
- * 
- * 
- * private void logClassFields(String className) {
- * try {
- * Log.d(TAG, "--- Introspecting Fields for: " + className + " ---");
- * Class<?> clazz = Class.forName(className);
- * Field[] fields = clazz.getDeclaredFields();
- * 
- * for (Field field : fields) {
- * field.setAccessible(true);
- * Log.d(TAG, " Field: [" + field.getName() + "] | Type: " +
- * field.getType().getName());
- * }
- * } catch (ClassNotFoundException e) {
- * Log.e(TAG, " Failed introspection: Class " + className + " not found on this
- * runtime platform.");
- * } catch (Exception e) {
- * Log.e(TAG, " Error introspecting fields for " + className, e);
- * }
- * Log.d(TAG, "--------------------------------------------------------");
- * }
- */
+  public static class BipanSSLSocketFactory extends SSLSocketFactory {
+    private final SSLSocketFactory delegateFactory;
+
+    public BipanSSLSocketFactory(SSLSocketFactory original) {
+      this.delegateFactory = original;
+    }
+
+    private Socket forceTls12(Socket socket) {
+      if (socket instanceof SSLSocket) {
+        SSLSocket sslSocket = (SSLSocket) socket;
+        sslSocket.setEnabledProtocols(new String[] { "TLSv1.2" });
+        Log.d(TAG, "Successfully stripped TLSv1.3 parameter matrix from outbound socket.");
+      }
+      return socket;
+    }
+
+    @Override
+    public String[] getDefaultCipherSuites() {
+      return delegateFactory.getDefaultCipherSuites();
+    }
+
+    @Override
+    public String[] getSupportedCipherSuites() {
+      return delegateFactory.getSupportedCipherSuites();
+    }
+
+    @Override
+    public Socket createSocket(Socket s, String host, int port, boolean autoClose) throws IOException {
+      return forceTls12(delegateFactory.createSocket(s, host, port, autoClose));
+    }
+
+    @Override
+    public Socket createSocket() throws IOException {
+      return forceTls12(delegateFactory.createSocket());
+    }
+
+    @Override
+    public Socket createSocket(String host, int port) throws IOException {
+      return forceTls12(delegateFactory.createSocket(host, port));
+    }
+
+    @Override
+    public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
+      return forceTls12(delegateFactory.createSocket(host, port, localHost, localPort));
+    }
+
+    @Override
+    public Socket createSocket(InetAddress host, int port) throws IOException {
+      return forceTls12(delegateFactory.createSocket(host, port));
+    }
+
+    @Override
+    public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort)
+        throws IOException {
+      return forceTls12(delegateFactory.createSocket(address, port, localAddress, localPort));
+    }
+  }
+}
