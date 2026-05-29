@@ -96,6 +96,7 @@ public class DisplayMetricsHook implements BaseHook, InvocationHandler {
     return result;
   }
 
+  @SuppressWarnings("deprecation")
   private void mutateDisplayMetrics(DisplayMetrics metrics) {
     if (metrics == null)
       return;
