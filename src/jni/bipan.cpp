@@ -124,7 +124,7 @@ class Bipan : public zygisk::ModuleBase {
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
     if (isTargetApp) {
-      registerDobbyLinkerHooks();
+      // registerDobbyLinkerHooks();
       registerDobbySensorsHooks();
 
       LibBounds my_lib;
