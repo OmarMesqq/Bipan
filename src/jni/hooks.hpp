@@ -31,89 +31,24 @@ static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
 
-// ==========================================
-// Mbed TLS Certificate Pinning Bypass
-// ==========================================
-
-// Original function pointer to keep the app working normally after we clear errors
-static int (*orig_mbedtls_x509_crt_verify)(
-    void* crt, void* trust_ca, void* ca_crl,
-    const char* cn, uint32_t* flags,
-    int (*f_vrfy)(void*, void*, int, uint32_t*),
-    void* p_vrfy) = nullptr;
-
-// Our detour callback
-static int my_mbedtls_x509_crt_verify(
-    void* crt, void* trust_ca, void* ca_crl,
-    const char* cn, uint32_t* flags,
-    int (*f_vrfy)(void*, void*, int, uint32_t*),
-    void* p_vrfy) {
-  // 1. Let the original verification run normally so the internal engine handles its state transitions
-  int result = orig_mbedtls_x509_crt_verify(crt, trust_ca, ca_crl, cn, flags, f_vrfy, p_vrfy);
-
-  // 2. Clear out any validation errors (0 means perfectly clean, valid certificate)
-  if (flags != nullptr && *flags != 0) {
-    write_to_logcat_async(ANDROID_LOG_WARN, "BipanNative-Mbed",
-                          "[MbedTLS] Overriding certificate errors (0x%x) for CN: %s -> SUCCESS", *flags, cn ? cn : "unknown");
-    *flags = 0;
-  } else {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanNative-Mbed",
-                          "[MbedTLS] Verification passed normally for CN: %s", cn ? cn : "unknown");
-  }
-
-  // 3. Return 0 to indicate a successful verification execution chain
-  return 0;
-}
-
-// The dynamic watch patcher called inside your linker hooks
-static void check_and_patch_whatsapp_crypto(void* handle, const char* filename) {
-  if (handle == nullptr || filename == nullptr) return;
-
-  // Track the exact load of the library exposing the Mbed TLS export symbols
-  if (strstr(filename, "libwhatsappmerged.so") != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "--> WhatsApp engine mapped successfully. Resolving MbedTLS directly from handle...");
-
-    // Pull our exported target directly via dlsym using the live handle we just intercepted!
-    void* target_verify = dlsym(handle, "mbedtls_x509_crt_verify");
-
-    if (target_verify && !orig_mbedtls_x509_crt_verify) {
-      int hook_res = DobbyHook(target_verify, (void*)my_mbedtls_x509_crt_verify, (void**)&orig_mbedtls_x509_crt_verify);
-      if (hook_res == 0) {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "=== [SUCCESS] Dobby attached hook over mbedtls_x509_crt_verify! ===");
-      } else {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "=== [FAIL] Dobby failed to hook mbedtls_x509_crt_verify! ===");
-      }
-    }
-
-    // Note: DO NOT call dlclose(handle) here! This is the app's real internal handle.
-  }
-}
 
 // ==========================================
 // Linker hooks
 // ==========================================
 
 static void* my_dlopen(const char* filename, int flag) {
-  // 1. Let the library load naturally first
-  void* handle = orig_dlopen(filename, flag);
-
-  // 2. Patch it post-load if it matches our target
-  if (filename != nullptr && handle != nullptr) {
-    check_and_patch_whatsapp_crypto(handle, filename);
+  if (filename != nullptr) {
+    // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
   }
-  return handle;
+  return orig_dlopen(filename, flag);
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
-  // 1. Let the library load naturally first
-  void* handle = orig_android_dlopen_ext(filename, flag, extinfo);
-
-  // 2. Patch it post-load if it matches our target
-  if (filename != nullptr && handle != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext) loaded: %s", filename);
-    check_and_patch_whatsapp_crypto(handle, filename);
+  if (filename != nullptr) {
+    // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
   }
-  return handle;
+
+  return orig_android_dlopen_ext(filename, flag, extinfo);
 }
 
 // ==========================================
@@ -272,6 +207,7 @@ void registerDobbySensorsHooks() {
     if (addr) {
       if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
         __builtin___clear_cache((char*)addr, (char*)addr + 32);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(Dobby Native Sensors) Hooked %s", symbols[i]);
       }
     }
   }
