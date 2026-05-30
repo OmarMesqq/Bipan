@@ -61,8 +61,6 @@ public class DisplayMetricsHook implements BaseHook, InvocationHandler {
     Field sWindowManagerServiceField = windowManagerGlobalClz.getDeclaredField("sWindowManagerService");
     sWindowManagerServiceField.setAccessible(true);
     sWindowManagerServiceField.set(null, proxy);
-
-    Log.w(TAG, "=== [DISPLAY ISOLATION SUCCESS] Pixel 8 Pro hardware sandbox is stabilized! ===");
   }
 
   @Override

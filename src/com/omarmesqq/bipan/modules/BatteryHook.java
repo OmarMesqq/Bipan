@@ -77,8 +77,6 @@ public class BatteryHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.d(TAG, "Skipping legacy fallback path assignment.");
     }
-
-    Log.w(TAG, "=== [ENVIRONMENT ISOLATION SUCCESS] Root IActivityManager proxy is stabilized! ===");
   }
 
   @Override
@@ -89,7 +87,6 @@ public class BatteryHook implements BaseHook, InvocationHandler {
     if ("registerReceiver".equals(method.getName()) && result instanceof Intent) {
       Intent intent = (Intent) result;
       if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
-        Log.w(TAG, "=== [TELEMETRY INTERCEPT SUCCESS] Hijacked Meta internal battery registration loop ===");
 
         // Rewrite the intent metrics inside the returning broadcast bundle
         intent.putExtra("level", FAKE_BATTERY_LEVEL);
@@ -107,8 +104,6 @@ public class BatteryHook implements BaseHook, InvocationHandler {
     if ("registerReceiverWithFeature".equals(method.getName()) && result instanceof Intent) {
       Intent intent = (Intent) result;
       if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
-        Log.w(TAG,
-            "=== [TELEMETRY INTERCEPT SUCCESS] Hijacked Meta internal battery registration loop via feature wrapper ===");
         intent.putExtra("level", FAKE_BATTERY_LEVEL);
         intent.putExtra("scale", FAKE_BATTERY_SCALE);
         intent.putExtra("status", FAKE_BATTERY_STATUS);
