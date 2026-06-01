@@ -67,12 +67,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // Anti-anti tamper
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_kill, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_tkill, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_tgkill, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Networking
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),
