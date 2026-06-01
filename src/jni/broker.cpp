@@ -156,8 +156,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_execveat: {
         if (!is_trusted) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
-          ipc_mem->ret = -EAGAIN;
-          ipc_mem->action = ACTION_USE_RET;
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_EXIT_PROCESS;
 
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
         }

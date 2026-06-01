@@ -65,7 +65,7 @@ static void test_execve(void) {
     } else {
         int status;
         waitpid(pid, &status, 0);
-        assert(WEXITSTATUS(status) == EAGAIN);
+        assert(WEXITSTATUS(status) == 0);
     }
 }
 
