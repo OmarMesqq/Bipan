@@ -421,22 +421,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_kill:
-      case __NR_tkill:
-      case __NR_tgkill: {
-        int target_pid = (int)ipc_mem->arg0;
-        int sig = (nr == __NR_tgkill) ? (int)ipc_mem->arg2 : (int)ipc_mem->arg1;
-
-        if (sig == SIGKILL ||
-            sig == SIGSYS ||
-            sig == SIGQUIT) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Suicide attempt: [%s] target %d with signal %d", (nr == __NR_tgkill ? "tgkill" : "kill"), target_pid, sig);
-
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
-        }
-        break;
-      }
       default: {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got unexpected syscall: %d. Returning ENOSYS!", nr);
         ipc_mem->ret = -ENOSYS;
