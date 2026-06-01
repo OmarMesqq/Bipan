@@ -202,8 +202,20 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long result = 0;
   int action = ipc_mem->action;
 
-  // Route the action
-  if (action == ACTION_EXECUTE_NATIVE) {
+  if (action == ACTION_EXIT_PROCESS) {
+    if (pre_fd >= 0) {
+      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+    }
+    ipc_mem->status = IDLE;
+    unlock_ipc();
+
+    in_sigsys_handler = false;
+
+    arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
+
+    // Fallback
+    // _exit(ipc_mem->ret);
+  } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
       // Cleanup unused ghost
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
