@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.InvocationTargetException;
 
 public class BatteryHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanBatteryHook";
@@ -55,10 +56,9 @@ public class BatteryHook implements BaseHook, InvocationHandler {
         Field mInstanceField = singletonClass.getDeclaredField("mInstance");
         mInstanceField.setAccessible(true);
         mInstanceField.set(singletonInstance, proxy);
-        Log.i(TAG, "Successfully bound proxy inside ActivityManager.IActivityManagerSingleton!");
       }
     } catch (Exception e) {
-      Log.d(TAG, "Skipping modern singleton path assignment (older/custom ROM variance).");
+      Log.w(TAG, "Skipping modern singleton path assignment (older/custom ROM variance).");
     }
 
     try {
@@ -83,6 +83,13 @@ public class BatteryHook implements BaseHook, InvocationHandler {
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     // Intercept the application's underlying registration call to the system server
     Object result = method.invoke(originalAM, args);
+
+    try {
+      result = method.invoke(originalAM, args);
+    } catch (InvocationTargetException e) {
+      // unwrap reflection exception and let app/OS handle it
+      throw e.getCause() != null ? e.getCause() : e;
+    }
 
     if ("registerReceiver".equals(method.getName()) && result instanceof Intent) {
       Intent intent = (Intent) result;
