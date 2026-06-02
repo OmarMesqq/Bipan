@@ -38,6 +38,14 @@ android {
             )
             signingConfig = signingConfigs.getByName("debug")
         }
+
+        create("debugLeakCanary") {
+            // Copies all default debugging configurations from the built-in debug type
+            initWith(getByName("debug"))
+
+            // Matching fallbacks ensure libraries that only know about 'debug' work here too
+            matchingFallbacks += listOf("debug")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -71,5 +79,5 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.splashscreen)
 
-    debugImplementation(libs.leakcanary.android)
+    "debugLeakCanaryImplementation"(libs.leakcanary.android)
 }
