@@ -276,25 +276,38 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_bind: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (bind): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-
         bool should_block = false;
 
         if (sock_payload->sa_family == AF_INET) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
-          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-            should_block = true;
+          uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
+
+          // Allow 0.0.0.0
+          if (ip4 != 0x00000000) {
+            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+              should_block = true;
+            }
           }
         } else if (sock_payload->sa_family == AF_INET6) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
-          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-            should_block = true;
+          uint8_t* ip6 = sin6->sin6_addr.s6_addr;
+
+          // Allow ::
+          bool is_v6_unspecified = true;
+          for (int i = 0; i < 16; i++) {
+            if (ip6[i] != 0) {
+              is_v6_unspecified = false;
+              break;
+            }
+          }
+
+          // Allow (::) to pass through, block explicit LAN IPv6 addresses or discovery ports
+          if (!is_v6_unspecified) {
+            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+              should_block = true;
+            }
           }
         }
 
