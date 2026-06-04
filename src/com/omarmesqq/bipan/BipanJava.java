@@ -47,6 +47,7 @@ public class BipanJava {
     modules.add(new WifiHook());
     modules.add(new ConnectivityHook());
     // modules.add(new DisplayMetricsHook());
+    modules.add(new SslPinningHook());
 
     for (BaseHook module : modules) {
       try {
