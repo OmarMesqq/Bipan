@@ -212,9 +212,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     in_sigsys_handler = false;
 
     arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
-
-    // Fallback
-    // _exit(ipc_mem->ret);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
       // Cleanup unused ghost

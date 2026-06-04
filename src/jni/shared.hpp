@@ -4,7 +4,7 @@
 #include <string>
 
 #define TAG "Bipan"
-// #define DEBUG
+#define DEBUG
 
 // Globals populated in entrypoint
 

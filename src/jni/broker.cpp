@@ -276,12 +276,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_bind: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (bind): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-
         bool should_block = false;
 
         if (sock_payload->sa_family == AF_INET) {
@@ -308,7 +302,21 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
+#ifdef DEBUG
+          if (sock_payload->sa_family != AF_UNIX) {
+            std::string connection_info = get_sockaddr_info(sock_payload);
+            std::string log_msg = "Study: firewalled (bind): " + connection_info;
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
+          }
+#endif
         }
+#ifdef DEBUG
+        if (sock_payload->sa_family != AF_UNIX) {
+          std::string connection_info = get_sockaddr_info(sock_payload);
+          std::string log_msg = "Allowed: (bind): " + connection_info;
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, log_msg.c_str());
+        }
+#endif
         break;
       }
       case __NR_connect: {
