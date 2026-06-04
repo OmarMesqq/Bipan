@@ -74,7 +74,8 @@ public class ConnectivityHook implements BaseHook, InvocationHandler {
 
       InetAddress fakeIp = InetAddress.getByName("192.168.1.128");
 
-      // Use `getDeclaredConstructor` to look for the potentially hidden constructor: LinkAddress(InetAddress, int)
+      // Use `getDeclaredConstructor` to look for the potentially hidden constructor:
+      // LinkAddress(InetAddress, int)
       Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
       ctor.setAccessible(true);
       LinkAddress fakeAddr = ctor.newInstance(fakeIp, 24);
