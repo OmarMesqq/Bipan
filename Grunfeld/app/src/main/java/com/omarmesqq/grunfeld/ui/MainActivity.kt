@@ -7,11 +7,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -22,12 +23,14 @@ import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
+import com.scottyab.rootbeer.RootBeer
 
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object JavaScreen : Screen("java", "Java", Icons.Default.Coffee)
     object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
     object NativeScreen : Screen("native", "Native", Icons.Default.Code)
+    object RootCheckerScreen : Screen("root-check", "Root Check", Icons.Default.Android)
 }
 
 class MainActivity : ComponentActivity() {
