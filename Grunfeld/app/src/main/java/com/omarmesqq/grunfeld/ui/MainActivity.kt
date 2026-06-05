@@ -2,6 +2,7 @@ package com.omarmesqq.grunfeld.ui
 
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,6 +46,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition {
             !viewModel.isReady.value
         }
+        this.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
