@@ -365,6 +365,7 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
+      strstr(pathname, "Screenshots") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
