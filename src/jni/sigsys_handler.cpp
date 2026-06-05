@@ -212,16 +212,29 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     in_sigsys_handler = false;
 
     arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
-
-    // Fallback
-    // _exit(ipc_mem->ret);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
-      // Cleanup unused ghost
+      // Cleanup ghost FD
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
+    // fork family handling:
+    // clear reentrancy flag and IPC lock before the exec'ing
+    if (nr == __NR_execve || nr == __NR_execveat) {
+      in_sigsys_handler = false;
+      ipc_mem->status = IDLE;
+      unlock_ipc();
+    }
+
     result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+
+    // if exec actually fails, we reach here,
+    // so we restore the state so that the cleanup
+    // code at the bottom doesn't double-unlock
+    if (nr == __NR_execve || nr == __NR_execveat) {
+      lock_ipc();
+      in_sigsys_handler = true;
+    }
   } else if (action == ACTION_USE_RET) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
       // Cleanup if Broker gave -EACCES
