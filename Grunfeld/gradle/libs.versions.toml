@@ -8,6 +8,7 @@ kotlin = "2.0.21"
 composeBom = "2024.09.00"
 lifecycleViewmodelCompose = "2.10.0"
 navigationCompose = "2.9.7"
+rootbeerLib = "0.1.2"
 webkit = "1.16.0-beta01"
 coreSplashscreen = "1.2.0"
 
@@ -26,6 +27,7 @@ androidx-navigation-compose = { module = "androidx.navigation:navigation-compose
 leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanaryAndroid" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
+rootbeer-lib = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeerLib" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

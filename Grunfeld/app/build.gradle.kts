@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.rootbeer.lib)
 
     "debugLeakCanaryImplementation"(libs.leakcanary.android)
 }
