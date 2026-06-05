@@ -12,9 +12,6 @@
 
 using zygisk::Api;
 
-extern jclass g_bipan_java_class;
-extern jmethodID g_init_modules_mid;
-
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
 
