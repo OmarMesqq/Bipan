@@ -24,7 +24,6 @@ public class ScreenCaptureHook implements BaseHook, InvocationHandler {
       realBinder = (IBinder) getService.invoke(null, "activity");
     }
 
-    // final reference for the lambda
     final IBinder finalRealBinder = realBinder;
 
     Class<?> iInterface = Class.forName("android.app.IActivityTaskManager");
@@ -32,16 +31,15 @@ public class ScreenCaptureHook implements BaseHook, InvocationHandler {
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     this.originalService = asInterface.invoke(null, finalRealBinder);
 
-    // Proxy the service
+    // Create our custom proxy
     Object proxy = Proxy.newProxyInstance(
         iInterface.getClassLoader(),
         new Class[] { iInterface },
         this);
 
-    // Replace in ServiceManager cache
+    // 1. Maintain your ServiceManager cache spoofing for future requests
     Field sCacheField = serviceManager.getDeclaredField("sCache");
     sCacheField.setAccessible(true);
-
     @SuppressWarnings("unchecked")
     Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
 
@@ -54,18 +52,35 @@ public class ScreenCaptureHook implements BaseHook, InvocationHandler {
           }
           return method.invoke(finalRealBinder, args);
         });
-
     cache.put("activity_task", proxyBinder);
+
+    // 2. THE CRITICAL FIX: Direct Singleton Overwrite
+    // Forcefully replace the service instance even if the Main thread already
+    // cached it.
+    try {
+      Class<?> atmClz = Class.forName("android.app.ActivityTaskManager");
+      Field singletonField = atmClz.getDeclaredField("IActivityTaskManagerSingleton");
+      singletonField.setAccessible(true);
+      Object singletonInstance = singletonField.get(null);
+
+      Class<?> singletonClz = Class.forName("android.util.Singleton");
+      Field mInstanceField = singletonClz.getDeclaredField("mInstance");
+      mInstanceField.setAccessible(true);
+
+      // Overwrite the field directly with our proxy object
+      mInstanceField.set(singletonInstance, proxy);
+    } catch (Throwable t) {
+      Log.e(TAG, "Failed to forcefully patch ActivityTaskManager cache singleton", t);
+    }
   }
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     String methodName = method.getName();
 
-    // Heuristic for common method names related to screenshot capture
     if (methodName.contains("Screenshot") || methodName.contains("ScreenCapture")) {
       Log.w(TAG, "Blocked screenshot-related system notification: " + methodName);
-      return null; // Swallow the event, not letting app know about it
+      return null;
     }
 
     return method.invoke(originalService, args);
