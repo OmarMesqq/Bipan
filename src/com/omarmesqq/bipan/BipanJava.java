@@ -10,28 +10,56 @@ import java.util.List;
 
 public class BipanJava {
   private static final String TAG = "BipanJava";
-  private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 500;
-  private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 50;
+  private static boolean isInitialized = false;
 
   /**
-   * Entrypoint of Java-layer hooks called by Bipan in C++
+   * Phase 1: Early Zygote Entrypoint
+   * Called directly in C++ via bootstrapJavaPayload() inside postAppSpecialize.
+   * Only unseals the hidden APIs; does not look for Context yet.
    */
   public static void install() {
-    new Thread(() -> {
-      try {
-        unseal();
+    try {
+      unseal();
+      Log.i(TAG, "Early injection phase complete. VM unsealed.");
+    } catch (Exception e) {
+      Log.wtf(TAG, "[!] Fatal exception in early install(): ", e);
+    }
+  }
 
-        Context appContext = waitForContext();
+  /**
+   * Phase 2: Application Binding Entrypoint
+   * Triggered synchronously from your C++ my_clampGrowthLimit JNI hook.
+   */
+  public static void initializeModules() {
+    try {
+      android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+      handler.post(() -> {
+        try {
+          // Check the guard inside the main looper execution block
+          if (isInitialized) {
+            return;
+          }
 
-        if (appContext != null) {
-          loadModules(appContext);
-        } else {
-          Log.e(TAG, "Failed to get Application Context!");
+          Class<?> atClass = Class.forName("android.app.ActivityThread");
+          Object activityThread = atClass.getMethod("currentActivityThread").invoke(null);
+
+          if (activityThread != null) {
+            Context ctx = (Context) atClass.getMethod("getApplication").invoke(activityThread);
+            if (ctx != null) {
+              isInitialized = true;
+              loadModules(ctx);
+              Log.i(TAG, "All sandboxing modules successfully synchronized on the Main Thread!");
+              return;
+            }
+          }
+          Log.e(TAG, "Failed to resolve Context during deferred main looper execution!");
+        } catch (Exception e) {
+          Log.wtf(TAG, "Deferred module initialization failed: ", e);
         }
-      } catch (Exception e) {
-        Log.wtf(TAG, "[!] Fatal exception in install(): ", e);
-      }
-    }).start();
+      });
+    } catch (Exception e) {
+      Log.wtf(TAG, "Failed to post initialization task to Main Looper: ", e);
+    }
   }
 
   private static void loadModules(Context context) {
@@ -57,49 +85,24 @@ public class BipanJava {
     }
   }
 
-  private static Context waitForContext() throws Exception {
-    for (int i = 0; i < GET_APPLICATION_CONTEXT_MAX_RETRIES; i++) {
-
-      Class<?> atClass = Class.forName("android.app.ActivityThread");
-      Object activityThread = atClass.getMethod("currentActivityThread").invoke(null);
-
-      if (activityThread != null) {
-        Context ctx = (Context) atClass.getMethod("getApplication").invoke(activityThread);
-        if (ctx != null) {
-          return ctx;
-        }
-      }
-
-      Thread.sleep(GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS);
-    }
-    return null;
-  }
-
   /**
    * Neuters hidden API restrictions in bleeding-edge Android versions
-   * NOTE: should be called before install()
    */
   private static void unseal() {
     try {
-      // 1. Get the getDeclaredMethod from Class
       Method getDeclaredMethod = Class.class.getDeclaredMethod(
           "getDeclaredMethod", String.class, Class[].class);
       Class<?> vmRuntimeClass = Class.forName("dalvik.system.VMRuntime");
 
-      // 2. Get VMRuntime.getRuntime()
-      // We use (Object) null to ensure the second parameter (Class[]) is
-      // treated as null, not as an Object[] wrapper
       Method getRuntimeMethod = (Method) getDeclaredMethod.invoke(
           vmRuntimeClass, "getRuntime", (Object) null);
+
+      // FIXED: Removed the redundant .getRuntimeMethod field reference
       Object vmRuntime = getRuntimeMethod.invoke(null);
 
-      // 3. Get VMRuntime.setHiddenApiExemptions(String[])
-      // Note the nested array: we are passing an array that contains an array.
-      // This is critical.
       Method setExemptionsMethod = (Method) getDeclaredMethod.invoke(vmRuntimeClass,
           "setHiddenApiExemptions", (Object) new Class[] { String[].class });
 
-      // 4. Trigger the bypass
       setExemptionsMethod.invoke(
           vmRuntime, (Object) new String[][] { new String[] { "L" } });
 

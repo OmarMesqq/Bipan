@@ -26,8 +26,6 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.BipanJava"
-
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
 constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
@@ -41,6 +39,10 @@ char package_name[256] = {0};
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 int g_broker_socket = -1;
+// BipanJava
+#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.BipanJava"
+jclass g_bipan_java_class = nullptr;
+jmethodID g_init_modules_mid = nullptr;
 
 struct LibBounds {
   uintptr_t start = 0;
@@ -205,6 +207,10 @@ class Bipan : public zygisk::ModuleBase {
 
       // Call Java-side .install()
       if (payloadClass != nullptr) {
+        // Store the initializeModules function so it's called later on the JNI tripwires 
+        g_bipan_java_class = (jclass)env->NewGlobalRef(payloadClass);
+        g_init_modules_mid = env->GetStaticMethodID(g_bipan_java_class, "initializeModules", "()V");
+        
         jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
         if (installMethod != nullptr) {
           env->CallStaticVoidMethod(payloadClass, installMethod);
