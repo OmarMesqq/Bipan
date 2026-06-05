@@ -12,6 +12,9 @@
 
 using zygisk::Api;
 
+extern jclass g_bipan_java_class;
+extern jmethodID g_init_modules_mid;
+
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
 
@@ -30,7 +33,6 @@ static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*)
 static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
-
 
 // ==========================================
 // Linker hooks
@@ -154,6 +156,9 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   }
   if (orig_clampGrowthLimit) {
     orig_clampGrowthLimit(env, obj);
+    if (g_bipan_java_class != nullptr && g_init_modules_mid != nullptr) {
+      env->CallStaticVoidMethod(g_bipan_java_class, g_init_modules_mid);
+    }
   }
 }
 
@@ -169,6 +174,9 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   }
   if (orig_clearGrowthLimit) {
     orig_clearGrowthLimit(env, obj);
+    if (g_bipan_java_class != nullptr && g_init_modules_mid != nullptr) {
+      env->CallStaticVoidMethod(g_bipan_java_class, g_init_modules_mid);
+    }
   }
 }
 
