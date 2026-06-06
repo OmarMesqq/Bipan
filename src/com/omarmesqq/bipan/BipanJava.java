@@ -39,11 +39,9 @@ public class BipanJava {
 
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
-    modules.add(new NetworkHook());
     modules.add(new AntiScreenshotDetectionHook());
     modules.add(new AntiDiscoveryHook());
-    modules.add(new WifiHook());
-    modules.add(new ConnectivityHook());
+    modules.add(new NetworkSpoofingHook());
 
     for (BaseHook module : modules) {
       try {
