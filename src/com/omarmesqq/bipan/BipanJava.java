@@ -41,8 +41,7 @@ public class BipanJava {
     modules.add(new InstallerInfoHook());
     modules.add(new NetworkHook());
     modules.add(new AntiScreenshotDetectionHook());
-    modules.add(new NsdHook());
-    modules.add(new MediaRouterHook());
+    modules.add(new AntiDiscoveryHook());
     modules.add(new WifiHook());
     modules.add(new ConnectivityHook());
 
