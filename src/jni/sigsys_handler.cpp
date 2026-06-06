@@ -63,16 +63,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-#ifdef DEBUG
-  struct timespec t1, t2, t3;
-  clock_gettime(CLOCK_MONOTONIC, &t1);
-#endif
-
   lock_ipc();
-
-#ifdef DEBUG
-  clock_gettime(CLOCK_MONOTONIC, &t2);  // After IPC Lock
-#endif
 
   long arg0 = ctx->uc_mcontext.regs[0];
   long arg1 = ctx->uc_mcontext.regs[1];
@@ -164,8 +155,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
   } else if (nr == __NR_listen || nr == __NR_getsockname) {
     long sockfd = arg0;
-    // --- THE FIX: Pre-Flight Check ---
-    // listen() doesn't give us a sockaddr, so we must extract it from the FD
+    // pre-flighting check
+    // listen doesn't give a sockaddr, so we must extract it from the FD
     long temp_len = sizeof(temp_addr);
     my_memset(&temp_addr, 0, sizeof(temp_addr));
 
@@ -188,16 +179,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   while (ipc_mem->status != BROKER_ANSWERED) {
     futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
   }
-
-#ifdef DEBUG
-  clock_gettime(CLOCK_MONOTONIC, &t3);  // After Broker Answer
-  long long lock_wait_ns = (t2.tv_sec - t1.tv_sec) * 1000000000LL + (t2.tv_nsec - t1.tv_nsec);
-  long long broker_wait_ns = (t3.tv_sec - t2.tv_sec) * 1000000000LL + (t3.tv_nsec - t2.tv_nsec);
-
-  if (broker_wait_ns > 1000000) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "BROKER_STALL: Syscall %d wait %lld ns, lock_wait %lld ns", nr, broker_wait_ns, lock_wait_ns);
-  }
-#endif
 
   long result = 0;
   int action = ipc_mem->action;
