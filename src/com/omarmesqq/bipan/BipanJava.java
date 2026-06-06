@@ -10,8 +10,8 @@ import java.util.List;
 
 public class BipanJava {
   private static final String TAG = "BipanJava";
-  private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 500;
-  private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 50;
+  private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;
+  private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 5;
 
   /**
    * Entrypoint of Java-layer hooks called by Bipan in C++
@@ -40,8 +40,7 @@ public class BipanJava {
     modules.add(new SettingsHook());
     modules.add(new InstallerInfoHook());
     modules.add(new NetworkHook());
-    modules.add(new ScreenCaptureHook());
-    modules.add(new SecurityFlagHook());
+    modules.add(new AntiScreenshotDetectionHook());
     modules.add(new NsdHook());
     modules.add(new MediaRouterHook());
     modules.add(new WifiHook());
