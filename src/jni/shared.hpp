@@ -17,9 +17,6 @@ extern uintptr_t g_bipan_lib_end;
 
 extern char package_name[256];
 
-// `installModules` BipanJava method called at `clampGrowthLimit`/`clearGrowthLimit`
-extern jclass g_bipan_java_class;
-extern jmethodID g_init_modules_mid;
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,
