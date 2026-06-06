@@ -141,6 +141,7 @@ public class NetworkHook implements BaseHook, InvocationHandler {
       try {
         data.setClassLoader(NetworkCapabilities.class.getClassLoader());
         for (String key : data.keySet()) {
+          @SuppressWarnings("deprecation")
           Object val = data.get(key);
           if (val instanceof NetworkCapabilities) {
             applySpoof((NetworkCapabilities) val);

@@ -185,6 +185,23 @@ inline bool filterIPv6LanAccess(uint8_t* ip6) {
     return false;
   }
 
+  // Handle IPv4-mapped IPv6 addresses
+  bool is_v4_mapped = true;
+  for (int i = 0; i < 10; i++) {
+    if (ip6[i] != 0) {
+      is_v4_mapped = false;
+      break;
+    }
+  }
+
+  if (is_v4_mapped && ip6[10] == 0xFF && ip6[11] == 0xFF) {
+    // Reconstruct the 32-bit IPv4 address in host byte order
+    uint32_t ipv4 = (ip6[12] << 24) | (ip6[13] << 16) | (ip6[14] << 8) | ip6[15];
+
+    // Apply IPv4 policies
+    return filterIPv4LanAccess(ipv4);
+  }
+
   // Unspecified (::)
   bool is_unspecified = true;
   for (int i = 0; i < 16; i++) {

@@ -73,10 +73,8 @@ public class WifiHook implements BaseHook, InvocationHandler {
       setField(info, "mIpAddress", fakeIp);
 
       setField(info, "mLinkSpeed", 53);
-
-      Log.d(TAG, "Successfully patched WifiInfo instance fields in-place");
     } catch (Exception e) {
-      Log.e(TAG, "In-place patch failed", e);
+      Log.e(TAG, "In-place patch failed: ", e);
     }
   }
 

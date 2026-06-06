@@ -64,12 +64,10 @@ public class SecurityFlagHook implements BaseHook {
                           // If FLAG_SECURE is requested, forcefully clear it from the composition matrix
                           if ((lp.flags & WindowManager.LayoutParams.FLAG_SECURE) != 0) {
                             lp.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
-                            Log.d(TAG, "Globally stripped FLAG_SECURE from low-level LayoutParams composition matrix!");
                           }
                         }
                       }
                     }
-                    // FIXED: Replaced the typo with the correct native reflective call
                     return sMethod.invoke(realSession, sArgs);
                   });
             }
