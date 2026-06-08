@@ -370,9 +370,11 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
-      starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      starts_with(pathname, "/data/misc/user/0/cacerts-") ||
       // VPN tunnel
       starts_with(pathname, "/sys/class/net/tun") ||
+      // Crash reports
+      starts_with(pathname, "/data/anr") ||
       // Root
       strstr(pathname, "zygisk") != nullptr ||
       strstr(pathname, "magisk") != nullptr ||
@@ -383,6 +385,7 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
       strstr(pathname, "Screenshots") != nullptr ||
+      strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
