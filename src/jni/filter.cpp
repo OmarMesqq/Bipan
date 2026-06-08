@@ -43,6 +43,33 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
 
       // Load syscall number into accumulator
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
+#ifdef DEBUG
+      // Evaluate mmap
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 5),
+      // Load lower 32 bits of arg2 (prot) into accumulator
+      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[2])),
+      // Bitwise AND with PROT_EXEC
+      BPF_STMT(BPF_ALU | BPF_AND | BPF_K, PROT_EXEC),
+      // If result is 0 (no PROT_EXEC), jump forward 1 instruction to ALLOW
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 0),
+      // If result is > 0 (has PROT_EXEC), TRAP it to userspace!
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // Safe mmap: ALLOW
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+
+      // Evaluate mprotect
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mprotect, 0, 5),
+      // Load lower 32 bits of arg2 (prot) into accumulator
+      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[2])),
+      // Bitwise AND with PROT_EXEC
+      BPF_STMT(BPF_ALU | BPF_AND | BPF_K, PROT_EXEC),
+      // If result is 0 (no PROT_EXEC), jump forward 1 instruction to ALLOW
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 0),
+      // If result is > 0 (has PROT_EXEC), TRAP it to userspace!
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // Safe mprotect: ALLOW
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+#endif
 
       // System info
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
