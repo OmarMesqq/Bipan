@@ -231,6 +231,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
             ipc_mem->action = ACTION_USE_RET;
           }
+#ifdef DEBUG
+          else {
+            if (shouldLog(path_payload)) {
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Allowing untrusted open: %s", path_payload);
+            }
+          }
+#endif
         }
         break;
       }
@@ -263,6 +270,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
           }
+#ifdef DEBUG
+          else {
+            if (shouldLog(path_payload)) {
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Allowing untrusted open: %s", path_payload);
+            }
+          }
+#endif
         }
         break;
       }
@@ -303,7 +317,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
           }
 
-          // Allow (::) to pass through, block explicit LAN IPv6 addresses or discovery ports
           if (!is_v6_unspecified) {
             if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
               should_block = true;
@@ -325,11 +338,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (connect): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
         bool is_discovery = false;
 
         if (sock_payload->sa_family == AF_INET) {
@@ -348,22 +356,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           const char* type = is_discovery ? "discovery" : "LAN";
-
-          // if (!is_trusted) {
-          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "App-originated (connect) to %s blocked: %s", type, addr_str);
-          // } else {
-          //   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "System (connect) to %s blocked: %s", type, addr_str);
-          // }
         }
         break;
       }
       case __NR_listen: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (listen): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-
         if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
@@ -374,12 +370,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendto: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (sendto): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
           ipc_mem->ret = ghost_len;
@@ -395,12 +385,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendmsg: {
-        // if (sock_payload->sa_family != AF_UNIX) {
-        //   std::string connection_info = get_sockaddr_info(sock_payload);
-        //   std::string log_msg = "got (sendmsg): " + connection_info;
-        //   write_to_logcat_async(ANDROID_LOG_WARN, TAG, log_msg.c_str());
-        // }
-
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
           ipc_mem->ret = ghost_len;
@@ -434,8 +418,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
+      case __NR_mmap: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "executable (mmap)");
+        break;
+      }
+      case __NR_mprotect: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mprotect)");
+        break;
+      }
       default: {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got unexpected syscall: %d. Returning ENOSYS!", nr);
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected syscall: %d. Returning ENOSYS.", nr);
         ipc_mem->ret = -ENOSYS;
         ipc_mem->action = ACTION_USE_RET;
       }

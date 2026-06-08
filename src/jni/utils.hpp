@@ -105,26 +105,47 @@ inline int local_atoi(const char* s) {
   return res * sign;
 }
 
-inline bool is_smaps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          local_strstr(pathname, "/smaps") != nullptr);
+// Verifies if a segment of a string is purely numbers (a PID)
+__attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size_t len) {
+  if (len == 0) return false;
+  for (size_t i = 0; i < len; i++) {
+    if (str[i] < '0' || str[i] > '9') return false;
+  }
+  return true;
+}
+
+// Validates any /proc/<PID>/target_file layout
+__attribute__((always_inline)) inline bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
+  // 1. Must start with "/proc/"
+  if (strncmp(pathname, "/proc/", 6) != 0) return false;
+
+  // 2. Locate the next slash after "/proc/"
+  const char* pid_start = pathname + 6;
+  const char* next_slash = strchr(pid_start, '/');
+  if (!next_slash) return false;
+
+  // 3. Ensure the characters between the slashes are a valid PID number
+  size_t pid_len = next_slash - pid_start;
+  if (!is_pure_numeric(pid_start, pid_len)) return false;
+
+  // 4. Check if the remaining suffix matches exactly (e.g., "/maps" or "/smaps")
+  return strcmp(next_slash, suffix) == 0;
 }
 
 inline bool is_maps(const char* pathname) {
   return (strcmp(pathname, "/proc/self/maps") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          local_strstr(pathname, "/maps") != nullptr);
+         is_dynamic_proc_file(pathname, "/maps");
+}
+
+inline bool is_smaps(const char* pathname) {
+  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
+         is_dynamic_proc_file(pathname, "/smaps");
 }
 
 inline bool is_mounts(const char* pathname) {
   return (strcmp(pathname, "/proc/mounts") == 0) ||
          (strcmp(pathname, "/proc/self/mounts") == 0) ||
-         ((safe_proc_pid_path[0] != '\0') &&
-          starts_with(pathname, safe_proc_pid_path) &&
-          local_strstr(pathname, "/mounts") != nullptr);
+         is_dynamic_proc_file(pathname, "/mounts");
 }
 
 inline size_t get_msghdr_len(const struct msghdr* msg) {
@@ -339,32 +360,71 @@ __attribute__((always_inline)) static inline void* my_memcpy(void* dest, const v
   return dest;
 }
 
+__attribute__((always_inline)) inline bool is_exact_dir(const char* path, const char* target_dir) {
+  size_t len = strlen(target_dir);
+  if (strncmp(path, target_dir, len) == 0) {
+    // Return true if it ends exactly at the dir name, or has a trailing slash
+    return path[len] == '\0' || (path[len] == '/' && path[len + 1] == '\0');
+  }
+  return false;
+}
+
 __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
-  return (
-      !starts_with(pathname, "/data") &&
-      !starts_with(pathname, "/product/app/webview") &&
-      !starts_with(pathname, "/apex/com.android") &&
-      !starts_with(pathname, "/storage/emulated/0") &&
-      !starts_with(pathname, "/dev/ashmem") &&
-      !starts_with(pathname, "/dev/urandom") &&
-      !starts_with(pathname, "/dev/random") &&
-      !starts_with(pathname, "/dev/zero") &&
-      !starts_with(pathname, "/dev/null") &&
-      !starts_with(pathname, "/mnt/expand") &&
-      !([&]() {
-        // Grouped Proc Checks
-        if (starts_with(pathname, "/proc/")) {
-          if (strstr(pathname, "/cmdline") ||
-              strstr(pathname, "/task") ||
-              strstr(pathname, "/cgroup") ||
-              strstr(pathname, "/oom") ||
-              strstr(pathname, "/comm") ||
-              strstr(pathname, "/stat")) {
-            return true;
-          }
-        }
-        return false;
-      }()));
+  // 1. Completely ignore spammy app/system areas (both dirs AND files inside them)
+  if (starts_with(pathname, "/data/data") ||
+      starts_with(pathname, "/data/app") ||
+      starts_with(pathname, "/data/user/0") ||
+      starts_with(pathname, "/data/user_de/0/") ||
+      starts_with(pathname, "/storage/emulated/0/Android/media") ||
+      starts_with(pathname, "/storage/emulated/0/Android/data") ||
+      starts_with(pathname, "/data/misc/profiles") ||
+      starts_with(pathname, "/data/misc/shared_relro") ||
+      starts_with(pathname, "/product/app/webview") ||
+      starts_with(pathname, "/apex/com.android") ||
+      starts_with(pathname, "/mnt/expand")) {
+    return false;
+  }
+
+  // 2. Ignore noisy /dev accesses
+  if (starts_with(pathname, "/dev/ashmem") ||
+      starts_with(pathname, "/dev/urandom") ||
+      starts_with(pathname, "/dev/random") ||
+      starts_with(pathname, "/dev/zero") ||
+      starts_with(pathname, "/dev/null")) {
+    return false;
+  }
+
+  // 3. Ignore specific /proc stats (cleaner than the inline lambda)
+  if (starts_with(pathname, "/proc/")) {
+    if (strstr(pathname, "/cmdline") ||
+        strstr(pathname, "/task") ||
+        strstr(pathname, "/cgroup") ||
+        strstr(pathname, "/oom") ||
+        strstr(pathname, "/comm") ||
+        strstr(pathname, "/stat")) {
+      return false;
+    }
+  }
+
+  // 4. Ignore EXACT directory opens (directory scans), but LOG the files inside them!
+  if (is_exact_dir(pathname, "/data") ||
+      is_exact_dir(pathname, "/data/user") ||
+      is_exact_dir(pathname, "/data/user") ||
+      is_exact_dir(pathname, "/storage/emulated/0") ||
+      is_exact_dir(pathname, "/system") ||
+      is_exact_dir(pathname, "/system_ext") ||
+      is_exact_dir(pathname, "/system/framework") ||
+      is_exact_dir(pathname, "/system_ext/framework") ||
+      is_exact_dir(pathname, "/system/lib64") ||
+      is_exact_dir(pathname, "/system_ext/lib64") ||
+      is_exact_dir(pathname, "/product/lib64") ||
+      is_exact_dir(pathname, "/system/product/lib64") ||
+      is_exact_dir(pathname, "/vendor/lib64")) {
+    return false;
+  }
+
+  // If it survived all filters, log it!
+  return true;
 }
 
 __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* pathname) {
