@@ -3,7 +3,6 @@ package com.omarmesqq.bipan;
 import android.content.Context;
 import android.util.Log;
 import com.omarmesqq.bipan.modules.*;
-
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +71,7 @@ public class BipanJava {
   }
 
   /**
-   * Neuters hidden API restrictions in bleeding-edge Android versions
+   * Neuters hidden API restrictions
    * NOTE: should be called before install()
    */
   private static void unseal() {
@@ -105,15 +104,18 @@ public class BipanJava {
         Method forName = Class.class.getDeclaredMethod("forName", String.class);
         Method getDeclaredMethod = Class.class.getDeclaredMethod(
             "getDeclaredMethod", String.class, Class[].class);
+
         Class<?> vmRuntimeClass = (Class<?>) forName.invoke(null, "dalvik.system.VMRuntime");
         Method getRuntime = (Method) getDeclaredMethod.invoke(
             vmRuntimeClass, "getRuntime", (Object) null);
+
         Object vmRuntime = getRuntime.invoke(null);
         Method setHiddenApiExemptions = (Method) getDeclaredMethod.invoke(
             vmRuntimeClass, "setHiddenApiExemptions",
             (Object) new Class[] { String[].class });
-        setHiddenApiExemptions.invoke(
-            vmRuntime, new Object[] { new String[] { "L" } });
+
+        setHiddenApiExemptions.invoke(vmRuntime, new Object[] { new String[] { "L" } });
+
         Log.i(TAG, "ART VM unsealed (Modern approach)");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);

@@ -10,6 +10,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Map;
 
+/**
+ * Prevents apps from discovering LAN devices using mDNS (and possibly
+ * SSDP/UPnP and similar methods). The approach is two-fold:
+ * 
+ * - Intercept MediaRouter
+ * 
+ * - Intercept NSD Service
+ */
 public class AntiDiscoveryHook implements BaseHook {
   private static final String TAG = "BipanAntiDiscoveryHook";
 
@@ -34,8 +42,7 @@ public class AntiDiscoveryHook implements BaseHook {
   private void setupMediaRouter(Method getService, Map<String, IBinder> cache) throws Exception {
     IBinder realMediaRouterBinder = (IBinder) getService.invoke(null, "media_router");
     if (realMediaRouterBinder == null) {
-      Log.e(TAG, "Media Router service ('media_router') not found!");
-      return;
+      throw new Exception(TAG + " Media Router service ('media_router') not found!");
     }
 
     Class<?> iMediaRouterClz = Class.forName("android.media.IMediaRouterService");
@@ -43,7 +50,6 @@ public class AntiDiscoveryHook implements BaseHook {
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     final Object originalMediaRouterService = asInterface.invoke(null, realMediaRouterBinder);
 
-    // Dedicated InvocationHandler for MediaRouter
     InvocationHandler mediaRouterHandler = (proxy, method, args) -> {
       String methodName = method.getName();
       if (methodName.equals("registerClientAsUser") ||
@@ -55,6 +61,7 @@ public class AntiDiscoveryHook implements BaseHook {
           methodName.equals("setRouteListingPreference")) {
 
         Log.w(TAG, "Neutering MediaRouter method call: " + methodName);
+
         Class<?> returnType = method.getReturnType();
         if (returnType == void.class) {
           return null;
@@ -87,8 +94,7 @@ public class AntiDiscoveryHook implements BaseHook {
   private void setupNsd(Method getService, Map<String, IBinder> cache) throws Exception {
     IBinder realNsdBinder = (IBinder) getService.invoke(null, "servicediscovery");
     if (realNsdBinder == null) {
-      Log.e(TAG, "Network Service Discovery service 'servicediscovery' not found!");
-      return;
+      throw new Exception(TAG + " Network Service Discovery service 'servicediscovery' not found!");
     }
 
     Class<?> iNsdManagerClz = Class.forName("android.net.nsd.INsdManager");
@@ -96,7 +102,6 @@ public class AntiDiscoveryHook implements BaseHook {
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     final Object originalNsdService = asInterface.invoke(null, realNsdBinder);
 
-    // Dedicated InvocationHandler for NSD
     InvocationHandler nsdHandler = (proxy, method, args) -> {
       String methodName = method.getName();
 
@@ -105,7 +110,7 @@ public class AntiDiscoveryHook implements BaseHook {
         if (originalConnector != null) {
           Class<?> connectorClz = Class.forName("android.net.connectivity.android.net.nsd.INsdServiceConnector");
 
-          // The secondary proxy for INsdServiceConnector
+          // NSD calls a second instance: 'INsdServiceConnector', so create a proxy for it
           return Proxy.newProxyInstance(
               connectorClz.getClassLoader(),
               new Class[] { connectorClz },
@@ -116,6 +121,7 @@ public class AntiDiscoveryHook implements BaseHook {
                     cMethodName.contains("resolveService")) {
 
                   Log.w(TAG, "Neutering NSD method call: " + cMethodName);
+
                   Class<?> returnType = cMethod.getReturnType();
                   if (returnType == void.class)
                     return null;

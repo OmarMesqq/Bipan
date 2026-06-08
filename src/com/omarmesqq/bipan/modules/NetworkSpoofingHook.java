@@ -21,11 +21,20 @@ import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
 
+/**
+ * An almost-too-complex hook for some networking related services in Android:
+ * - Trims VPN flag from NetworkCapabilities
+ * - Hardcodes a fake IPv4 local address
+ * - Hardcodes 53Mbps as link speed
+ * - Hardcodes `VALIDATED` for connections i.e. not behind captive portal
+ * 
+ */
 public class NetworkSpoofingHook implements BaseHook {
   private static final String TAG = "BipanNetworkSpoofHook";
 
   @Override
   public void install(Context context) throws Exception {
+    // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
     Field sCacheField = serviceManager.getDeclaredField("sCache");
@@ -41,8 +50,7 @@ public class NetworkSpoofingHook implements BaseHook {
   private void setupConnectivitySpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
     IBinder realBinder = (IBinder) getService.invoke(null, "connectivity");
     if (realBinder == null) {
-      Log.e(TAG, "Connectivity service not found.");
-      return;
+      throw new Exception(TAG + " Connectivity service ('connectivity') not found!");
     }
 
     Class<?> iConnManagerClz = Class.forName("android.net.IConnectivityManager");
@@ -50,8 +58,8 @@ public class NetworkSpoofingHook implements BaseHook {
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     final Object originalConnService = asInterface.invoke(null, realBinder);
 
+    // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
-      // 1. Intercept Asynchronous IPC Callbacks (NetworkHook Logic)
       if (args != null) {
         for (int i = 0; i < args.length; i++) {
           if (args[i] instanceof Messenger) {
@@ -73,11 +81,9 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
 
-      // 2. Execute original method
       Object result = method.invoke(originalConnService, args);
 
-      // 3. Intercept Synchronous Returns (Combined NetworkHook & ConnectivityHook
-      // Logic)
+      // synchronous returns
       if (result instanceof NetworkCapabilities) {
         applyVpnSpoof((NetworkCapabilities) result);
       } else if (result != null && result.getClass().isArray()
@@ -106,8 +112,7 @@ public class NetworkSpoofingHook implements BaseHook {
   private void setupWifiSpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
     IBinder realBinder = (IBinder) getService.invoke(null, "wifi");
     if (realBinder == null) {
-      Log.e(TAG, "Wifi service not found.");
-      return;
+      throw new Exception(TAG + " Wifi service ('wifi') not found!");
     }
 
     Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
@@ -133,11 +138,10 @@ public class NetworkSpoofingHook implements BaseHook {
     cache.put("wifi", proxyBinder);
   }
 
-  // --- Helper Methods Below ---
-
   private void patchAsyncMessage(Message msg) {
-    if (msg == null)
+    if (msg == null) {
       return;
+    }
 
     if (msg.obj instanceof NetworkCapabilities) {
       applyVpnSpoof((NetworkCapabilities) msg.obj);
@@ -147,12 +151,14 @@ public class NetworkSpoofingHook implements BaseHook {
           if (NetworkCapabilities.class.isAssignableFrom(f.getType())) {
             f.setAccessible(true);
             NetworkCapabilities nc = (NetworkCapabilities) f.get(msg.obj);
-            if (nc != null)
+            if (nc != null) {
               applyVpnSpoof(nc);
+            }
           }
         }
       } catch (Throwable t) {
-        /* swallow */ }
+        Log.e(TAG, "Failed to apply direct async NetworkCapabilities spoof!");
+      }
     }
 
     Bundle data = msg.getData();
@@ -162,28 +168,32 @@ public class NetworkSpoofingHook implements BaseHook {
         for (String key : data.keySet()) {
           @SuppressWarnings("deprecation")
           Object val = data.get(key);
+
           if (val instanceof NetworkCapabilities) {
             applyVpnSpoof((NetworkCapabilities) val);
             data.putParcelable(key, (NetworkCapabilities) val);
           }
         }
       } catch (Throwable t) {
-        /* swallow */ }
+        Log.e(TAG, "Failed to apply Bundle-wrapped async NetworkCapabilities spoof!");
+      }
     }
   }
 
   private void applyVpnSpoof(NetworkCapabilities caps) {
-    if (caps == null)
+    if (caps == null) {
       return;
+    }
+
     try {
       Method removeTransport = NetworkCapabilities.class.getDeclaredMethod("removeTransportType", int.class);
       removeTransport.setAccessible(true);
-      removeTransport.invoke(caps, 4); // TRANSPORT_VPN
+      removeTransport.invoke(caps, NetworkCapabilities.TRANSPORT_VPN);
 
       Method addCap = NetworkCapabilities.class.getDeclaredMethod("addCapability", int.class);
       addCap.setAccessible(true);
-      addCap.invoke(caps, 15); // NET_CAPABILITY_NOT_VPN
-      addCap.invoke(caps, 16); // NET_CAPABILITY_VALIDATED
+      addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
+      addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_VALIDATED);
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof NetworkCapabilities via reflection", e);
     }

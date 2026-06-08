@@ -16,6 +16,15 @@ import com.omarmesqq.bipan.BaseHook;
 import android.provider.Settings.Secure;
 import android.provider.Settings.Global;;
 
+/**
+ * Spoofs identification vectors within Settings.Global and Settings.Secure:
+ * 
+ * - SSAID
+ * - Boot count
+ * - ADB enabled
+ * - Dev settings enabled
+ * - Wait for debugger
+ */
 public class SettingsHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanSettingsHook";
   private Object originalProvider;

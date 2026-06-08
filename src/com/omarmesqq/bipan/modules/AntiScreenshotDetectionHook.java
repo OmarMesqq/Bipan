@@ -18,8 +18,10 @@ import java.lang.reflect.InvocationHandler;
  * - Stripping `FLAG_SECURE` from Activities
  * - Neutering `registerScreenCaptureObserver` introduced in modern Android APIs
  * 
- * The native C++ implementation which `ENOENT`s paths with the word `Screenshot`
- * is also important for "smarter" apps which attempt to detect a new .png in these folders.
+ * The native C++ implementation which `ENOENT`s paths with the word
+ * `Screenshot`
+ * is also important for "smarter" apps which attempt to detect a new .png in
+ * these folders.
  * Perhaps these rely ultimately on `inotify`, but for now this suffices.
  */
 public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler {
@@ -43,13 +45,14 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
     if (realWindowBinder == null) {
       throw new Exception(TAG + "Failed to acquire real native WindowBinder handle!");
     }
+
     Class<?> iWindowManagerClz = Class.forName("android.view.IWindowManager");
     Class<?> iWindowManagerClzStubClz = Class.forName("android.view.IWindowManager$Stub");
     Method iWindowManagerClzStubClzAsInterface = iWindowManagerClzStubClz.getDeclaredMethod("asInterface",
         IBinder.class);
     final Object realWindowManager = iWindowManagerClzStubClzAsInterface.invoke(null, realWindowBinder);
 
-    // 1. Create a Global Proxy over the IWindowManager system service
+    // global proxy of the IWindowManager system service
     Object windowManagerProxy = Proxy.newProxyInstance(
         appClassLoader,
         new Class[] { iWindowManagerClz },
@@ -78,7 +81,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
                       if (arg instanceof WindowManager.LayoutParams) {
                         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) arg;
 
-                        // If FLAG_SECURE is requested, forcefully clear it from the composition matrix
+                        // If FLAG_SECURE is requested, clear it from the composition matrix
                         if ((lp.flags & WindowManager.LayoutParams.FLAG_SECURE) != 0) {
                           lp.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
                         }
@@ -98,7 +101,6 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
             : method.invoke(realWindowBinder, args));
 
     cache.put("window", windowProxyBinder);
-    Log.i(TAG, "Low-level Global Window Compositor Hook installed successfully.");
 
     // Screenshot
     IBinder realActivityTaskBinder = (IBinder) getService.invoke(null, "activity_task");
@@ -117,7 +119,6 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     this.originalService = asInterface.invoke(null, finalRealBinder);
 
-    // Create our custom proxy
     Object proxy = Proxy.newProxyInstance(
         iInterface.getClassLoader(),
         new Class[] { iInterface },
@@ -134,9 +135,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
         });
     cache.put("activity_task", proxyBinder);
 
-    // Direct Singleton Overwrite
-    // Forcefully replace the service instance even if the Main thread already
-    // cached it.
+    // overwrite the ActivityTaskManager singleton even if the Main thread cached it
     Class<?> atmClz = Class.forName("android.app.ActivityTaskManager");
     Field singletonField = atmClz.getDeclaredField("IActivityTaskManagerSingleton");
     singletonField.setAccessible(true);
@@ -146,7 +145,6 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
     Field mInstanceField = singletonClz.getDeclaredField("mInstance");
     mInstanceField.setAccessible(true);
 
-    // Overwrite the field directly with our proxy object
     mInstanceField.set(singletonInstance, proxy);
   }
 
