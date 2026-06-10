@@ -59,7 +59,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
         (proxy, method, args) -> {
           if ("registerScreenRecordingCallback".equals(method.getName())) {
             Log.w(TAG, "Blocked screen-recording registration: " + method.getName());
-            return true;
+            return false;
           }
 
           Object result = method.invoke(realWindowManager, args);
