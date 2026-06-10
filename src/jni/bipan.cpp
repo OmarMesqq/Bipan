@@ -209,7 +209,7 @@ class Bipan : public zygisk::ModuleBase {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
       // synchronous injection
-      installEarlyStub(env, payloadClass);
+      // installEarlyStub(env, payloadClass);
 
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
