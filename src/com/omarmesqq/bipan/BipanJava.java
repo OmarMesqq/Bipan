@@ -141,6 +141,7 @@ public class BipanJava {
   public static void install() {
     new Thread(() -> {
       try {
+        unseal();
         Context ctx = waitForContextDirect();
         if (ctx != null) {
           loadModules(ctx);
