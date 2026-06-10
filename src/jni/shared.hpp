@@ -17,6 +17,8 @@ extern uintptr_t g_bipan_lib_end;
 
 extern char package_name[256];
 
+extern jclass g_bipanJavaClass;
+
 
 
 #ifdef DEBUG
