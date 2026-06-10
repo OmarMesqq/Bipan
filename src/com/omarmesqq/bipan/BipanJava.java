@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import android.app.Instrumentation;
+import android.os.Bundle;
+import android.app.Application;
 
 public class BipanJava {
   private static final String TAG = "BipanJava";
@@ -18,6 +21,8 @@ public class BipanJava {
 
   private static final CountDownLatch modulesReady = new CountDownLatch(1);
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
+
+  private static final long WAIT_UNTIL_MODULES_READY_TIMEOUT_MS = 15000;
 
   /**
    * Phase 1: synchronous, called from C++ postAppSpecialize.
@@ -40,7 +45,7 @@ public class BipanJava {
       sPM.setAccessible(true);
       sPM.set(null, stub);
 
-      Log.i(TAG, "Early stub proxy installed on IPackageManager");
+      Log.i(TAG, "Early stub proxy installed.");
     } catch (Exception e) {
       Log.e(TAG, "Failed to install early stub: ", e);
     }
@@ -57,6 +62,7 @@ public class BipanJava {
     if (!instrumentationHooked.compareAndSet(false, true)) {
       return; // both clamp and clear may fire — only hook once
     }
+
     try {
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Object at = atClz.getMethod("currentActivityThread").invoke(null);
@@ -73,41 +79,43 @@ public class BipanJava {
         return;
       }
 
-      android.app.Instrumentation hooked = new android.app.Instrumentation() {
+      Instrumentation hooked = new Instrumentation() {
         @Override
-        public void onCreate(android.os.Bundle args) {
+        public void onCreate(Bundle args) {
           // Fires after mInitialApplication is set,
           // before installContentProviders and app.onCreate()
-          Log.i(TAG, "Instrumentation.onCreate — waiting for modules");
           try {
-            boolean done = modulesReady.await(
-                10000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            boolean done = modulesReady.await(WAIT_UNTIL_MODULES_READY_TIMEOUT_MS,
+                java.util.concurrent.TimeUnit.MILLISECONDS);
             if (!done) {
-              Log.e(TAG, "Modules timed out — proceeding anyway");
+              Log.e(TAG, "[!] Module loading timed out! Proceeding anyway");
             } else {
               Log.i(TAG, "Instrumentation.onCreate — modules ready");
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+          } catch (Exception e) {
+            Log.e(TAG, "Unknown exception captured at Instrumentation.onCreate: " + e);
           }
+
           try {
             realInstr.getClass()
                 .getMethod("onCreate", android.os.Bundle.class)
                 .invoke(realInstr, args);
           } catch (Exception e) {
-            Log.w(TAG, "realInstr.onCreate delegation failed: "
-                + e.getMessage());
+            Log.e(TAG, "[!] Failed to call original Instrumentation onCreate! Reason: " + e.getMessage());
           }
         }
 
         @Override
-        public void callApplicationOnCreate(android.app.Application app) {
+        public void callApplicationOnCreate(Application app) {
           try {
             realInstr.getClass()
                 .getMethod("callApplicationOnCreate",
                     android.app.Application.class)
                 .invoke(realInstr, app);
           } catch (Exception e) {
+            Log.e(TAG, "Unknown exception captured at Instrumentation.callApplicationOnCreate: " + e);
             super.callApplicationOnCreate(app);
           }
         }
@@ -119,7 +127,7 @@ public class BipanJava {
       mThreadField.set(hooked, mThreadField.get(realInstr));
 
       mInstrField.set(at, hooked);
-      Log.i(TAG, "mInstrumentation hooked — will block before providers/onCreate");
+      Log.i(TAG, "mInstrumentation hooked. This should block before ContentProviders and onCreate.");
     } catch (Exception e) {
       Log.e(TAG, "hookInstrumentationNow failed: ", e);
     }
@@ -133,7 +141,6 @@ public class BipanJava {
   public static void install() {
     new Thread(() -> {
       try {
-        unseal();
         Context ctx = waitForContextDirect();
         if (ctx != null) {
           loadModules(ctx);
@@ -158,8 +165,6 @@ public class BipanJava {
       if (at != null) {
         Object app = mInitialApplicationField.get(at);
         if (app instanceof Context) {
-          Log.i(TAG, "Got context via mInitialApplication after "
-              + i + " iterations");
           return (Context) app;
         }
         app = atClass.getMethod("getApplication").invoke(at);
@@ -174,6 +179,7 @@ public class BipanJava {
 
   private static void loadModules(Context context) {
     List<BaseHook> modules = new ArrayList<>();
+
     modules.add(new AntiAppSweepingHook());
     modules.add(new SettingsHook());
     modules.add(new AntiScreenshotDetectionHook());
@@ -184,15 +190,16 @@ public class BipanJava {
     for (BaseHook module : modules) {
       try {
         module.install(context);
-        Log.i(TAG, "Module successfully loaded: "
-            + module.getClass().getSimpleName());
+        Log.i(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
       } catch (Exception e) {
-        Log.e(TAG, "Failed to load module: "
-            + module.getClass().getName(), e);
+        Log.e(TAG, "Failed to load module: " + module.getClass().getName(), e);
       }
     }
   }
 
+  /**
+   * TODO: maybe reseal if possible?
+   */
   private static void unseal() {
     try {
       Method getDeclaredMethod = Class.class.getDeclaredMethod(
