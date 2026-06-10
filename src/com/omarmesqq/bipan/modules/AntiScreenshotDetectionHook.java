@@ -97,8 +97,6 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
                 });
           }
 
-          Log.d(TAG, "[!!!] Allowing window manager method: " + method.getName());
-
           return result;
         });
 
@@ -165,7 +163,6 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
       return null;
     }
 
-    Log.d(TAG, "[!!!] Allowing INVOKED window manager method: " + methodName);
     return method.invoke(originalService, args);
   }
 }

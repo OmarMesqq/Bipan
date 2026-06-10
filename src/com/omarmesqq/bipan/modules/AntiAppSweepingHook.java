@@ -190,8 +190,9 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
 
       default: {
         Object result = method.invoke(originalPM, args);
-        final String stackTrace = Log.getStackTraceString(new Throwable());
-        Log.e(TAG, "Allowing app PM sweeping method: " + method.getName() + " Stacktrace:\n" + stackTrace);
+        // final String stackTrace = Log.getStackTraceString(new Throwable());
+        // Log.e(TAG, "Allowing app PM sweeping method: " + method.getName() + " Stacktrace:\n" + stackTrace);
+        Log.e(TAG, "Allowing app PM sweeping method: " + method.getName());
         return result;
       }
     }
