@@ -55,6 +55,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     _exit(1);
   }
   in_sigsys_handler = true;
+  
+#ifdef DEBUG
+  s_violation_count.fetch_add(1, std::memory_order_relaxed);
+  s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
+#endif
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Lying about sendmmsg existing...");
@@ -63,6 +68,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  // Use atomic cas here
   lock_ipc();
 
   long arg0 = ctx->uc_mcontext.regs[0];
@@ -243,6 +249,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   ipc_mem->status = IDLE;
+  // Use atomic cas here
   unlock_ipc();
 
   ctx->uc_mcontext.regs[0] = result;

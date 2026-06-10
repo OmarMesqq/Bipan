@@ -19,6 +19,7 @@
 #include <sys/syscall.h>
 #include <sys/utsname.h>
 #include <syscall.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -60,6 +61,18 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
+static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
+                                  char* out, size_t out_size);
+
+#ifdef DEBUG
+static uint64_t last_dump_ns = 0;
+
+static inline uint64_t monotonic_ns() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+}
+#endif
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -91,6 +104,20 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       futex_wait(&ipc_mem->status, ipc_mem->status);
     }
     __sync_synchronize();
+
+#ifdef DEBUG
+    uint64_t now = monotonic_ns();
+    if (now - last_dump_ns >= 1000000000ULL) {
+      last_dump_ns = now;
+      uint64_t total = s_violation_count.exchange(0, std::memory_order_relaxed);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "violations/sec: %lu", total);
+      for (int i = 0; i < 512; i++) {
+        uint64_t c = s_syscall_counts[i].exchange(0, std::memory_order_relaxed);
+        if (c > 0)
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "  [%d]: %lu/s", i, c);
+      }
+    }
+#endif
 
     int nr = ipc_mem->nr;
     const char* path_payload = ipc_mem->string_payload;
