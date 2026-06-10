@@ -174,7 +174,7 @@ class Bipan : public zygisk::ModuleBase {
   bool isTargetApp;
 
   void bootstrapJavaPayload(JNIEnv* env) {
-    // Map the byte array into a Java DirectByteBuffer
+    // Map the .dex byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to create DirectByteBuffer!");
@@ -186,7 +186,7 @@ class Bipan : public zygisk::ModuleBase {
     jmethodID getSystemClassLoader = env->GetStaticMethodID(classLoaderClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
     jobject systemClassLoader = env->CallStaticObjectMethod(classLoaderClass, getSystemClassLoader);
 
-    // Instantiate dalvik.system.InMemoryDexClassLoader using the system's ClassLoader
+    // Instantiate InMemoryDexClassLoader using the system's ClassLoader
     jclass inMemoryDexClassLoaderClass = env->FindClass("dalvik/system/InMemoryDexClassLoader");
     jmethodID constructor = env->GetMethodID(inMemoryDexClassLoaderClass, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
     jobject dexClassLoader = env->NewObject(inMemoryDexClassLoaderClass, constructor, byteBuffer, systemClassLoader);
@@ -197,14 +197,14 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    // 4. Ask our new ClassLoader to find your SettingsHook class
+    // Ask the ClassLoader to load BipanJava's entrypoint
     jmethodID loadClassMethod = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
     jstring className = env->NewStringUTF(BIPAN_JAVA_PACKAGE_NAME);
     jobject payloadClassObj = env->CallObjectMethod(dexClassLoader, loadClassMethod, className);
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load class %s", BIPAN_JAVA_PACKAGE_NAME);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load BipanJava's class (%s)!", BIPAN_JAVA_PACKAGE_NAME);
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
@@ -212,15 +212,18 @@ class Bipan : public zygisk::ModuleBase {
       installEarlyStub(env, payloadClass);
 
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
-      // Call install() with NO context — Java side will waitForContext()
+
+      // Calling install() WITHOUT passing context
+      // Java side should call waitForContext()
       jmethodID installMethod = env->GetStaticMethodID(
           payloadClass, "install", "()V");
+
       if (installMethod != nullptr) {
         env->CallStaticVoidMethod(payloadClass, installMethod);
         if (env->ExceptionCheck()) {
           env->ExceptionClear();
           write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                                "Exception in Java payload install()!");
+                                "[!] Could not .install() BipanJava!");
         } else {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG,
                                 "BipanJava DEX payload successfully injected.");
