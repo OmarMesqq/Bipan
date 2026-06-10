@@ -157,6 +157,11 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
       return null;
     }
 
+    if (methodName.equals("addScreenRecordingCallback")) {
+      Log.w(TAG, "Blocked screen recording detection method: " + methodName);
+      return null;
+    }
+
     return method.invoke(originalService, args);
   }
 }
