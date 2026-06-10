@@ -16,7 +16,11 @@ import androidx.webkit.WebViewStartupException
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
+import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
+import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
+import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import java.util.concurrent.Executors
 
 
@@ -25,18 +29,19 @@ private const val TAG = "MainApplication"
 class MainApplication: Application() {
     companion object {
         init {
-            if (BuildConfig.DEBUG) {
-                val stackTrace = Log.getStackTraceString(Throwable())
-                Log.d("LIFECYCLE MAIN APPLICATION", "Application static init stack trace:\n$stackTrace")
-            }
             System.loadLibrary("grunfeld")
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
-        val installInfo = dumpInstallerInfo(this)
-        Log.d(TAG, "Application.onCreate query: $installInfo")
+        Log.d(TAG, "Application.onCreate query 1:\n${dumpInstallerInfo(this)}")
+        Log.d(TAG, "Application.onCreate query 2:\n${dumpQueryIntentActivities(this)}")
+        Log.d(TAG, "Application.onCreate query 3:\n${dumpGetPackageInfo(this, "com.topjohnwu.magisk")}")
+        Log.d(TAG, "Application.onCreate query 4:\n${dumpGetInstalledApplications(this)}")
+        Log.d(TAG, "Application.onCreate query 5:\n${dumpGetApplicationInfo(this)}")
+
+
         super.onCreate()
         Avocado.init(this)
         if (BuildConfig.DEBUG) {
