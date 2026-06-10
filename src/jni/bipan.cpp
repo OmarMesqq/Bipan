@@ -37,6 +37,7 @@ char safe_proc_pid_path[64] = {0};
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
 char package_name[256] = {0};
+jclass g_bipanJavaClass = nullptr;
 // Broker
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
@@ -48,6 +49,7 @@ struct LibBounds {
 };
 
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
+void installEarlyStub(JNIEnv* env, jclass bipanJavaClass);
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -138,7 +140,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 #endif
       spoofBuildFields();
-      bootstrapJavaPayload();
+      bootstrapJavaPayload(env);
 
       registerSignalHandler();
 
@@ -171,7 +173,7 @@ class Bipan : public zygisk::ModuleBase {
   std::unordered_set<std::string> targetsSet;
   bool isTargetApp;
 
-  void bootstrapJavaPayload() {
+  void bootstrapJavaPayload(JNIEnv* env) {
     // Map the byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
@@ -206,18 +208,22 @@ class Bipan : public zygisk::ModuleBase {
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
-      // Call Java-side .install()
-      if (payloadClass != nullptr) {
-        jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
-        if (installMethod != nullptr) {
-          env->CallStaticVoidMethod(payloadClass, installMethod);
+      // synchronous injection
+      installEarlyStub(env, payloadClass);
 
-          if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Exception thrown inside Java payload install()!");
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
-          }
+      g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
+      // Call install() with NO context — Java side will waitForContext()
+      jmethodID installMethod = env->GetStaticMethodID(
+          payloadClass, "install", "()V");
+      if (installMethod != nullptr) {
+        env->CallStaticVoidMethod(payloadClass, installMethod);
+        if (env->ExceptionCheck()) {
+          env->ExceptionClear();
+          write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
+                                "Exception in Java payload install()!");
+        } else {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG,
+                                "BipanJava DEX payload successfully injected.");
         }
       }
     }
@@ -381,6 +387,19 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
     return 1;  // Stop iteration
   }
   return 0;
+}
+
+void installEarlyStub(JNIEnv* env, jclass bipanJavaClass) {
+  jmethodID stubMethod = env->GetStaticMethodID(
+      bipanJavaClass, "installEarlyStub", "()V");
+  if (stubMethod != nullptr) {
+    env->CallStaticVoidMethod(bipanJavaClass, stubMethod);
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
+                            "installEarlyStub() threw an exception");
+    }
+  }
 }
 
 // Register the module class
