@@ -29,6 +29,7 @@ import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import androidx.annotation.RequiresApi
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
+import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -38,6 +39,7 @@ fun JavaInfoScreen() {
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
+    var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
 
     val screenScrollState = rememberScrollState()
 
@@ -68,7 +70,6 @@ fun JavaInfoScreen() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(text = "Java Layer", style = MaterialTheme.typography.titleMedium)
             Button(
                 onClick = { javaSensorsReport = dumpJavaSensorInfo(context) },
                 modifier = Modifier.fillMaxWidth()
@@ -100,9 +101,9 @@ fun JavaInfoScreen() {
             }
         }
 
-        SectionHeader("BUILD AND SETTINGS INFO")
+        SectionHeader("ANDROID INSTALLER WHATNOTS")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "App installer info", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Get installer info of self (Grunfeld)", style = MaterialTheme.typography.titleMedium)
 
             ReportTextWithCopy(installerInfo, "Installer info not queried")
             Button(
@@ -112,6 +113,18 @@ fun JavaInfoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("getInstallSourceInfo()")
+            }
+
+            Text(text = "Query Intent Activities", style = MaterialTheme.typography.titleMedium)
+
+            ReportTextWithCopy(dumpQueryIntentActivities, "Query Intent Activities not tested")
+            Button(
+                onClick = {
+                    dumpQueryIntentActivities = dumpQueryIntentActivities(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("dumpQueryIntentActivities()")
             }
         }
     }
