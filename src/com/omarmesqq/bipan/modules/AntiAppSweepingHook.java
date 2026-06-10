@@ -188,9 +188,27 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         return null;
       }
 
-      default:
-        Log.e(TAG, "Allowing app PM sweeping method: " + method.getName());
-        return method.invoke(originalPM, args);
+      default: {
+        Object result = method.invoke(originalPM, args);
+        if (method.getName().equals("getApplicationInfo")) {
+          String pkg = (args != null && args.length > 0 && args[0] instanceof String)
+              ? (String) args[0]
+              : "unknown";
+          if (result instanceof android.content.pm.ApplicationInfo) {
+            android.content.pm.ApplicationInfo ai = (android.content.pm.ApplicationInfo) result;
+            Log.w(TAG, "getApplicationInfo returning for: " + pkg
+                + " | packageName=" + ai.packageName
+                + " | sourceDir=" + ai.sourceDir
+                + " | uid=" + ai.uid
+                + " | flags=0x" + Integer.toHexString(ai.flags));
+          } else {
+            Log.w(TAG, "getApplicationInfo returned null for: " + pkg);
+          }
+        } else {
+          Log.e(TAG, "Allowing app PM sweeping method: " + method.getName());
+        }
+        return result;
+      }
     }
   }
 

@@ -2,4 +2,4 @@
 - Investigate [pairipfix (app not installed from Play)](https://github.com/ahmedmani/pairipfix)
 - Implement SafetyNet/[Integrity](https://github.com/1nikolas/play-integrity-checker-app)
 - Implement [TOML configuration](https://toml.io/en/)
-- Learn more about [LSPosed](https://github.com/LSPosed/LSPosed)-like implementations
+- Learn more about ART-hooking frameworks like [LSPlant](https://github.com/LSPosed/LSPlant)
