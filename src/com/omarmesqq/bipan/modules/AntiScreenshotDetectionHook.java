@@ -57,6 +57,11 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
         appClassLoader,
         new Class[] { iWindowManagerClz },
         (proxy, method, args) -> {
+          if ("registerScreenRecordingCallback".equals(method.getName())) {
+            Log.w(TAG, "Blocked screen-recording registration: " + method.getName());
+            return true;
+          }
+
           Object result = method.invoke(realWindowManager, args);
 
           // Intercept the openSession operation where layout controllers are handed to
@@ -91,6 +96,9 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
                   return sMethod.invoke(realSession, sArgs);
                 });
           }
+
+          Log.d(TAG, "[!!!] Allowing window manager method: " + method.getName());
+
           return result;
         });
 
@@ -157,11 +165,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
       return null;
     }
 
-    if (methodName.equals("addScreenRecordingCallback")) {
-      Log.w(TAG, "Blocked screen recording detection method: " + methodName);
-      return null;
-    }
-
+    Log.d(TAG, "[!!!] Allowing INVOKED window manager method: " + methodName);
     return method.invoke(originalService, args);
   }
 }
