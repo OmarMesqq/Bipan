@@ -3,12 +3,18 @@
 
     <!-- Necessary for WebView and socket tests   -->
     <uses-permission android:name="android.permission.INTERNET" />
-
+    <!-- Necessary for connectivity inspection   -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Necessary for full VPN logic checking   -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- For testing if BipanJava is successfully nop-ing this   -->
+    <!-- Bipan should block this   -->
     <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
+
+    <!-- Bipan should neuter this    -->
+    <queries>
+        <package android:name="com.spotify.music" />
+        <package android:name="com.celzero.bravedns" />
+    </queries>
 
     <application
         android:icon="@mipmap/ic_launcher"
