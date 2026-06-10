@@ -25,6 +25,10 @@ private const val TAG = "MainApplication"
 class MainApplication: Application() {
     companion object {
         init {
+            if (BuildConfig.DEBUG) {
+                val stackTrace = Log.getStackTraceString(Throwable())
+                Log.d("LIFECYCLE MAIN APPLICATION", "Application static init stack trace:\n$stackTrace")
+            }
             System.loadLibrary("grunfeld")
         }
     }
