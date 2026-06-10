@@ -10,6 +10,10 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import android.os.RemoteException;
 
 /**
  * Single IPackageManager proxy:
@@ -25,6 +29,17 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
 
   private Object originalPM;
   private String selfPackageName = "unknown";
+
+  private static final Set<String> TRUSTED_PACKAGES = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms",
+      "com.android.webview"));
+
+  private Object emptyParceledListSlice() throws Exception {
+    Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
+    Method emptyList = sliceClass.getMethod("emptyList");
+    return emptyList.invoke(null);
+  }
 
   @Override
   public void install(Context context) throws Exception {
@@ -80,17 +95,17 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
 
       case "queryIntentActivities": {
         Log.w(TAG, "Blinded: queryIntentActivities");
-        return new ArrayList<>();
+        return emptyParceledListSlice();
       }
 
       case "getInstalledApplications": {
         Log.w(TAG, "Blinded: getInstalledApplications");
-        return new ArrayList<>();
+        return emptyParceledListSlice();
       }
 
       case "getInstalledPackages": {
         Log.w(TAG, "Blinded: getInstalledPackages");
-        return new ArrayList<>();
+        return emptyParceledListSlice();
       }
 
       // API 1 overload: (String packageName, int flags)
@@ -100,8 +115,14 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         String pkg = (args != null && args.length > 0 && args[0] instanceof String)
             ? (String) args[0]
             : null;
+
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          Log.d(TAG, "Allowing getPackageInfo for trusted pkg: " + pkg);
+          return method.invoke(originalPM, args);
+        }
+
         Log.w(TAG, "Blinded: " + method.getName() + " for: " + pkg);
-        throw new android.content.pm.PackageManager.NameNotFoundException(pkg);
+        throw new RemoteException("Package not found: " + pkg);
       }
 
       default:
