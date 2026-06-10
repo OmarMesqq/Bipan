@@ -347,6 +347,57 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     return sb.toString()
 }
 
-fun dumpGetInstalledApplications(): String {
-    return ""
+/**
+ * TODO:
+ * - Hook all overloads
+ * - Hide custom ROM packages
+ * - Make MicroG packages system
+ */
+fun dumpGetInstalledApplications(context: Context): String {
+    val pm = context.packageManager
+    val sb = StringBuilder()
+
+    // --- getInstalledApplications ---
+    // Lighter: runtime info only, no components/permissions
+    val apps: List<android.content.pm.ApplicationInfo> =
+        pm.getInstalledApplications(PackageManager.GET_META_DATA)
+
+    sb.appendLine("=== getInstalledApplications (${apps.size} apps) ===")
+    apps.forEach { app: android.content.pm.ApplicationInfo ->
+        val isSystem = (app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+//        val isDebuggable = (app.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        sb.appendLine("${app.packageName} | system: $isSystem")
+//        sb.appendLine("  UID: ${app.uid} | system: $isSystem | debuggable: $isDebuggable")
+//        sb.appendLine("  dataDir: ${app.dataDir}")
+//        sb.appendLine("  nativeLibraryDir: ${app.nativeLibraryDir}")
+    }
+
+    // --- getInstalledPackages ---
+    // Heavier: full PackageInfo per app — components + permissions in one shot
+//    val flags = (
+//            PackageManager.GET_PERMISSIONS or
+//                    PackageManager.GET_ACTIVITIES or
+//                    PackageManager.GET_SERVICES or
+//                    PackageManager.GET_RECEIVERS or
+//                    PackageManager.GET_PROVIDERS
+//            )
+//    val packages: List<PackageInfo> = pm.getInstalledPackages(flags)
+
+//    sb.appendLine("\n=== getInstalledPackages (${packages.size} packages) ===")
+//    packages.forEach { pkg: PackageInfo ->
+//        sb.appendLine("\n${pkg.packageName} v${pkg.versionName}")
+//        sb.appendLine("  Activities : ${pkg.activities?.size ?: 0}")
+//        sb.appendLine("  Services   : ${pkg.services?.size ?: 0}")
+//        sb.appendLine("  Receivers  : ${pkg.receivers?.size ?: 0}")
+//        sb.appendLine("  Providers  : ${pkg.providers?.size ?: 0}")
+//
+//        val perms: Array<String> = pkg.requestedPermissions ?: emptyArray()
+//        val permFlags: IntArray = pkg.requestedPermissionsFlags ?: IntArray(0)
+//        perms.forEachIndexed { i, perm: String ->
+//            val granted = (permFlags.getOrElse(i) { 0 } and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+//            sb.appendLine("  [${if (granted) "GRANTED" else "DENIED "}] $perm")
+//        }
+//    }
+
+    return sb.toString()
 }

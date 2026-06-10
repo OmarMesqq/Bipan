@@ -28,6 +28,7 @@ import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import androidx.annotation.RequiresApi
+import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
@@ -42,6 +43,7 @@ fun JavaInfoScreen() {
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
+    var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -139,6 +141,18 @@ fun JavaInfoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("dumpGetPackageInfo(\"Instagram\")")
+            }
+
+            Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
+
+            ReportTextWithCopy(getInstalledPackagesInfo, "Installed applications not queried")
+            Button(
+                onClick = {
+                    getInstalledPackagesInfo = dumpGetInstalledApplications(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("dumpGetInstalledApplications()")
             }
         }
     }
