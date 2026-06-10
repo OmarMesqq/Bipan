@@ -3,7 +3,9 @@ package com.omarmesqq.bipan;
 import android.content.Context;
 import android.util.Log;
 import com.omarmesqq.bipan.modules.*;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,6 +13,34 @@ public class BipanJava {
   private static final String TAG = "BipanJava";
   private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;
   private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 5;
+
+  /**
+   * Phase 1: Called synchronously from C++ postAppSpecialize via JNI.
+   * Installs a pass-through stub on IPackageManager before any app Java runs.
+   * No Context needed — just needs ActivityThread to exist, which it does.
+   */
+  public static void installEarlyStub() {
+    try {
+      unseal();
+      Class<?> atClz = Class.forName("android.app.ActivityThread");
+      Method getPM = atClz.getDeclaredMethod("getPackageManager");
+      getPM.setAccessible(true);
+      final Object originalPM = getPM.invoke(null);
+
+      Object stub = Proxy.newProxyInstance(
+          atClz.getClassLoader(),
+          new Class[] { Class.forName("android.content.pm.IPackageManager") },
+          (proxy, method, args) -> method.invoke(originalPM, args));
+
+      Field sPM = atClz.getDeclaredField("sPackageManager");
+      sPM.setAccessible(true);
+      sPM.set(null, stub);
+
+      Log.i(TAG, "Early stub proxy installed on IPackageManager");
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to install early stub: ", e);
+    }
+  }
 
   /**
    * Entrypoint of Java-layer hooks called by Bipan in C++
@@ -37,10 +67,11 @@ public class BipanJava {
     List<BaseHook> modules = new ArrayList<>();
 
     modules.add(new SettingsHook());
-    modules.add(new InstallerInfoHook());
+    // modules.add(new InstallerInfoHook());
     modules.add(new AntiScreenshotDetectionHook());
     modules.add(new AntiDiscoveryHook());
     modules.add(new NetworkSpoofingHook());
+    modules.add(new AntiAppSweepingHook());
 
     for (BaseHook module : modules) {
       try {
@@ -73,6 +104,7 @@ public class BipanJava {
   /**
    * Neuters hidden API restrictions
    * NOTE: should be called before install()
+   * TODO: maybe reseal in the future if possible?
    */
   private static void unseal() {
     try {

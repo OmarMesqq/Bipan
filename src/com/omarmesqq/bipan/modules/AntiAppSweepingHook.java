@@ -4,16 +4,13 @@ import android.content.Context;
 import android.content.pm.PackageInstaller;
 import android.util.Log;
 import com.omarmesqq.bipan.BaseHook;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import android.os.RemoteException;
 
 /**
  * Single IPackageManager proxy:
@@ -65,6 +62,7 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
     mPMField.set(pmWrapper, proxy);
 
     Log.i(TAG, "AntiAppSweepingHook installed — total blindness mode");
+    Log.i(TAG, "originalPM class: " + originalPM.getClass().getName());
   }
 
   @Override
@@ -122,7 +120,7 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         }
 
         Log.w(TAG, "Blinded: " + method.getName() + " for: " + pkg);
-        throw new RemoteException("Package not found: " + pkg);
+        return null;
       }
 
       default:
