@@ -117,6 +117,16 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace mPM directly: " + e.getMessage());
     }
+
+    try {
+      Class<?> atClz = Class.forName("android.app.ActivityThread");
+      Field sPMField = atClz.getDeclaredField("sPackageManager");
+      sPMField.setAccessible(true);
+      sPMField.set(null, pmProxy);
+      Log.d(TAG, "Replaced sPackageManager in ActivityThread");
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
+    }
   }
 
   @Override
