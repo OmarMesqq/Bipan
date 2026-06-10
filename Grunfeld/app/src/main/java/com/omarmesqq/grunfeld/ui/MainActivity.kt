@@ -3,6 +3,7 @@ package com.omarmesqq.grunfeld.ui
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,12 +20,12 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import java.util.function.Consumer
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
-import com.scottyab.rootbeer.RootBeer
 
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -34,12 +35,20 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object RootCheckerScreen : Screen("root-check", "Root Check", Icons.Default.Android)
 }
 
+private const val TAG = "MainActitvity"
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory()
     }
-    val screenCaptureCallback = ScreenCaptureCallback {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, "MainActitvity", "Screenshot detected!", shouldToast = true)
+
+    private val screenCaptureCallback = ScreenCaptureCallback {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screenshot detected!", shouldToast = true)
+    }
+    private val screenRecordCallback = Consumer<Int> {state ->
+        if (state == SCREEN_RECORDING_STATE_VISIBLE) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screen recording in progress!", shouldToast = true)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,15 +73,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+
     override fun onStart() {
         super.onStart()
         registerScreenCaptureCallback(mainExecutor, screenCaptureCallback)
+        val initialWindowState = windowManager.addScreenRecordingCallback(mainExecutor, screenRecordCallback)
+        screenRecordCallback.accept(initialWindowState)
     }
 
-    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+
     override fun onStop() {
         super.onStop()
         unregisterScreenCaptureCallback(screenCaptureCallback)
+        windowManager.removeScreenRecordingCallback(screenRecordCallback)
     }
 }

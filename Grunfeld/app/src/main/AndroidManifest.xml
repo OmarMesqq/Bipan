@@ -9,8 +9,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Bipan should block this   -->
     <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
+    <uses-permission android:name="android.permission.DETECT_SCREEN_RECORDING" />
 
-    <!-- Bipan should neuter this    -->
+
+    <!-- Bipan should neuter this -->
     <queries>
         <package android:name="com.spotify.music" />
         <package android:name="com.celzero.bravedns" />
