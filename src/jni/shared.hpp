@@ -18,6 +18,12 @@ extern uintptr_t g_bipan_lib_end;
 extern char package_name[256];
 
 
+
+#ifdef DEBUG
+inline std::atomic<uint64_t> s_violation_count{0};
+inline std::atomic<uint64_t> s_syscall_counts[512]{};
+#endif
+
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,
   CMD_START_BROKER = 2
