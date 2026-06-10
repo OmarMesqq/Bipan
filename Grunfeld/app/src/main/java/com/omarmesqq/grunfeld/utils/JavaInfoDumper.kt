@@ -16,8 +16,8 @@ import android.text.format.Formatter
 import java.net.Inet4Address
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
-import androidx.core.net.toUri
+import android.content.pm.PackageInfo
+import android.content.pm.SigningInfo
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -287,8 +287,64 @@ fun dumpQueryIntentActivities(context: Context): String {
     return sb.toString()
 }
 
-fun dumpGetPackageInfo(): String {
-    return ""
+fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
+    val pm = context.packageManager
+    val sb = StringBuilder()
+
+    val flags = (
+            PackageManager.GET_PERMISSIONS or
+                    PackageManager.GET_ACTIVITIES or
+                    PackageManager.GET_SERVICES or
+                    PackageManager.GET_RECEIVERS or
+                    PackageManager.GET_PROVIDERS or
+                    PackageManager.GET_SIGNING_CERTIFICATES
+            )
+
+    val info: PackageInfo = try {
+        pm.getPackageInfo(targetPackage, flags)
+    } catch (e: PackageManager.NameNotFoundException) {
+        return "Package not found: $targetPackage"
+    }
+
+    // Basic info
+    sb.appendLine("=== $targetPackage ===")
+    sb.appendLine("Version: ${info.versionName} (${info.longVersionCode})")
+    sb.appendLine("Installed: ${java.util.Date(info.firstInstallTime)}")
+    sb.appendLine("Updated:   ${java.util.Date(info.lastUpdateTime)}")
+    sb.appendLine("UID: ${info.applicationInfo?.uid}")
+
+    // Permissions
+    sb.appendLine("\n-- Declared Permissions --")
+    info.requestedPermissions?.forEach { perm ->
+        val granted = (info.requestedPermissionsFlags
+            ?.getOrNull(info.requestedPermissions!!.indexOf(perm))
+            ?: 0) and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0
+        sb.appendLine("  [${ if (granted) "GRANTED" else "DENIED " }] $perm")
+    }
+
+    // Components
+    sb.appendLine("\n-- Activities --")
+    info.activities?.forEach { sb.appendLine("  ${it.name}") }
+
+    sb.appendLine("\n-- Services --")
+    info.services?.forEach { sb.appendLine("  ${it.name}") }
+
+    sb.appendLine("\n-- Receivers --")
+    info.receivers?.forEach { sb.appendLine("  ${it.name}") }
+
+    sb.appendLine("\n-- Providers --")
+    info.providers?.forEach { sb.appendLine("  ${it.name}") }
+
+    // Signing certs
+    sb.appendLine("\n-- Signing Certificates --")
+    info.signingInfo?.apkContentsSigners?.forEach { sig ->
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val fingerprint = md.digest(sig.toByteArray())
+            .joinToString(":") { "%02X".format(it) }
+        sb.appendLine("  SHA-256: $fingerprint")
+    }
+
+    return sb.toString()
 }
 
 fun dumpGetInstalledApplications(): String {

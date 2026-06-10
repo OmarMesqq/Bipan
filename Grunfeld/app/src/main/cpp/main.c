@@ -37,7 +37,7 @@ jmp_buf jump_buffer;
 
 __attribute__((constructor))
 void grunfeld_early_init(void) {
-    run_all_tests();
+    LOGI("Early init: __attribute__((constructor))");
 }
 
 
