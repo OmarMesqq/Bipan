@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
+import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewOutcomeReceiver
 import androidx.webkit.WebViewStartUpConfig
@@ -14,6 +16,7 @@ import androidx.webkit.WebViewStartupException
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import java.util.concurrent.Executors
 
 
@@ -26,7 +29,10 @@ class MainApplication: Application() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
+        val installInfo = dumpInstallerInfo(this)
+        Log.d(TAG, "Application.onCreate query: $installInfo")
         super.onCreate()
         Avocado.init(this)
         if (BuildConfig.DEBUG) {
