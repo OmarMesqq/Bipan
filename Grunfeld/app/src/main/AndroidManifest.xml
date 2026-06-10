@@ -14,6 +14,7 @@
     <queries>
         <package android:name="com.spotify.music" />
         <package android:name="com.celzero.bravedns" />
+        <package android:name="com.instagram.android" />
     </queries>
 
     <application

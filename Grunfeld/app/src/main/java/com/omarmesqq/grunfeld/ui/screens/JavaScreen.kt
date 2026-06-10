@@ -28,6 +28,7 @@ import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import androidx.annotation.RequiresApi
+import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 
@@ -40,6 +41,7 @@ fun JavaInfoScreen() {
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
+    var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -125,6 +127,18 @@ fun JavaInfoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("dumpQueryIntentActivities()")
+            }
+
+            Text(text = "Get Package Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
+
+            ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
+            Button(
+                onClick = {
+                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.instagram.android")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("dumpGetPackageInfo(\"Instagram\")")
             }
         }
     }
