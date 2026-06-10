@@ -406,3 +406,17 @@ fun dumpGetInstalledApplications(context: Context): String {
 
     return sb.toString()
 }
+
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+fun dumpGetApplicationInfo(context: Context) : String {
+    val pm = context.packageManager
+    val packageName = context.packageName
+
+    val res = try {
+        pm.getApplicationInfo(packageName, 0)
+    } catch (e: Exception) {
+        e.stackTraceToString()
+    }
+
+    return res.toString()
+}

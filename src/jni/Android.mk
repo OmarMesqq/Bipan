@@ -23,7 +23,7 @@ LOCAL_STATIC_LIBRARIES := dobby_static
 ifeq ($(BIPAN_DEBUG), 1)
 	LOCAL_CPPFLAGS := -O0 -g -Wall -Wextra -fno-exceptions -fno-rtti
 	LOCAL_LDFLAGS := 
-$(info [Bipan] Building DEBUG variant...)
+$(info Building DEBUG variant...)
 else
 	LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-ffunction-sections -fdata-sections \
@@ -38,7 +38,7 @@ else
 		-Wl,--exclude-libs,ALL \
 		-Wl,--icf=all \
 		-flto
-$(info [Bipan] Building RELEASE variant...)
+$(info Building RELEASE variant...)
 endif
 
 include $(BUILD_SHARED_LIBRARY)
