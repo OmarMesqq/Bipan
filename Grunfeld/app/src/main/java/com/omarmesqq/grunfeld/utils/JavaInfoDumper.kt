@@ -370,10 +370,7 @@ fun dumpGetInstalledApplications(context: Context): String {
     apps.forEach { app: android.content.pm.ApplicationInfo ->
         val isSystem = (app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
         val isDebuggable = (app.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        sb.appendLine("${app.packageName} | system: $isSystem")
-        sb.appendLine("  UID: ${app.uid} | system: $isSystem | debuggable: $isDebuggable")
-        sb.appendLine("  dataDir: ${app.dataDir}")
-        sb.appendLine("  nativeLibraryDir: ${app.nativeLibraryDir}")
+        sb.appendLine("${app.packageName} | system: $isSystem | debuggable: $isDebuggable")
     }
 
     // getInstalledPackages: heavier: full PackageInfo per app — components + permissions in one shot
