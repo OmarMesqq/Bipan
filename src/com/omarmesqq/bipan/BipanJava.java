@@ -5,7 +5,6 @@ import android.util.Log;
 import com.omarmesqq.bipan.modules.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -24,32 +23,6 @@ public class BipanJava {
 
   private static final long WAIT_UNTIL_MODULES_READY_TIMEOUT_MS = 15000;
 
-  /**
-   * Phase 1: synchronous, called from C++ postAppSpecialize.
-   * Installs pass-through IPackageManager stub before any app Java runs.
-   */
-  public static void installEarlyStub() {
-    try {
-      unseal();
-      Class<?> atClz = Class.forName("android.app.ActivityThread");
-      Method getPM = atClz.getDeclaredMethod("getPackageManager");
-      getPM.setAccessible(true);
-      final Object originalPM = getPM.invoke(null);
-
-      Object stub = Proxy.newProxyInstance(
-          atClz.getClassLoader(),
-          new Class[] { Class.forName("android.content.pm.IPackageManager") },
-          (proxy, method, args) -> method.invoke(originalPM, args));
-
-      Field sPM = atClz.getDeclaredField("sPackageManager");
-      sPM.setAccessible(true);
-      sPM.set(null, stub);
-
-      Log.i(TAG, "Early stub proxy installed.");
-    } catch (Exception e) {
-      Log.e(TAG, "Failed to install early stub: ", e);
-    }
-  }
 
   /**
    * Phase 2: called from C++ my_clampGrowthLimit / my_clearGrowthLimit.

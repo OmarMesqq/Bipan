@@ -49,7 +49,6 @@ struct LibBounds {
 };
 
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
-void installEarlyStub(JNIEnv* env, jclass bipanJavaClass);
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -208,12 +207,9 @@ class Bipan : public zygisk::ModuleBase {
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
-      // synchronous injection
-      // installEarlyStub(env, payloadClass);
-
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
-      // Calling install() WITHOUT passing context: Java side should call waitForContext()
+      // install() BipanJava!
       jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
       if (installMethod == nullptr) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
@@ -390,19 +386,6 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   return 0;
 }
 
-void installEarlyStub(JNIEnv* env, jclass bipanJavaClass) {
-  jmethodID stubMethod = env->GetStaticMethodID(bipanJavaClass, "installEarlyStub", "()V");
-  if (stubMethod == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] C++ installEarlyStub: stubMethod is NULL!");
-    return;
-  }
-
-  env->CallStaticVoidMethod(bipanJavaClass, stubMethod);
-  if (env->ExceptionCheck()) {
-    env->ExceptionClear();
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "installEarlyStub() threw an exception!");
-  }
-}
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
