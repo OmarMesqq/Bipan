@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <queries>
         <package android:name="com.spotify.music" />
-        <package android:name="com.celzero.bravedns" />
+        <package android:name="com.topjohnwu.magisk" />
         <package android:name="com.instagram.android" />
     </queries>
 

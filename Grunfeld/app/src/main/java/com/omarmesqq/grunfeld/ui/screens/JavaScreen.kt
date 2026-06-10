@@ -45,7 +45,7 @@ fun JavaInfoScreen() {
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
     var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
-    var applicationInfoForSelf by remember { mutableStateOf("Application info for self not queried") }
+    var applicationInfoForSelf by remember { mutableStateOf("Get Application info not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -109,7 +109,7 @@ fun JavaInfoScreen() {
 
         SectionHeader("ANDROID INSTALLER WHATNOTS")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Get installer info of self (Grunfeld)", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Get installer info for self (Grunfeld)", style = MaterialTheme.typography.titleMedium)
 
             ReportTextWithCopy(installerInfo, "Installer info not queried")
             Button(
@@ -138,11 +138,11 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
             Button(
                 onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.instagram.android")
+                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.topjohnwu.magisk")
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("dumpGetPackageInfo(\"Instagram\")")
+                Text("getPackageInfo(\"Magisk\")")
             }
 
             Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
@@ -154,19 +154,19 @@ fun JavaInfoScreen() {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("dumpGetInstalledApplications()")
+                Text("getInstalledApplications() && getInstalledPackages()")
             }
 
-            Text(text = "Get Application Info for Self", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
 
-            ReportTextWithCopy(applicationInfoForSelf, "Application info for self not queried")
+            ReportTextWithCopy(applicationInfoForSelf, "Get Application info not queried")
             Button(
                 onClick = {
                     applicationInfoForSelf = dumpGetApplicationInfo(context)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("dumpGetApplicationInfoApplicationInfoFlags()")
+                Text("getApplicationInfo(\"WhatsApp\")")
             }
         }
     }
