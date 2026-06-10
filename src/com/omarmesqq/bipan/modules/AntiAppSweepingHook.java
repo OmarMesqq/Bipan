@@ -45,24 +45,89 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
     Class<?> activityThreadClz = Class.forName("android.app.ActivityThread");
     Method getPM = activityThreadClz.getDeclaredMethod("getPackageManager");
     getPM.setAccessible(true);
-    this.originalPM = getPM.invoke(null);
+
+    // Unwrap through any existing proxy chain to get real IPackageManager
+    Object maybePM = getPM.invoke(null);
+    this.originalPM = unwrapProxy(maybePM);
 
     Object proxy = Proxy.newProxyInstance(
         context.getClassLoader(),
         new Class[] { Class.forName("android.content.pm.IPackageManager") },
         this);
 
+    // Replace in ActivityThread
     Field sPMField = activityThreadClz.getDeclaredField("sPackageManager");
     sPMField.setAccessible(true);
     sPMField.set(null, proxy);
 
-    Object pmWrapper = context.getPackageManager();
-    Field mPMField = pmWrapper.getClass().getDeclaredField("mPM");
-    mPMField.setAccessible(true);
-    mPMField.set(pmWrapper, proxy);
+    // Replace mPM in ALL ApplicationPackageManager instances via
+    // ActivityThread.mPackages
+    replaceAllPackageManagerWrappers(activityThreadClz, proxy);
 
-    Log.i(TAG, "AntiAppSweepingHook installed — total blindness mode");
-    Log.i(TAG, "originalPM class: " + originalPM.getClass().getName());
+    Log.i(TAG, "AntiAppSweepingHook installed");
+  }
+
+  private Object unwrapProxy(Object obj) {
+    if (!Proxy.isProxyClass(obj.getClass())) {
+      return obj;
+    }
+    try {
+      Class<?> smClz = Class.forName("android.os.ServiceManager");
+      Method getService = smClz.getDeclaredMethod("getService", String.class);
+      android.os.IBinder binder = (android.os.IBinder) getService.invoke(null, "package");
+      Class<?> stubClz = Class.forName("android.content.pm.IPackageManager$Stub");
+      Method asInterface = stubClz.getDeclaredMethod("asInterface", android.os.IBinder.class);
+      return asInterface.invoke(null, binder);
+    } catch (Exception e) {
+      Log.e(TAG, "unwrapProxy failed, using wrapped PM: " + e.getMessage());
+      return obj;
+    }
+  }
+
+  private void replaceAllPackageManagerWrappers(Class<?> activityThreadClz, Object proxy)
+      throws Exception {
+    Class<?> appPMClz = Class.forName("android.app.ApplicationPackageManager");
+    Field mPMField = appPMClz.getDeclaredField("mPM");
+    mPMField.setAccessible(true);
+
+    try {
+      // Get the actual ActivityThread instance, not null
+      Method currentAT = activityThreadClz.getMethod("currentActivityThread");
+      Object activityThread = currentAT.invoke(null);
+      if (activityThread == null) {
+        Log.w(TAG, "currentActivityThread() returned null");
+        return;
+      }
+
+      Field mPackagesField = activityThreadClz.getDeclaredField("mPackages");
+      mPackagesField.setAccessible(true);
+      // instance, shouldn't be null
+      Object mPackages = mPackagesField.get(activityThread);
+      if (mPackages instanceof java.util.Map) {
+        for (Object val : ((java.util.Map<?, ?>) mPackages).values()) {
+          Object loadedApk = null;
+          if (val instanceof java.lang.ref.WeakReference) {
+            loadedApk = ((java.lang.ref.WeakReference<?>) val).get();
+          }
+          if (loadedApk == null) {
+            continue;
+          }
+          try {
+            Field mPackageManagerField = loadedApk.getClass()
+                .getDeclaredField("mPackageManager");
+            mPackageManagerField.setAccessible(true);
+            Object pmWrapper = mPackageManagerField.get(loadedApk);
+            if (pmWrapper != null) {
+              mPMField.set(pmWrapper, proxy);
+              Log.d(TAG, "Replaced mPM in LoadedApk wrapper");
+            }
+          } catch (NoSuchFieldException ignored) {
+          }
+        }
+      }
+    } catch (Exception e) {
+      Log.w(TAG, "mPackages walk failed: " + e.getMessage());
+    }
   }
 
   @Override

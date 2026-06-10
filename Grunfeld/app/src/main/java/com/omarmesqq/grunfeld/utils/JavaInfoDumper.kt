@@ -362,7 +362,7 @@ fun dumpGetInstalledApplications(context: Context): String {
     val apps: List<android.content.pm.ApplicationInfo> =
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
 
-    sb.appendLine("=== getInstalledApplications (${apps.size} apps) ===")
+    sb.appendLine("========= (${apps.size} apps) =========")
     apps.forEach { app: android.content.pm.ApplicationInfo ->
         val isSystem = (app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
 //        val isDebuggable = (app.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
