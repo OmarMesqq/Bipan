@@ -177,7 +177,7 @@ class Bipan : public zygisk::ModuleBase {
     // Map the .dex byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to create DirectByteBuffer!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to create DirectByteBuffer!");
       return;
     }
 
@@ -193,7 +193,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
       return;
     }
 
@@ -204,7 +204,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to load BipanJava's class (%s)!", BIPAN_JAVA_PACKAGE_NAME);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to load BipanJava's class (%s)!", BIPAN_JAVA_PACKAGE_NAME);
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
@@ -213,21 +213,19 @@ class Bipan : public zygisk::ModuleBase {
 
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
-      // Calling install() WITHOUT passing context
-      // Java side should call waitForContext()
-      jmethodID installMethod = env->GetStaticMethodID(
-          payloadClass, "install", "()V");
+      // Calling install() WITHOUT passing context: Java side should call waitForContext()
+      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
+      if (installMethod == nullptr) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
+        return;
+      }
 
-      if (installMethod != nullptr) {
-        env->CallStaticVoidMethod(payloadClass, installMethod);
-        if (env->ExceptionCheck()) {
-          env->ExceptionClear();
-          write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                                "[!] Could not .install() BipanJava!");
-        } else {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG,
-                                "BipanJava DEX payload successfully injected.");
-        }
+      env->CallStaticVoidMethod(payloadClass, installMethod);
+      if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Could not .install() BipanJava!");
+      } else {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
       }
     }
 
@@ -393,15 +391,16 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
 }
 
 void installEarlyStub(JNIEnv* env, jclass bipanJavaClass) {
-  jmethodID stubMethod = env->GetStaticMethodID(
-      bipanJavaClass, "installEarlyStub", "()V");
-  if (stubMethod != nullptr) {
-    env->CallStaticVoidMethod(bipanJavaClass, stubMethod);
-    if (env->ExceptionCheck()) {
-      env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                            "installEarlyStub() threw an exception");
-    }
+  jmethodID stubMethod = env->GetStaticMethodID(bipanJavaClass, "installEarlyStub", "()V");
+  if (stubMethod == nullptr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] C++ installEarlyStub: stubMethod is NULL!");
+    return;
+  }
+
+  env->CallStaticVoidMethod(bipanJavaClass, stubMethod);
+  if (env->ExceptionCheck()) {
+    env->ExceptionClear();
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "installEarlyStub() threw an exception!");
   }
 }
 
