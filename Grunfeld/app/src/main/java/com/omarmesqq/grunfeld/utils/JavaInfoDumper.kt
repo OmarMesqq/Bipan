@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld.utils
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorManager
@@ -17,7 +18,7 @@ import java.net.Inet4Address
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
-import android.content.pm.SigningInfo
+import android.content.pm.PackageManager.NameNotFoundException
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -66,6 +67,7 @@ fun dumpInstallerInfo(ctx: Context): String {
         else -> "Unknown Value: ${info.packageSource}"
     }
 
+    @Suppress("DEPRECATION")
     val legacyInstaller = pm.getInstallerPackageName(packageName)
 
     return """
@@ -107,6 +109,7 @@ fun dumpNetworkInfo(context: Context): String {
     }
 
     val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    @Suppress("DEPRECATION")
     val info = wifiManager.connectionInfo
     val ipAddress = Formatter.formatIpAddress(info.ipAddress)
     val bssid = info.bssid ?: "Hidden"
@@ -237,11 +240,13 @@ private fun dumpBuildInfo(): String {
             SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
             """.trimIndent()
 }
+
 private fun dumpSettingsInfo(ctx: Context): String {
     val cr = ctx.contentResolver
     val NOT_FOUND = -999
 
     val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
+    @SuppressLint("HardwareIds")
     val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
 
     val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, NOT_FOUND)
@@ -302,7 +307,7 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
 
     val info: PackageInfo = try {
         pm.getPackageInfo(targetPackage, flags)
-    } catch (e: PackageManager.NameNotFoundException) {
+    } catch (e: NameNotFoundException) {
         return "Package not found: $targetPackage"
     }
 
