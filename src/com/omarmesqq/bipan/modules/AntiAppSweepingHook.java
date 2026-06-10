@@ -131,7 +131,6 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    Log.v(TAG, "invoke called: " + method.getName());
     switch (method.getName()) {
       // Installer spoofing
       case "getInstallerPackageName": {
@@ -181,6 +180,20 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         }
 
         Log.w(TAG, "Blinded: " + method.getName() + " for: " + pkg);
+        return null;
+      }
+
+      case "getApplicationInfo": {
+        String pkg = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : null;
+
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          Log.d(TAG, "Allowing getApplicationInfo for trusted pkg: " + pkg);
+          return method.invoke(originalPM, args);
+        }
+
+        Log.w(TAG, "Blinded: getApplicationInfo for: " + pkg);
         return null;
       }
 
