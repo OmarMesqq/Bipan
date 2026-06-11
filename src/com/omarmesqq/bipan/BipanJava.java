@@ -159,7 +159,6 @@ public class BipanJava {
     modules.add(new AntiScreenshotDetectionHook());
     modules.add(new AntiDiscoveryHook());
     modules.add(new NetworkSpoofingHook());
-    modules.add(new WebViewSSLHook());
 
     for (BaseHook module : modules) {
       try {
