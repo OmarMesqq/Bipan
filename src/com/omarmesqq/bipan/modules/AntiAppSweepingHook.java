@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import android.content.Intent;
 
 /**
  * Single IPackageManager proxy:
@@ -28,6 +29,10 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
   private Object originalPM;
   private String selfPackageName = "unknown";
 
+  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms"));
+
   private Object emptyParceledListSlice() throws Exception {
     Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
     Method emptyList = sliceClass.getMethod("emptyList");
@@ -42,6 +47,9 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
+    if (ALLOW_LIST.contains(selfPackageName)) {
+      return;
+    }
 
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
@@ -152,7 +160,30 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
       }
 
       case "queryIntentActivities": {
-        Log.w(TAG, "Blinded: queryIntentActivities");
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+
+          // Allow self-targeted queries (component or package matches self)
+          boolean isSelfQuery = false;
+          if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+            isSelfQuery = true;
+          }
+          if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+            isSelfQuery = true;
+          }
+
+          if (isSelfQuery) {
+            return method.invoke(originalPM, args);
+          }
+
+          // String intentInfo = "action=" + intent.getAction()
+          // + " data=" + intent.getDataString()
+          // + " pkg=" + intent.getPackage()
+          // + " component=" + intent.getComponent()
+          // + " categories=" + intent.getCategories();
+          // Log.w(TAG, "Blinded: queryIntentActivities: " + intentInfo);
+          Log.w(TAG, "Blinded: queryIntentActivities");
+        }
         return emptyParceledListSlice();
       }
 
