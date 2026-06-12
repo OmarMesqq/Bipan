@@ -41,7 +41,7 @@ void registerSignalHandler() {
   ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
-    _exit(1);
+    BIPAN_PANIC();
   }
 }
 
@@ -52,17 +52,17 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Aborting!");
-    _exit(1);
+    BIPAN_PANIC();
   }
   in_sigsys_handler = true;
-  
+
 #ifdef DEBUG
   s_violation_count.fetch_add(1, std::memory_order_relaxed);
   s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
 #endif
 
   if (nr == __NR_sendmmsg) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Lying about sendmmsg existing...");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
     in_sigsys_handler = false;
     return;
@@ -106,12 +106,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // openat takes up to 4 args, so use arg5 as slot for the pre-FD
     ipc_mem->arg5 = pre_fd;
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat ||
-             nr == __NR_newfstatat ||
-             nr == __NR_statx) {
+  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx) {
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_execve ||
-             nr == __NR_execveat) {
+  } else if (nr == __NR_execve || nr == __NR_execveat) {
     my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
