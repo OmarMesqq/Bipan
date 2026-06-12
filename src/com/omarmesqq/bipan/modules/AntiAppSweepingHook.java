@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 
 /**
  * Single IPackageManager proxy:
@@ -95,13 +96,12 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
       Field mPMField = apmClass.getDeclaredField("mPM");
       mPMField.setAccessible(true);
 
-      // Replace on the context passed to install()
-      android.content.pm.PackageManager pm = context.getPackageManager();
+      // We replace the `mPM` from `ApplicationPackageManager` on the context passed
+      // to install()
+      PackageManager pm = context.getPackageManager();
       mPMField.set(pm, pmProxy);
-      Log.d(TAG, "Replaced mPM on context.getPackageManager(): "
-          + pm.getClass().getName());
 
-      // Also walk ContextImpl chain to find any other instances
+      // Walk through ContextImpl chain to replace any possible instances in it too
       Context base = context;
       while (base != null) {
         try {
@@ -110,7 +110,7 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
           Object wrapper = mPMWrapperField.get(base);
           if (wrapper != null) {
             mPMField.set(wrapper, pmProxy);
-            Log.d(TAG, "Replaced mPM in ContextImpl: " + base.getClass().getName());
+            // Log.d(TAG, "Replaced mPM in ContextImpl: " + base.getClass().getName());
           }
         } catch (NoSuchFieldException ignored) {
         }
@@ -127,11 +127,11 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
     }
 
     try {
+      // Replace `sPackageManager` of `ActivityThread` as well
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Field sPMField = atClz.getDeclaredField("sPackageManager");
       sPMField.setAccessible(true);
       sPMField.set(null, pmProxy);
-      Log.d(TAG, "Replaced sPackageManager in ActivityThread");
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
     }
@@ -176,12 +176,6 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
             return method.invoke(originalPM, args);
           }
 
-          // String intentInfo = "action=" + intent.getAction()
-          // + " data=" + intent.getDataString()
-          // + " pkg=" + intent.getPackage()
-          // + " component=" + intent.getComponent()
-          // + " categories=" + intent.getCategories();
-          // Log.w(TAG, "Blinded: queryIntentActivities: " + intentInfo);
           Log.w(TAG, "Blinded: queryIntentActivities");
         }
         return emptyParceledListSlice();
@@ -206,7 +200,7 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          Log.d(TAG, "Allowing getPackageInfo for trusted pkg: " + pkg);
+          // Log.i(TAG, "Allowing getPackageInfo for: " + pkg);
           return method.invoke(originalPM, args);
         }
 
@@ -220,12 +214,49 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          Log.d(TAG, "Allowing getApplicationInfo for trusted pkg: " + pkg);
+          // Log.i(TAG, "Allowing getApplicationInfo for: " + pkg);
           return method.invoke(originalPM, args);
         }
 
         Log.w(TAG, "Blinded: getApplicationInfo for: " + pkg);
         return null;
+      }
+
+      case "getActivityInfo": {
+        Log.w(TAG, "Blinded: getActivityInfo");
+        return emptyParceledListSlice();
+      }
+      case "getPackageArchiveInfo": {
+        Log.w(TAG, "Blinded: getPackageArchiveInfo");
+        return emptyParceledListSlice();
+      }
+      case "getPackagesHoldingPermissions": {
+        Log.w(TAG, "Blinded: getPackagesHoldingPermissions");
+        return emptyParceledListSlice();
+      }
+      case "getPreferredPackages": {
+        Log.w(TAG, "Blinded: getPreferredPackages");
+        return emptyParceledListSlice();
+      }
+      case "getPreferredActivities": {
+        Log.w(TAG, "Blinded: getPreferredActivities");
+        return emptyParceledListSlice();
+      }
+      case "getProperty": {
+        Log.w(TAG, "Blinded: getProperty");
+        return emptyParceledListSlice();
+      }
+      case "queryIntentActivityOptions": {
+        Log.w(TAG, "Blinded: queryIntentActivityOptions");
+        return emptyParceledListSlice();
+      }
+      case "resolveActivity": {
+        Log.w(TAG, "Blinded: resolveActivity");
+        return emptyParceledListSlice();
+      }
+      case "getTargetSdkVersion": {
+        Log.w(TAG, "Blinded: getTargetSdkVersion");
+        return 36;
       }
 
       default: {
@@ -266,5 +297,14 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.e(TAG, "failed to set field: " + name);
     }
+  }
+
+  private void dumpIntent(Intent intent) {
+    String intentInfo = "\naction=" + intent.getAction()
+    + " data=" + intent.getDataString()
+    + " pkg=" + intent.getPackage()
+    + " component=" + intent.getComponent()
+    + " categories=" + intent.getCategories();
+    Log.d(TAG, "intentInfo:" + intentInfo);
   }
 }
