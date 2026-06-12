@@ -14,10 +14,6 @@ import android.app.Instrumentation;
 import android.os.Bundle;
 import android.app.Application;
 
-/**
- * TODO: not satisfied. polling feels hacky, there should
- * be a way to get Application Context right away
- */
 public class BipanJava {
   private static final String TAG = "BipanJava";
   private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;
@@ -112,7 +108,7 @@ public class BipanJava {
   }
 
   /**
-   * Phase 3: spawns Bipan thread. Called from C++ bootstrapJavaPayload.
+   * Phase 1: spawns Bipan thread. Called from C++ bootstrapJavaPayload.
    * Polls mInitialApplication (set right after makeApplicationInner),
    * loads modules, then signals the latch so Instrumentation.onCreate unblocks.
    */
@@ -177,9 +173,6 @@ public class BipanJava {
     }
   }
 
-  /**
-   * TODO: maybe reseal if possible?
-   */
   private static void unseal() {
     try {
       Method getDeclaredMethod = Class.class.getDeclaredMethod(
