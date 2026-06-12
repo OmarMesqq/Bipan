@@ -66,11 +66,7 @@ fun JavaInfoScreen() {
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            Text(
-                text = buildAndSettingsInfo,
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            ReportTextWithCopy(buildAndSettingsInfo, "")
         }
 
         SectionHeader("SENSORS")

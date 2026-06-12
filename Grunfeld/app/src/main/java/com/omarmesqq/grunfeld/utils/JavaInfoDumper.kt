@@ -201,8 +201,7 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
 }
 
 /**
- * TODO: evaluate why PARTITIONS, RADIO and other
- * fields require resetprop changes
+ * TODO: evaluate why PARTITIONS and RADIO fields require resetprop changes
  */
 private fun dumpBuildInfo(): String {
     return """
