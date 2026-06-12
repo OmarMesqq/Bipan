@@ -65,106 +65,93 @@ class Bipan : public zygisk::ModuleBase {
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "preAppSpecialize: process name is nil. Aborting.");
-      _exit(-1);
+      BIPAN_PANIC();
     }
     isTargetApp = isTarget(raw_process_name);
 
-    if (isTargetApp) {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
-      snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
-      size_t i = 0;
-      while (raw_process_name[i] && i < 255) {
-        package_name[i] = raw_process_name[i];
-        i++;
-      }
-      package_name[i] = '\0';
-
-      g_broker_socket = api->connectCompanion();
-      if (g_broker_socket < 0) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
-        _exit(-1);
-      }
-
-      // Tell the companion daemon we want to start a Broker thread
-      int cmd = CMD_START_BROKER;
-      write(g_broker_socket, &cmd, sizeof(cmd));
-
-      // Create the RAM-backed IPC memory
-      int memfd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
-      if (memfd < 0) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
-        _exit(1);
-      }
-      ftruncate(memfd, sizeof(SharedIPC));
-
-      // Map it locally for the Target App
-      ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
-      if (ipc_mem == MAP_FAILED) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
-        _exit(1);
-      }
-
-      ipc_mem->status = IDLE;
-      ipc_mem->lock = 0;
-
-      // Teleport the FD to the Root Companion
-      send_fd(g_broker_socket, memfd);
-
-      // Close our local FD handle
-      close(memfd);
-
-      // Save the socket so sigsys_handler can recv_fd() openat results
-      sv[1] = g_broker_socket;
-    } else {
-      // Remove Bipan from non-target apps
+    // Not a target: remove ourselves...
+    if (!isTargetApp) {
+      env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+      return;
     }
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
+    snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
+    size_t i = 0;
+    while (raw_process_name[i] && i < 255) {
+      package_name[i] = raw_process_name[i];
+      i++;
+    }
+    package_name[i] = '\0';
+
+    g_broker_socket = api->connectCompanion();
+    if (g_broker_socket < 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
+      BIPAN_PANIC();
+    }
+
+    // Tell the companion daemon we want to start a Broker thread
+    int cmd = CMD_START_BROKER;
+    write(g_broker_socket, &cmd, sizeof(cmd));
+
+    // Create the RAM-backed IPC memory
+    int memfd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
+    if (memfd < 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
+      BIPAN_PANIC();
+    }
+    ftruncate(memfd, sizeof(SharedIPC));
+
+    // Map it locally for the Target App
+    ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
+    if (ipc_mem == MAP_FAILED) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
+      BIPAN_PANIC();
+    }
+
+    ipc_mem->status = IDLE;
+    ipc_mem->lock = 0;
+
+    // Teleport the FD to the Root Companion
+    send_fd(g_broker_socket, memfd);
+
+    // Close our local FD handle
+    close(memfd);
+
+    // Save the socket so sigsys_handler can recv_fd() openat results
+    sv[1] = g_broker_socket;
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
-    if (isTargetApp) {
-#ifdef DEBUG
-      registerDobbyLinkerHooks();
-#endif
-      registerDobbySensorsHooks();
-
-      LibBounds my_lib;
-      dl_iterate_phdr(find_lib_bounds, &my_lib);
-      g_bipan_lib_start = my_lib.start;
-      g_bipan_lib_end = my_lib.end;
-#ifdef DEBUG
-      size_t lib_size = my_lib.end - my_lib.start;
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
-#endif
-      registerSystemPropertiesHook(api, env);
-      spoofBuildFields();
-      bootstrapJavaPayload(env);
-
-      registerSignalHandler();
-
-      // Java Layer Sensors hooking
-      JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
-          {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
-      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
-      JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
-          {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
-          {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
-          {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
-          {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
-      api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, JAVA_SENSORS_MANAGER_METHODS_COUNT);
-
-      // This will finally trigger Seccomp before app code runs
-      JNINativeMethod runtime_methods[] = {
-          {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
-          {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};
-      api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", runtime_methods, 2);
-
-      // Zygisk populates fnPtr with the original function pointer after hooking
-      orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[0].fnPtr);
-      orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
+    if (!isTargetApp) {
+      return;
     }
+#ifdef DEBUG
+    registerDobbyLinkerHooks();
+#endif
+    // Native (C/C++ setup)
+    registerNativeSensorsHooks();
+    registerNativeSystemPropertiesHook();
+
+    // Get lib bounds in mappings for PC-relative seccomp
+    LibBounds my_lib;
+    dl_iterate_phdr(find_lib_bounds, &my_lib);
+    g_bipan_lib_start = my_lib.start;
+    g_bipan_lib_end = my_lib.end;
+
+#ifdef DEBUG
+    size_t lib_size = my_lib.end - my_lib.start;
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+#endif
+    // Install process-wide SIGSYS handler for seccomp
+    registerSignalHandler();
+
+    // Java-layer setup
+    initBipanJava();
+    hookJniFunctions();
   }
 
  private:
@@ -173,7 +160,7 @@ class Bipan : public zygisk::ModuleBase {
   std::unordered_set<std::string> targetsSet;
   bool isTargetApp;
 
-  void bootstrapJavaPayload(JNIEnv* env) {
+  void initBipanJava() {
     // Map the .dex byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
@@ -260,7 +247,7 @@ class Bipan : public zygisk::ModuleBase {
     int fd = api->connectCompanion();
     if (fd < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
-      _exit(-1);
+      BIPAN_PANIC();
     }
 
     // Tell the companion we want to fetch the targets list
@@ -277,13 +264,12 @@ class Bipan : public zygisk::ModuleBase {
         targetsSet.insert(target);
       }
     }
-    close(fd);  // Close the temporary socket
+    close(fd);
   }
 
   void setField(jclass clazz, const char* fieldName, const char* value) {
     jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "Ljava/lang/String;");
 
-    // Check for exceptions (e.g., field doesn't exist on this Android version)
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "setField: failed to find field: %s", fieldName);
@@ -296,12 +282,11 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    // Set new Java String and cleanup
     env->SetStaticObjectField(clazz, fieldId, newStr);
     env->DeleteLocalRef(newStr);
   }
 
-  void spoofBuildFields() {
+  void hookJniFunctions() {
     jclass buildClass = env->FindClass("android/os/Build");
     if (buildClass == nullptr) {
       env->ExceptionClear();
@@ -355,12 +340,33 @@ class Bipan : public zygisk::ModuleBase {
     env->SetStaticIntField(versionClass, sdkIntFullId, 3600001);
 
     jfieldID mpcId = env->GetStaticFieldID(versionClass, "MEDIA_PERFORMANCE_CLASS", "I");
-    env->SetStaticIntField(versionClass, mpcId, 33); // TIRAMISU/Android 13
+    env->SetStaticIntField(versionClass, mpcId, 33);  // TIRAMISU/Android 13
 
     env->DeleteLocalRef(buildClass);
     if (versionClass) {
       env->DeleteLocalRef(versionClass);
     }
+
+    // Java Layer Sensors hooking
+    JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
+        {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
+    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
+    JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
+        {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+        {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
+        {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
+        {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
+    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, JAVA_SENSORS_MANAGER_METHODS_COUNT);
+
+    // Setup JNI tripwires for activating seccomp and hooking Instrumentation.onCreate()
+    JNINativeMethod runtime_methods[] = {
+        {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
+        {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};
+    api->hookJniNativeMethods(env, "dalvik/system/VMRuntime", runtime_methods, 2);
+
+    // Zygisk populates fnPtr with the original function pointer after hooking
+    orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[0].fnPtr);
+    orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
   }
 };
 

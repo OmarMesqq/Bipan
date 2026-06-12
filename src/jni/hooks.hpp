@@ -14,8 +14,100 @@
 
 using zygisk::Api;
 
+// type for spoofing bionic's __system_property_read_callback
+struct PropCallbackCtx {
+  void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
+  void* user_cookie;
+};
+
+// sysprop overrides equivalent to `spoofBuildFields` ART fields
+static const std::unordered_map<std::string, std::string> g_prop_overrides = {
+    {"ro.product.board", "husky"},
+    {"ro.product.brand", "google"},
+    {"ro.product.device", "husky"},
+    {"ro.product.manufacturer", "google"},
+    {"ro.product.model", "Pixel 8 Pro"},
+    {"ro.product.name", "husky"},
+    {"ro.hardware", "zuma"},
+    {"ro.soc.manufacturer", "Google"},
+    {"ro.soc.model", "Tensor G3"},
+
+    {"ro.product.odm.brand", "google"},
+    {"ro.product.odm.device", "husky"},
+    {"ro.product.odm.manufacturer", "google"},
+    {"ro.product.odm.model", "Pixel 8 Pro"},
+    {"ro.product.odm.name", "husky"},
+    {"ro.product.product.brand", "google"},
+    {"ro.product.product.device", "husky"},
+    {"ro.product.product.manufacturer", "google"},
+    {"ro.product.product.model", "Pixel 8 Pro"},
+    {"ro.product.product.name", "husky"},
+    {"ro.product.system.brand", "google"},
+    {"ro.product.system.device", "husky"},
+    {"ro.product.system.manufacturer", "google"},
+    {"ro.product.system.model", "Pixel 8 Pro"},
+    {"ro.product.system.name", "husky"},
+    {"ro.product.system_ext.brand", "google"},
+    {"ro.product.system_ext.device", "husky"},
+    {"ro.product.system_ext.manufacturer", "google"},
+    {"ro.product.system_ext.model", "Pixel 8 Pro"},
+    {"ro.product.system_ext.name", "husky"},
+    {"ro.product.vendor.brand", "google"},
+    {"ro.product.vendor.device", "husky"},
+    {"ro.product.vendor.manufacturer", "google"},
+    {"ro.product.vendor.model", "Pixel 8 Pro"},
+    {"ro.product.vendor.name", "husky"},
+
+    {"ro.bootloader", "ripcurrent-15.0-12455211"},
+    {"ro.build.host", "abfarm-20038"},
+    {"ro.build.id", "BP4A.251205.006"},
+    {"ro.build.display.id", "BP4A.251205.006"},
+    {"ro.build.tags", "release-keys"},
+    {"ro.build.type", "user"},
+    {"ro.build.user", "android-build"},
+    {"ro.build.date.utc", "1764954000"},
+    {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
+    {"ro.build.flavor", "husky-user"},
+
+    {"ro.build.version.incremental", "14401865"},
+    {"ro.build.version.release", "16"},
+    {"ro.build.version.release_or_codename", "16"},
+    {"ro.build.version.release_or_preview_display", "16"},
+    {"ro.build.version.sdk", "36"},
+    {"ro.build.version.security_patch", "2025-12-05"},
+    // TODO: does this make sense? vendor tends to be outdated compared to platform patch
+    // {"ro.vendor.build.security_patch", "2025-12-05"},
+    {"ro.build.version.codename", "REL"},
+    {"ro.build.version.base_os", ""},
+    {"ro.build.version.preview_sdk", "0"},
+
+    {"ro.product.cpu.abilist", "arm64-v8a,armeabi-v7a,armeabi"},
+    {"ro.product.cpu.abilist32", "armeabi-v7a,armeabi"},
+    {"ro.product.cpu.abilist64", "arm64-v8a"},
+
+    {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.odm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.product.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.system.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.system_ext.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+
+    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
+
+    {"ro.boot.verifiedbootstate", "green"},
+    {"ro.com.google.clientidbase", "android-google"},
+};
+
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
+
+static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
 
 // ==========================================
 // Original function pointers
@@ -32,6 +124,9 @@ static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*)
 static int (*orig_ASensorManager_getSensorList)(ASensorManager*, ASensorList**);
 static ASensor* (*orig_ASensorManager_getDefaultSensor)(ASensorManager*, int);
 static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager*, ALooper*, int, ALooper_callbackFunc, void*);
+
+static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
+static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
 
 // ==========================================
 // Linker hooks
@@ -216,13 +311,35 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (orig_clearGrowthLimit) orig_clearGrowthLimit(env, obj);
 }
 
-void registerDobbySensorsHooks() {
+// ==========================================
+// SystemProperties hooks
+// ==========================================
+
+// Legacy: __system_property_get
+static int hook_system_property_get(const char* name, char* value) {
+  if (name != nullptr) {
+    auto it = g_prop_overrides.find(name);
+    if (it != g_prop_overrides.end()) {
+      strncpy(value, it->second.c_str(), 91);
+      value[91] = '\0';
+      return (int)strlen(value);
+    }
+  }
+  return orig_system_property_get(name, value);
+}
+
+// Modern: __system_property_read_callback
+static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) {
+  orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
+}
+
+void registerNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
   if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
 
   if (!handle) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to get handle to libandroid.so. Aborting for safety!");
-    _exit(-1);
+    BIPAN_PANIC();
   }
 
   const char* symbols[] = {
@@ -261,7 +378,7 @@ void registerDobbyLinkerHooks() {
   if (linker_hooked) {
     return;
   }
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Registering Dobby linker hooks...");
+
   void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
   void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
 
@@ -269,7 +386,6 @@ void registerDobbyLinkerHooks() {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
     if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Linker hooks active.");
       linker_hooked = true;
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
@@ -277,127 +393,27 @@ void registerDobbyLinkerHooks() {
   }
 }
 
-// ==========================================
-// SystemProperties hooks
-// ==========================================
-static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
-static void (*orig_system_property_read_callback)(
-    const void* pi,
-    void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial),
-    void* cookie) = nullptr;
-
-static const std::unordered_map<std::string, std::string> g_prop_overrides = {
-    // ── Identity ───────────────────────────────────────────────────────────
-    {"ro.product.board", "husky"},
-    {"ro.product.brand", "google"},
-    {"ro.product.device", "husky"},
-    {"ro.product.manufacturer", "google"},
-    {"ro.product.model", "Pixel 8 Pro"},
-    {"ro.product.name", "husky"},
-    {"ro.hardware", "zuma"},
-    {"ro.soc.manufacturer", "Google"},
-    {"ro.soc.model", "Tensor G3"},
-
-    // Partition overlays — each one read independently by native code
-    {"ro.product.odm.brand", "google"},
-    {"ro.product.odm.device", "husky"},
-    {"ro.product.odm.manufacturer", "google"},
-    {"ro.product.odm.model", "Pixel 8 Pro"},
-    {"ro.product.odm.name", "husky"},
-    {"ro.product.product.brand", "google"},
-    {"ro.product.product.device", "husky"},
-    {"ro.product.product.manufacturer", "google"},
-    {"ro.product.product.model", "Pixel 8 Pro"},
-    {"ro.product.product.name", "husky"},
-    {"ro.product.system.brand", "google"},
-    {"ro.product.system.device", "husky"},
-    {"ro.product.system.manufacturer", "google"},
-    {"ro.product.system.model", "Pixel 8 Pro"},
-    {"ro.product.system.name", "husky"},
-    {"ro.product.system_ext.brand", "google"},
-    {"ro.product.system_ext.device", "husky"},
-    {"ro.product.system_ext.manufacturer", "google"},
-    {"ro.product.system_ext.model", "Pixel 8 Pro"},
-    {"ro.product.system_ext.name", "husky"},
-    {"ro.product.vendor.brand", "google"},
-    {"ro.product.vendor.device", "husky"},
-    {"ro.product.vendor.manufacturer", "google"},
-    {"ro.product.vendor.model", "Pixel 8 Pro"},
-    {"ro.product.vendor.name", "husky"},
-
-    // ── Build metadata ─────────────────────────────────────────────────────
-    {"ro.bootloader", "ripcurrent-15.0-12455211"},
-    {"ro.build.host", "abfarm-20038"},
-    {"ro.build.id", "BP4A.251205.006"},
-    {"ro.build.display.id", "BP4A.251205.006"},
-    {"ro.build.tags", "release-keys"},
-    {"ro.build.type", "user"},
-    {"ro.build.user", "android-build"},
-    {"ro.build.date.utc", "1764954000"},  // TIME/1000
-    {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
-    {"ro.build.flavor", "husky-user"},
-
-    // ── Version ────────────────────────────────────────────────────────────
-    {"ro.build.version.incremental", "14401865"},
-    {"ro.build.version.release", "16"},
-    {"ro.build.version.release_or_codename", "16"},
-    {"ro.build.version.release_or_preview_display", "16"},
-    {"ro.build.version.sdk", "36"},
-    {"ro.build.version.security_patch", "2025-12-05"},
-    // TODO: does this make sense? vendor tends to be outdated compared to platform patch
-    // {"ro.vendor.build.security_patch", "2025-12-05"},
-    {"ro.build.version.codename", "REL"},
-    {"ro.build.version.base_os", ""},
-    {"ro.build.version.preview_sdk", "0"},
-
-    // ── ABI ────────────────────────────────────────────────────────────────
-    {"ro.product.cpu.abilist", "arm64-v8a,armeabi-v7a,armeabi"},
-    {"ro.product.cpu.abilist32", "armeabi-v7a,armeabi"},
-    {"ro.product.cpu.abilist64", "arm64-v8a"},
-
-    // ── Fingerprints ───────────────────────────────────────────────────────
-    {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.odm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.product.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.system.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.system_ext.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-
-    // ── Radio ──────────────────────────────────────────────────────────────
-    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
-    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
-    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
-
-    // ── Boot / AVB ─────────────────────────────────────────────────────────
-    {"ro.boot.verifiedbootstate", "green"},
-    {"ro.com.google.clientidbase", "android-google"},
-};
-
-// ── Legacy path (__system_property_get) ──────────────────────────────────
-static int hook_system_property_get(const char* name, char* value) {
-  if (name != nullptr) {
-    auto it = g_prop_overrides.find(name);
-    if (it != g_prop_overrides.end()) {
-      strncpy(value, it->second.c_str(), 91);
-      value[91] = '\0';
-      return (int)strlen(value);
-    }
+void registerNativeSystemPropertiesHook() {
+  void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
+  void* addr_readcb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
+  if (!addr_get || !addr_readcb) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve address(es) of sysprop function(s)");
+    return;
   }
-  return orig_system_property_get(name, value);
+
+  int getHook = DobbyHook(addr_get, (void*)hook_system_property_get, (void**)&orig_system_property_get);
+  int readcbHook = DobbyHook(addr_readcb, (void*)hook_system_property_read_callback, (void**)&orig_system_property_read_callback);
+
+  if ((getHook != 0) || (readcbHook != 0)) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook sysprop functions");
+  }
 }
 
-// ── Modern path (__system_property_read_callback) ────────────────────────
-struct PropCallbackCtx {
-  void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
-  void* user_cookie;
-};
+// =======
+// Helpers
+// =======
 
-static void intercept_prop_callback(
-    void* cookie, const char* name, const char* value, uint32_t serial) {
+static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial) {
   auto* ctx = static_cast<PropCallbackCtx*>(cookie);
   const char* effective = value;
   std::string override_buf;
@@ -410,40 +426,6 @@ static void intercept_prop_callback(
   }
   ctx->user_cb(ctx->user_cookie, name, effective, serial);
   delete ctx;
-}
-
-static void hook_system_property_read_callback(
-    const void* pi,
-    void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial),
-    void* cookie) {
-  orig_system_property_read_callback(pi, intercept_prop_callback,
-                                     new PropCallbackCtx{callback, cookie});
-}
-
-// ── Registration ─────────────────────────────────────────────────────────
-void registerSystemPropertiesHook(zygisk::Api* /*api*/, JNIEnv* /*env*/) {
-  void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
-  void* addr_cb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
-
-  // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "sysprop symbols: get=%p  read_callback=%p", addr_get, addr_cb);
-
-  if (addr_get) {
-    int r = DobbyHook(addr_get,
-                      (void*)hook_system_property_get,
-                      (void**)&orig_system_property_get);
-    // write_to_logcat_async(r == 0 ? ANDROID_LOG_INFO : ANDROID_LOG_FATAL, TAG, "__system_property_get hook: %s", r == 0 ? "OK" : "FAILED");
-  } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "__system_property_get: dlsym returned null");
-  }
-
-  if (addr_cb) {
-    int r = DobbyHook(addr_cb,
-                      (void*)hook_system_property_read_callback,
-                      (void**)&orig_system_property_read_callback);
-    // write_to_logcat_async(r == 0 ? ANDROID_LOG_INFO : ANDROID_LOG_FATAL, TAG, "__system_property_read_callback hook: %s", r == 0 ? "OK" : "FAILED");
-  } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "__system_property_read_callback: dlsym returned null");
-  }
 }
 
 #endif
