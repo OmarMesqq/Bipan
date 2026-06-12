@@ -223,8 +223,26 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
       }
 
       case "getActivityInfo": {
-        Log.w(TAG, "Blinded: getActivityInfo");
-        return emptyParceledListSlice();
+        // Signature: getActivityInfo(ComponentName component, long flags, int userId)
+        // args[0] is ComponentName — extract package name from it
+        String pkg = null;
+        if (args != null && args.length > 0 && args[0] != null) {
+          // ComponentName is a public class, getPackageName() is accessible
+          try {
+            pkg = (String) args[0].getClass()
+                .getMethod("getPackageName")
+                .invoke(args[0]);
+          } catch (Exception e) {
+            Log.e(TAG, "getActivityInfo: failed to extract package from ComponentName");
+          }
+        }
+
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          return method.invoke(originalPM, args);
+        }
+
+        Log.w(TAG, "Blinded: getActivityInfo for pkg=" + pkg);
+        return null;
       }
       case "getPackageArchiveInfo": {
         Log.w(TAG, "Blinded: getPackageArchiveInfo");
@@ -251,12 +269,30 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         return emptyParceledListSlice();
       }
       case "resolveActivity": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          boolean isSelf = (intent.getComponent() != null
+              && selfPackageName.equals(intent.getComponent().getPackageName()))
+              || selfPackageName.equals(intent.getPackage());
+          if (isSelf) {
+            return method.invoke(originalPM, args);
+          }
+        }
         Log.w(TAG, "Blinded: resolveActivity");
-        return emptyParceledListSlice();
+        return null; // ResolveInfo, NOT ParceledListSlice
       }
       case "getTargetSdkVersion": {
         Log.w(TAG, "Blinded: getTargetSdkVersion");
         return 36;
+      }
+
+      case "hasSystemFeature": {
+        Log.w(TAG, "Blinded: hasSystemFeature");
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          dumpIntent(intent);
+        }
+        return false;
       }
 
       default: {
@@ -301,10 +337,10 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
 
   private void dumpIntent(Intent intent) {
     String intentInfo = "\naction=" + intent.getAction()
-    + " data=" + intent.getDataString()
-    + " pkg=" + intent.getPackage()
-    + " component=" + intent.getComponent()
-    + " categories=" + intent.getCategories();
+        + " data=" + intent.getDataString()
+        + " pkg=" + intent.getPackage()
+        + " component=" + intent.getComponent()
+        + " categories=" + intent.getCategories();
     Log.d(TAG, "intentInfo:" + intentInfo);
   }
 }
