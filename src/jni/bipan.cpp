@@ -302,15 +302,13 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void spoofBuildFields() {
-    // Find the offending class...
     jclass buildClass = env->FindClass("android/os/Build");
     if (buildClass == nullptr) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "spoofBuildFields: could not find android.os.Build class!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Could not find android.os.Build!");
       return;
     }
 
-    // Spoof some fields to make it look like you're running a Google Pixel 8 Pro
     setField(buildClass, "BOARD", "husky");
     setField(buildClass, "BOOTLOADER", "ripcurrent-15.0-12455211");
     setField(buildClass, "BRAND", "google");
@@ -323,18 +321,20 @@ class Bipan : public zygisk::ModuleBase {
     setField(buildClass, "MANUFACTURER", "google");
     setField(buildClass, "MODEL", "Pixel 8 Pro");
     setField(buildClass, "PRODUCT", "husky");
-    setField(buildClass, "RADIO", "g5300g-251108-251202-B-12876551");
+    // RADIO is set natively
     setField(buildClass, "SOC_MANUFACTURER", "Google");
     setField(buildClass, "SOC_MODEL", "Tensor G3");
     setField(buildClass, "TAGS", "release-keys");
     setField(buildClass, "TYPE", "user");
     setField(buildClass, "USER", "android-build");
+    jfieldID timeId = env->GetStaticFieldID(buildClass, "TIME", "J");
+    env->SetStaticLongField(buildClass, timeId, 1764954000000);
 
-    // Spoof some version fields of android.os.Build's nested class
+    // Some version fields are inside a nested class of android.os.Build
     jclass versionClass = env->FindClass("android/os/Build$VERSION");
     if (versionClass == nullptr) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "spoofBuildFields: could not find android.os.Build.VERSION class!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "could not find android.os.Build.VERSION!");
       return;
     }
 
@@ -348,18 +348,15 @@ class Bipan : public zygisk::ModuleBase {
     setField(versionClass, "RELEASE_OR_CODENAME", "16");
     setField(versionClass, "RELEASE_OR_PREVIEW_DISPLAY", "16");
 
-    // SDK_INT and SDK_INT_FULL are an 'int's
     jfieldID sdkIntId = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
     env->SetStaticIntField(versionClass, sdkIntId, 36);
 
     jfieldID sdkIntFullId = env->GetStaticFieldID(versionClass, "SDK_INT_FULL", "I");
     env->SetStaticIntField(versionClass, sdkIntFullId, 3600001);
 
-    // TIME is a long
-    jfieldID timeId = env->GetStaticFieldID(buildClass, "TIME", "J");
-    env->SetStaticLongField(buildClass, timeId, 1764954000000);
+    jfieldID mpcId = env->GetStaticFieldID(versionClass, "MEDIA_PERFORMANCE_CLASS", "I");
+    env->SetStaticIntField(versionClass, mpcId, 33); // TIRAMISU/Android 13
 
-    // cleanup!
     env->DeleteLocalRef(buildClass);
     if (versionClass) {
       env->DeleteLocalRef(versionClass);
