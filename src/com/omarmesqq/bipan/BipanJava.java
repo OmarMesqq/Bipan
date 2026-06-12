@@ -67,7 +67,7 @@ public class BipanJava {
             if (!done) {
               Log.e(TAG, "[!] Module loading timed out! Proceeding anyway");
             } else {
-              Log.i(TAG, "Instrumentation.onCreate — modules ready");
+              // Log.i(TAG, "Instrumentation.onCreate — modules ready");
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -104,7 +104,7 @@ public class BipanJava {
       mThreadField.set(hooked, mThreadField.get(realInstr));
 
       mInstrField.set(at, hooked);
-      Log.i(TAG, "mInstrumentation hooked. This should block before ContentProviders and onCreate.");
+      // Log.i(TAG, "mInstrumentation hooked. This should block before ContentProviders and onCreate.");
     } catch (Exception e) {
       Log.e(TAG, "hookInstrumentationNow failed: ", e);
     }

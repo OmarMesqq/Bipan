@@ -38,4 +38,4 @@ cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
 
 # Create the final flashable zip with no compression
 rm -f ../bipan.zip
-zip -0 -r ../bipan.zip module.prop service.sh customize.sh zygisk/
+zip -0 -r ../bipan.zip module.prop customize.sh zygisk/

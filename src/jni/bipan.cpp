@@ -138,6 +138,7 @@ class Bipan : public zygisk::ModuleBase {
       size_t lib_size = my_lib.end - my_lib.start;
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 #endif
+      registerSystemPropertiesHook(api, env);
       spoofBuildFields();
       bootstrapJavaPayload(env);
 
@@ -385,7 +386,6 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   }
   return 0;
 }
-
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
