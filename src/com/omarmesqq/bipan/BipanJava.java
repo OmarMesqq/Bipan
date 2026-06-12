@@ -13,6 +13,10 @@ import android.app.Instrumentation;
 import android.os.Bundle;
 import android.app.Application;
 
+/**
+ * TODO: not satisfied. polling feels hacky, there should
+ * be a way to get Application Context right away
+ */
 public class BipanJava {
   private static final String TAG = "BipanJava";
   private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;

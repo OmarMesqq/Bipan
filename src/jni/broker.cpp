@@ -185,6 +185,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_EXIT_PROCESS;
+#ifdef DEBUG
           if (nr == __NR_execve) {
             char argv_dump[512] = {0};
             char envp_dump[512] = {0};
@@ -202,6 +203,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
                                   "[execve denied INFO!] path=%s argv=%s",
                                   ipc_mem->string_payload, argv_dump);
           }
+#endif
 
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
         }

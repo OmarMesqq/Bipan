@@ -200,6 +200,10 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
     return details.toString()
 }
 
+/**
+ * TODO: evaluate why PARTITIONS, RADIO and other
+ * fields require resetprop changes
+ */
 private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}

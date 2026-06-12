@@ -68,7 +68,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  // Use atomic cas here
+  // TODO: Use atomic cas here
   lock_ipc();
 
   long arg0 = ctx->uc_mcontext.regs[0];
@@ -249,7 +249,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   ipc_mem->status = IDLE;
-  // Use atomic cas here
+  // TODO: Use atomic cas here
   unlock_ipc();
 
   ctx->uc_mcontext.regs[0] = result;
