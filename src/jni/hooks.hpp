@@ -276,8 +276,9 @@ void registerDobbyLinkerHooks() {
     }
   }
 }
+
 // ==========================================
-// SystemProperties hooks (replaces service.sh resetprop)
+// SystemProperties hooks
 // ==========================================
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(
@@ -286,14 +287,75 @@ static void (*orig_system_property_read_callback)(
     void* cookie) = nullptr;
 
 static const std::unordered_map<std::string, std::string> g_prop_overrides = {
-    // RADIO
-    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
-    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
-    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
+    // ── Identity ───────────────────────────────────────────────────────────
+    {"ro.product.board", "husky"},
+    {"ro.product.brand", "google"},
+    {"ro.product.device", "husky"},
+    {"ro.product.manufacturer", "google"},
+    {"ro.product.model", "Pixel 8 Pro"},
+    {"ro.product.name", "husky"},
+    {"ro.hardware", "zuma"},
+    {"ro.soc.manufacturer", "Google"},
+    {"ro.soc.model", "Tensor G3"},
 
-    // PARTITIONS
+    // Partition overlays — each one read independently by native code
+    {"ro.product.odm.brand", "google"},
+    {"ro.product.odm.device", "husky"},
+    {"ro.product.odm.manufacturer", "google"},
+    {"ro.product.odm.model", "Pixel 8 Pro"},
+    {"ro.product.odm.name", "husky"},
+    {"ro.product.product.brand", "google"},
+    {"ro.product.product.device", "husky"},
+    {"ro.product.product.manufacturer", "google"},
+    {"ro.product.product.model", "Pixel 8 Pro"},
+    {"ro.product.product.name", "husky"},
+    {"ro.product.system.brand", "google"},
+    {"ro.product.system.device", "husky"},
+    {"ro.product.system.manufacturer", "google"},
+    {"ro.product.system.model", "Pixel 8 Pro"},
+    {"ro.product.system.name", "husky"},
+    {"ro.product.system_ext.brand", "google"},
+    {"ro.product.system_ext.device", "husky"},
+    {"ro.product.system_ext.manufacturer", "google"},
+    {"ro.product.system_ext.model", "Pixel 8 Pro"},
+    {"ro.product.system_ext.name", "husky"},
+    {"ro.product.vendor.brand", "google"},
+    {"ro.product.vendor.device", "husky"},
+    {"ro.product.vendor.manufacturer", "google"},
+    {"ro.product.vendor.model", "Pixel 8 Pro"},
+    {"ro.product.vendor.name", "husky"},
+
+    // ── Build metadata ─────────────────────────────────────────────────────
+    {"ro.bootloader", "ripcurrent-15.0-12455211"},
+    {"ro.build.host", "abfarm-20038"},
+    {"ro.build.id", "BP4A.251205.006"},
+    {"ro.build.display.id", "BP4A.251205.006"},
+    {"ro.build.tags", "release-keys"},
+    {"ro.build.type", "user"},
+    {"ro.build.user", "android-build"},
+    {"ro.build.date.utc", "1764954000"},  // TIME/1000
+    {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
+    {"ro.build.flavor", "husky-user"},
+
+    // ── Version ────────────────────────────────────────────────────────────
+    {"ro.build.version.incremental", "14401865"},
+    {"ro.build.version.release", "16"},
+    {"ro.build.version.release_or_codename", "16"},
+    {"ro.build.version.release_or_preview_display", "16"},
+    {"ro.build.version.sdk", "36"},
+    {"ro.build.version.security_patch", "2025-12-05"},
+    // TODO: does this make sense? vendor tends to be outdated compared to platform patch
+    // {"ro.vendor.build.security_patch", "2025-12-05"},
+    {"ro.build.version.codename", "REL"},
+    {"ro.build.version.base_os", ""},
+    {"ro.build.version.preview_sdk", "0"},
+
+    // ── ABI ────────────────────────────────────────────────────────────────
+    {"ro.product.cpu.abilist", "arm64-v8a,armeabi-v7a,armeabi"},
+    {"ro.product.cpu.abilist32", "armeabi-v7a,armeabi"},
+    {"ro.product.cpu.abilist64", "arm64-v8a"},
+
+    // ── Fingerprints ───────────────────────────────────────────────────────
     {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.odm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.product.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
@@ -302,6 +364,17 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+
+    // ── Radio ──────────────────────────────────────────────────────────────
+    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
+
+    // ── Boot / AVB ─────────────────────────────────────────────────────────
+    {"ro.boot.verifiedbootstate", "green"},
+    {"ro.com.google.clientidbase", "android-google"},
 };
 
 // ── Legacy path (__system_property_get) ──────────────────────────────────

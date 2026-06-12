@@ -321,7 +321,7 @@ class Bipan : public zygisk::ModuleBase {
     setField(buildClass, "MANUFACTURER", "google");
     setField(buildClass, "MODEL", "Pixel 8 Pro");
     setField(buildClass, "PRODUCT", "husky");
-    // RADIO is set natively
+    // RADIO needs native spoofing
     setField(buildClass, "SOC_MANUFACTURER", "Google");
     setField(buildClass, "SOC_MODEL", "Tensor G3");
     setField(buildClass, "TAGS", "release-keys");
