@@ -33,9 +33,6 @@ static int g_log_fd = -1;
  * is a bad idea.
  *
  * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
- *
- * TODO: ditch the libc wrappers in this function and use our
- * raw syscall function instead
  */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
   if (g_log_fd < 0) {
@@ -45,9 +42,9 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
     }
 
     struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
+    my_memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    my_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
     if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
       arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
@@ -57,11 +54,13 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   }
 
   struct timespec now;
-  clock_gettime(CLOCK_REALTIME, &now);
+  arm64_raw_syscall(__NR_clock_gettime, CLOCK_REALTIME, (long)&now, 0, 0, 0, 0);
+
+  uint16_t tid = (uint16_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
 
   struct log_header header;
   header.id = 0;  // MAIN
-  header.tid = (uint16_t)gettid();
+  header.tid = tid;
   header.tv_sec = (uint32_t)now.tv_sec;
   header.tv_nsec = (uint32_t)now.tv_nsec;
 
@@ -73,9 +72,9 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   vec[1].iov_base = &priority;
   vec[1].iov_len = 1;
   vec[2].iov_base = (void*)tag;
-  vec[2].iov_len = strlen(tag) + 1;
+  vec[2].iov_len = my_strlen(tag) + 1;
   vec[3].iov_base = (void*)msg;
-  vec[3].iov_len = strlen(msg) + 1;
+  vec[3].iov_len = my_strlen(msg) + 1;
 
   // Atomic write to socket
   arm64_raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
