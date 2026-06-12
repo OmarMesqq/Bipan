@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <unordered_map>
+
 #include "filter.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
@@ -159,9 +161,6 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
         env->ExceptionClear();
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
                               "clampGrowthLimit: hookInstrumentationNow threw an exception");
-      } else {
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                              "clampGrowthLimit: hookInstrumentationNow returned successfully");
       }
     }
   }
@@ -199,9 +198,6 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
         env->ExceptionClear();
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
                               "clearGrowthLimit: hookInstrumentationNow threw an exception");
-      } else {
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                              "clearGrowthLimit: hookInstrumentationNow returned successfully");
       }
     }
   }
@@ -278,6 +274,102 @@ void registerDobbyLinkerHooks() {
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
+  }
+}
+// ==========================================
+// SystemProperties hooks (replaces service.sh resetprop)
+// ==========================================
+static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
+static void (*orig_system_property_read_callback)(
+    const void* pi,
+    void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial),
+    void* cookie) = nullptr;
+
+static const std::unordered_map<std::string, std::string> g_prop_overrides = {
+    // RADIO
+    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
+
+    // PARTITIONS
+    {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.odm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.product.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.system.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.system_ext.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+    {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
+};
+
+// ── Legacy path (__system_property_get) ──────────────────────────────────
+static int hook_system_property_get(const char* name, char* value) {
+  if (name != nullptr) {
+    auto it = g_prop_overrides.find(name);
+    if (it != g_prop_overrides.end()) {
+      strncpy(value, it->second.c_str(), 91);
+      value[91] = '\0';
+      return (int)strlen(value);
+    }
+  }
+  return orig_system_property_get(name, value);
+}
+
+// ── Modern path (__system_property_read_callback) ────────────────────────
+struct PropCallbackCtx {
+  void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
+  void* user_cookie;
+};
+
+static void intercept_prop_callback(
+    void* cookie, const char* name, const char* value, uint32_t serial) {
+  auto* ctx = static_cast<PropCallbackCtx*>(cookie);
+  const char* effective = value;
+  std::string override_buf;
+  if (name != nullptr) {
+    auto it = g_prop_overrides.find(name);
+    if (it != g_prop_overrides.end()) {
+      override_buf = it->second;
+      effective = override_buf.c_str();
+    }
+  }
+  ctx->user_cb(ctx->user_cookie, name, effective, serial);
+  delete ctx;
+}
+
+static void hook_system_property_read_callback(
+    const void* pi,
+    void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial),
+    void* cookie) {
+  orig_system_property_read_callback(pi, intercept_prop_callback,
+                                     new PropCallbackCtx{callback, cookie});
+}
+
+// ── Registration ─────────────────────────────────────────────────────────
+void registerSystemPropertiesHook(zygisk::Api* /*api*/, JNIEnv* /*env*/) {
+  void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
+  void* addr_cb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
+
+  // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "sysprop symbols: get=%p  read_callback=%p", addr_get, addr_cb);
+
+  if (addr_get) {
+    int r = DobbyHook(addr_get,
+                      (void*)hook_system_property_get,
+                      (void**)&orig_system_property_get);
+    // write_to_logcat_async(r == 0 ? ANDROID_LOG_INFO : ANDROID_LOG_FATAL, TAG, "__system_property_get hook: %s", r == 0 ? "OK" : "FAILED");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "__system_property_get: dlsym returned null");
+  }
+
+  if (addr_cb) {
+    int r = DobbyHook(addr_cb,
+                      (void*)hook_system_property_read_callback,
+                      (void**)&orig_system_property_read_callback);
+    // write_to_logcat_async(r == 0 ? ANDROID_LOG_INFO : ANDROID_LOG_FATAL, TAG, "__system_property_read_callback hook: %s", r == 0 ? "OK" : "FAILED");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "__system_property_read_callback: dlsym returned null");
   }
 }
 
