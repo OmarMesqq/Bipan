@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
+import java.util.ArrayList;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
@@ -186,14 +187,35 @@ public class NetworkSpoofingHook implements BaseHook {
     }
 
     try {
+      // Remove `VPN` transport from object
       Method removeTransport = NetworkCapabilities.class.getDeclaredMethod("removeTransportType", int.class);
       removeTransport.setAccessible(true);
       removeTransport.invoke(caps, NetworkCapabilities.TRANSPORT_VPN);
 
+      // Tell app we don't have a VPN and Internet is VALIDATED i.e. not behind
+      // captive portal
       Method addCap = NetworkCapabilities.class.getDeclaredMethod("addCapability", int.class);
       addCap.setAccessible(true);
       addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
       addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+
+      // Trim `TransportInfo`
+      Field transportInfoField = NetworkCapabilities.class
+          .getDeclaredField("mTransportInfo");
+      transportInfoField.setAccessible(true);
+      transportInfoField.set(caps, null);
+
+      // Spoof bandwidth to realistic mid-range WiFi values
+      Field upBwField = NetworkCapabilities.class
+          .getDeclaredField("mLinkUpBandwidthKbps");
+      upBwField.setAccessible(true);
+      upBwField.setInt(caps, 53000); // 53 Mbps up
+
+      Field downBwField = NetworkCapabilities.class
+          .getDeclaredField("mLinkDownBandwidthKbps");
+      downBwField.setAccessible(true);
+      downBwField.setInt(caps, 52000); // 52 Mbps down
+
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof NetworkCapabilities via reflection", e);
     }
@@ -205,7 +227,7 @@ public class NetworkSpoofingHook implements BaseHook {
       field.setAccessible(true);
 
       @SuppressWarnings("unchecked")
-      java.util.ArrayList<LinkAddress> list = (java.util.ArrayList<LinkAddress>) field.get(lp);
+      ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
       list.clear();
 
       InetAddress fakeIp = InetAddress.getByName("192.168.1.128");
@@ -221,7 +243,7 @@ public class NetworkSpoofingHook implements BaseHook {
     try {
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 });
       setField(info, "mIpAddress", fakeIp);
-      setField(info, "mLinkSpeed", 53);
+      setField(info, "mLinkSpeed", 53); // Mbps
     } catch (Exception e) {
       Log.e(TAG, "In-place patch failed: ", e);
     }
@@ -233,7 +255,7 @@ public class NetworkSpoofingHook implements BaseHook {
       f.setAccessible(true);
       f.set(obj, value);
     } catch (Exception e) {
-      Log.w(TAG, "Failed to patch field: " + name);
+      Log.e(TAG, "Failed to patch field: " + name);
     }
   }
 }
