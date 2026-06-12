@@ -419,3 +419,9 @@ fun dumpGetApplicationInfo(context: Context) : String {
 
     return res.toString()
 }
+
+fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
+    val pm = context.packageManager
+    val res = pm.systemAvailableFeatures;
+    return res.contentToString()
+}

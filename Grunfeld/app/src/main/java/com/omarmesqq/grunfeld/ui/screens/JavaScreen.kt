@@ -31,6 +31,7 @@ import androidx.annotation.RequiresApi
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
+import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 
@@ -46,6 +47,7 @@ fun JavaInfoScreen() {
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
     var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
     var applicationInfoForSelf by remember { mutableStateOf("Get Application info not queried") }
+    var getSystemAvailableFeaturesInfo by remember { mutableStateOf("getSystemAvailableFeatures not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -107,7 +109,7 @@ fun JavaInfoScreen() {
             }
         }
 
-        SectionHeader("ANDROID INSTALLER WHATNOTS")
+        SectionHeader("PACKAGE MANAGER")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = "Get installer info for self (Grunfeld)", style = MaterialTheme.typography.titleMedium)
 
@@ -168,6 +170,19 @@ fun JavaInfoScreen() {
             ) {
                 Text("getApplicationInfo(\"WhatsApp\")")
             }
+
+            Text(text = "Get getSystemAvailableFeatures", style = MaterialTheme.typography.titleMedium)
+
+            ReportTextWithCopy(getSystemAvailableFeaturesInfo, "getSystemAvailableFeatures not queried")
+            Button(
+                onClick = {
+                    getSystemAvailableFeaturesInfo = dumpGetSystemAvailableFeaturesInfo(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getSystemAvailableFeaturesInfo()")
+            }
+
         }
     }
 }
