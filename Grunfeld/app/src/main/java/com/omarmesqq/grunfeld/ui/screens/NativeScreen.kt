@@ -77,11 +77,7 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Text(
-                    text = NativeLibWrapper.getDeviceData(context),
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                ReportTextWithCopy(NativeLibWrapper.getDeviceData(context), "")
             }
 
             SectionHeader("SENSORS")
