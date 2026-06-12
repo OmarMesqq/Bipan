@@ -200,9 +200,6 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
     return details.toString()
 }
 
-/**
- * TODO: evaluate why PARTITIONS and RADIO fields require resetprop changes
- */
 private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}
@@ -355,12 +352,6 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     return sb.toString()
 }
 
-/**
- * TODO:
- * - Hook all overloads
- * - Hide custom ROM packages
- * - Make MicroG packages system
- */
 fun dumpGetInstalledApplications(context: Context): String {
     val pm = context.packageManager
     val sb = StringBuilder()
