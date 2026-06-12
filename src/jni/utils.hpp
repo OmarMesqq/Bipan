@@ -290,7 +290,7 @@ inline void get_socket_info(int sockfd,
                                0);
 
   if (ret != 0) {
-    _exit(-1);
+    BIPAN_PANIC();
   }
 
   if (sock_type == SOCK_STREAM) {
@@ -370,7 +370,7 @@ __attribute__((always_inline)) inline bool is_exact_dir(const char* path, const 
 }
 
 __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
-  // 1. Completely ignore spammy app/system areas (both dirs AND files inside them)
+  // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
       starts_with(pathname, "/data/app") ||
       starts_with(pathname, "/data/user/0") ||
@@ -385,7 +385,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
     return false;
   }
 
-  // 2. Ignore noisy /dev accesses
+  // Ignore noisy special file stats
   if (starts_with(pathname, "/dev/ashmem") ||
       starts_with(pathname, "/dev/urandom") ||
       starts_with(pathname, "/dev/random") ||
@@ -394,7 +394,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
     return false;
   }
 
-  // 3. Ignore specific /proc stats (cleaner than the inline lambda)
+  // Ignore some /proc stats
   if (starts_with(pathname, "/proc/")) {
     if (strstr(pathname, "/cmdline") ||
         strstr(pathname, "/task") ||
@@ -406,7 +406,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
     }
   }
 
-  // 4. Ignore EXACT directory opens (directory scans), but LOG the files inside them!
+  // Ignore EXACT directory opens (directory scans)
   if (is_exact_dir(pathname, "/data") ||
       is_exact_dir(pathname, "/data/user") ||
       is_exact_dir(pathname, "/data/user") ||
@@ -423,7 +423,6 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
     return false;
   }
 
-  // If it survived all filters, log it!
   return true;
 }
 

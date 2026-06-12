@@ -5,6 +5,7 @@
 #include <jni.h>
 
 #define TAG "Bipan"
+#define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
 // #define DEBUG
 
 // Globals populated in entrypoint

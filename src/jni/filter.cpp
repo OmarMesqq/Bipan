@@ -22,7 +22,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // ASSUMPTION: The library does not cross a 4GB boundary (start_hi == end_hi)
   if ((lib_start >> 32) != (lib_end >> 32)) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Library crosses 4GB boundary, PC-relative seccomp will probably fail!");
-    _exit(-1);
+    BIPAN_PANIC();
   }
 
   struct sock_filter trapFilter[] = {
@@ -127,7 +127,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // Promise the kernel we won't ask for elevated privileges
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: prctl failed: %d", errno);
-    _exit(-1);
+    BIPAN_PANIC();
   }
 
   /**
@@ -137,6 +137,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: failed to apply seccomp (errno %d)", errno);
-    _exit(-1);
+    BIPAN_PANIC();
   }
 }
