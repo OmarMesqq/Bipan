@@ -156,7 +156,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
   /**
    * 
-   * TODO: this may be leaking the RandomAccessFile?
+   * TODO: can this be leaking the RandomAccessFile?
    */
   private static String generateRandomId() {
     SecureRandom random = new SecureRandom();
