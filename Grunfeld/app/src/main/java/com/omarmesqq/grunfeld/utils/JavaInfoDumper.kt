@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorManager
@@ -414,4 +415,27 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
     val pm = context.packageManager
     val res = pm.systemAvailableFeatures;
     return res.contentToString()
+}
+
+
+fun getMemoryInfo(context: Context): String {
+    val am   = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val info = ActivityManager.MemoryInfo()
+    am.getMemoryInfo(info)
+
+    return """
+        totalMem:         ${info.totalMem  / 1024 / 1024} MB
+        availMem:         ${info.availMem  / 1024 / 1024} MB
+        threshold:        ${info.threshold / 1024 / 1024} MB
+        lowMemory:        ${info.lowMemory}
+    """.trimIndent()
+}
+
+
+fun getSystemProps(): String {
+    val arch = System.getProperty("os.arch")
+    val name = System.getProperty("os.name")
+    val version = System.getProperty("os.version")
+
+    return "$arch\n$name\n$version"
 }
