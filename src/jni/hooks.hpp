@@ -234,81 +234,75 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 }
 
 // ==========================================
-// JNI tripwires for Seccomp
+// JNI tripwires for seccomp and grabbing the very first `Context`
 // ==========================================
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
   if (g_bipanJavaClass == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                          "clampGrowthLimit: g_bipanJavaClass is null — skipping hookInstrumentationNow");
-  } else {
-    jmethodID hookMethod = env->GetStaticMethodID(
-        g_bipanJavaClass, "hookInstrumentationNow", "()V");
-    if (hookMethod == nullptr) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                            "clampGrowthLimit: hookInstrumentationNow method not found");
-      env->ExceptionClear();
-    } else {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                            "clampGrowthLimit: calling hookInstrumentationNow");
-      env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
-      if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                              "clampGrowthLimit: hookInstrumentationNow threw an exception");
-      }
-    }
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: BipanJava class is null!");
+    BIPAN_PANIC();
+  }
+
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  if (hookMethod == nullptr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    BIPAN_PANIC();
+  }
+
+  env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
+  if (env->ExceptionCheck()) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow threw an exception!");
+    BIPAN_PANIC();
   }
 
   if (!seccomp_applied) {
-    if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
-      applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                            "Seccomp applied at clampGrowthLimit.");
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                            "Cannot apply seccomp: Library bounds are 0!");
+    if (g_bipan_lib_start == 0 || g_bipan_lib_end == 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: can't apply seccomp: lib bounds are 0!");
+      BIPAN_PANIC();
     }
+
+    applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clampGrowthLimit");
     seccomp_applied = true;
   }
-  if (orig_clampGrowthLimit) orig_clampGrowthLimit(env, obj);
+
+  if (orig_clampGrowthLimit) {
+    orig_clampGrowthLimit(env, obj);
+  }
 }
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
   if (g_bipanJavaClass == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                          "clearGrowthLimit: g_bipanJavaClass is null — skipping hookInstrumentationNow");
-  } else {
-    jmethodID hookMethod = env->GetStaticMethodID(
-        g_bipanJavaClass, "hookInstrumentationNow", "()V");
-    if (hookMethod == nullptr) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                            "clearGrowthLimit: hookInstrumentationNow method not found");
-      env->ExceptionClear();
-    } else {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                            "clearGrowthLimit: calling hookInstrumentationNow");
-      env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
-      if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
-                              "clearGrowthLimit: hookInstrumentationNow threw an exception");
-      }
-    }
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: BipanJava class is null!");
+    BIPAN_PANIC();
+  }
+
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  if (hookMethod == nullptr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    BIPAN_PANIC();
+  }
+
+  env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
+  if (env->ExceptionCheck()) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow threw an exception!");
+    BIPAN_PANIC();
   }
 
   if (!seccomp_applied) {
-    if (g_bipan_lib_start != 0 && g_bipan_lib_end != 0) {
-      applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                            "Seccomp applied at clearGrowthLimit.");
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                            "Cannot apply seccomp: Library bounds are 0!");
+    if (g_bipan_lib_start == 0 || g_bipan_lib_end == 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: can't apply seccomp: lib bounds are 0!");
+      BIPAN_PANIC();
     }
+
+    applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clearGrowthLimit");
     seccomp_applied = true;
   }
-  if (orig_clearGrowthLimit) orig_clearGrowthLimit(env, obj);
+
+  if (orig_clearGrowthLimit) {
+    orig_clearGrowthLimit(env, obj);
+  }
 }
 
 // ==========================================
