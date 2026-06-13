@@ -15,7 +15,11 @@ the Android ID at each app launch<sup>[1]</sup>, disables Development Settings f
 
 - **"Legitimizes" app installs**: apps, especially Crash Reporting SDKS, may occasionally check whether the app was installed from an official App Store or sideloaded. With Bipan, the Play Store is the true installer package for targeted apps.
 
-- **"Freedom"/"own your device" patches**: Google introduced a new API that allows apps to detect and possibly block whenever you take a screenshot in an app. Bipan bypasses this, allowing you to screenshot whatever you want, even if the content in the screen is sensitive (marked with `FLAG_SECURE` in `window`). Exercise caution and good sense here.
+- **Blocks app discovery**: although Google made this harder in Android 11+,
+apps can still query for specific packages declared in their Manifest. Bipan blinds all these attempts.
+
+- **"Freedom"/"own your device" patches**: Google introduced a new APIs that allow apps to detect and possibly block whenever you take a screenshot or
+records your screen when the given app is shown. Bipan bypasses this, allowing you to screenshot and capture whatever you want, even if the content in the screen is sensitive (marked with `FLAG_SECURE` in `window`). Exercise caution and good sense here.
 
 - **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN devices scanning/detection is defeated and your connection link properties always have a hardcoded fake local IP and trims VPN flags from it, as some apps complain about it.
 
