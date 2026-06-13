@@ -135,14 +135,18 @@ public class BipanJava {
     Field mInitialApplicationField = atClass.getDeclaredField("mInitialApplication");
     mInitialApplicationField.setAccessible(true);
 
+    // Resolve once
+    Method currentActivityThread = atClass.getMethod("currentActivityThread");
+    Method getApplication = atClass.getMethod("getApplication");
+
     for (int i = 0; i < GET_APPLICATION_CONTEXT_MAX_RETRIES; i++) {
-      Object at = atClass.getMethod("currentActivityThread").invoke(null);
+      Object at = currentActivityThread.invoke(null);
       if (at != null) {
         Object app = mInitialApplicationField.get(at);
         if (app instanceof Context) {
           return (Context) app;
         }
-        app = atClass.getMethod("getApplication").invoke(at);
+        app = getApplication.invoke(at);
         if (app instanceof Context) {
           return (Context) app;
         }

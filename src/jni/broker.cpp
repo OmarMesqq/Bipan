@@ -376,7 +376,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (bind) to LAN blocked. Attempting patch...");
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
@@ -411,7 +411,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success. Attempting patch...");
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
+          // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
         }
         break;
       }
@@ -423,7 +423,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendto) LAN/discovery spoofed. Attempting patch...");
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed");
           }
@@ -438,7 +438,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendmsg) to LAN address blocked. Attempting patch...");
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked");
           }
@@ -459,7 +459,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (socket) AF_NETLINK blocked");
           } else {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (socket) AF_NETLINK blocked. Attempting patch...");
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
           }
         }
         break;

@@ -159,7 +159,8 @@ public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
         return createFakeInstallSourceInfo();
       }
 
-      case "queryIntentActivities": {
+      case "queryIntentActivities":
+      case "queryIntentActivitiesAsUser": {
         if (args != null && args.length > 0 && args[0] instanceof Intent) {
           Intent intent = (Intent) args[0];
 
