@@ -24,8 +24,8 @@ import android.content.pm.PackageManager;
  * Caller sees a device with zero installed apps.
  * Replaces both InstallerInfoHook and AntiDiscoveryHook.
  */
-public class AntiAppSweepingHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "BipanAntiAppSweeping";
+public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
+  private static final String TAG = "BipanAntiAppInspectionHook";
 
   private Object originalPM;
   private String selfPackageName = "unknown";
