@@ -31,7 +31,7 @@ import java.util.ArrayList;
  * 
  */
 public class NetworkSpoofingHook implements BaseHook {
-  private static final String TAG = "BipanNetworkSpoofHook";
+  private static final String TAG = "BipanNetworkSpoofingHook";
 
   @Override
   public void install(Context context) throws Exception {

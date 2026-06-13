@@ -16,13 +16,13 @@ import android.app.Application;
 
 public class BipanJava {
   private static final String TAG = "BipanJava";
+
   private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;
   private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 1;
+  private static final long WAIT_UNTIL_MODULES_READY_TIMEOUT_MS = 15000;
 
   private static final CountDownLatch modulesReady = new CountDownLatch(1);
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
-
-  private static final long WAIT_UNTIL_MODULES_READY_TIMEOUT_MS = 15000;
 
   /**
    * Phase 2: called from C++ my_clampGrowthLimit / my_clearGrowthLimit.
@@ -135,7 +135,6 @@ public class BipanJava {
     Field mInitialApplicationField = atClass.getDeclaredField("mInitialApplication");
     mInitialApplicationField.setAccessible(true);
 
-    // Resolve once
     Method currentActivityThread = atClass.getMethod("currentActivityThread");
     Method getApplication = atClass.getMethod("getApplication");
 
@@ -161,10 +160,10 @@ public class BipanJava {
 
     List<BaseHook> modules = new ArrayList<>();
 
-    modules.add(new AntiAppSweepingHook());
+    modules.add(new AntiAppInspectionHook());
     modules.add(new SettingsHook());
     modules.add(new AntiScreenshotDetectionHook());
-    modules.add(new AntiDiscoveryHook());
+    modules.add(new AntiNetworkDiscoveryHook());
     modules.add(new NetworkSpoofingHook());
 
     for (BaseHook module : modules) {

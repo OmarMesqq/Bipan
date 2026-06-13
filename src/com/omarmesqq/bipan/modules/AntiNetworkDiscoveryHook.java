@@ -18,8 +18,8 @@ import java.util.Map;
  * 
  * - Intercept NSD Service
  */
-public class AntiDiscoveryHook implements BaseHook {
-  private static final String TAG = "BipanAntiDiscoveryHook";
+public class AntiNetworkDiscoveryHook implements BaseHook {
+  private static final String TAG = "BipanAntiNetworkDiscoveryHook";
 
   @Override
   public void install(Context context) throws Exception {
