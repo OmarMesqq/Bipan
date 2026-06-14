@@ -10,16 +10,27 @@ all fields commonly (and sadly) used for fingerprinting such as `MODEL`, `BRAND`
 
 - **Sensors blinding**: some apps will map all available sensors in your device, which, by itself, can be a quite unique identification vector. Furthermore, they query those sensors for behavioral tracking (e.g.: how close you are to the phone (proximity), whether you are in car (accelerometer)) and so on. Bipan blocks this at native (C/C++/NDK) and Java layer.
 
-- **Spoofs identifying ART APIs**: some fields are protected by modern Android versions, yet can be used to uniquely identify or block you from using a given an app. Some examples are `SSAID`, `ADB_ENABLED`, and `BOOT_COUNT`. Bipan spoofs
-the Android ID at each app launch<sup>[1]</sup>, disables Development Settings flags and sets an arbitrary; fixed number of boot counts.
+- **Spoofs identifying ART APIs**: some fields are protected by modern Android versions, yet can be used to uniquely identify you. 
+Some examples are `SSAID` and `boot_count`. Bipan spoofs
+the former at each app launch<sup>[1]</sup> and
+always provides a fixed number of boot counts.
 
-- **"Legitimizes" app installs**: apps, especially Crash Reporting SDKS, may occasionally check whether the app was installed from an official App Store or sideloaded. With Bipan, the Play Store is the true installer package for targeted apps.
+- **Unlocking usage of apps**: apps, more frequently though, Crash Reporting SDKS, occasionally check whether the application was installed from an official App Store or if it was sideloaded. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps.
+Additionally, some apps, like banking and gaming ones, will flag or block you
+from using the app if you have Development Settings turned on your phone.
+Bipan reports `adb_enabled`, `development_settings_enabled`, and `wait_for_debugger` as false in all targeted apps.
+
 
 - **Blocks app discovery**: although Google made this harder in Android 11+,
 apps can still query for specific packages declared in their Manifest. Bipan blinds all these attempts.
 
-- **"Freedom"/"own your device" patches**: Google introduced a new APIs that allow apps to detect and possibly block whenever you take a screenshot or
-records your screen when the given app is shown. Bipan bypasses this, allowing you to screenshot and capture whatever you want, even if the content in the screen is sensitive (marked with `FLAG_SECURE` in `window`). Exercise caution and good sense here.
+- **Screen-related patches**: Google introduced new APIs
+which allow developers to write apps that detect screenshots and
+screen captures/recordings while the app is visible.
+Furthermore, those actions *can be blocked* by the application 
+if it deems the currently shown content as sensitive. Bipan bypasses
+these detection and blocking mechanisms, allowing you to screenshot and record
+whatever you want that's in **your** phone. But please, exercise caution and good sense.
 
 - **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN devices scanning/detection is defeated and your connection link properties always have a hardcoded fake local IP and trims VPN flags from it, as some apps complain about it.
 
