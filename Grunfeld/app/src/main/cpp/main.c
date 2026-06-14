@@ -764,7 +764,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
 
     if (!sensorManager) {
-        return (*env)->NewStringUTF(env, "Sensor Manager is NULL (Hook Active?)");
+        return (*env)->NewStringUTF(env, "Sensor Manager is NULL!");
     }
 
     // Enumerate all sensors
