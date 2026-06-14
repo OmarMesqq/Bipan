@@ -296,6 +296,11 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return false;
       }
 
+      case "getSystemAvailableFeatures": {
+          Log.w(TAG, "Blinded: getSystemAvailableFeatures");
+          return null;
+        }
+
       default: {
         Object result = method.invoke(originalPM, args);
         // final String stackTrace = Log.getStackTraceString(new Throwable());

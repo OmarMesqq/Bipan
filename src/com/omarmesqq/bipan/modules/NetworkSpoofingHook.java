@@ -33,6 +33,22 @@ import java.util.ArrayList;
 public class NetworkSpoofingHook implements BaseHook {
   private static final String TAG = "BipanNetworkSpoofingHook";
 
+  /**
+   * Non-system apps can't use the `LOCAL_MAC_ADDRESS` permission,
+   * so this is the default returned by AOSP.
+   * 
+   * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiInfo.java;l=100
+   */
+  public static final String DEFAULT_MAC_ADDRESS = "02:00:00:00:00:00";
+
+  /**
+   * Returned when the "if there is no network currently connected
+   * or if the caller has insufficient permissions to access the SSID"
+   * 
+   * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiManager.java;l=1985
+   */
+  public static final String UNKNOWN_SSID = "<unknown ssid>";
+
   @Override
   public void install(Context context) throws Exception {
     // Common ServiceManager setup
@@ -242,8 +258,12 @@ public class NetworkSpoofingHook implements BaseHook {
   private void spoofWifiInfo(WifiInfo info) {
     try {
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 });
+      
       setField(info, "mIpAddress", fakeIp);
       setField(info, "mLinkSpeed", 53); // Mbps
+      setField(info, "mWifiSsid", UNKNOWN_SSID);
+      setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
+      
     } catch (Exception e) {
       Log.e(TAG, "In-place patch failed: ", e);
     }
