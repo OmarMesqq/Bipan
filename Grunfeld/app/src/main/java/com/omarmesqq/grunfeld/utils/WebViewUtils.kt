@@ -14,7 +14,6 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import com.omarmesqq.grunfeld.utils.Beelzebub.feast
 
 private const val TAG = "WebViewUtils"
 
@@ -90,12 +89,7 @@ object WebViewUtils {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
 
-                val response = feast(view.context, request)
-                if (response == null) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Hoarding skipped or failed for ${request.url}. Falling back to WebView.")
-                }
-
-                return response
+                return null
             }
             override fun onReceivedSslError(
                 view: WebView?,
