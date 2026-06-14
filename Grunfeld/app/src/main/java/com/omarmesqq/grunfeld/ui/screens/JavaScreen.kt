@@ -32,7 +32,9 @@ import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
+import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
+import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
 import com.omarmesqq.grunfeld.utils.getSystemProps
@@ -52,6 +54,8 @@ fun JavaInfoScreen() {
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("getSystemAvailableFeatures not queried") }
     var memInfo by remember { mutableStateOf("Memory not queried") }
     var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
+    var gsfId by remember { mutableStateOf("GSF ID not queried") }
+    var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -217,6 +221,36 @@ fun JavaInfoScreen() {
 
             Text(
                 text = sysPropsInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        SectionHeader("DEVICE IDENTIFIERS")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    gsfId = dumpGsfId(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get GSF ID")
+            }
+            Text(
+                text = gsfId,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Button(
+                onClick = {
+                    mediaDrmIdInfo = dumpMediaDrmId()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Media DRM ID")
+            }
+
+            Text(
+                text = mediaDrmIdInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
         }

@@ -20,6 +20,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager.NameNotFoundException
+import androidx.core.net.toUri
+import android.media.MediaDrm
+import java.security.MessageDigest
+import java.util.UUID
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -448,4 +452,49 @@ fun getSystemProps(): String {
         os.name:         $name
         os.name:         $version
     """.trimIndent()
+}
+
+/**
+ * Credits to https://github.com/fingerprintjs/fingerprintjs-android
+ */
+fun dumpGsfId(ctx: Context) : String {
+    val cr = ctx.contentResolver
+    val URI_GSF_CONTENT_PROVIDER = "content://com.google.android.gsf.gservices"
+    val ID_KEY = "android_id"
+
+    val uri = URI_GSF_CONTENT_PROVIDER.toUri()
+    val params = arrayOf(ID_KEY)
+
+    val gsfId = try {
+        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
+            check(cursor.moveToFirst() && cursor.columnCount >= 2)
+            java.lang.Long.toHexString(cursor.getString(1).toLong())
+        }
+    } catch (e: Exception) {
+        "Failed to get GSF ID: ${e.message}"
+    }
+    return gsfId
+}
+
+/**
+ * Credits to https://github.com/fingerprintjs/fingerprintjs-android
+ */
+fun dumpMediaDrmId() : String {
+    val WIDEWINE_UUID_MOST_SIG_BITS = -0x121074568629b532L
+    val WIDEWINE_UUID_LEAST_SIG_BITS = -0x5c37d8232ae2de13L
+
+    val widevineUUID = UUID(WIDEWINE_UUID_MOST_SIG_BITS, WIDEWINE_UUID_LEAST_SIG_BITS)
+
+    val wvDrm = MediaDrm(widevineUUID)
+    val mivevineId = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    wvDrm.close()
+    val md: MessageDigest = MessageDigest.getInstance("SHA-256")
+    md.update(mivevineId)
+
+    return md.digest().toHexString()
+}
+private fun ByteArray.toHexString(): String {
+    return this.joinToString("") {
+        java.lang.String.format("%02x", it)
+    }
 }
