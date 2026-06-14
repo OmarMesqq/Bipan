@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Necessary for connectivity inspection   -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
     <!-- Necessary for full VPN logic checking   -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Bipan should block this   -->
@@ -19,6 +21,13 @@
         <package android:name="com.topjohnwu.magisk" />
         <package android:name="com.instagram.android" />
     </queries>
+
+
+    <uses-permission android:name="android.permission.LOCAL_MAC_ADDRESS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
         android:icon="@mipmap/ic_launcher"

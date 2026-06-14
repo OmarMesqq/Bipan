@@ -91,10 +91,11 @@ fun dumpNetworkInfo(context: Context): String {
     val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
 
     val sb = StringBuilder()
-    sb.append("[SYSTEM CONNECTIVITY]\n")
+    sb.append("[VPN INFORMATION]\n")
     sb.append("TRANSPORT_VPN: $isVpnTransport\n")
     sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
 
+    sb.append("[NETWORK INTERFACES]\n")
     try {
         val interfaces = NetworkInterface.getNetworkInterfaces()
         if (interfaces == null) {
@@ -117,14 +118,14 @@ fun dumpNetworkInfo(context: Context): String {
     val ssid = info.ssid ?: "Hidden"
     val mac = info.macAddress ?: "Hidden"
     val linkSpeed = info.linkSpeed // Mbps
-    sb.append("\n[LEGACY WIFI MANAGER LEAK TEST]\n")
+    sb.append("\n[WIFI MANAGER INFO]\n")
     sb.append("IP Address: $ipAddress\n")
     sb.append("BSSID: $bssid\n")
     sb.append("SSID: $ssid\n")
     sb.append("MAC address: $mac\n")
     sb.append("Link Speed: $linkSpeed Mbps\n")
 
-    sb.append("\n[MODERN LINK PROPERTIES LEAK TEST]\n")
+    sb.append("\n[LINK PROPERTIES INFO]\n")
     if (activeNetwork != null) {
         val linkProperties = cm.getLinkProperties(activeNetwork)
         if (linkProperties != null) {
@@ -413,8 +414,13 @@ fun dumpGetApplicationInfo(context: Context) : String {
 
 fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
     val pm = context.packageManager
+    val sb = StringBuilder()
+
     val res = pm.systemAvailableFeatures;
-    return res.contentToString()
+    res.forEach { fi ->
+        sb.appendLine(fi.name)
+    }
+    return sb.toString()
 }
 
 
@@ -437,5 +443,9 @@ fun getSystemProps(): String {
     val name = System.getProperty("os.name")
     val version = System.getProperty("os.version")
 
-    return "$arch\n$name\n$version"
+    return """
+        os.arch:         $arch
+        os.name:         $name
+        os.name:         $version
+    """.trimIndent()
 }
