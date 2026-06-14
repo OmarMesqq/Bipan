@@ -460,6 +460,9 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
            strcmp(pathname, "/proc/vmstat") == 0));
 }
 
+/**
+ * TODO: cache most used ones in a pool
+ */
 __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pathname) {
   if (strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
@@ -470,16 +473,17 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
+  // TODO: Should match BipanJava
   if (strcmp(pathname, "/proc/cpuinfo") == 0) {
-    // Reporting only 4 cores (0-3) instead of 8.
     return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";  // Generic mid-range (Snapdragon 625-ish)
   }
+  // TODO: Should match BipanJava
+  // ~4GB  RAM
   if (strcmp(pathname, "/proc/meminfo") == 0) {
-    // Spoofing ~4GB Total RAM
     return "MemTotal:        3901140 kB\n"
            "MemFree:          258600 kB\n"
            "MemAvailable:    1234768 kB\n"
@@ -502,7 +506,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
-  // Stuff SELinux doesn't protect from
+  // TODO: Unwind calls to this to understand what it is
   if (
       local_strstr(pathname, "vendor_default_prop") ||
       local_strstr(pathname, "binder_cache_telephony_server_prop") ||
