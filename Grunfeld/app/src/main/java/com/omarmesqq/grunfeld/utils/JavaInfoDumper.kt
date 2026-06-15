@@ -15,7 +15,6 @@ import android.net.NetworkCapabilities
 import java.net.NetworkInterface
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
-import java.net.Inet4Address
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
@@ -91,19 +90,9 @@ fun dumpInstallerInfo(ctx: Context): String {
 
 
 fun dumpNetworkInfo(context: Context): String {
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val activeNetwork = cm.activeNetwork
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-
-    val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
-    val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
-
     val sb = StringBuilder()
-    sb.append("[VPN INFORMATION]\n")
-    sb.append("TRANSPORT_VPN: $isVpnTransport\n")
-    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
 
-    sb.append("[NETWORK INTERFACES]\n")
+    sb.append("[NETWORK INTERFACES (via getNetworkInterfaces]\n")
     try {
         val interfaces = NetworkInterface.getNetworkInterfaces()
         if (interfaces == null) {
@@ -118,43 +107,99 @@ fun dumpNetworkInfo(context: Context): String {
         sb.append("Failed to get interfaces: ${e.message}\n")
     }
 
+    sb.append("\n[WIFI MANAGER INFO]\n")
     val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
     @Suppress("DEPRECATION")
     val info = wifiManager.connectionInfo
-    val ipAddress = Formatter.formatIpAddress(info.ipAddress)
-    val bssid = info.bssid ?: "Hidden"
-    val ssid = info.ssid ?: "Hidden"
-    val mac = info.macAddress ?: "Hidden"
-    val linkSpeed = info.linkSpeed // Mbps
-    sb.append("\n[WIFI MANAGER INFO]\n")
-    sb.append("IP Address: $ipAddress\n")
+
+    val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
+    val bssid = info.bssid
+    val ssid = info.ssid
+    val linkSpeed = info.linkSpeed
+    val maxrx = info.maxSupportedRxLinkSpeedMbps
+    val mxtx = info.maxSupportedTxLinkSpeedMbps
+    val tx = info.txLinkSpeedMbps
+    val rx = info.rxLinkSpeedMbps
+    val netid = info.networkId
+    val ppfqdn = info.passpointFqdn
+    val ppfriendly = info.passpointProviderFriendlyName
+    val ppUniqueId = info.passpointUniqueId
+    val subId = info.subscriptionId
+
+    sb.append("IPv4 address: $ipv4Address\n")
     sb.append("BSSID: $bssid\n")
     sb.append("SSID: $ssid\n")
-    sb.append("MAC address: $mac\n")
-    sb.append("Link Speed: $linkSpeed Mbps\n")
+    sb.append("Link speed: $linkSpeed Mbps\n")
+    sb.append("Max RX: $maxrx Mbps\n")
+    sb.append("Max TX: $mxtx Mbps\n")
+    sb.append("TX: $tx Mbps\n")
+    sb.append("RX: $rx Mbps\n")
+    sb.append("Network ID: $netid\n")
+    sb.append("Passpoint FQDN: $ppfqdn\n")
+    sb.append("Passpoint Friendly name: $ppfriendly\n")
+    sb.append("Passpoint Unique ID: $ppUniqueId\n")
+    sb.append("Subscription ID: $subId\n")
 
     sb.append("\n[LINK PROPERTIES INFO]\n")
-    if (activeNetwork != null) {
-        val linkProperties = cm.getLinkProperties(activeNetwork)
-        if (linkProperties != null) {
-            val addresses = linkProperties.linkAddresses
-            if (addresses.isNotEmpty()) {
-                addresses.forEach { linkAddr ->
-                    val addr = linkAddr.address
-                    sb.append("IP Address: ${addr.hostAddress}")
-                    if (addr is Inet4Address) {
-                        sb.append(" (IPv4)\n")
-                    }
-                }
-            } else {
-                sb.append("No addresses found in LinkProperties.\n")
-            }
-        } else {
-            sb.append("LinkProperties is null.\n")
-        }
-    } else {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetwork = cm.activeNetwork
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+
+    val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
+    val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
+    sb.append("TRANSPORT_VPN: $isVpnTransport\n")
+    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
+
+    if (activeNetwork == null) {
         sb.append("No active network to query.\n")
+    } else {
+        val linkProperties = cm.getLinkProperties(activeNetwork)
+        if (linkProperties == null) {
+            sb.append("LinkProperties is null.\n")
+        } else {
+            val dhcpServerAdddr= linkProperties.dhcpServerAddress
+            val dnsServers = linkProperties.dnsServers
+            val dnsDomains = linkProperties.domains
+            val proxy = linkProperties.httpProxy
+            val ifaceName = linkProperties.interfaceName
+            val addresses = linkProperties.linkAddresses
+            val nat64prefix = linkProperties.nat64Prefix
+            val privateDnsServerName = linkProperties.privateDnsServerName
+            val routes = linkProperties.routes
+            val isPrivateDnsActive = linkProperties.isPrivateDnsActive
+            val mtu = linkProperties.mtu
+
+            sb.append("DHCP Server: $dhcpServerAdddr \n")
+            dnsServers.forEach {
+                sb.append("DNS server: ${it.hostAddress}\n")
+            }
+
+            sb.append("Interface name: $ifaceName \n")
+
+            if (addresses.isEmpty()) {
+                sb.append("No IP address found!\n")
+            } else {
+                addresses.forEach { addr ->
+                    sb.append("Address: ${addr.address.hostAddress}\n")
+                }
+            }
+
+            routes.forEach { r ->
+                sb.append("Route: $r\n")
+            }
+            sb.append("mtu: $mtu\n\n")
+
+            sb.append("nat64prefix: $nat64prefix \n")
+            sb.append("isPrivateDnsActive: $isPrivateDnsActive\n")
+            sb.append("privateDnsServerName: $privateDnsServerName \n")
+            sb.append("HTTP Proxy: $proxy \n")
+            sb.append(
+                "DNS domains search path: ${dnsDomains?.takeIf { it.isNotEmpty() } ?: "None"}\n"
+            )
+        }
     }
+
 
     return sb.toString()
 }
