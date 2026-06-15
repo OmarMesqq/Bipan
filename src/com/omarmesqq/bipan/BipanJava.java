@@ -165,6 +165,7 @@ public class BipanJava {
     modules.add(new AntiScreenshotDetectionHook());
     modules.add(new AntiNetworkDiscoveryHook());
     modules.add(new NetworkSpoofingHook());
+    modules.add(new TelephonyManagerHook());
 
     for (BaseHook module : modules) {
       try {
