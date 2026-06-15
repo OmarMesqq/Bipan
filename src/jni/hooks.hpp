@@ -42,6 +42,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.product.manufacturer", "google"},
     {"ro.product.product.model", "Pixel 8 Pro"},
     {"ro.product.product.name", "husky"},
+    {"ro.build.product", "husky"},
     {"ro.product.system.brand", "google"},
     {"ro.product.system.device", "husky"},
     {"ro.product.system.manufacturer", "google"},
@@ -59,6 +60,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.vendor.name", "husky"},
 
     {"ro.bootloader", "ripcurrent-15.0-12455211"},
+    {"ro.boot.bootloader", "ripcurrent-15.0-12455211"},
     {"ro.build.host", "abfarm-20038"},
     {"ro.build.id", "BP4A.251205.006"},
     {"ro.build.display.id", "BP4A.251205.006"},
@@ -68,6 +70,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.build.date.utc", "1764954000"},
     {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
     {"ro.build.flavor", "husky-user"},
+    {"ro.board.platform", "zuma"},
 
     {"ro.build.version.incremental", "14401865"},
     {"ro.build.version.release", "16"},
@@ -94,12 +97,32 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
 
+    // TODO: make radio stuff match our native and Java spoofs
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband1", "g5300g-251108-251202-B-12876551"},
-    {"gsm.version.baseband2", "g5300g-251108-251202-B-12876551"},
+    {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
     {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
     {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
 
+    // TODO: per-app basis. Use TelephonyManager hook instead
+    {"gsm.current.phone-type", "1"},
+    {"gsm.network.type", "LTE"},
+    {"gsm.operator.alpha", "Vivo"},
+    {"gsm.operator.iso-country", "br"},
+    {"gsm.operator.isroaming", "false"},
+    {"gsm.operator.numeric", "72423"},
+    {"gsm.sim.operator.iso-country", "br"},
+    {"gsm.sim.operator.isroaming", "false"},
+    {"gsm.sim.operator.numeric", "72423"},
+    {"gsm.sim.operator.alpha", "Vivo"},
+    {"gsm.sim.state", "LOADED"},
+    {"ril.simoperator", "ETC"},
+    {"persist.radio.multisim.config", "ss"},
+    {"ro.vendor.multisim.simslotcount", "1"},
+    {"ro.telephony.sim_slots.count", "1"},
+    {"ro.telephony.default_network", "9"},
+    {"ro.vendor.radio.default_network", "9"},
+
+    // AVB
     {"ro.boot.verifiedbootstate", "green"},
     {"ro.com.google.clientidbase", "android-google"},
 };

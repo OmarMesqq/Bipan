@@ -506,7 +506,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
-  // TODO: Unwind calls to this to understand what it is
+  // TODO: comment this in debug fields to see what happens
   if (
       local_strstr(pathname, "vendor_default_prop") ||
       local_strstr(pathname, "binder_cache_telephony_server_prop") ||
