@@ -264,15 +264,29 @@ public class NetworkSpoofingHook implements BaseHook {
 
       setField(info, "mIpAddress", fakeIp);
       setField(info, "mLinkSpeed", 53); // Mbps
-      setField(info, "mWifiSsid", UNKNOWN_SSID);
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       setField(info, "mMaxSupportedRxLinkSpeed", 62);
       setField(info, "mMaxSupportedTxLinkSpeed", 60);
       setField(info, "mTxLinkSpeed", 54);
       setField(info, "mRxLinkSpeed", 54);
-      
+      spoofSsid(info);
+
     } catch (Exception e) {
       Log.e(TAG, "In-place patch failed: ", e);
+    }
+  }
+
+  private void spoofSsid(WifiInfo info) {
+    try {
+      Class<?> wifiSsidClass = Class.forName("android.net.wifi.WifiSsid");
+
+      Method fromUtf8Text = wifiSsidClass.getDeclaredMethod("fromUtf8Text", CharSequence.class);
+      fromUtf8Text.setAccessible(true);
+      Object fakeSsid = fromUtf8Text.invoke(null, UNKNOWN_SSID);
+
+      setField(info, "mWifiSsid", fakeSsid);
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to spoof mWifiSsid: ", e);
     }
   }
 
