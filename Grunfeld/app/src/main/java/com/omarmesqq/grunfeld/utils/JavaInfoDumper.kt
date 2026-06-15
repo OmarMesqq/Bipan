@@ -27,6 +27,7 @@ import java.io.File
 import java.util.Scanner
 import android.telephony.TelephonyManager
 import java.lang.reflect.Method
+import android.content.pm.ApplicationInfo;
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -92,7 +93,7 @@ fun dumpInstallerInfo(ctx: Context): String {
 fun dumpNetworkInfo(context: Context): String {
     val sb = StringBuilder()
 
-    sb.append("[NETWORK INTERFACES (via getNetworkInterfaces]\n")
+    sb.append("[NETWORK INTERFACES (via getNetworkInterfaces)]\n")
     try {
         val interfaces = NetworkInterface.getNetworkInterfaces()
         if (interfaces == null) {
@@ -362,7 +363,7 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
 
     val info: PackageInfo = try {
         pm.getPackageInfo(targetPackage, flags)
-    } catch (e: NameNotFoundException) {
+    } catch (_: NameNotFoundException) {
         return "Package not found: $targetPackage"
     }
 
@@ -412,13 +413,13 @@ fun dumpGetInstalledApplications(context: Context): String {
     val sb = StringBuilder()
 
     // getInstalledApplications: Lighter: runtime info only, no components/permissions
-    val apps: List<android.content.pm.ApplicationInfo> =
+    val apps: List<ApplicationInfo> =
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
 
     sb.appendLine("\n=== getInstalledApplications (${apps.size} packages) ===")
-    apps.forEach { app: android.content.pm.ApplicationInfo ->
-        val isSystem = (app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-        val isDebuggable = (app.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    apps.forEach { app: ApplicationInfo ->
+        val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        val isDebuggable = (app.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         sb.appendLine("${app.packageName} | system: $isSystem | debuggable: $isDebuggable")
     }
 
@@ -483,6 +484,7 @@ fun getMemoryInfo(context: Context): String {
     am.getMemoryInfo(info)
 
     return """
+        === [ActivityManager MemoryInfo] ===
         totalMem:         ${info.totalMem  / 1024 / 1024} MB
         availMem:         ${info.availMem  / 1024 / 1024} MB
         threshold:        ${info.threshold / 1024 / 1024} MB
@@ -499,10 +501,15 @@ fun dumpGpuInfo(context: Context) : String {
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpCpuInfo() : String {
+    val sb = StringBuilder()
+    val jvmNproc = Runtime.getRuntime().availableProcessors()
+    sb.appendLine("=== [Android Runtime info] ===")
+    sb.appendLine(" Available processors to the JVM: $jvmNproc\n")
+
     val CPU_INFO_PATH = "/proc/cpuinfo"
     val KEY_VALUE_DELIMITER = ": "
 
-    val jvmNproc = Runtime.getRuntime().availableProcessors()
+
     val cpuInfoMap: MutableMap<String, String> = HashMap()
     Scanner(File(CPU_INFO_PATH)).use { s ->
         while (s.hasNextLine()) {
@@ -512,10 +519,12 @@ fun dumpCpuInfo() : String {
         }
     }
 
-    return """
-        JVM available processors: $jvmNproc
-        CPU info: $cpuInfoMap
-    """.trimIndent()
+    sb.appendLine("=== [CPU Breakdown] ===")
+    cpuInfoMap.forEach { (key, value) ->
+        sb.appendLine("$key: $value")
+    }
+
+    return sb.toString()
 }
 
 
@@ -726,9 +735,8 @@ fun dumpDevProperties(context: Context): String {
         row("ro.boot.slot_suffix",               prop("ro.boot.slot_suffix"))
         row("ro.boot.bootdevice",                prop("ro.boot.bootdevice"))
         row("ro.boot.wificountrycode",           prop("ro.boot.wificountrycode"))
-        // apparently, doesnt appear on stock ROMs
+        // apparently, doesn't appear on stock ROMs
         // row("ro.boot.selinux",                   prop("ro.boot.selinux"))
-        row("ro.boot.serialno",                  prop("ro.boot.serialno"))
 //        row("[Build] BOOTLOADER",                Build.BOOTLOADER)
 //        row("[Build] HARDWARE",                  Build.HARDWARE)
     }
