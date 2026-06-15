@@ -35,11 +35,11 @@ class MainApplication: Application() {
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
-        Log.d(TAG, "Application.onCreate query 1:\n${dumpInstallerInfo(this)}")
-        Log.d(TAG, "Application.onCreate query 2:\n${dumpQueryIntentActivities(this)}")
-        Log.d(TAG, "Application.onCreate query 3:\n${dumpGetPackageInfo(this, "com.topjohnwu.magisk")}")
-        Log.d(TAG, "Application.onCreate query 4:\n${dumpGetInstalledApplications(this)}")
-        Log.d(TAG, "Application.onCreate query 5:\n${dumpGetApplicationInfo(this)}")
+        Log.d(TAG, "onCreate early query (dumpInstallerInfo):\n${dumpInstallerInfo(this)}")
+        Log.d(TAG, "onCreate early query (dumpQueryIntentActivities):\n${dumpQueryIntentActivities(this)}")
+        Log.d(TAG, "onCreate early query (dumpGetPackageInfo):\n${dumpGetPackageInfo(this, "com.topjohnwu.magisk")}")
+        Log.d(TAG, "onCreate early query (dumpGetInstalledApplications):\n${dumpGetInstalledApplications(this)}")
+        Log.d(TAG, "onCreate early query (dumpGetApplicationInfo):\n${dumpGetApplicationInfo(this)}")
 
 
         super.onCreate()

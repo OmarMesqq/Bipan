@@ -4,34 +4,33 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
+import android.content.pm.PackageManager.NameNotFoundException
 import android.hardware.Sensor
 import android.hardware.SensorManager
+import android.media.MediaDrm
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
-import android.content.pm.PackageInstaller
-import androidx.annotation.RequiresApi
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import java.net.NetworkInterface
-import android.net.wifi.WifiManager
-import android.text.format.Formatter
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager.NameNotFoundException
-import androidx.core.net.toUri
-import android.media.MediaDrm
-import java.security.MessageDigest
-import java.util.UUID
-import java.io.File
-import java.util.Scanner
-import android.telephony.TelephonyManager
-import java.lang.reflect.Method
-import android.content.pm.ApplicationInfo;
-import android.provider.Telephony
 import android.telecom.TelecomManager
+import android.telephony.TelephonyManager
+import android.text.format.Formatter
+import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
+import androidx.core.net.toUri
+import java.io.File
+import java.lang.reflect.Method
+import java.net.NetworkInterface
+import java.security.MessageDigest
+import java.util.Scanner
+import java.util.UUID
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -755,8 +754,6 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}\n")
 
 
-
-    sb.appendLine("carrierConfig: ${telephonyManager.carrierConfig}\n")
     sb.appendLine("carrierIdFromSimMccMnc: ${telephonyManager.carrierIdFromSimMccMnc}")
     sb.appendLine("networkOperator: ${telephonyManager.networkOperator}")
     sb.appendLine("networkOperatorName: ${telephonyManager.networkOperatorName}")
@@ -767,6 +764,7 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simCarrierId: ${telephonyManager.simCarrierId}")
     sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
+
 
     sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
 
