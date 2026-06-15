@@ -13,12 +13,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import android.app.Instrumentation;
 import android.os.Bundle;
 import android.app.Application;
+import java.lang.OutOfMemoryError;
 
 public class BipanJava {
   private static final String TAG = "BipanJava";
 
-  private static final int GET_APPLICATION_CONTEXT_MAX_RETRIES = 1000;
-  private static final int GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS = 1;
   private static final long WAIT_UNTIL_MODULES_READY_TIMEOUT_MS = 15000;
 
   private static final CountDownLatch modulesReady = new CountDownLatch(1);
@@ -40,16 +39,14 @@ public class BipanJava {
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Object at = atClz.getMethod("currentActivityThread").invoke(null);
       if (at == null) {
-        Log.e(TAG, "hookInstrumentationNow: ActivityThread is null");
-        return;
+        throw new Exception("hookInstrumentationNow: ActivityThread is null!");
       }
 
       Field mInstrField = atClz.getDeclaredField("mInstrumentation");
       mInstrField.setAccessible(true);
       final Object realInstr = mInstrField.get(at);
       if (realInstr == null) {
-        Log.e(TAG, "hookInstrumentationNow: mInstrumentation is null");
-        return;
+        throw new Exception("hookInstrumentationNow: mInstrumentation is null!");
       }
 
       Instrumentation hooked = new Instrumentation() {
@@ -61,14 +58,12 @@ public class BipanJava {
             boolean done = modulesReady.await(WAIT_UNTIL_MODULES_READY_TIMEOUT_MS,
                 java.util.concurrent.TimeUnit.MILLISECONDS);
             if (!done) {
-              Log.e(TAG, "[!] Module loading timed out! Proceeding anyway");
+              throw new OutOfMemoryError("[!] BipanJava: Module loading timed out! Refusing to proceed!");
             } else {
               // Log.i(TAG, "Instrumentation.onCreate — modules ready");
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-          } catch (Exception e) {
-            Log.e(TAG, "Unknown exception captured at Instrumentation.onCreate: " + e);
           }
 
           try {
@@ -117,13 +112,9 @@ public class BipanJava {
       try {
         unseal();
         Context ctx = waitForContextDirect();
-        if (ctx != null) {
-          loadModules(ctx);
-        } else {
-          Log.e(TAG, "Failed to get Application Context!");
-        }
+        loadModules(ctx);
       } catch (Exception e) {
-        Log.wtf(TAG, "[!] Fatal exception in install(): ", e);
+        throw new OutOfMemoryError("[!] BipanJava.install: " + e);
       } finally {
         modulesReady.countDown();
       }
@@ -134,28 +125,26 @@ public class BipanJava {
     Class<?> atClass = Class.forName("android.app.ActivityThread");
     Field mInitialApplicationField = atClass.getDeclaredField("mInitialApplication");
     mInitialApplicationField.setAccessible(true);
-
     Method currentActivityThread = atClass.getMethod("currentActivityThread");
-    Method getApplication = atClass.getMethod("getApplication");
 
-    for (int i = 0; i < GET_APPLICATION_CONTEXT_MAX_RETRIES; i++) {
-      Object at = currentActivityThread.invoke(null);
-      if (at != null) {
-        Object app = mInitialApplicationField.get(at);
-        if (app instanceof Context) {
-          return (Context) app;
+    for (int i = 0; i < 200; i++) {
+      try {
+        Object at = currentActivityThread.invoke(null);
+        if (at != null) {
+          Object app = mInitialApplicationField.get(at);
+          if (app instanceof Context) {
+            return (Context) app;
+          }
         }
-        app = getApplication.invoke(at);
-        if (app instanceof Context) {
-          return (Context) app;
-        }
+      } catch (Exception ignored) {
+        // Context may not be ready yet, keep going
       }
-      Thread.sleep(GET_APPLICATION_CONTEXT_THREAD_SLEEP_TIME_MS);
+      Thread.sleep(5);
     }
-    return null;
+    throw new OutOfMemoryError("[!] BipanJava: Couldn't get Context! Refusing to proceed!");
   }
 
-  private static void loadModules(Context context) {
+  private static void loadModules(Context context) throws Exception {
     spoofOsVersion();
 
     List<BaseHook> modules = new ArrayList<>();
@@ -173,6 +162,7 @@ public class BipanJava {
         Log.i(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
       } catch (Exception e) {
         Log.e(TAG, "Failed to load module: " + module.getClass().getName(), e);
+        throw e;
       }
     }
   }
