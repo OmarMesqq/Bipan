@@ -270,7 +270,7 @@ fun JavaInfoScreen() {
             )
 
             Button(
-                onClick = { devPropsInfo = dumpDevProperties(context) },
+                onClick = { devPropsInfo = dumpDevProperties() },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Dump prop contexts")
