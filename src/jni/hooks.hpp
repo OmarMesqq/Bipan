@@ -125,7 +125,10 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // AVB
     {"ro.boot.verifiedbootstate", "green"},
     {"ro.com.google.clientidbase", "android-google"},
-    {"ro.boot.selinux", "enforcing"},
+    {"ro.boot.veritymode", "enforcing"},
+    {"ro.boot.vbmeta.device_state", "locked"},
+    {"ro.boot.avb_version", "1.2"},
+    {"ro.boot.slot_suffix", "_b"},
 };
 
 static bool linker_hooked = false;

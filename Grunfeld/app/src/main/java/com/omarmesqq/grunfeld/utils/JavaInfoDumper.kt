@@ -681,7 +681,8 @@ fun dumpDevProperties(context: Context): String {
         row("ro.boot.slot_suffix",               prop("ro.boot.slot_suffix"))
         row("ro.boot.bootdevice",                prop("ro.boot.bootdevice"))
         row("ro.boot.wificountrycode",           prop("ro.boot.wificountrycode"))
-        row("ro.boot.selinux",                   prop("ro.boot.selinux"))
+        // apparently, doesnt appear on stock ROMs
+        // row("ro.boot.selinux",                   prop("ro.boot.selinux"))
         row("ro.boot.serialno",                  prop("ro.boot.serialno"))
 //        row("[Build] BOOTLOADER",                Build.BOOTLOADER)
 //        row("[Build] HARDWARE",                  Build.HARDWARE)
