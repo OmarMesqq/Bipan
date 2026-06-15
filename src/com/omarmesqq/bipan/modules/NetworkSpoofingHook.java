@@ -250,19 +250,26 @@ public class NetworkSpoofingHook implements BaseHook {
       Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
       ctor.setAccessible(true);
       list.add(ctor.newInstance(fakeIp, 24));
+
+      lp.setInterfaceName("wlan0");
+      lp.setMtu(1500);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof LinkProperties", e);
+      Log.e(TAG, "Failed to spoof LinkProperties: ", e);
     }
   }
 
   private void spoofWifiInfo(WifiInfo info) {
     try {
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 });
-      
+
       setField(info, "mIpAddress", fakeIp);
       setField(info, "mLinkSpeed", 53); // Mbps
       setField(info, "mWifiSsid", UNKNOWN_SSID);
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
+      setField(info, "mMaxSupportedRxLinkSpeed", 62);
+      setField(info, "mMaxSupportedTxLinkSpeed", 60);
+      setField(info, "mTxLinkSpeed", 54);
+      setField(info, "mRxLinkSpeed", 54);
       
     } catch (Exception e) {
       Log.e(TAG, "In-place patch failed: ", e);
