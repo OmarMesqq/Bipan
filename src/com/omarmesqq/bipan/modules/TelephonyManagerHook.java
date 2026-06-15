@@ -10,6 +10,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanTelephonyHook";
@@ -31,8 +34,19 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final int SPOOF_NETWORK_TYPE = TelephonyManager.NETWORK_TYPE_LTE;
   private static final int SPOOF_DATA_NETWORK_TYPE = TelephonyManager.NETWORK_TYPE_LTE;
 
+  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms",
+      "com.spotify.music",
+      "com.whatsapp",
+      "com.instagram.android"));
+
   @Override
   public void install(Context context) throws Exception {
+    if (ALLOW_LIST.contains(context.getPackageName())) {
+      return;
+    }
+
     realTm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
 
     // ── 1. Get ITelephony binder from ServiceManager ──────────────────

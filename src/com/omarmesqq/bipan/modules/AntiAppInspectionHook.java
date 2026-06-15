@@ -159,8 +159,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return createFakeInstallSourceInfo();
       }
 
-      case "queryIntentActivities":
-      case "queryIntentActivitiesAsUser": {
+      case "queryIntentActivities": {
         if (args != null && args.length > 0 && args[0] instanceof Intent) {
           Intent intent = (Intent) args[0];
 
@@ -192,10 +191,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return emptyParceledListSlice();
       }
 
-      // First overload: (String packageName, int flags)
-      // Second overload: (String packageName, PackageInfoFlags flags)
-      case "getPackageInfo":
-      case "getPackageInfoWithFlags": {
+      case "getPackageInfo": {
         String pkg = (args != null && args.length > 0 && args[0] instanceof String)
             ? (String) args[0]
             : null;
@@ -297,9 +293,9 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
 
       case "getSystemAvailableFeatures": {
-          Log.w(TAG, "Blinded: getSystemAvailableFeatures");
-          return null;
-        }
+        Log.w(TAG, "Blinded: getSystemAvailableFeatures");
+        return null;
+      }
 
       default: {
         Object result = method.invoke(originalPM, args);
