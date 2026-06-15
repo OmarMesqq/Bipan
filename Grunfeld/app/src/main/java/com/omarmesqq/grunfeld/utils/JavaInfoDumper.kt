@@ -605,7 +605,6 @@ fun dumpDevProperties(): String {
 
 
     section("vendor_default_prop (?)") {
-        row("ro.vendor.product.cpu.abilist", prop("ro.vendor.product.cpu.abilist"))
         row("ro.vendor.build.version.sdk", prop("ro.vendor.build.version.sdk"))
         row("ro.vendor.build.version.release_or_codename", prop("ro.vendor.build.version.release_or_codename"))
         row("ro.vendor.build.version.release", prop("ro.vendor.build.version.release"))
@@ -660,11 +659,7 @@ fun dumpDevProperties(): String {
     section("bootloader_prop") {
         row("ro.bootloader",                     prop("ro.bootloader"))
         row("ro.boot.verifiedbootstate",         prop("ro.boot.verifiedbootstate"))
-        row("ro.boot.veritymode",                prop("ro.boot.veritymode"))
-        row("ro.boot.vbmeta.digest",             prop("ro.boot.vbmeta.digest"))
-        row("ro.boot.vbmeta.device_state",       prop("ro.boot.vbmeta.device_state"))
-        row("ro.boot.avb_version",               prop("ro.boot.avb_version"))
-        row("ro.boot.slot_suffix",               prop("ro.boot.slot_suffix"))
+        row("ro.com.google.clientidbase",         prop("ro.com.google.clientidbase"))
     }
 
     return sb.toString()
@@ -730,11 +725,10 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
 
 
-    sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
+//    sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
 
     sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
     sb.appendLine("hasCarrierPrivileges(): ${telephonyManager.hasCarrierPrivileges()}")
-    sb.appendLine("preferredOpportunisticDataSubscription: ${telephonyManager.preferredOpportunisticDataSubscription}")
 
     return sb.toString()
 }

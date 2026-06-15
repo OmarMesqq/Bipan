@@ -82,8 +82,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.build.version.release_or_preview_display", "16"},
     {"ro.build.version.sdk", "36"},
     {"ro.build.version.security_patch", "2025-12-05"},
-    // TODO: does this make sense? vendor tends to be outdated compared to platform patch
-    // {"ro.vendor.build.security_patch", "2025-12-05"},
     {"ro.build.version.codename", "REL"},
     {"ro.build.version.base_os", ""},
     {"ro.build.version.preview_sdk", "0"},
@@ -97,22 +95,14 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
 
-    // TODO: make radio stuff match our native and Java spoofs
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
     {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
-    // TODO: should be empty?
-    {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver2", ""},
 
     // AVB, dm-verity, bootloader and whatnots
     {"ro.boot.verifiedbootstate", "green"},
     {"ro.com.google.clientidbase", "android-google"},
-    {"ro.boot.veritymode", "enforcing"},
-    {"ro.boot.vbmeta.device_state", "locked"},
-    {"ro.boot.avb_version", "1.2"},
-    {"ro.boot.slot_suffix", "_b"},
-    {"ro.debuggable", "0"},
-    {"ro.secure", "1"},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
@@ -120,7 +110,6 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"gsm.network.type", "LTE"},
     {"gsm.operator.alpha", "Vivo"},
     {"gsm.operator.iso-country", "br"},
-    {"gsm.operator.isroaming", "false"},
     {"gsm.operator.numeric", "72423"},
     {"gsm.sim.operator.iso-country", "br"},
     {"gsm.sim.operator.isroaming", "false"},
@@ -129,10 +118,10 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"gsm.sim.state", "LOADED"},
     {"ril.simoperator", "ETC"},
     {"persist.radio.multisim.config", "ss"},
-    {"ro.vendor.multisim.simslotcount", "1"},
+    {"persist.radio.def_network", "9"},
+    {"persist.radio.latest-modeltype", "2"},
     {"ro.telephony.sim_slots.count", "1"},
     {"ro.telephony.default_network", "9"},
-    {"ro.vendor.radio.default_network", "9"},
 
 };
 
@@ -353,7 +342,6 @@ static int hook_system_property_get(const char* name, char* value) {
     if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
     } else {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Applying native sysprop telephony hooks for %s", package_name);
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         strncpy(value, it->second.c_str(), 91);
@@ -463,7 +451,6 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
     if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
     } else {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Applying native sysprop telephony hooks for %s", package_name);
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         override_buf = it->second;
