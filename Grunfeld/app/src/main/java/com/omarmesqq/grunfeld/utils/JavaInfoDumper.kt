@@ -26,6 +26,8 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.io.File
 import java.util.Scanner
+import android.telephony.TelephonyManager
+import java.lang.reflect.Method
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -523,4 +525,167 @@ private fun ByteArray.toHexString(): String {
     return this.joinToString("") {
         java.lang.String.format("%02x", it)
     }
+}
+
+
+@SuppressLint("PrivateApi")
+fun dumpDevProperties(context: Context): String {
+    val sysPropClass = Class.forName("android.os.SystemProperties")
+    val getMethod: Method = sysPropClass.getMethod("get", String::class.java, String::class.java)
+    fun prop(key: String, default: String = "<empty>"): String =
+        (getMethod.invoke(null, key, default) as? String)
+            ?.takeIf { it.isNotEmpty() } ?: default
+
+    val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+    val sb = StringBuilder()
+
+    fun section(name: String, block: StringBuilder.() -> Unit) {
+        sb.appendLine("\n══ $name ══")
+        sb.block()
+    }
+    fun row(label: String, value: Any?) =
+        sb.appendLine("  %-45s %s".format("$label:", value ?: "<null>"))
+
+    // ── vendor_default_prop ───────────────────────────────────────────────
+    // ro.* vendor keys ARE pre-mapped. Use vendor.* runtime keys instead —
+    // these are written by vendor HALs at runtime, not read by Zygote.
+    section("vendor_default_prop") {
+        // These runtime vendor.* keys are NOT pre-mapped
+        row("vendor.display.mode",                          prop("vendor.display.mode"))
+        row("vendor.display.disable_hw_vsync",              prop("vendor.display.disable_hw_vsync"))
+        row("vendor.audio.volume.headset",                  prop("vendor.audio.volume.headset"))
+        row("vendor.audio.feature.a2dp_offload.enable",     prop("vendor.audio.feature.a2dp_offload.enable"))
+        row("vendor.camera.aux.packagelist",                prop("vendor.camera.aux.packagelist"))
+        row("vendor.gralloc.disable_ahardwarebuffer",       prop("vendor.gralloc.disable_ahardwarebuffer"))
+        // Force the openat by reading a key with a very specific vendor prefix
+        // that definitely lives in vendor_default_prop, not build_prop
+        row("vendor.rild.libpath",                          prop("vendor.rild.libpath"))
+        row("vendor.bt.sap_connected",                      prop("vendor.bt.sap_connected"))
+    }
+
+    // ── binder_cache_telephony_server_prop ────────────────────────────────
+    // These fire reliably — force multiple reads to populate the cache
+    section("binder_cache_telephony_server_prop") {
+        // First make actual TelephonyManager calls to populate the cache,
+        // THEN read the cache keys — otherwise they're empty
+        val activeDataSub   = runCatching { tm?.let {
+            val m = TelephonyManager::class.java.getMethod("getActiveDataSubscriptionId")
+            m.invoke(it)
+        }}.getOrNull()
+        val phoneCount      = runCatching { tm?.let {
+            val m = TelephonyManager::class.java.getMethod("getPhoneCount")
+            m.invoke(it)
+        }}.getOrNull()
+
+        row("cache_key.telephony_service.get_active_data_sub_id",    prop("cache_key.telephony_service.get_active_data_sub_id"))
+        row("cache_key.telephony_service.get_default_data_sub_id",   prop("cache_key.telephony_service.get_default_data_sub_id"))
+        row("cache_key.telephony_service.get_default_voice_sub_id",  prop("cache_key.telephony_service.get_default_voice_sub_id"))
+        row("cache_key.telephony_service.get_default_sms_sub_id",    prop("cache_key.telephony_service.get_default_sms_sub_id"))
+        row("cache_key.telephony_service.get_phone_count",           prop("cache_key.telephony_service.get_phone_count"))
+        row("cache_key.telephony_service.get_active_modem_count",    prop("cache_key.telephony_service.get_active_modem_count"))
+        row("[TelephonyManager direct] activeDataSubscriptionId",                   activeDataSub)
+        row("[TelephonyManager direct] phoneCount",                                 phoneCount)
+    }
+
+    // ── telephony_config_prop ─────────────────────────────────────────────
+    // ro.telephony.* is pre-mapped. Use keys that are specifically in
+    // telephony_config_prop but NOT in build_prop or telephony_status_prop.
+    // The trick: use persist.telephony.* which lives here, not in build_prop.
+    section("telephony_config_prop") {
+        row("ro.telephony.default_network",              prop("ro.telephony.default_network"))
+        row("ro.telephony.iwlan_operation_mode",         prop("ro.telephony.iwlan_operation_mode"))
+        row("ro.telephony.sim_slots.count",              prop("ro.telephony.sim_slots.count"))
+        row("ro.telephony.default_cdma_sub",             prop("ro.telephony.default_cdma_sub"))
+        row("ro.com.android.dataroaming",                prop("ro.com.android.dataroaming"))
+        // persist.telephony.* keys are NOT in build_prop, force lazy load:
+        row("persist.telephony.test.carrierid",          prop("persist.telephony.test.carrierid"))
+        row("persist.telephony.voltewfc.test.mode",      prop("persist.telephony.voltewfc.test.mode"))
+    }
+
+    // ── telephony_status_prop ─────────────────────────────────────────────
+    // gsm.* and telephony.* runtime keys — written by RIL daemon at runtime,
+    // definitely NOT pre-mapped by Zygote since RIL hasn't started yet then.
+    section("telephony_status_prop") {
+        row("gsm.version.baseband",              prop("gsm.version.baseband"))
+        row("gsm.version.ril-impl",              prop("gsm.version.ril-impl"))
+        row("gsm.operator.alpha",                prop("gsm.operator.alpha"))
+        row("gsm.operator.numeric",              prop("gsm.operator.numeric"))
+        row("gsm.operator.iso-country",          prop("gsm.operator.iso-country"))
+        row("gsm.sim.state",                     prop("gsm.sim.state"))
+        row("gsm.network.type",                  prop("gsm.network.type"))
+        row("gsm.defaultpdpcontext.active",      prop("gsm.defaultpdpcontext.active"))
+        row("telephony.active_modems.max_count", prop("telephony.active_modems.max_count"))
+        row("telephony.lteOnGsmDevice",          prop("telephony.lteOnGsmDevice"))
+        // Cross-check via Java API
+        row("[TelephonyManager] networkOperatorName",          tm?.networkOperatorName)
+        row("[TelephonyManager] simOperatorName",              tm?.simOperatorName)
+        row("[TelephonyManager] networkCountryIso",            tm?.networkCountryIso)
+    }
+
+    // ── userdebug_or_eng_prop ─────────────────────────────────────────────
+    // ro.debuggable IS pre-mapped (Zygote reads it to decide seccomp policy).
+    // The only key in this context IS ro.debuggable — there's no escaping it.
+    // However: reading it via SystemProperties reflection rather than Build.*
+    // may still trigger if your process somehow missed the inherited mapping.
+    // More usefully, read init.svc_debug_pid.* which is also in this context
+    // and is definitely runtime-written (one entry per debuggable service).
+    section("userdebug_or_eng_prop") {
+        row("ro.debuggable",                     prop("ro.debuggable"))
+        row("ro.build.type",                     prop("ro.build.type"))
+        // These are runtime-written by init for userdebug builds:
+        row("init.svc_debug_pid.adbd",           prop("init.svc_debug_pid.adbd"))
+        row("init.svc_debug_pid.tombstoned",     prop("init.svc_debug_pid.tombstoned"))
+//        row("[Build] TYPE",                      Build.TYPE)
+//        row("[Build] TAGS",                      Build.TAGS)
+        row("[derived] isUserdebugOrEng",        prop("ro.debuggable") == "1")
+    }
+
+    // ── radio_control_prop ────────────────────────────────────────────────
+    // This one fires reliably already. Keep the same keys.
+    section("radio_control_prop") {
+        row("persist.radio.multisim.config",     prop("persist.radio.multisim.config"))
+        row("persist.radio.snapshot_enabled",    prop("persist.radio.snapshot_enabled"))
+        row("persist.radio.apm_sim_not_pwdn",    prop("persist.radio.apm_sim_not_pwdn"))
+        row("persist.radio.custom_ecc",          prop("persist.radio.custom_ecc"))
+        row("ro.radio.noril",                    prop("ro.radio.noril"))
+        row("ro.radio.lte.edgerollback",         prop("ro.radio.lte.edgerollback"))
+    }
+
+    // ── fingerprint_prop ──────────────────────────────────────────────────
+    // ro.build.fingerprint is in build_prop (pre-mapped), NOT fingerprint_prop.
+    // The per-partition fingerprints (ro.system.build.*, ro.vendor.build.* etc.)
+    // ARE in fingerprint_prop and are less likely to be pre-mapped.
+    section("fingerprint_prop") {
+        // These specifically live in fingerprint_prop, not build_prop:
+        row("ro.system.build.fingerprint",       prop("ro.system.build.fingerprint"))
+        row("ro.vendor.build.fingerprint",       prop("ro.vendor.build.fingerprint"))
+        row("ro.product.build.fingerprint",      prop("ro.product.build.fingerprint"))
+        row("ro.system_ext.build.fingerprint",   prop("ro.system_ext.build.fingerprint"))
+        row("ro.odm.build.fingerprint",          prop("ro.odm.build.fingerprint"))
+        row("ro.bootimage.build.fingerprint",    prop("ro.bootimage.build.fingerprint"))
+//        row("[Build] FINGERPRINT",               Build.FINGERPRINT)
+    }
+
+    // ── bootloader_prop ───────────────────────────────────────────────────
+    // ro.boot.* is pre-mapped. Use ro.bootloader specifically —
+    // it is in bootloader_prop but distinct from build_prop.
+    // The trick: some ro.boot.* subkeys are in bootloader_prop specifically
+    // and not eagerly read. vbmeta and avb keys are good candidates.
+    section("bootloader_prop") {
+        row("ro.bootloader",                     prop("ro.bootloader"))
+        row("ro.boot.verifiedbootstate",         prop("ro.boot.verifiedbootstate"))
+        row("ro.boot.veritymode",                prop("ro.boot.veritymode"))
+        row("ro.boot.vbmeta.digest",             prop("ro.boot.vbmeta.digest"))
+        row("ro.boot.vbmeta.device_state",       prop("ro.boot.vbmeta.device_state"))
+        row("ro.boot.avb_version",               prop("ro.boot.avb_version"))
+        row("ro.boot.slot_suffix",               prop("ro.boot.slot_suffix"))
+        row("ro.boot.bootdevice",                prop("ro.boot.bootdevice"))
+        row("ro.boot.wificountrycode",           prop("ro.boot.wificountrycode"))
+        row("ro.boot.selinux",                   prop("ro.boot.selinux"))
+        row("ro.boot.serialno",                  prop("ro.boot.serialno"))
+//        row("[Build] BOOTLOADER",                Build.BOOTLOADER)
+//        row("[Build] HARDWARE",                  Build.HARDWARE)
+    }
+
+    return sb.toString()
 }
