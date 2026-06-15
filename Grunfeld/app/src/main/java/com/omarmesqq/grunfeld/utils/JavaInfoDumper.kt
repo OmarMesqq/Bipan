@@ -587,14 +587,13 @@ private fun ByteArray.toHexString(): String {
 
 
 @SuppressLint("PrivateApi")
-fun dumpDevProperties(context: Context): String {
+fun dumpDevProperties(): String {
     val sysPropClass = Class.forName("android.os.SystemProperties")
     val getMethod: Method = sysPropClass.getMethod("get", String::class.java, String::class.java)
     fun prop(key: String, default: String = "<empty>"): String =
         (getMethod.invoke(null, key, default) as? String)
             ?.takeIf { it.isNotEmpty() } ?: default
-
-    val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+    
     val sb = StringBuilder()
 
     fun section(name: String, block: StringBuilder.() -> Unit) {
@@ -606,18 +605,13 @@ fun dumpDevProperties(context: Context): String {
 
 
     section("vendor_default_prop (?)") {
-        row("vendor.secureos.kernel.version", prop("vendor.secureos.kernel.version"))
         row("ro.vendor.product.cpu.abilist", prop("ro.vendor.product.cpu.abilist"))
-        row("ro.vendor.multisim.simslotcount", prop("ro.vendor.multisim.simslotcount"))
-        row("ro.vendor.radio.default_network", prop("ro.vendor.radio.default_network"))
-        row("ro.vendor.build.version.sdk_full", prop("ro.vendor.build.version.sdk_full"))
         row("ro.vendor.build.version.sdk", prop("ro.vendor.build.version.sdk"))
         row("ro.vendor.build.version.release_or_codename", prop("ro.vendor.build.version.release_or_codename"))
         row("ro.vendor.build.version.release", prop("ro.vendor.build.version.release"))
         row("ro.vendor.build.version.incremental", prop("ro.vendor.build.version.incremental"))
         row("ro.vendor.build.type", prop("ro.vendor.build.type"))
         row("ro.vendor.build.tags", prop("ro.vendor.build.tags"))
-        row("[!] ro.vendor.build.security_patch", prop("ro.vendor.build.security_patch"))
         row("ro.vendor.build.id", prop("ro.vendor.build.id"))
         row("ro.vendor.build.fingerprint", prop("ro.vendor.build.fingerprint"))
         row("ro.vendor.build.date.utc", prop("ro.vendor.build.date.utc"))
@@ -631,54 +625,24 @@ fun dumpDevProperties(context: Context): String {
 
     }
 
-    section("binder_cache_telephony_server_prop (?)") {
-        val activeDataSub   = runCatching { tm?.let {
-            val m = TelephonyManager::class.java.getMethod("getActiveDataSubscriptionId")
-            m.invoke(it)
-        }}.getOrNull()
-        val phoneCount      = runCatching { tm?.let {
-            val m = TelephonyManager::class.java.getMethod("getPhoneCount")
-            m.invoke(it)
-        }}.getOrNull()
-
-        row("[TelephonyManager (reflection)] activeDataSubscriptionId",                   activeDataSub)
-        row("[TelephonyManager (reflection)] phoneCount",                                 phoneCount)
-    }
-
-
     section("telephony_config_prop (?)") {
         row("ro.telephony.default_network",              prop("ro.telephony.default_network"))
         row("ro.telephony.sim_slots.count",              prop("ro.telephony.sim_slots.count"))
-        row("ro.com.android.dataroaming",                prop("ro.com.android.dataroaming"))
     }
 
     section("telephony_status_prop (?)") {
         row("gsm.version.baseband",              prop("gsm.version.baseband"))
         row("gsm.version.ril-impl",              prop("gsm.version.ril-impl"))
         row("ril.sw_ver",              prop("ril.sw_ver"))
-        // TODO: should be empty?
         row("ril.sw_ver2",              prop("ril.sw_ver2"))
         row("gsm.operator.alpha",                prop("gsm.operator.alpha"))
         row("gsm.operator.numeric",              prop("gsm.operator.numeric"))
         row("gsm.operator.iso-country",          prop("gsm.operator.iso-country"))
         row("gsm.sim.state",                     prop("gsm.sim.state"))
         row("gsm.network.type",                  prop("gsm.network.type"))
-        // Crossrefing with Java
-        row("[TelephonyManager] networkOperatorName",          tm?.networkOperatorName)
-        row("[TelephonyManager] simOperatorName",              tm?.simOperatorName)
-        row("[TelephonyManager] networkCountryIso",            tm?.networkCountryIso)
     }
 
-    section("userdebug_or_eng_prop (?)") {
-        row("[PROTECTED?] ro.debuggable",                     prop("ro.debuggable"))
-        row("[PROTECTED?] ro.secure",                     prop("ro.secure"))
-        row("[PROTECTED?] init.svc_debug_pid.adbd",           prop("init.svc_debug_pid.adbd"))
-        row("[PROTECTED?] init.svc_debug_pid.tombstoned",     prop("init.svc_debug_pid.tombstoned"))
-        row("ro.build.type",                     prop("ro.build.type"))
-    }
 
-    // ── radio_control_prop ────────────────────────────────────────────────
-    // This one fires reliably already. Keep the same keys.
     section("radio_control_prop (?)") {
         row("persist.radio.multisim.config",     prop("persist.radio.multisim.config"))
         row("persist.radio.def_network",     prop("persist.radio.def_network"))
