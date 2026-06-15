@@ -24,6 +24,8 @@ import androidx.core.net.toUri
 import android.media.MediaDrm
 import java.security.MessageDigest
 import java.util.UUID
+import java.io.File
+import java.util.Scanner
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -429,7 +431,7 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
 
 
 fun getMemoryInfo(context: Context): String {
-    val am   = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val info = ActivityManager.MemoryInfo()
     am.getMemoryInfo(info)
 
@@ -438,6 +440,34 @@ fun getMemoryInfo(context: Context): String {
         availMem:         ${info.availMem  / 1024 / 1024} MB
         threshold:        ${info.threshold / 1024 / 1024} MB
         lowMemory:        ${info.lowMemory}
+    """.trimIndent()
+}
+
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+fun dumpGpuInfo(context: Context) : String {
+    val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val glesVersion = am.deviceConfigurationInfo.glEsVersion
+    return "OpenGL ES version: $glesVersion"
+}
+
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+fun dumpCpuInfo() : String {
+    val CPU_INFO_PATH = "/proc/cpuinfo"
+    val KEY_VALUE_DELIMITER = ": "
+
+    val jvmNproc = Runtime.getRuntime().availableProcessors()
+    val cpuInfoMap: MutableMap<String, String> = HashMap()
+    Scanner(File(CPU_INFO_PATH)).use { s ->
+        while (s.hasNextLine()) {
+            val cpuInfoValues = s.nextLine()!!.split(KEY_VALUE_DELIMITER)
+            if (cpuInfoValues.size > 1) cpuInfoMap[cpuInfoValues[0].trim { it <= ' ' }] =
+                cpuInfoValues[1].trim { it <= ' ' }
+        }
+    }
+
+    return """
+        JVM available processors: $jvmNproc
+        CPU info: $cpuInfoMap
     """.trimIndent()
 }
 
@@ -454,9 +484,7 @@ fun getSystemProps(): String {
     """.trimIndent()
 }
 
-/**
- * Credits to https://github.com/fingerprintjs/fingerprintjs-android
- */
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpGsfId(ctx: Context) : String {
     val cr = ctx.contentResolver
     val URI_GSF_CONTENT_PROVIDER = "content://com.google.android.gsf.gservices"
@@ -476,9 +504,7 @@ fun dumpGsfId(ctx: Context) : String {
     return gsfId
 }
 
-/**
- * Credits to https://github.com/fingerprintjs/fingerprintjs-android
- */
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpMediaDrmId() : String {
     val WIDEWINE_UUID_MOST_SIG_BITS = -0x121074568629b532L
     val WIDEWINE_UUID_LEAST_SIG_BITS = -0x5c37d8232ae2de13L
