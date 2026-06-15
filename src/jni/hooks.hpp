@@ -70,7 +70,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.build.date.utc", "1764954000"},
     {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
     {"ro.build.flavor", "husky-user"},
-    {"ro.board.platform", "zuma"},
 
     {"ro.build.version.incremental", "14401865"},
     {"ro.build.version.release", "16"},
