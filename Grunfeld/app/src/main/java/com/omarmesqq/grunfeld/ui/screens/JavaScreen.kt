@@ -29,6 +29,7 @@ import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import androidx.annotation.RequiresApi
 import com.omarmesqq.grunfeld.utils.dumpCpuInfo
+import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
@@ -45,19 +46,27 @@ import com.omarmesqq.grunfeld.utils.getSystemProps
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
+
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
+
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
+
     var netInfo by remember { mutableStateOf("VPN status not checked yet") }
+
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
     var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
     var applicationInfoForSelf by remember { mutableStateOf("Get Application info not queried") }
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("getSystemAvailableFeatures not queried") }
+
     var memInfo by remember { mutableStateOf("Memory not queried") }
     var gpuInfo by remember { mutableStateOf("GPU info not queried") }
     var cpuInfo by remember { mutableStateOf("CPU info not queried") }
+
     var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
+    var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
+
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
 
@@ -256,6 +265,14 @@ fun JavaInfoScreen() {
                 text = sysPropsInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
+
+            Button(
+                onClick = { devPropsInfo = dumpDevProperties(context) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Dump prop contexts")
+            }
+            ReportTextWithCopy(devPropsInfo, "Dev properties not queried")
         }
 
         SectionHeader("DEVICE IDENTIFIERS")

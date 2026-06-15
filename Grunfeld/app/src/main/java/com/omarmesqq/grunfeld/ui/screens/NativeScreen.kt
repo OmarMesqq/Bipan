@@ -132,6 +132,7 @@ fun NativeScreen() {
                 }
             }
 
+            // TODO: revist this
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
