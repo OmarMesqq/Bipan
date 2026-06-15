@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld.utils
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
@@ -28,6 +29,9 @@ import java.util.Scanner
 import android.telephony.TelephonyManager
 import java.lang.reflect.Method
 import android.content.pm.ApplicationInfo;
+import android.provider.Telephony
+import android.telecom.TelecomManager
+import androidx.annotation.RequiresPermission
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -740,6 +744,139 @@ fun dumpDevProperties(context: Context): String {
 //        row("[Build] BOOTLOADER",                Build.BOOTLOADER)
 //        row("[Build] HARDWARE",                  Build.HARDWARE)
     }
+
+    return sb.toString()
+}
+
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+@RequiresPermission(allOf = [Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
+fun dumpTelephonyInfo(context: Context): String {
+    /**
+     *     public static final String TELEPHONY_IMS_SERVICE = "telephony_ims";
+     *     public static final String TELEPHONY_PHONE_NUMBER_SERVICE = "telephony_phone_number";
+     *     public static final String TELEPHONY_SUBSCRIPTION_SERVICE = "telephony_subscription_service";
+     */
+
+    // public static final String TELECOM_SERVICE = "telecom";
+    val telecomManager  = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+
+    // public static final String TELEPHONY_SERVICE = "phone";
+    val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+
+    val sb = StringBuilder()
+    sb.appendLine("=== [TelecomManager] ===")
+    val isInManagedCall = telecomManager.isInManagedCall
+    val isInCall = telecomManager.isInCall
+
+    val simCallMgr = telecomManager.simCallManager
+    if (simCallMgr != null) {
+        val simCallComponentName = simCallMgr.componentName
+
+        val simCallMgrId = simCallMgr.id
+        val simCallComponentNamePkgName =  simCallComponentName.packageName
+        val simCallComponentNameClassName = simCallComponentName.className
+        val simCallComponentShortNameClassName =simCallComponentName.shortClassName
+
+        // val simCallMgrUserHandle = simCallMgr.userHandle
+        sb.appendLine("simCallMgrId: $simCallMgrId")
+        sb.appendLine("simCallComponentNamePkgName: $simCallComponentNamePkgName")
+        sb.appendLine("simCallComponentNameClassName: $simCallComponentNameClassName")
+        sb.appendLine("simCallComponentShortNameClassName: $simCallComponentShortNameClassName")
+    }
+
+
+
+    val allCapablePhoneAccounts = telecomManager.callCapablePhoneAccounts
+    val defaultDialerPackage = telecomManager.defaultDialerPackage
+    val isTtySupported = telecomManager.isTtySupported
+    val ownSelfManagedPhoneAccounts = telecomManager.ownSelfManagedPhoneAccounts
+    val registeredPhoneAccounts = telecomManager.registeredPhoneAccounts
+
+
+    sb.appendLine("isInManagedCall: $isInManagedCall")
+    sb.appendLine("isInCall: $isInCall")
+
+
+    allCapablePhoneAccounts.forEach {
+        sb.appendLine("CapablePhoneAccount ID: ${it.id}")
+    }
+
+    sb.appendLine("defaultDialerPackage ID: $defaultDialerPackage")
+    sb.appendLine("isTtySupported: $isTtySupported")
+
+    ownSelfManagedPhoneAccounts.forEach {
+        sb.appendLine("ownSelfManagedPhoneAccount ID: ${it.id}")
+    }
+
+    registeredPhoneAccounts.forEach {
+        sb.appendLine("registeredPhoneAccounts : $it")
+        sb.appendLine("registeredPhoneAccounts address: ${it.address}")
+        sb.appendLine("registeredPhoneAccounts label: ${it.label}")
+        sb.appendLine("registeredPhoneAccounts accountHandle: ${it.accountHandle}")
+        sb.appendLine("registeredPhoneAccounts icon: ${it.icon}")
+        sb.appendLine("registeredPhoneAccounts capabilities: ${it.capabilities}")
+        sb.appendLine("registeredPhoneAccounts extras: ${it.extras}")
+        sb.appendLine("registeredPhoneAccounts highlightColor: ${it.highlightColor}")
+        sb.appendLine("registeredPhoneAccounts isEnabled: ${it.isEnabled}")
+        sb.appendLine("registeredPhoneAccounts shortDescription: ${it.shortDescription}")
+        sb.appendLine("registeredPhoneAccounts simultaneousCallingRestriction: ${it.simultaneousCallingRestriction}")
+        sb.appendLine("registeredPhoneAccounts subscriptionAddress: ${it.subscriptionAddress}")
+        sb.appendLine("registeredPhoneAccounts supportedUriSchemes: ${it.supportedUriSchemes}")
+    }
+
+
+
+    sb.appendLine("=== [TelephonyManager] ===")
+    sb.appendLine("subscriptionId: ${telephonyManager.subscriptionId}")
+    sb.appendLine("deviceSoftwareVersion: ${telephonyManager.deviceSoftwareVersion}")
+
+    sb.appendLine("activeModemCount: ${telephonyManager.activeModemCount}")
+    sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
+    sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
+
+    sb.appendLine("allCellInfo: ${telephonyManager.allCellInfo}")
+    sb.appendLine("cellLocation: ${telephonyManager.cellLocation}")
+
+    sb.appendLine("networkType: ${telephonyManager.networkType}")
+    sb.appendLine("networkSpecifier: ${telephonyManager.networkSpecifier}")
+    sb.appendLine("dataNetworkType: ${telephonyManager.dataNetworkType}")
+    sb.appendLine("dataState: ${telephonyManager.dataState}")
+    sb.appendLine("dataActivity: ${telephonyManager.dataActivity}")
+    sb.appendLine("isDataRoamingEnabled: ${telephonyManager.isDataRoamingEnabled}")
+    sb.appendLine("isDataConnectionAllowed: ${telephonyManager.isDataConnectionAllowed}")
+    sb.appendLine("isDataCapable: ${telephonyManager.isDataCapable}")
+    sb.appendLine("isDataEnabled: ${telephonyManager.isDataEnabled}")
+    sb.appendLine("isNetworkRoaming: ${telephonyManager.isNetworkRoaming}")
+
+
+    sb.appendLine("emergencyNumberList: ${telephonyManager.emergencyNumberList}")
+    sb.appendLine("callStateForSubscription: ${telephonyManager.callStateForSubscription}")
+
+    sb.appendLine("carrierConfig: ${telephonyManager.carrierConfig}")
+    sb.appendLine("carrierIdFromSimMccMnc: ${telephonyManager.carrierIdFromSimMccMnc}")
+    sb.appendLine("networkOperator: ${telephonyManager.networkOperator}")
+    sb.appendLine("networkOperatorName: ${telephonyManager.networkOperatorName}")
+    sb.appendLine("simOperator: ${telephonyManager.simOperator}")
+    sb.appendLine("simOperatorName: ${telephonyManager.simOperatorName}")
+    sb.appendLine("networkCountryIso: ${telephonyManager.networkCountryIso}")
+    sb.appendLine("simCountryIso: ${telephonyManager.simCountryIso}")
+    sb.appendLine("simCarrierId: ${telephonyManager.simCarrierId}")
+    sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
+    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
+    sb.appendLine("hasCarrierPrivileges(): ${telephonyManager.hasCarrierPrivileges()}")
+    sb.appendLine("simState: ${telephonyManager.simState}")
+    sb.appendLine("serviceState: ${telephonyManager.serviceState}")
+    sb.appendLine("isWorldPhone: ${telephonyManager.isWorldPhone}")
+
+    sb.appendLine("voiceNetworkType: ${telephonyManager.voiceNetworkType}")
+    sb.appendLine("voiceMailNumber: ${telephonyManager.voiceMailNumber}")
+    sb.appendLine("voiceMailAlphaTag: ${telephonyManager.voiceMailAlphaTag}")
+    sb.appendLine("isDeviceVoiceCapable: ${telephonyManager.isDeviceVoiceCapable}")
+    sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
+    sb.appendLine("phoneType: ${telephonyManager.phoneType}")
+
+    sb.appendLine("isConcurrentVoiceAndDataSupported: ${telephonyManager.isConcurrentVoiceAndDataSupported}")
+    sb.appendLine("preferredOpportunisticDataSubscription: ${telephonyManager.preferredOpportunisticDataSubscription}")
 
     return sb.toString()
 }

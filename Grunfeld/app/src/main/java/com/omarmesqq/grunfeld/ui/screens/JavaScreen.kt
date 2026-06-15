@@ -39,6 +39,7 @@ import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
+import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
 import com.omarmesqq.grunfeld.utils.getSystemProps
 
@@ -69,6 +70,8 @@ fun JavaInfoScreen() {
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
+
+    var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
     val screenScrollState = rememberScrollState()
 
@@ -303,6 +306,24 @@ fun JavaInfoScreen() {
                 text = mediaDrmIdInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
+        }
+
+
+        SectionHeader("TELEPHONY")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    telephonyInfo = dumpTelephonyInfo(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Telephony info")
+            }
+            Text(
+                text = telephonyInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
         }
     }
 }
