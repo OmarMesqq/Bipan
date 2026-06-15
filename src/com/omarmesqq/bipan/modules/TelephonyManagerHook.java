@@ -13,12 +13,15 @@ import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Map;
 
 public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanTelephonyHook";
 
   private Object originalITelephony;
   private TelephonyManager realTm;
+
+  private static final int CARRIER_ID = 530;
 
   private static final String SPOOF_OPERATOR_NAME = "Vivo";
   private static final String SPOOF_OPERATOR_NUMERIC = "72423";
@@ -41,6 +44,12 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
       "com.whatsapp",
       "com.instagram.android"));
 
+  private Object emptyParceledListSlice() throws Exception {
+    Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
+    Method emptyList = sliceClass.getMethod("emptyList");
+    return emptyList.invoke(null);
+  }
+
   @Override
   public void install(Context context) throws Exception {
     if (ALLOW_LIST.contains(context.getPackageName())) {
@@ -49,11 +58,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
     realTm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
 
-    // ── 1. Get ITelephony binder from ServiceManager ──────────────────
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
 
-    // TelephonyManager uses "phone" service for ITelephony
     IBinder realPhoneBinder = (IBinder) getService.invoke(null, "phone");
     if (realPhoneBinder == null) {
       throw new Exception(TAG + "Could not get 'phone' service binder");
@@ -69,7 +76,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         new Class[] { iTelephonyClass },
         this);
 
-    // ── 2. Wrap in IBinder proxy ──────────────────────────────────────
     IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
         IBinder.class.getClassLoader(),
         new Class[] { IBinder.class },
@@ -79,19 +85,14 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
           return method.invoke(realPhoneBinder, args);
         });
 
-    // ── 3. Inject into ServiceManager cache ───────────────────────────
     Field sCacheField = serviceManager.getDeclaredField("sCache");
     sCacheField.setAccessible(true);
+    
     @SuppressWarnings("unchecked")
-    java.util.Map<String, IBinder> cache = (java.util.Map<String, IBinder>) sCacheField.get(null);
+    Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
     cache.put("phone", proxyBinder);
 
-    // ── 4. Replace the binder inside TelephonyManager instance ────────
-    // TelephonyManager holds its own reference; we need to replace it too
     replaceBinderInTelephonyManager(realTm, proxyBinder);
-
-    // ── 5. Also hook IPhoneSubInfo for getLine1Number, getDeviceId etc ─
-    hookPhoneSubInfo(context, getService, serviceManager);
 
     Log.i(TAG, "TelephonyManager hook installed");
   }
@@ -112,63 +113,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
     }
   }
 
-  private void hookPhoneSubInfo(Context context, Method getService,
-      Class<?> serviceManager) {
-    try {
-      IBinder realSubInfoBinder = (IBinder) getService.invoke(null, "iphonesubinfo");
-      if (realSubInfoBinder == null)
-        return;
 
-      Class<?> iSubInfoClass = Class.forName("com.android.internal.telephony.IPhoneSubInfo");
-      Class<?> iSubInfoStub = Class.forName("com.android.internal.telephony.IPhoneSubInfo$Stub");
-
-      Object realSubInfo = iSubInfoStub
-          .getDeclaredMethod("asInterface", IBinder.class)
-          .invoke(null, realSubInfoBinder);
-
-      Object subInfoProxy = Proxy.newProxyInstance(
-          iSubInfoClass.getClassLoader(),
-          new Class[] { iSubInfoClass },
-          (p, method, args) -> {
-            switch (method.getName()) {
-              case "getDeviceId":
-              case "getImei":
-              case "getNai":
-                Log.w(TAG, "Spoofed: " + method.getName());
-                return null; // maybe fake IMEI
-              case "getLine1Number":
-              case "getLine1NumberForSubscriber":
-                Log.w(TAG, "Spoofed: getLine1Number");
-                return "";
-              case "getVoiceMailNumber":
-              case "getVoiceMailNumberForSubscriber":
-                return "";
-              default:
-                return method.invoke(realSubInfo, args);
-            }
-          });
-
-      IBinder subInfoProxyBinder = (IBinder) Proxy.newProxyInstance(
-          IBinder.class.getClassLoader(),
-          new Class[] { IBinder.class },
-          (p, method, args) -> {
-            if ("queryLocalInterface".equals(method.getName()))
-              return subInfoProxy;
-            return method.invoke(realSubInfoBinder, args);
-          });
-
-      Field sCacheField = serviceManager.getDeclaredField("sCache");
-      sCacheField.setAccessible(true);
-      @SuppressWarnings("unchecked")
-      java.util.Map<String, IBinder> cache = (java.util.Map<String, IBinder>) sCacheField.get(null);
-      cache.put("iphonesubinfo", subInfoProxyBinder);
-
-    } catch (Exception e) {
-      Log.e(TAG, "Failed to hook IPhoneSubInfo: " + e.getMessage());
-    }
-  }
-
-  // ── ITelephony proxy ──────────────────────────────────────────────────
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -250,8 +195,36 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
       case "getEmergencyNumberListForSubscriber":
         return method.invoke(originalITelephony, args);
 
+      case "isMultiSimSupported":
+        Log.i(TAG, "Neutered " + method.getName());
+        return TelephonyManager.MULTISIM_NOT_SUPPORTED_BY_HARDWARE;
+
+      case "getAllCellInfo":
+      case "getCellLocation":
+        Log.i(TAG, "Neutered " + method.getName());
+        return null;
+
+      // case "getServiceState":
+      // case "getServiceStateForSlot":
+      // Log.i(TAG, "Neutered " + method.getName());
+      // return emptyParceledListSlice();
+
+      case "getVisualVoicemailPackageName":
+        Log.i(TAG, "Neutered " + method.getName());
+        return "com.google.android.dialer";
+
+      case "hasCarrierPrivileges":
+        Log.i(TAG, "Neutered " + method.getName());
+        return false;
+
+      case "getSimCarrierId":
+      case "getSimSpecificCarrierId":
+        Log.i(TAG, "Neutered " + method.getName());
+        return CARRIER_ID;
+
       // Everything else passes through
       default:
+        Log.i(TAG, "Allowing Telephony method through: " + method.getName());
         try {
           return method.invoke(originalITelephony, args);
         } catch (Exception e) {

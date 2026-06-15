@@ -282,7 +282,7 @@ public class NetworkSpoofingHook implements BaseHook {
       f.setAccessible(true);
       f.set(obj, value);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to patch field: " + name);
+      Log.e(TAG, "Failed to patch field: " + name + ". Exception: " + new Throwable(e));
     }
   }
 }
