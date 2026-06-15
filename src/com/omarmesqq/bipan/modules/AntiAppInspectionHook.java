@@ -292,6 +292,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return false;
       }
 
+      // TODO: Dont block, filter
       case "getSystemAvailableFeatures": {
         Log.w(TAG, "Blinded: getSystemAvailableFeatures");
         return null;
