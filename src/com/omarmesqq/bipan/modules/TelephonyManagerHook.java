@@ -196,7 +196,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
       case "getSimOperatorNumeric":
       case "getSimOperatorForSubscription":
         Log.w(TAG, "Spoofed: getSimOperator");
-        return SPOOF_SIM_OPERATOR;
+        return SPOOF_OPERATOR_NUMERIC;
 
       case "getSimCountryIso":
       case "getSimCountryIsoForPhone":
