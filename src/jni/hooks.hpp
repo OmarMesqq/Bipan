@@ -65,13 +65,18 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.build.id", "BP4A.251205.006"},
     {"ro.build.display.id", "BP4A.251205.006"},
     {"ro.build.tags", "release-keys"},
+    {"ro.vendor.build.tags", "release-keys"},
     {"ro.build.type", "user"},
+    {"ro.vendor.build.type", "user"},
     {"ro.build.user", "android-build"},
     {"ro.build.date.utc", "1764954000"},
+    {"ro.build.date.utc", "1764954000"},
+    // TODO: standard non-unix epoch build date
     {"ro.build.description", "husky-user 16 BP4A.251205.006 release-keys"},
     {"ro.build.flavor", "husky-user"},
 
     {"ro.build.version.incremental", "14401865"},
+    {"ro.vendor.build.version.incremental", "14401865"},
     {"ro.build.version.release", "16"},
     {"ro.build.version.release_or_codename", "16"},
     {"ro.build.version.release_or_preview_display", "16"},
@@ -82,10 +87,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.build.version.codename", "REL"},
     {"ro.build.version.base_os", ""},
     {"ro.build.version.preview_sdk", "0"},
-
-    {"ro.product.cpu.abilist", "arm64-v8a,armeabi-v7a,armeabi"},
-    {"ro.product.cpu.abilist32", "armeabi-v7a,armeabi"},
-    {"ro.product.cpu.abilist64", "arm64-v8a"},
 
     {"ro.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.odm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
@@ -100,9 +101,21 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
     {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    // TODO: should be empty?
     {"ril.sw_ver2", "g5300g-251108-251202-B-12876551"},
 
-    // TODO: per-app basis. Use TelephonyManager hook instead
+    // AVB, dm-verity, bootloader and whatnots
+    {"ro.boot.verifiedbootstate", "green"},
+    {"ro.com.google.clientidbase", "android-google"},
+    {"ro.boot.veritymode", "enforcing"},
+    {"ro.boot.vbmeta.device_state", "locked"},
+    {"ro.boot.avb_version", "1.2"},
+    {"ro.boot.slot_suffix", "_b"},
+    {"ro.debuggable", "0"},
+    {"ro.secure", "1"},
+};
+
+static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
     {"gsm.current.phone-type", "1"},
     {"gsm.network.type", "LTE"},
     {"gsm.operator.alpha", "Vivo"},
@@ -121,13 +134,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.telephony.default_network", "9"},
     {"ro.vendor.radio.default_network", "9"},
 
-    // AVB
-    {"ro.boot.verifiedbootstate", "green"},
-    {"ro.com.google.clientidbase", "android-google"},
-    {"ro.boot.veritymode", "enforcing"},
-    {"ro.boot.vbmeta.device_state", "locked"},
-    {"ro.boot.avb_version", "1.2"},
-    {"ro.boot.slot_suffix", "_b"},
 };
 
 static bool linker_hooked = false;
@@ -344,6 +350,17 @@ static int hook_system_property_get(const char* name, char* value) {
       value[91] = '\0';
       return (int)strlen(value);
     }
+    if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
+    } else {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Applying native sysprop telephony hooks for %s", package_name);
+      auto it = g_telephony_prop_overrides.find(name);
+      if (it != g_telephony_prop_overrides.end()) {
+        strncpy(value, it->second.c_str(), 91);
+        value[91] = '\0';
+        return (int)strlen(value);
+      }
+    }
   }
   return orig_system_property_get(name, value);
 }
@@ -442,6 +459,16 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
     if (it != g_prop_overrides.end()) {
       override_buf = it->second;
       effective = override_buf.c_str();
+    }
+    if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
+    } else {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Applying native sysprop telephony hooks for %s", package_name);
+      auto it = g_telephony_prop_overrides.find(name);
+      if (it != g_telephony_prop_overrides.end()) {
+        override_buf = it->second;
+        effective = override_buf.c_str();
+      }
     }
   }
   ctx->user_cb(ctx->user_cookie, name, effective, serial);
