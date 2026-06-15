@@ -3,6 +3,7 @@
 
 #include <string>
 #include <jni.h>
+#include <unordered_set>
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
@@ -17,8 +18,8 @@ extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 
 extern char package_name[256];
-
 extern jclass g_bipanJavaClass;
+extern std::unordered_set<std::string> telephonySpoofingAllowlist;
 
 
 

@@ -50,6 +50,13 @@ struct LibBounds {
 
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
 
+std::unordered_set<std::string> telephonySpoofingAllowlist = {
+    "com.android.vending",
+    "com.google.android.gms",
+    "com.spotify.music",
+    "com.whatsapp",
+    "com.instagram.android"};
+
 class Bipan : public zygisk::ModuleBase {
  public:
   Bipan() : api(nullptr), env(nullptr), targetsSet(), isTargetApp(false) {}
