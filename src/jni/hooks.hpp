@@ -1,7 +1,9 @@
 #ifndef HOOKS_HPP
 #define HOOKS_HPP
 
+#include <arpa/inet.h>
 #include <ifaddrs.h>
+#include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -160,8 +162,11 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
 
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
+static struct ifaddrs* g_cached_ifaddrs = nullptr;
+static bool g_ifaddrs_cached = false;
 
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
+void my_freeifaddrs(struct ifaddrs* ifa);
 
 // ==========================================
 // Original function pointers
@@ -181,6 +186,9 @@ static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager
 
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
+
+static int (*orig_getifaddrs)(struct ifaddrs**) = nullptr;
+static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 
 // ==========================================
 // Linker hooks
@@ -391,6 +399,47 @@ static void hook_system_property_read_callback(const void* pi, void (*callback)(
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
+void preCacheIfaddrs() {
+  if (getifaddrs(&g_cached_ifaddrs) != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to pre-cache ifaddrs: %d", errno);
+    return;
+  }
+  g_ifaddrs_cached = true;
+
+  struct ifaddrs* ifa = g_cached_ifaddrs;
+
+  // Walk the linked list
+  while (ifa != nullptr) {
+    if (ifa->ifa_addr != nullptr) {
+      if (ifa->ifa_addr->sa_family == AF_INET) {
+        struct sockaddr_in* sin = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+        // 10.111.222.1
+        sin->sin_addr.s_addr = 0x01DE6F0A;
+      } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+        struct sockaddr_in6* sin6 = reinterpret_cast<struct sockaddr_in6*>(ifa->ifa_addr);
+        // ULA: fd00::1
+        my_memset(&sin6->sin6_addr, 0, 16);
+        sin6->sin6_addr.s6_addr[0] = 0xfd;
+        sin6->sin6_addr.s6_addr[15] = 0x01;
+      }
+    }
+    ifa = ifa->ifa_next;
+  }
+}
+
+int my_getifaddrs(struct ifaddrs** ifap) {
+  if (!g_ifaddrs_cached || g_cached_ifaddrs == nullptr) {
+    // Cache miss: shouldn't happen
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "getifaddrs cache miss: returning error");
+    *ifap = nullptr;
+    return -1;
+  }
+
+  // Return the cached and scrubbed result
+  *ifap = g_cached_ifaddrs;
+  return 0;
+}
+
 void registerNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
   if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
@@ -467,6 +516,29 @@ void registerNativeSystemPropertiesHook() {
   }
 }
 
+void registerGetifaddrsHook() {
+  void* sym = dlsym(RTLD_DEFAULT, "getifaddrs");
+  if (!sym) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs symbol not found!");
+    return;
+  }
+
+  int r1 = DobbyHook(sym, reinterpret_cast<void*>(my_getifaddrs), reinterpret_cast<void**>(&orig_getifaddrs));
+  if (r1 != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook getifaddrs!");
+    return;
+  }
+
+  void* freeSym = dlsym(RTLD_DEFAULT, "freeifaddrs");
+  if (freeSym) {
+    int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
+    if (r2 != 0) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook freeifaddrs!");
+      return;
+    }
+  }
+}
+
 // =======
 // Helpers
 // =======
@@ -493,6 +565,13 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
   }
   ctx->user_cb(ctx->user_cookie, name, effective, serial);
   delete ctx;
+}
+
+void my_freeifaddrs(struct ifaddrs* ifa) {
+  if (ifa == g_cached_ifaddrs) {
+    return;
+  }
+  orig_freeifaddrs(ifa);
 }
 
 #endif
