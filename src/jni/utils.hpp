@@ -506,19 +506,6 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
-  // TODO: comment this in debug fields to see what happens
-  if (
-      local_strstr(pathname, "vendor_default_prop") ||
-      local_strstr(pathname, "binder_cache_telephony_server_prop") ||
-      local_strstr(pathname, "telephony_config_prop") ||
-      local_strstr(pathname, "telephony_status_prop") ||
-      local_strstr(pathname, "userdebug_or_eng_prop") ||
-      local_strstr(pathname, "radio_control_prop") ||
-      local_strstr(pathname, "fingerprint_prop") ||
-      local_strstr(pathname, "bootloader_prop")) {
-    // Dummy binary blob for the property service
-    return "\1\0\0\0\0\0\0\0";
-  }
   return nullptr;
 }
 
