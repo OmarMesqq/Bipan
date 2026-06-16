@@ -41,6 +41,7 @@ import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
+import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -60,6 +61,7 @@ fun JavaInfoScreen() {
     var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
     var applicationInfoForSelf by remember { mutableStateOf("Get Application info not queried") }
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("getSystemAvailableFeatures not queried") }
+    var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
     var memInfo by remember { mutableStateOf("Memory not queried") }
     var gpuInfo by remember { mutableStateOf("GPU info not queried") }
@@ -191,7 +193,7 @@ fun JavaInfoScreen() {
                 Text("getApplicationInfo(\"WhatsApp\")")
             }
 
-            Text(text = "Get System Available Features", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Get ALL available system features", style = MaterialTheme.typography.titleMedium)
 
             ReportTextWithCopy(getSystemAvailableFeaturesInfo, "getSystemAvailableFeatures not queried")
             Button(
@@ -201,6 +203,18 @@ fun JavaInfoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("getSystemAvailableFeaturesInfo()")
+            }
+
+
+            Text(text = "Get some system features by querying their keys", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(getSomeSystemFeaturesInfo, "getSomeSystemFeaturesInfo not queried")
+            Button(
+                onClick = {
+                    getSomeSystemFeaturesInfo = getSomeSystemFeatures(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getSomeSystemFeatures()")
             }
 
         }

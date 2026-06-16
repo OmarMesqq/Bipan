@@ -326,12 +326,19 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         Log.w(TAG, "Filtering: getSystemAvailableFeatures");
         try {
           Object result = method.invoke(originalPM, args);
-          if (result == null)
+          if (result == null) {
             return null;
+          }
 
-          FeatureInfo[] realFeatures = (FeatureInfo[]) result;
+          Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
+          Method getList = sliceClass.getMethod("getList");
+          @SuppressWarnings("unchecked")
+          List<FeatureInfo> realFeatures = (List<FeatureInfo>) getList.invoke(result);
+
+          if (realFeatures == null)
+            return result;
+
           List<FeatureInfo> filtered = new ArrayList<>();
-
           for (FeatureInfo fi : realFeatures) {
             if (fi.name != null && FEATURE_STRIP_LIST.contains(fi.name)) {
               continue;
@@ -339,7 +346,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             filtered.add(fi);
           }
 
-          return filtered.toArray(new FeatureInfo[0]);
+          return sliceClass
+              .getConstructor(List.class)
+              .newInstance(filtered);
+
         } catch (Exception e) {
           Log.e(TAG, "getSystemAvailableFeatures filter failed", e);
           return null;
