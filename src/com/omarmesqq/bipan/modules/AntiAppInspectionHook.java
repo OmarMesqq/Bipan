@@ -208,7 +208,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         Field mDisabledField = picClass.getDeclaredField("mDisabled");
         mDisabledField.setAccessible(true);
         mDisabledField.setBoolean(pic, true);
-        Log.d(TAG, "PIC mDisabled=true");
 
         // Clear backing store via LinkedHashMap.clear() — bypass CacheMap override
         Field mInternalCacheField = picClass.getDeclaredField("mCache");

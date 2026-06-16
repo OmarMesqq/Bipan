@@ -65,7 +65,7 @@ fun dumpInstallerInfo(ctx: Context): String {
     val info = pm.getInstallSourceInfo(packageName)
 
     val originator = info.originatingPackageName // The "Source" (e.g., Chrome)
-    val initiator = info.initiatingPackageName   // Who called the install
+    val initiator = info.initiatingPackageName   // Who called the installation
     val installer = info.installingPackageName   // Who did the work (e.g., Play Store)
     val updateOwner = info.updateOwnerPackageName   // Package responsible for managing updates
 
@@ -92,6 +92,7 @@ fun dumpInstallerInfo(ctx: Context): String {
 }
 
 
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpNetworkInfo(context: Context): String {
     val sb = StringBuilder()
 
@@ -211,13 +212,13 @@ fun dumpNetworkInfo(context: Context): String {
 private fun formatInterfaceDetails(intf: NetworkInterface): String {
     val details = StringBuilder()
 
-    // 1. Basic Metadata
+    // Metadata
     details.append("--- Interface: ${intf.name} ---\n")
     details.append("| Display Name: ${intf.displayName}\n")
     details.append("| Index: ${intf.index}\n")
     details.append("| MTU: ${intf.mtu}\n")
 
-    // 2. State & Capabilities (Crucial for Bipan)
+    // State & Capabilities
     details.append("| Flags: ")
     if (intf.isUp) details.append("[UP] ")
     if (intf.isLoopback) details.append("[LOOPBACK] ")
@@ -226,13 +227,6 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
     if (intf.isVirtual) details.append("[VIRTUAL] ")
     details.append("\n")
 
-    // 3. Hardware Address (MAC)
-    // Note: On modern Android, this returns null for non-system apps
-    val mac = intf.hardwareAddress
-    val macString = mac?.joinToString(":") { "%02x".format(it) } ?: "Hidden/Null"
-    details.append("| MAC: $macString\n")
-
-    // 4. IP Addresses (The "Leak" data)
     val addrList = intf.interfaceAddresses
     if (addrList.isEmpty()) {
         details.append("| Addresses: None\n")
@@ -245,7 +239,7 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
         }
     }
 
-    // 5. Hierarchy (Sub-interfaces/VLANs)
+    // Hierarchy (Sub-interfaces/VLANs)
     val parent = intf.parent
     if (parent != null) {
         details.append("| Parent: ${parent.name}\n")
@@ -302,24 +296,24 @@ private fun dumpBuildInfo(): String {
 
 private fun dumpSettingsInfo(ctx: Context): String {
     val cr = ctx.contentResolver
-    val NOT_FOUND = -999
+    val notFoundKey = -999
 
     val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
     @SuppressLint("HardwareIds")
     val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
 
-    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, NOT_FOUND)
-    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, NOT_FOUND)
-    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, NOT_FOUND)
-    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, NOT_FOUND)
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
 
     return """
        DEVICE_NAME: $deviceName
        SSAID: $ssaid
-       DEV_SETTINGS_ON: ${if (devSettingsOn == NOT_FOUND) "Could not extract value" else devSettingsOn}
-       ADB_ENABLED: ${if (adbEnabled == NOT_FOUND) "Could not extract value" else adbEnabled}
-       BOOT_COUNT: ${if (bootCount == NOT_FOUND) "Could not extract value" else bootCount}
-       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == NOT_FOUND) "Could not extract value" else waitForDebugger}
+       DEV_SETTINGS_ON: ${if (devSettingsOn == notFoundKey) "Could not extract value" else devSettingsOn}
+       ADB_ENABLED: ${if (adbEnabled == notFoundKey) "Could not extract value" else adbEnabled}
+       BOOT_COUNT: ${if (bootCount == notFoundKey) "Could not extract value" else bootCount}
+       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == notFoundKey) "Could not extract value" else waitForDebugger}
     """.trimIndent()
 }
 
@@ -402,7 +396,7 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     // Signing certs
     sb.appendLine("\n-- Signing Certificates --")
     info.signingInfo?.apkContentsSigners?.forEach { sig ->
-        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val md = MessageDigest.getInstance("SHA-256")
         val fingerprint = md.digest(sig.toByteArray())
             .joinToString(":") { "%02X".format(it) }
         sb.appendLine("  SHA-256: $fingerprint")
@@ -473,13 +467,14 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
     val pm = context.packageManager
     val sb = StringBuilder()
 
-    val res = pm.systemAvailableFeatures;
+    val res = pm.systemAvailableFeatures
     res.forEach { fi ->
         sb.appendLine(fi.name)
     }
     return sb.toString()
 }
 
+@RequiresApi(Build.VERSION_CODES.BAKLAVA)
 fun getSomeSystemFeatures(ctx: Context): String {
     val pm = ctx.packageManager
     val sb = StringBuilder()
@@ -686,11 +681,11 @@ fun getSystemProps(): String {
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpGsfId(ctx: Context) : String {
     val cr = ctx.contentResolver
-    val URI_GSF_CONTENT_PROVIDER = "content://com.google.android.gsf.gservices"
-    val ID_KEY = "android_id"
+    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
+    val idKey = "android_id"
 
-    val uri = URI_GSF_CONTENT_PROVIDER.toUri()
-    val params = arrayOf(ID_KEY)
+    val uri = gsfContentProviderUri.toUri()
+    val params = arrayOf(idKey)
 
     val gsfId = try {
         cr!!.query(uri, null, null, params, null)!!.use { cursor ->
@@ -705,10 +700,10 @@ fun dumpGsfId(ctx: Context) : String {
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpMediaDrmId() : String {
-    val WIDEWINE_UUID_MOST_SIG_BITS = -0x121074568629b532L
-    val WIDEWINE_UUID_LEAST_SIG_BITS = -0x5c37d8232ae2de13L
+    val widevineUUidMostSigBits = -0x121074568629b532L
+    val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
 
-    val widevineUUID = UUID(WIDEWINE_UUID_MOST_SIG_BITS, WIDEWINE_UUID_LEAST_SIG_BITS)
+    val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
 
     val wvDrm = MediaDrm(widevineUUID)
     val mivevineId = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
