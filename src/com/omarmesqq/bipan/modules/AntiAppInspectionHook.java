@@ -65,9 +65,42 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.hardware.nfc.uicc",
       "android.hardware.nfc.ese",
 
+      "android.hardware.bluetooth_le",
+      "android.software.autofill",
+      "android.software.app_widgets",
+      "android.software.live_wallpaper",
+      "android.software.midi",
+      "android.software.picture_in_picture",
+      "android.software.freeform_window_management",
+      "android.software.window_magnification",
+      "android.hardware.screen.landscape",
+      "android.software.print",
+      "android.hardware.sensor.stepcounter",
+      "android.hardware.sensor.stepdetector",
+      "android.software.controls",
+
+      "android.hardware.usb.accessory",
+      "android.hardware.usb.host",
+
+      "android.software.managed_users",
+
+      "android.software.sip",
+      "android.software.sip.voip",
+      "android.hardware.telephony.ims",
+
+      "android.hardware.wifi.direct",
+      "android.hardware.wifi.passpoint",
+
+      "android.software.companion_device_setup",
+
+      "android.software.telecom",
+
       "android.hardware.sensor.hifi_sensors",
-      "android.hardware.camera.ar",
-      "android.hardware.audio.pro"));
+      "android.hardware.camera.ar"));
+
+  private static final Set<String> FEATURE_ADD_LIST = new HashSet<>(Arrays.asList(
+      "android.software.verified_boot",
+      "android.software.device_id_attestation"));
 
   private static volatile Object s_pmProxy = null;
   private static volatile Field s_mPMField = null;
@@ -413,8 +446,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
 
       case "getActivityInfo": {
-        // Signature: getActivityInfo(ComponentName component, long flags, int userId)
-        // args[0] is ComponentName — extract package name from it
         String pkg = null;
         if (args != null && args.length > 0 && args[0] != null) {
           // ComponentName is a public class, getPackageName() is accessible
@@ -482,8 +513,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (feature != null && FEATURE_STRIP_LIST.contains(feature)) {
-          Log.w(TAG, "Stripped hasSystemFeature: " + feature);
           return false;
+        }
+
+        if (feature != null && FEATURE_ADD_LIST.contains(feature)) {
+          Log.w(TAG, "Added system feature on-the-fly: " + feature);
+          return true;
         }
 
         return method.invoke(originalPM, args);
@@ -502,14 +537,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           @SuppressWarnings("unchecked")
           List<FeatureInfo> realFeatures = (List<FeatureInfo>) getList.invoke(result);
 
-          if (realFeatures == null)
+          if (realFeatures == null) {
             return result;
+          }
 
           List<FeatureInfo> filtered = new ArrayList<>();
           for (FeatureInfo fi : realFeatures) {
             if (fi.name != null && FEATURE_STRIP_LIST.contains(fi.name)) {
               continue;
             }
+            filtered.add(fi);
+          }
+
+          for (String feat : FEATURE_ADD_LIST) {
+            FeatureInfo fi = new FeatureInfo();
+
+            // reflect on fresh instance to set the name, which is what matters i guess...
+            Field nameField = FeatureInfo.class.getDeclaredField("name");
+            nameField.setAccessible(true);
+            nameField.set(fi, feat);
+
             filtered.add(fi);
           }
 
