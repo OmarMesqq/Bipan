@@ -481,6 +481,54 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
     return sb.toString()
 }
 
+fun getSomeSystemFeatures(ctx: Context): String {
+    val pm = ctx.packageManager
+    val sb = StringBuilder()
+
+    sb.appendLine("FEATURE_NFC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC)}")
+    sb.appendLine("FEATURE_NFC_BEAM: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_BEAM)}")
+    sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)}")
+    sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION_NFCF: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF)}")
+    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE)}")
+    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC)}")
+
+    sb.appendLine("FEATURE_APP_WIDGETS: ${pm.hasSystemFeature(PackageManager.FEATURE_APP_WIDGETS)}")
+    sb.appendLine("FEATURE_CAMERA_AR: ${pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AR)}")
+    sb.appendLine("FEATURE_HIFI_SENSORS: ${pm.hasSystemFeature(PackageManager.FEATURE_HIFI_SENSORS)}")
+    sb.appendLine("FEATURE_LIVE_TV: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_TV)}")
+    sb.appendLine("FEATURE_LIVE_WALLPAPER: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_WALLPAPER)}")
+    sb.appendLine("FEATURE_MANAGED_USERS: ${pm.hasSystemFeature(PackageManager.FEATURE_MANAGED_USERS)}")
+    sb.appendLine("FEATURE_MIDI: ${pm.hasSystemFeature(PackageManager.FEATURE_MIDI)}")
+
+    sb.appendLine("FEATURE_PICTURE_IN_PICTURE: ${pm.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)}")
+    sb.appendLine("FEATURE_PRINTING: ${pm.hasSystemFeature(PackageManager.FEATURE_PRINTING)}")
+    sb.appendLine("FEATURE_SENSOR_HEART_RATE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE)}")
+    sb.appendLine("FEATURE_SENSOR_HEART_RATE_ECG: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE_ECG)}")
+    sb.appendLine("FEATURE_SIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP)}")
+    sb.appendLine("FEATURE_SIP_VOIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP_VOIP)}")
+    sb.appendLine("FEATURE_TELEPHONY_CDMA: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_CDMA)}")
+    sb.appendLine("FEATURE_TELEPHONY_IMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_IMS)}")
+    sb.appendLine("[LEGACY] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)}")
+    sb.appendLine("[MODERN] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)}")
+
+    sb.appendLine("FEATURE_THREAD_NETWORK: ${pm.hasSystemFeature(PackageManager.FEATURE_THREAD_NETWORK)}")
+
+    sb.appendLine("FEATURE_VERIFIED_BOOT: ${pm.hasSystemFeature(PackageManager.FEATURE_VERIFIED_BOOT)}")
+
+    sb.appendLine("[LEGACY] FEATURE_VR_MODE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE)}")
+    sb.appendLine("[MODERN] FEATURE_VR_MODE_HIGH_PERFORMANCE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE)}")
+
+    sb.appendLine("FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS: ${pm.hasSystemFeature(PackageManager.FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS)}")
+    sb.appendLine("FEATURE_WATCH: ${pm.hasSystemFeature(PackageManager.FEATURE_WATCH)}")
+
+    sb.appendLine("FEATURE_WIFI_DIRECT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)}")
+
+    sb.appendLine("FEATURE_WIFI_PASSPOINT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_PASSPOINT)}")
+    sb.appendLine("FEATURE_WIFI_RTT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)}")
+
+    return sb.toString()
+}
+
 
 fun getMemoryInfo(context: Context): String {
     val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
