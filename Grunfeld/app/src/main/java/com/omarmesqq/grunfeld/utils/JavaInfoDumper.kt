@@ -19,7 +19,6 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
-import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import androidx.annotation.RequiresApi
@@ -29,8 +28,8 @@ import java.io.File
 import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
-import java.util.Scanner
 import java.util.UUID
+import java.io.IOException
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -490,58 +489,157 @@ fun getSomeSystemFeatures(ctx: Context): String {
     sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)}")
     sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION_NFCF: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF)}")
     sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE)}")
-    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC)}")
+    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC)}\n")
 
+    sb.appendLine("FEATURE_BLUETOOTH: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)}")
+    sb.appendLine("FEATURE_BLUETOOTH_LE: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)}")
+    sb.appendLine("FEATURE_BLUETOOTH_LE_CHANNEL_SOUNDING: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE_CHANNEL_SOUNDING)}\n")
+
+
+    sb.appendLine("FEATURE_AUDIO_LOW_LATENCY: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_LOW_LATENCY)}")
+    sb.appendLine("FEATURE_AUDIO_OUTPUT: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_OUTPUT)}")
+    sb.appendLine("FEATURE_AUDIO_PRO: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_PRO)}")
+    sb.appendLine("FEATURE_AUDIO_SPATIAL_HEADTRACKING_LOW_LATENCY: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_SPATIAL_HEADTRACKING_LOW_LATENCY)}\n")
+
+
+    sb.appendLine("FEATURE_AUTOFILL: ${pm.hasSystemFeature(PackageManager.FEATURE_AUTOFILL)}")
     sb.appendLine("FEATURE_APP_WIDGETS: ${pm.hasSystemFeature(PackageManager.FEATURE_APP_WIDGETS)}")
-    sb.appendLine("FEATURE_CAMERA_AR: ${pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AR)}")
-    sb.appendLine("FEATURE_HIFI_SENSORS: ${pm.hasSystemFeature(PackageManager.FEATURE_HIFI_SENSORS)}")
-    sb.appendLine("FEATURE_LIVE_TV: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_TV)}")
     sb.appendLine("FEATURE_LIVE_WALLPAPER: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_WALLPAPER)}")
-    sb.appendLine("FEATURE_MANAGED_USERS: ${pm.hasSystemFeature(PackageManager.FEATURE_MANAGED_USERS)}")
     sb.appendLine("FEATURE_MIDI: ${pm.hasSystemFeature(PackageManager.FEATURE_MIDI)}")
-
     sb.appendLine("FEATURE_PICTURE_IN_PICTURE: ${pm.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)}")
-    sb.appendLine("FEATURE_PRINTING: ${pm.hasSystemFeature(PackageManager.FEATURE_PRINTING)}")
+    sb.appendLine("FEATURE_EXPANDED_PICTURE_IN_PICTURE: ${pm.hasSystemFeature(PackageManager.FEATURE_EXPANDED_PICTURE_IN_PICTURE)}")
+    sb.appendLine("FEATURE_FREEFORM_WINDOW_MANAGEMENT: ${pm.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT)}")
+    sb.appendLine("FEATURE_WINDOW_MAGNIFICATION: ${pm.hasSystemFeature(PackageManager.FEATURE_WINDOW_MAGNIFICATION)}")
+    sb.appendLine("FEATURE_SCREEN_LANDSCAPE: ${pm.hasSystemFeature(PackageManager.FEATURE_SCREEN_LANDSCAPE)}")
+    sb.appendLine("FEATURE_PRINTING: ${pm.hasSystemFeature(PackageManager.FEATURE_PRINTING)}\n")
+
     sb.appendLine("FEATURE_SENSOR_HEART_RATE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE)}")
     sb.appendLine("FEATURE_SENSOR_HEART_RATE_ECG: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE_ECG)}")
+    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER)}")
+    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES)}")
+    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES_UNCALIBRATED: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES_UNCALIBRATED)}")
+    sb.appendLine("FEATURE_SENSOR_AMBIENT_TEMPERATURE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_AMBIENT_TEMPERATURE)}")
+    sb.appendLine("FEATURE_SENSOR_BAROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_BAROMETER)}")
+    sb.appendLine("FEATURE_SENSOR_COMPASS: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_COMPASS)}")
+    sb.appendLine("FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER)}")
+    sb.appendLine("FEATURE_SENSOR_GYROSCOPE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE)}")
+    sb.appendLine("FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES)}")
+    sb.appendLine("FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES_UNCALIBRATED: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES_UNCALIBRATED)}")
+    sb.appendLine("FEATURE_SENSOR_HEADING: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEADING)}")
+    sb.appendLine("FEATURE_SENSOR_HINGE_ANGLE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)}")
+    sb.appendLine("FEATURE_SENSOR_LIGHT: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_LIGHT)}")
+    sb.appendLine("FEATURE_SENSOR_PROXIMITY: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_PROXIMITY)}")
+    sb.appendLine("FEATURE_SENSOR_RELATIVE_HUMIDITY: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_RELATIVE_HUMIDITY)}")
+    sb.appendLine("FEATURE_SENSOR_STEP_COUNTER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)}")
+    sb.appendLine("FEATURE_SENSOR_STEP_DETECTOR: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_DETECTOR)}")
+    sb.appendLine("FEATURE_HIFI_SENSORS: ${pm.hasSystemFeature(PackageManager.FEATURE_HIFI_SENSORS)}")
+    sb.appendLine("FEATURE_CONSUMER_IR: ${pm.hasSystemFeature(PackageManager.FEATURE_CONSUMER_IR)}\n")
+
+    sb.appendLine("FEATURE_CONTROLS: ${pm.hasSystemFeature(PackageManager.FEATURE_CONTROLS)}")
+    sb.appendLine("FEATURE_GAMEPAD: ${pm.hasSystemFeature(PackageManager.FEATURE_GAMEPAD)}\n")
+
+    sb.appendLine("FEATURE_USB_ACCESSORY: ${pm.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY)}")
+    sb.appendLine("FEATURE_USB_HOST: ${pm.hasSystemFeature(PackageManager.FEATURE_USB_HOST)}\n")
+
+
+
+    sb.appendLine("FEATURE_MANAGED_USERS: ${pm.hasSystemFeature(PackageManager.FEATURE_MANAGED_USERS)}")
+    sb.appendLine("FEATURE_CREDENTIALS: ${pm.hasSystemFeature(PackageManager.FEATURE_CREDENTIALS)}\n")
+
     sb.appendLine("FEATURE_SIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP)}")
     sb.appendLine("FEATURE_SIP_VOIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP_VOIP)}")
     sb.appendLine("FEATURE_TELEPHONY_CDMA: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_CDMA)}")
-    sb.appendLine("FEATURE_TELEPHONY_IMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_IMS)}")
-    sb.appendLine("[LEGACY] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)}")
-    sb.appendLine("[MODERN] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)}")
+    sb.appendLine("FEATURE_TELEPHONY_EUICC: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_EUICC)}")
+    sb.appendLine("FEATURE_TELEPHONY_EUICC_MEP: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_EUICC_MEP)}")
+    sb.appendLine("FEATURE_TELEPHONY_MBMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_MBMS)}")
+    sb.appendLine("FEATURE_TELEPHONY_SUBSCRIPTION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_SUBSCRIPTION)}")
+    sb.appendLine("FEATURE_TELEPHONY_RADIO_ACCESS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_RADIO_ACCESS)}")
+    sb.appendLine("FEATURE_TELEPHONY_IMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_IMS)}\n")
 
-    sb.appendLine("FEATURE_THREAD_NETWORK: ${pm.hasSystemFeature(PackageManager.FEATURE_THREAD_NETWORK)}")
+    sb.appendLine("FEATURE_HARDWARE_KEYSTORE: ${pm.hasSystemFeature(PackageManager.FEATURE_HARDWARE_KEYSTORE)}")
+    sb.appendLine("FEATURE_IDENTITY_CREDENTIAL_HARDWARE: ${pm.hasSystemFeature(PackageManager.FEATURE_IDENTITY_CREDENTIAL_HARDWARE)}")
+    sb.appendLine("FEATURE_IDENTITY_CREDENTIAL_HARDWARE_DIRECT_ACCESS: ${pm.hasSystemFeature(PackageManager.FEATURE_IDENTITY_CREDENTIAL_HARDWARE_DIRECT_ACCESS)}")
+    sb.appendLine("FEATURE_KEYSTORE_APP_ATTEST_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_APP_ATTEST_KEY)}")
+    sb.appendLine("FEATURE_KEYSTORE_LIMITED_USE_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_LIMITED_USE_KEY)}")
+    sb.appendLine("FEATURE_KEYSTORE_SINGLE_USE_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_SINGLE_USE_KEY)}")
+    sb.appendLine("FEATURE_STRONGBOX_KEYSTORE: ${pm.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)}")
+    sb.appendLine("FEATURE_SECURITY_MODEL_COMPATIBLE: ${pm.hasSystemFeature(PackageManager.FEATURE_SECURITY_MODEL_COMPATIBLE)}")
+    sb.appendLine("FEATURE_SE_OMAPI_SD: ${pm.hasSystemFeature(PackageManager.FEATURE_SE_OMAPI_SD)}")
+    sb.appendLine("FEATURE_SE_OMAPI_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_SE_OMAPI_UICC)}\n")
 
-    sb.appendLine("FEATURE_VERIFIED_BOOT: ${pm.hasSystemFeature(PackageManager.FEATURE_VERIFIED_BOOT)}")
+    sb.appendLine("FEATURE_DEVICE_ID_ATTESTATION: ${pm.hasSystemFeature("android.software.device_id_attestation")}")
+    sb.appendLine("FEATURE_VERIFIED_BOOT: ${pm.hasSystemFeature(PackageManager.FEATURE_VERIFIED_BOOT)}\n")
 
     sb.appendLine("[LEGACY] FEATURE_VR_MODE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE)}")
     sb.appendLine("[MODERN] FEATURE_VR_MODE_HIGH_PERFORMANCE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE)}")
+    sb.appendLine("FEATURE_VR_HEADTRACKING: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_HEADTRACKING)}")
+    sb.appendLine("FEATURE_CAMERA_AR: ${pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AR)}\n")
+
+    sb.appendLine("[LEGACY] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)}")
+    sb.appendLine("[MODERN] FEATURE_LEANBACK: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)}")
+    sb.appendLine("FEATURE_LEANBACK_ONLY: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)}")
+    sb.appendLine("FEATURE_LIVE_TV: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_TV)}\n")
 
     sb.appendLine("FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS: ${pm.hasSystemFeature(PackageManager.FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS)}")
-    sb.appendLine("FEATURE_WATCH: ${pm.hasSystemFeature(PackageManager.FEATURE_WATCH)}")
+    sb.appendLine("FEATURE_WATCH: ${pm.hasSystemFeature(PackageManager.FEATURE_WATCH)}\n")
 
     sb.appendLine("FEATURE_WIFI_DIRECT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)}")
-
     sb.appendLine("FEATURE_WIFI_PASSPOINT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_PASSPOINT)}")
     sb.appendLine("FEATURE_WIFI_RTT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)}")
+    sb.appendLine("FEATURE_THREAD_NETWORK: ${pm.hasSystemFeature(PackageManager.FEATURE_THREAD_NETWORK)}")
+    sb.appendLine("FEATURE_WIFI_AWARE: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)}")
+    sb.appendLine("FEATURE_UWB: ${pm.hasSystemFeature(PackageManager.FEATURE_UWB)}\n")
+
+    sb.appendLine("FEATURE_IPSEC_TUNNELS: ${pm.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)}")
+    sb.appendLine("FEATURE_IPSEC_TUNNEL_MIGRATION: ${pm.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNEL_MIGRATION)}\n")
+
+    // interesting...
+    sb.appendLine("FEATURE_CANT_SAVE_STATE: ${pm.hasSystemFeature(PackageManager.FEATURE_CANT_SAVE_STATE)}\n")
+
+    sb.appendLine("FEATURE_COMPANION_DEVICE_SETUP: ${pm.hasSystemFeature(PackageManager.FEATURE_COMPANION_DEVICE_SETUP)}")
+    sb.appendLine("[LEGACY] FEATURE_CONNECTION_SERVICE: ${pm.hasSystemFeature(PackageManager.FEATURE_CONNECTION_SERVICE)}")
+    sb.appendLine("[MODERN] FEATURE_TELECOM: ${pm.hasSystemFeature(PackageManager.FEATURE_TELECOM)}\n")
+
+    sb.appendLine("FEATURE_VULKAN_DEQP_LEVEL: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_DEQP_LEVEL)}")
+    sb.appendLine("FEATURE_VULKAN_HARDWARE_COMPUTE: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_COMPUTE)}")
+    sb.appendLine("FEATURE_VULKAN_HARDWARE_LEVEL: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)}")
 
     return sb.toString()
 }
 
 
 fun getMemoryInfo(context: Context): String {
+    val sb = StringBuilder()
     val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val info = ActivityManager.MemoryInfo()
     am.getMemoryInfo(info)
 
-    return """
-        === [ActivityManager MemoryInfo] ===
-        totalMem:         ${info.totalMem  / 1024 / 1024} MB
-        availMem:         ${info.availMem  / 1024 / 1024} MB
-        threshold:        ${info.threshold / 1024 / 1024} MB
-        lowMemory:        ${info.lowMemory}
-    """.trimIndent()
+    sb.appendLine("=== [/proc/meminfo] ===")
+    val memInfoPath = "/proc/meminfo"
+    try {
+        val cpuInfo = File(memInfoPath).readText(Charsets.UTF_8)
+        sb.append(cpuInfo)
+    } catch (e: IOException) {
+        sb.appendLine("Failed to read $memInfoPath: ${e.message}")
+    }
+
+    sb.appendLine("=== [/proc/meminfo_extra] ===")
+    val memInfoExtraPath = "/proc/meminfo_extra"
+    try {
+        val cpuInfo = File(memInfoExtraPath).readText(Charsets.UTF_8)
+        sb.append(cpuInfo)
+    } catch (e: IOException) {
+        sb.appendLine("Failed to read $memInfoExtraPath: ${e.message}")
+    }
+
+    sb.appendLine("=== [ActivityManager MemoryInfo] ===")
+    sb.appendLine("totalMem:         ${info.totalMem  / 1024 / 1024} MB")
+    sb.appendLine("availMem:         ${info.availMem  / 1024 / 1024} MB")
+    sb.appendLine("threshold:        ${info.threshold / 1024 / 1024} MB")
+    sb.appendLine("lowMemory:        ${info.lowMemory}")
+
+    return sb.toString()
+  
 }
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
@@ -551,29 +649,22 @@ fun dumpGpuInfo(context: Context) : String {
     return "OpenGL ES version: $glesVersion"
 }
 
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpCpuInfo() : String {
     val sb = StringBuilder()
-    val jvmNproc = Runtime.getRuntime().availableProcessors()
+
     sb.appendLine("=== [Android Runtime info] ===")
+
+    val jvmNproc = Runtime.getRuntime().availableProcessors()
     sb.appendLine(" Available processors to the JVM: $jvmNproc\n")
 
-    val CPU_INFO_PATH = "/proc/cpuinfo"
-    val KEY_VALUE_DELIMITER = ": "
+    sb.appendLine("=== [/proc/cpuinfo] ===")
 
-
-    val cpuInfoMap: MutableMap<String, String> = HashMap()
-    Scanner(File(CPU_INFO_PATH)).use { s ->
-        while (s.hasNextLine()) {
-            val cpuInfoValues = s.nextLine()!!.split(KEY_VALUE_DELIMITER)
-            if (cpuInfoValues.size > 1) cpuInfoMap[cpuInfoValues[0].trim { it <= ' ' }] =
-                cpuInfoValues[1].trim { it <= ' ' }
-        }
-    }
-
-    sb.appendLine("=== [CPU Breakdown] ===")
-    cpuInfoMap.forEach { (key, value) ->
-        sb.appendLine("$key: $value")
+    val cpuInfoPath = "/proc/cpuinfo"
+    try {
+        val cpuInfo = File(cpuInfoPath).readText(Charsets.UTF_8)
+        sb.append(cpuInfo)
+    } catch (e: IOException) {
+        sb.appendLine("Failed to read $cpuInfoPath: ${e.message}")
     }
 
     return sb.toString()
