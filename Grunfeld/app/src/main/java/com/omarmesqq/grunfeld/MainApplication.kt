@@ -42,7 +42,7 @@ class MainApplication: Application() {
             Log.d(TAG, "onCreate early query (dumpGetInstalledApplications):\n${dumpGetInstalledApplications(this)}")
             Log.d(TAG, "onCreate early query (dumpGetApplicationInfo):\n${dumpGetApplicationInfo(this)}")
         }
-        
+
         super.onCreate()
         Avocado.init(this)
         if (BuildConfig.DEBUG) {
