@@ -69,6 +69,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.hardware.camera.ar",
       "android.hardware.audio.pro"));
 
+  private static volatile Object s_pmProxy = null;
+  private static volatile Field s_mPMField = null;
+  private static volatile Field s_mUseField = null;
+  private static volatile Field s_mCacheField = null;
+  private static volatile Field s_mDisabledField = null;
+
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
@@ -151,13 +157,176 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     }
 
     try {
-      // Replace `sPackageManager` of `ActivityThread` as well
+      Class<?> apmClass = Class.forName("android.app.ApplicationPackageManager");
+      Class<?> picClass = Class.forName("android.app.PropertyInvalidatedCache");
+      PackageManager pm = context.getPackageManager();
+
+      // Disable the cache flag on ApplicationPackageManager
+      Field mUseField = apmClass.getDeclaredField("mUseSystemFeaturesCache");
+      mUseField.setAccessible(true);
+      mUseField.setBoolean(pm, false);
+
+      Field mCacheField = apmClass.getDeclaredField("mHasSystemFeatureCache");
+      mCacheField.setAccessible(true);
+      Object pic = mCacheField.get(pm);
+
+      if (pic != null) {
+        // Set mDisabled=true — bypasses cache, forces recompute() on every query()
+        Field mDisabledField = picClass.getDeclaredField("mDisabled");
+        mDisabledField.setAccessible(true);
+        mDisabledField.setBoolean(pic, true);
+        Log.d(TAG, "PIC mDisabled=true");
+
+        // Clear backing store via LinkedHashMap.clear() — bypass CacheMap override
+        Field mInternalCacheField = picClass.getDeclaredField("mCache");
+        mInternalCacheField.setAccessible(true);
+        Object internalCache = mInternalCacheField.get(pic);
+        if (internalCache != null) {
+          // Call clear() on LinkedHashMap superclass directly
+          Method clearMethod = java.util.LinkedHashMap.class.getMethod("clear");
+          clearMethod.invoke(internalCache);
+          Log.d(TAG, "PIC backing store cleared via LinkedHashMap.clear()");
+        }
+
+        // Also disable globally for this process via disableForCurrentProcess()
+        try {
+          Method disableMethod = picClass.getMethod("disableForCurrentProcess");
+          disableMethod.invoke(pic);
+          Log.d(TAG, "PIC disableForCurrentProcess() called");
+        } catch (Exception e2) {
+          Log.w(TAG, "disableForCurrentProcess failed: " + e2.getMessage());
+        }
+
+        // Verify mDisabled stuck
+        Log.d(TAG, "PIC mDisabled is now: " + mDisabledField.getBoolean(pic));
+      } else {
+        Log.w(TAG, "PIC was null — cache not yet initialized");
+      }
+
+      Log.d(TAG, "Feature cache disabled");
+    } catch (Exception e) {
+      Log.w(TAG, "Could not disable feature cache: " + e.getMessage());
+    }
+
+    try {
+      Class<?> atClz = Class.forName("android.app.ActivityThread");
+      Method currentAt = atClz.getMethod("currentActivityThread");
+      Object at = currentAt.invoke(null);
+      if (at != null) {
+        Method getApp = atClz.getMethod("getApplication");
+        Object app = getApp.invoke(at);
+        if (app instanceof Context) {
+          Context appCtx = (Context) app;
+          Class<?> apmClass = Class.forName("android.app.ApplicationPackageManager");
+          Field mPMField = apmClass.getDeclaredField("mPM");
+          mPMField.setAccessible(true);
+          PackageManager appPm = appCtx.getPackageManager();
+          mPMField.set(appPm, pmProxy);
+          Log.d(TAG, "Patched Application PackageManager");
+
+          // Also disable its feature cache
+          Field mUseField = apmClass.getDeclaredField("mUseSystemFeaturesCache");
+          mUseField.setAccessible(true);
+          mUseField.setBoolean(appPm, false);
+
+          Field mCacheField = apmClass.getDeclaredField("mHasSystemFeatureCache");
+          mCacheField.setAccessible(true);
+          Object pic = mCacheField.get(appPm);
+          if (pic != null) {
+            Class<?> picClass = Class.forName("android.app.PropertyInvalidatedCache");
+            Field mDisabledField = picClass.getDeclaredField("mDisabled");
+            mDisabledField.setAccessible(true);
+            mDisabledField.setBoolean(pic, true);
+            Log.d(TAG, "Application PM feature cache disabled");
+          }
+        }
+      }
+    } catch (Exception e) {
+      Log.w(TAG, "Could not patch Application PM: " + e.getMessage());
+    }
+
+    // Store fields statically for Activity-time patching via BipanJava
+    try {
+      Class<?> apmClass2 = Class.forName("android.app.ApplicationPackageManager");
+      Class<?> picClass2 = Class.forName("android.app.PropertyInvalidatedCache");
+      s_pmProxy = pmProxy;
+      s_mPMField = apmClass2.getDeclaredField("mPM");
+      s_mPMField.setAccessible(true);
+      s_mUseField = apmClass2.getDeclaredField("mUseSystemFeaturesCache");
+      s_mUseField.setAccessible(true);
+      s_mCacheField = apmClass2.getDeclaredField("mHasSystemFeatureCache");
+      s_mCacheField.setAccessible(true);
+      s_mDisabledField = picClass2.getDeclaredField("mDisabled");
+      s_mDisabledField.setAccessible(true);
+      Log.d(TAG, "Static PM patch fields stored");
+    } catch (Exception e) {
+      Log.w(TAG, "Failed to store static PM fields: " + e.getMessage());
+    }
+
+    try {
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Field sPMField = atClz.getDeclaredField("sPackageManager");
       sPMField.setAccessible(true);
       sPMField.set(null, pmProxy);
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
+    }
+
+    // try {
+    // // Replace `sPackageManager` of `ActivityThread` as well
+    // Class<?> atClz = Class.forName("android.app.ActivityThread");
+    // Field sPMField = atClz.getDeclaredField("sPackageManager");
+    // sPMField.setAccessible(true);
+    // sPMField.set(null, pmProxy);
+    // } catch (Exception e) {
+    // Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
+    // }
+
+    // try {
+    // Class<?> atClz = Class.forName("android.app.ActivityThread");
+    // // sPackageManager is already replaced above, but also
+    // // intercept the static getPackageManager() return value
+    // // by replacing it in the thread's field
+    // Field sPMField = atClz.getDeclaredField("sPackageManager");
+    // sPMField.setAccessible(true);
+    // sPMField.set(null, pmProxy);
+
+    // // Store pmProxy for use in Activity context patching
+    // this.pmProxy = pmProxy;
+    // this.apmClass = Class.forName("android.app.ApplicationPackageManager");
+    // this.mPMField = apmClass.getDeclaredField("mPM");
+    // this.mPMField.setAccessible(true);
+    // this.picClass = Class.forName("android.app.PropertyInvalidatedCache");
+    // this.mDisabledField = picClass.getDeclaredField("mDisabled");
+    // this.mDisabledField.setAccessible(true);
+    // this.mUseField = apmClass.getDeclaredField("mUseSystemFeaturesCache");
+    // this.mUseField.setAccessible(true);
+    // this.mCacheField = apmClass.getDeclaredField("mHasSystemFeatureCache");
+    // this.mCacheField.setAccessible(true);
+
+    // Log.d(TAG, "Stored fields for lazy Activity PM patching");
+    // } catch (Exception e) {
+    // Log.e(TAG, "Failed to store PM fields: " + e.getMessage());
+    // }
+  }
+
+  public static void patchPackageManager(PackageManager pm) {
+    if (pm == null || s_pmProxy == null || s_mPMField == null) {
+      return;
+    }
+    try {
+      s_mPMField.set(pm, s_pmProxy);
+      if (s_mUseField != null) {
+        s_mUseField.setBoolean(pm, false);
+      }
+      if (s_mCacheField != null && s_mDisabledField != null) {
+        Object pic = s_mCacheField.get(pm);
+        if (pic != null) {
+          s_mDisabledField.setBoolean(pic, true);
+        }
+      }
+    } catch (Exception e) {
+      Log.w(TAG, "patchPackageManager failed: " + e.getMessage());
     }
   }
 
@@ -308,8 +477,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
 
       case "hasSystemFeature": {
-        // Both overloads: hasSystemFeature(String) and hasSystemFeature(String, int)
-        // args[0] is always the feature name String
         String feature = (args != null && args.length > 0 && args[0] instanceof String)
             ? (String) args[0]
             : null;

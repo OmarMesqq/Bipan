@@ -87,6 +87,25 @@ public class BipanJava {
             super.callApplicationOnCreate(app);
           }
         }
+
+        @Override
+        public void callActivityOnCreate(android.app.Activity activity, Bundle icicle) {
+          // Patch the Activity's PackageManager before onCreate runs
+          try {
+            AntiAppInspectionHook.patchPackageManager(activity.getPackageManager());
+          } catch (Exception ignored) {
+          }
+          try {
+            realInstr.getClass()
+                .getMethod("callActivityOnCreate",
+                    android.app.Activity.class,
+                    android.os.Bundle.class)
+                .invoke(realInstr, activity, icicle);
+          } catch (Exception e) {
+            Log.e(TAG, "callActivityOnCreate failed: " + e.getMessage());
+            super.callActivityOnCreate(activity, icicle);
+          }
+        }
       };
 
       Field mThreadField = android.app.Instrumentation.class
