@@ -259,7 +259,7 @@ static void scrub_socket(struct sockaddr* s) {
   if (s->sa_family == AF_INET) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
 
-    sin->sin_addr.s_addr = 0x8001A8C0;  // 192.168.1.128
+    sin->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
   } else if (s->sa_family == AF_INET6) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
