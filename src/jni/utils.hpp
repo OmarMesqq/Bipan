@@ -450,6 +450,7 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
 
 __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
+           starts_with(pathname, "/proc/meminfo_extra") ||
            // CPU, temperature and platform info
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
@@ -473,7 +474,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
-  // TODO: Should match BipanJava
+
   if (strcmp(pathname, "/proc/cpuinfo") == 0) {
     return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
@@ -481,8 +482,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";  // Generic mid-range (Snapdragon 625-ish)
   }
-  // TODO: Should match BipanJava
-  // ~4GB  RAM
+
   if (strcmp(pathname, "/proc/meminfo") == 0) {
     return "MemTotal:        3901140 kB\n"
            "MemFree:          258600 kB\n"
@@ -496,12 +496,6 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "SwapFree:              0 kB\n"
            "VmallocTotal:   263061440 kB\n"
            "CmaTotal:         159744 kB\n";
-  }
-  if (strcmp(pathname, "/proc/meminfo_extra") == 0) {
-    return "SystemHeap:        121880 kB\n"
-           "SystemHeapPool:     80692 kB\n"
-           "VmallocAPIsize:    125888 kB\n"
-           "ZramDevice:            4 kB\n";
   }
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
