@@ -251,6 +251,42 @@ public class NetworkSpoofingHook implements BaseHook {
       ctor.setAccessible(true);
       list.add(ctor.newInstance(fakeIp, 24));
 
+      Field routesField = LinkProperties.class.getDeclaredField("mRoutes");
+      routesField.setAccessible(true);
+      @SuppressWarnings("unchecked")
+      ArrayList<Object> routes = (ArrayList<Object>) routesField.get(lp);
+      routes.clear();
+
+      // Add realistic WiFi routes — generic gateway, no VPN artifacts
+      // A typical home WiFi would have:
+      // 10.111.222.0/24 -> directly connected (subnet route)
+      // 0.0.0.0/0 -> 10.111.222.1 (default gateway = our spoofed IP)
+
+      Class<?> routeInfoClass = Class.forName("android.net.RouteInfo");
+      Class<?> ipPrefixClass = Class.forName("android.net.IpPrefix");
+
+      // IpPrefix(InetAddress address, int prefixLength)
+      Constructor<?> ipPrefixCtor = ipPrefixClass.getDeclaredConstructor(
+          InetAddress.class, int.class);
+      ipPrefixCtor.setAccessible(true);
+
+      // RouteInfo(IpPrefix destination, InetAddress gateway, String iface)
+      Constructor<?> routeCtor = routeInfoClass.getDeclaredConstructor(
+          ipPrefixClass, InetAddress.class, String.class);
+      routeCtor.setAccessible(true);
+
+      InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
+      InetAddress gatewayAddr = InetAddress.getByName("10.111.222.1"); // same as our IP
+      InetAddress anyAddr = InetAddress.getByName("0.0.0.0");
+
+      // Subnet route: 10.111.222.0/24 directly connected
+      Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
+      routes.add(routeCtor.newInstance(subnetPrefix, null, "wlan0"));
+
+      // Default route: 0.0.0.0/0 via gateway
+      Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
+      routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, "wlan0"));
+
       lp.setInterfaceName("wlan0");
       lp.setMtu(1500);
       lp.setDhcpServerAddress(null);
