@@ -53,7 +53,6 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
 std::unordered_set<std::string> telephonySpoofingAllowlist = {
     "com.android.vending",
     "com.google.android.gms",
-    "com.spotify.music",
     "com.whatsapp",
     "com.instagram.android"};
 

@@ -5,7 +5,6 @@ import android.os.IBinder;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import com.omarmesqq.bipan.BaseHook;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -14,6 +13,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
+import java.util.ArrayList;
+import java.lang.reflect.Constructor;
 
 public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanTelephonyHook";
@@ -21,33 +22,42 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private Object originalITelephony;
   private TelephonyManager realTm;
 
+  private static final String CARRIER_NAME = "Vivo";
   private static final int CARRIER_ID = 530;
-
-  private static final String SPOOF_OPERATOR_NAME = "Vivo";
-  private static final String SPOOF_OPERATOR_NUMERIC = "72423";
-  private static final String SPOOF_COUNTRY_ISO = "br";
-  private static final String SPOOF_SIM_OPERATOR_NAME = "Vivo";
-  private static final String SPOOF_SIM_OPERATOR = "72423";
-  private static final String SPOOF_SIM_COUNTRY_ISO = "br";
-  // maybe unnecessary
-  private static final String SPOOF_DEVICE_SOFTWARE_VER = "06";
-  private static final int SPOOF_PHONE_TYPE = TelephonyManager.PHONE_TYPE_GSM;
-  private static final int SPOOF_PHONE_COUNT = 1;
-  private static final int SPOOF_ACTIVE_MODEM_COUNT = 1;
-  private static final int SPOOF_NETWORK_TYPE = TelephonyManager.NETWORK_TYPE_LTE;
-  private static final int SPOOF_DATA_NETWORK_TYPE = TelephonyManager.NETWORK_TYPE_LTE;
+  private static final String MCCMNC_TUPLE = "72406";
+  private static final String SIM_ISO_COUNTRY_CODE = "br";
+  private static final int MODEM_COUNT = 1;
 
   private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms",
-      "com.spotify.music",
       "com.whatsapp",
       "com.instagram.android"));
 
-  private Object emptyParceledListSlice() throws Exception {
-    Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
-    Method emptyList = sliceClass.getMethod("emptyList");
-    return emptyList.invoke(null);
+  private Object createEmptyCellIdentity() throws Exception {
+    try {
+      Class<?> cellIdentityGsmClass = Class.forName("android.telephony.CellIdentityGsm");
+
+      for (Constructor<?> ctor : cellIdentityGsmClass.getDeclaredConstructors()) {
+        ctor.setAccessible(true);
+        Class<?>[] params = ctor.getParameterTypes();
+        try {
+          if (params.length == 0) {
+            return ctor.newInstance();
+          } else if (params.length == 4
+              && params[0] == int.class && params[1] == int.class
+              && params[2] == int.class && params[3] == int.class) {
+            return ctor.newInstance(
+                Integer.MAX_VALUE, Integer.MAX_VALUE,
+                Integer.MAX_VALUE, Integer.MAX_VALUE);
+          }
+        } catch (Exception ignored) {
+        }
+      }
+    } catch (Exception e) {
+      Log.e(TAG, "Exception while creating an empty CellIdentity: " + e.getMessage() + ". Will return 'null'!");
+    }
+    return null;
   }
 
   @Override
@@ -87,122 +97,71 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
     Field sCacheField = serviceManager.getDeclaredField("sCache");
     sCacheField.setAccessible(true);
-    
+
     @SuppressWarnings("unchecked")
     Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
     cache.put("phone", proxyBinder);
 
     replaceBinderInTelephonyManager(realTm, proxyBinder);
-
-    Log.i(TAG, "TelephonyManager hook installed");
   }
 
-  private void replaceBinderInTelephonyManager(TelephonyManager tm, IBinder proxyBinder) {
-    // TelephonyManager caches an IPhoneStateListener or ITelephony ref directly
-    // Walk declared fields to find the binder field
+  private void replaceBinderInTelephonyManager(TelephonyManager tm, IBinder proxyBinder) throws Exception {
     for (Field f : tm.getClass().getDeclaredFields()) {
       if (IBinder.class.isAssignableFrom(f.getType())) {
         f.setAccessible(true);
-        try {
-          f.set(tm, proxyBinder);
-          Log.d(TAG, "Replaced binder field: " + f.getName());
-        } catch (Exception e) {
-          Log.w(TAG, "Could not replace field " + f.getName() + ": " + e.getMessage());
-        }
+        f.set(tm, proxyBinder);
       }
     }
   }
-
-
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     switch (method.getName()) {
 
-      // Network operator — what shows in status bar
       case "getNetworkOperatorName":
       case "getNetworkOperatorNameForDisplay":
-        Log.w(TAG, "Spoofed: " + method.getName());
-        return SPOOF_OPERATOR_NAME;
-
-      case "getNetworkCountryIso":
-      case "getNetworkCountryIsoForPhone":
-        Log.w(TAG, "Spoofed: getNetworkCountryIso");
-        return SPOOF_COUNTRY_ISO;
-
-      // SIM operator
       case "getSimOperatorName":
       case "getSimOperatorNameForPhone":
       case "getSimOperatorNameForSubscription":
-        Log.w(TAG, "Spoofed: getSimOperatorName");
-        return SPOOF_SIM_OPERATOR_NAME;
+      case "getSubscriptionCarrierName":
+        Log.i(TAG, "Neutered " + method.getName());
+        return CARRIER_NAME;
+
+      case "getNetworkCountryIso":
+      case "getNetworkCountryIsoForPhone":
+      case "getSimCountryIso":
+      case "getSimCountryIsoForPhone":
+      case "getSimCountryIsoForSubscription":
+        Log.i(TAG, "Neutered " + method.getName());
+        return SIM_ISO_COUNTRY_CODE;
 
       case "getSimOperator":
       case "getSimOperatorNumeric":
       case "getSimOperatorForSubscription":
-        Log.w(TAG, "Spoofed: getSimOperator");
-        return SPOOF_OPERATOR_NUMERIC;
+        Log.i(TAG, "Neutered " + method.getName());
+        return MCCMNC_TUPLE;
 
-      case "getSimCountryIso":
-      case "getSimCountryIsoForPhone":
-      case "getSimCountryIsoForSubscription":
-        Log.w(TAG, "Spoofed: getSimCountryIso");
-        return SPOOF_SIM_COUNTRY_ISO;
-
-      // Phone/modem count — critical for dual SIM detection
       case "getPhoneCount":
       case "getActiveModemCount":
       case "getSupportedModemCount":
-        Log.w(TAG, "Spoofed: " + method.getName() + " → 1");
-        return SPOOF_PHONE_COUNT;
+        Log.i(TAG, "Neutered " + method.getName());
+        return MODEM_COUNT;
 
-      case "getPhoneType":
-      case "getPhoneTypeForSlot":
-        return SPOOF_PHONE_TYPE;
-
-      // Network type
-      case "getNetworkType":
-      case "getNetworkTypeForSubscriber":
-      case "getDataNetworkType":
-      case "getDataNetworkTypeForSubscriber":
-      case "getVoiceNetworkType":
-      case "getVoiceNetworkTypeForSubscriber":
-        return SPOOF_NETWORK_TYPE;
-
-      // SIM state — LOADED = SIM present and ready
-      case "getSimState":
-      case "getSimStateForSlotIndex":
-        // TelephonyManager.SIM_STATE_READY = 5
-        return 5;
-
-      // SIM slot count
-      case "getPhoneCapability":
-        // Fall through to real — we handle slot count via sysprop
-        return method.invoke(originalITelephony, args);
-
-      // Signal that we're not dual SIM
       case "isMultiSimEnabled":
-        Log.w(TAG, "Spoofed: isMultiSimEnabled → false");
+        Log.i(TAG, "Neutered " + method.getName());
         return false;
-
-      // Device software version (visible in About Phone)
-      case "getDeviceSoftwareVersion":
-      case "getDeviceSoftwareVersionForSubscriber":
-        return SPOOF_DEVICE_SOFTWARE_VER;
-
-      // Emergency number list
-      case "getEmergencyNumberList":
-      case "getEmergencyNumberListForSubscriber":
-        return method.invoke(originalITelephony, args);
 
       case "isMultiSimSupported":
         Log.i(TAG, "Neutered " + method.getName());
         return TelephonyManager.MULTISIM_NOT_SUPPORTED_BY_HARDWARE;
 
       case "getAllCellInfo":
+        Log.i(TAG, "Neutered " + method.getName());
+        return new ArrayList<>();
+
       case "getCellLocation":
         Log.i(TAG, "Neutered " + method.getName());
-        return null;
+        return createEmptyCellIdentity();
 
       // case "getServiceState":
       // case "getServiceStateForSlot":
@@ -213,24 +172,25 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         Log.i(TAG, "Neutered " + method.getName());
         return "com.google.android.dialer";
 
-      case "hasCarrierPrivileges":
+      case "getCarrierPrivilegeStatus":
+        Class<?> tm = Class.forName("android.telephony.TelephonyManager");
+        Field carrierPrivilegeStatusNoAccessField = tm.getDeclaredField("CARRIER_PRIVILEGE_STATUS_NO_ACCESS");
+        carrierPrivilegeStatusNoAccessField.setAccessible(true);
+        int CARRIER_PRIVILEGE_STATUS_NO_ACCESS = (int) carrierPrivilegeStatusNoAccessField.get(null);
+
         Log.i(TAG, "Neutered " + method.getName());
-        return false;
+        return CARRIER_PRIVILEGE_STATUS_NO_ACCESS;
 
       case "getSimCarrierId":
       case "getSimSpecificCarrierId":
+      case "getSubscriptionCarrierId":
+      case "getSubscriptionSpecificCarrierId":
         Log.i(TAG, "Neutered " + method.getName());
         return CARRIER_ID;
 
-      // Everything else passes through
       default:
         Log.i(TAG, "Allowing Telephony method through: " + method.getName());
-        try {
-          return method.invoke(originalITelephony, args);
-        } catch (Exception e) {
-          Log.w(TAG, "ITelephony passthrough failed for " + method.getName() + ": " + e.getMessage());
-          return null;
-        }
+        return method.invoke(originalITelephony, args);
     }
   }
 }
