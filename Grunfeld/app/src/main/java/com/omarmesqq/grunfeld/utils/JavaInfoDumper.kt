@@ -615,7 +615,6 @@ fun dumpDevProperties(): String {
         row("ro.vendor.build.fingerprint", prop("ro.vendor.build.fingerprint"))
         row("ro.vendor.build.date.utc", prop("ro.vendor.build.date.utc"))
         row("ro.vendor.build.date", prop("ro.vendor.build.date"))
-        row("ro.vendor.api_level", prop("ro.vendor.api_level"))
         row("ro.product.vendor.name", prop("ro.product.vendor.name"))
         row("ro.product.vendor.model", prop("ro.product.vendor.model"))
         row("ro.product.vendor.manufacturer", prop("ro.product.vendor.manufacturer"))
@@ -668,50 +667,17 @@ fun dumpDevProperties(): String {
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @RequiresPermission(allOf = [Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
 fun dumpTelephonyInfo(context: Context): String {
-    /**
-     *     public static final String TELEPHONY_IMS_SERVICE = "telephony_ims";
-     *     public static final String TELEPHONY_PHONE_NUMBER_SERVICE = "telephony_phone_number";
-     *     public static final String TELEPHONY_SUBSCRIPTION_SERVICE = "telephony_subscription_service";
-     */
-
-    // public static final String TELECOM_SERVICE = "telecom";
-    val telecomManager  = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-
-    // public static final String TELEPHONY_SERVICE = "phone";
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-
     val sb = StringBuilder()
-    sb.appendLine("=== [TelecomManager] ===")
 
-    val simCallMgr = telecomManager.simCallManager
-    if (simCallMgr != null) {
-        val simCallComponentName = simCallMgr.componentName
-
-        val simCallMgrId = simCallMgr.id
-        val simCallComponentNamePkgName =  simCallComponentName.packageName
-        val simCallComponentNameClassName = simCallComponentName.className
-        val simCallComponentShortNameClassName =simCallComponentName.shortClassName
-
-        sb.appendLine("simCallMgrId: $simCallMgrId")
-        sb.appendLine("simCallComponentNamePkgName: $simCallComponentNamePkgName")
-        sb.appendLine("simCallComponentNameClassName: $simCallComponentNameClassName")
-        sb.appendLine("simCallComponentShortNameClassName: $simCallComponentShortNameClassName")
-    }
-
-    val defaultDialerPackage = telecomManager.defaultDialerPackage
-    sb.appendLine("defaultDialerPackage ID: $defaultDialerPackage")
-
-
-    sb.appendLine("=== [TelephonyManager] ===")
 
     sb.appendLine("[LEGACY] phoneCount: ${telephonyManager.phoneCount}")
     sb.appendLine("[MODERN] activeModemCount: ${telephonyManager.activeModemCount}")
     sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
     sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
 
-    sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}\n")
-    sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}\n")
-
+    sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
+    sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
 
     sb.appendLine("carrierIdFromSimMccMnc: ${telephonyManager.carrierIdFromSimMccMnc}")
     sb.appendLine("networkOperator: ${telephonyManager.networkOperator}")
@@ -725,10 +691,10 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
 
 
-//    sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
+    // sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
 
     sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
-    sb.appendLine("hasCarrierPrivileges(): ${telephonyManager.hasCarrierPrivileges()}")
+    sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
 
     return sb.toString()
 }
