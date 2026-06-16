@@ -253,6 +253,12 @@ public class NetworkSpoofingHook implements BaseHook {
 
       lp.setInterfaceName("wlan0");
       lp.setMtu(1500);
+      lp.setDhcpServerAddress(null);
+
+      ArrayList<InetAddress> dnsServers = new ArrayList<>();
+      dnsServers.add(InetAddress.getByName("8.8.8.8"));
+      dnsServers.add(InetAddress.getByName("8.8.4.4"));
+      lp.setDnsServers(dnsServers);
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof LinkProperties: ", e);
     }
