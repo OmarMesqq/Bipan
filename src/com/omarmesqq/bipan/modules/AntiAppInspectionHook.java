@@ -276,7 +276,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           }
         }
         Log.w(TAG, "Blinded: resolveActivity");
-        return null; // ResolveInfo, NOT ParceledListSlice
+        return null;
       }
       case "getTargetSdkVersion": {
         Log.w(TAG, "Blinded: getTargetSdkVersion");

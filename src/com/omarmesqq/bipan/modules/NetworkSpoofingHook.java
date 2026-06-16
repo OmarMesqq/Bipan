@@ -246,7 +246,7 @@ public class NetworkSpoofingHook implements BaseHook {
       ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
       list.clear();
 
-      InetAddress fakeIp = InetAddress.getByName("192.168.1.128");
+      InetAddress fakeIp = InetAddress.getByName("10.111.222.1");
       Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
       ctor.setAccessible(true);
       list.add(ctor.newInstance(fakeIp, 24));
@@ -260,7 +260,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofWifiInfo(WifiInfo info) {
     try {
-      InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 192, (byte) 168, 1, (byte) 128 });
+      InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);
       setField(info, "mLinkSpeed", 53); // Mbps
