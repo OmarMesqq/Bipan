@@ -155,6 +155,7 @@ public class BipanJava {
     modules.add(new AntiNetworkDiscoveryHook());
     modules.add(new NetworkSpoofingHook());
     modules.add(new TelephonyManagerHook());
+    modules.add(new MemoryInfoHook());
 
     for (BaseHook module : modules) {
       try {
