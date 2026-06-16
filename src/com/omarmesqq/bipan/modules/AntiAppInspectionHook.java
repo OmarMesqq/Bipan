@@ -15,6 +15,9 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.FeatureInfo;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Single IPackageManager proxy:
@@ -44,6 +47,27 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "com.android.vending",
       "com.google.android.gms",
       "com.android.webview"));
+
+  private static final Set<String> FEATURE_STRIP_LIST = new HashSet<>(Arrays.asList(
+      "org.lineageos.livedisplay",
+      "org.lineageos.profiles",
+      "org.lineageos.hardware",
+      "org.lineageos.globalactions",
+      "org.lineageos.trust",
+      "org.lineageos.health",
+      "org.lineageos.android",
+      "org.lineageos.settings",
+
+      "android.hardware.nfc",
+      "android.hardware.nfc.any",
+      "android.hardware.nfc.hce",
+      "android.hardware.nfc.hcef",
+      "android.hardware.nfc.uicc",
+      "android.hardware.nfc.ese",
+
+      "android.hardware.sensor.hifi_sensors",
+      "android.hardware.camera.ar",
+      "android.hardware.audio.pro"));
 
   @Override
   public void install(Context context) throws Exception {
@@ -284,18 +308,42 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
 
       case "hasSystemFeature": {
-        Log.w(TAG, "Blinded: hasSystemFeature");
-        if (args != null && args.length > 0 && args[0] instanceof Intent) {
-          Intent intent = (Intent) args[0];
-          dumpIntent(intent);
+        // Both overloads: hasSystemFeature(String) and hasSystemFeature(String, int)
+        // args[0] is always the feature name String
+        String feature = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : null;
+
+        if (feature != null && FEATURE_STRIP_LIST.contains(feature)) {
+          Log.w(TAG, "Stripped hasSystemFeature: " + feature);
+          return false;
         }
-        return false;
+
+        return method.invoke(originalPM, args);
       }
 
-      // TODO: Dont block, filter
       case "getSystemAvailableFeatures": {
-        Log.w(TAG, "Blinded: getSystemAvailableFeatures");
-        return null;
+        Log.w(TAG, "Filtering: getSystemAvailableFeatures");
+        try {
+          Object result = method.invoke(originalPM, args);
+          if (result == null)
+            return null;
+
+          FeatureInfo[] realFeatures = (FeatureInfo[]) result;
+          List<FeatureInfo> filtered = new ArrayList<>();
+
+          for (FeatureInfo fi : realFeatures) {
+            if (fi.name != null && FEATURE_STRIP_LIST.contains(fi.name)) {
+              continue;
+            }
+            filtered.add(fi);
+          }
+
+          return filtered.toArray(new FeatureInfo[0]);
+        } catch (Exception e) {
+          Log.e(TAG, "getSystemAvailableFeatures filter failed", e);
+          return null;
+        }
       }
 
       default: {
@@ -338,6 +386,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     }
   }
 
+  @SuppressWarnings("unused")
   private void dumpIntent(Intent intent) {
     String intentInfo = "\naction=" + intent.getAction()
         + " data=" + intent.getDataString()
