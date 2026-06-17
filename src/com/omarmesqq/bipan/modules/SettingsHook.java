@@ -10,7 +10,7 @@ import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.security.SecureRandom;
+import java.util.Random;
 import java.util.Map;
 import com.omarmesqq.bipan.BaseHook;
 import android.provider.Settings.Secure;
@@ -155,7 +155,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
   }
 
   private static String generateRandomId() {
-    SecureRandom random = new SecureRandom();
+    Random random = new Random();
     byte[] bytes = new byte[8]; // 64 bits = 16 hex chars
     random.nextBytes(bytes);
     StringBuilder sb = new StringBuilder();
