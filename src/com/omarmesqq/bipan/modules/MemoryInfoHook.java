@@ -66,8 +66,6 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
     // Also replace the cached singleton in ActivityManager itself
     replaceActivityManagerSingleton(proxy);
-
-    Log.i(TAG, "MemoryInfo hook installed");
   }
 
   private void replaceActivityManagerSingleton(Object proxy) {
@@ -83,8 +81,6 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
       Field mInstanceField = singletonClass.getDeclaredField("mInstance");
       mInstanceField.setAccessible(true);
       mInstanceField.set(singleton, proxy);
-
-      Log.d(TAG, "Replaced IActivityManager singleton");
     } catch (Exception e) {
       Log.w(TAG, "Could not replace AM singleton (non-fatal): " + e.getMessage());
     }
