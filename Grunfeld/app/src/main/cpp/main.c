@@ -598,7 +598,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        snprintf(entry, sizeof(entry), "socket IP: %s(Expect \"scrubbed\" value )\n", ip);
+        snprintf(entry, sizeof(entry), "socket IP: %s\n", ip);
     } else {
         snprintf(entry, sizeof(entry), "failed with ret: %ld\n", ret);
     }

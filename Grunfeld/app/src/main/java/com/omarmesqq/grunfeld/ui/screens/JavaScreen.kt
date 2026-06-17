@@ -123,11 +123,7 @@ fun JavaInfoScreen() {
                 ) {
                     Text("Query network stats")
                 }
-
-                Text(
-                    text = netInfo,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                ReportTextWithCopy(netInfo, "")
             }
         }
 
