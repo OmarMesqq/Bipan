@@ -479,9 +479,7 @@ static int hook_system_property_get(const char* name, char* value) {
       value[91] = '\0';
       return (int)strlen(value);
     }
-    if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
-    } else {
+    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         strncpy(value, it->second.c_str(), 91);
@@ -714,9 +712,7 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
       override_buf = it->second;
       effective = override_buf.c_str();
     }
-    if (telephonySpoofingAllowlist.find(package_name) != telephonySpoofingAllowlist.end()) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Skipping native sysprop telephony hooks for %s", package_name);
-    } else {
+    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         override_buf = it->second;

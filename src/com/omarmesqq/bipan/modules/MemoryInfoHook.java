@@ -115,7 +115,6 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
       setLongField(info, "availMem", FAKE_AVAIL_MEM);
       setLongField(info, "threshold", FAKE_THRESHOLD);
       setBoolField(info, "lowMemory", FAKE_LOW_MEMORY);
-      Log.d(TAG, "MemoryInfo patched");
     } catch (Exception e) {
       Log.e(TAG, "Failed to patch MemoryInfo: ", e);
     }
