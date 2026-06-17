@@ -29,8 +29,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final int MODEM_COUNT = 1;
 
   private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
-      "com.android.vending",
-      "com.google.android.gms",
       "com.whatsapp",
       "com.instagram.android"));
 
