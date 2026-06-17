@@ -32,8 +32,13 @@ public class SettingsHook implements BaseHook, InvocationHandler {
   private static final String RANDOM_ANDROID_ID = generateRandomId();
   private static final String FAKE_BOOT_COUNT = "43";
 
-  private static final Set<String> ALLOWLIST = new HashSet<>(
+  private static final Set<String> SSAID_ALLOW_LIST = new HashSet<>(
       Arrays.asList("com.spotify.music"));
+
+  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms"));
+
   private static String currentPackageName = "unknown";
 
   @Override
@@ -57,7 +62,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
       if (settingKey != null) {
         if ("android_id".equals(settingKey)) {
-          if (ALLOWLIST.contains(currentPackageName)) {
+          if (SSAID_ALLOW_LIST.contains(currentPackageName)) {
             Log.i(TAG, "Returning true SSAID for allowlisted app: " + currentPackageName);
             return method.invoke(originalProvider, args);
           } else {
@@ -97,6 +102,11 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
+    String packageName = context.getPackageName();
+    if (ALLOW_LIST.contains(packageName)) {
+      return;
+    }
+
     currentPackageName = context.getPackageName();
     // Warm up the Binder connection
     Global.getString(context.getContentResolver(), "adb_enabled");
