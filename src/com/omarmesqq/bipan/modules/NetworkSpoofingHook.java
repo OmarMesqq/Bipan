@@ -239,6 +239,64 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofLinkProperties(LinkProperties lp) {
     try {
+      ArrayList<InetAddress> dnsServers = new ArrayList<>();
+      dnsServers.add(InetAddress.getByName("8.8.8.8"));
+      dnsServers.add(InetAddress.getByName("8.8.4.4"));
+
+      String iface = lp.getInterfaceName();
+
+      // We're on cellular
+      if (iface != null && iface.startsWith("rmnet")) {
+        Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
+        field.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
+        list.clear();
+
+        // Use a plausible cellular IP range
+        InetAddress fakeIp = InetAddress.getByName("10.111.222.1");
+        Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
+        ctor.setAccessible(true);
+        list.add(ctor.newInstance(fakeIp, 24));
+
+        Field routesField = LinkProperties.class.getDeclaredField("mRoutes");
+        routesField.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        ArrayList<Object> routes = (ArrayList<Object>) routesField.get(lp);
+        routes.clear();
+
+        Class<?> routeInfoClass = Class.forName("android.net.RouteInfo");
+        Class<?> ipPrefixClass = Class.forName("android.net.IpPrefix");
+
+        // IpPrefix(InetAddress address, int prefixLength)
+        Constructor<?> ipPrefixCtor = ipPrefixClass.getDeclaredConstructor(InetAddress.class, int.class);
+        ipPrefixCtor.setAccessible(true);
+
+        // RouteInfo(IpPrefix destination, InetAddress gateway, String iface)
+        Constructor<?> routeCtor = routeInfoClass.getDeclaredConstructor(ipPrefixClass, InetAddress.class,
+            String.class);
+        routeCtor.setAccessible(true);
+
+        InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
+        InetAddress gatewayAddr = InetAddress.getByName("10.111.222.1"); // same as our IP
+        InetAddress anyAddr = InetAddress.getByName("0.0.0.0");
+
+        // Subnet route: 10.111.222.0/24 directly connected
+        Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
+        routes.add(routeCtor.newInstance(subnetPrefix, null, iface));
+
+        // Default route: 0.0.0.0/0 via gateway
+        Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
+        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, iface));
+
+        // Not setting MTU...
+        lp.setDhcpServerAddress(null);
+        lp.setDnsServers(dnsServers);
+        return;
+      }
+
       Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
       field.setAccessible(true);
 
@@ -253,26 +311,20 @@ public class NetworkSpoofingHook implements BaseHook {
 
       Field routesField = LinkProperties.class.getDeclaredField("mRoutes");
       routesField.setAccessible(true);
+
       @SuppressWarnings("unchecked")
       ArrayList<Object> routes = (ArrayList<Object>) routesField.get(lp);
       routes.clear();
-
-      // Add realistic WiFi routes — generic gateway, no VPN artifacts
-      // A typical home WiFi would have:
-      // 10.111.222.0/24 -> directly connected (subnet route)
-      // 0.0.0.0/0 -> 10.111.222.1 (default gateway = our spoofed IP)
 
       Class<?> routeInfoClass = Class.forName("android.net.RouteInfo");
       Class<?> ipPrefixClass = Class.forName("android.net.IpPrefix");
 
       // IpPrefix(InetAddress address, int prefixLength)
-      Constructor<?> ipPrefixCtor = ipPrefixClass.getDeclaredConstructor(
-          InetAddress.class, int.class);
+      Constructor<?> ipPrefixCtor = ipPrefixClass.getDeclaredConstructor(InetAddress.class, int.class);
       ipPrefixCtor.setAccessible(true);
 
       // RouteInfo(IpPrefix destination, InetAddress gateway, String iface)
-      Constructor<?> routeCtor = routeInfoClass.getDeclaredConstructor(
-          ipPrefixClass, InetAddress.class, String.class);
+      Constructor<?> routeCtor = routeInfoClass.getDeclaredConstructor(ipPrefixClass, InetAddress.class, String.class);
       routeCtor.setAccessible(true);
 
       InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
@@ -291,9 +343,6 @@ public class NetworkSpoofingHook implements BaseHook {
       lp.setMtu(1500);
       lp.setDhcpServerAddress(null);
 
-      ArrayList<InetAddress> dnsServers = new ArrayList<>();
-      dnsServers.add(InetAddress.getByName("8.8.8.8"));
-      dnsServers.add(InetAddress.getByName("8.8.4.4"));
       lp.setDnsServers(dnsServers);
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof LinkProperties: ", e);
@@ -302,6 +351,25 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofWifiInfo(WifiInfo info) {
     try {
+      // Check if WiFi is actually connected
+      Field networkIdField = info.getClass().getDeclaredField("mNetworkId");
+      networkIdField.setAccessible(true);
+      int networkId = (int) networkIdField.get(info);
+
+      // We're on cellular
+      if (networkId == -1) {
+        InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
+        setField(info, "mIpAddress", zeroIp);
+        setField(info, "mLinkSpeed", -1);
+        setField(info, "mBSSID", null);
+        setField(info, "mMaxSupportedRxLinkSpeed", 0);
+        setField(info, "mMaxSupportedTxLinkSpeed", 0);
+        setField(info, "mTxLinkSpeed", -1);
+        setField(info, "mRxLinkSpeed", -1);
+        spoofSsid(info);
+        return;
+      }
+
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);

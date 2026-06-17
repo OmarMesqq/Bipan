@@ -98,7 +98,6 @@ fun dumpNetworkInfo(context: Context): String {
 
     sb.append("[NETWORK INTERFACES (via getNetworkInterfaces)]\n")
     try {
-        // TODO: evaluate allowing this
         val interfaces = NetworkInterface.getNetworkInterfaces()
         if (interfaces == null) {
             sb.append("No interfaces found.\n")
