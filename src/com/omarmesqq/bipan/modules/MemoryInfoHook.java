@@ -10,7 +10,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.InvocationHandler;
 import android.os.IBinder;
+
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class MemoryInfoHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanMemoryInfoHook";
@@ -23,8 +27,16 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
   private Object originalIActivityManager;
 
+  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms"));
+
   @Override
   public void install(Context context) throws Exception {
+    String packageName = context.getPackageName();
+    if (ALLOW_LIST.contains(packageName)) {
+      return;
+    }
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
 

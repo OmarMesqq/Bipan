@@ -8,7 +8,10 @@ import com.omarmesqq.bipan.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.lang.reflect.InvocationHandler;
 
 /**
@@ -27,9 +30,16 @@ import java.lang.reflect.InvocationHandler;
 public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanAntiScreenshotDetectionHook";
   private Object originalService;
+  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms"));
 
   @Override
   public void install(Context context) throws Exception {
+    String packageName = context.getPackageName();
+    if (ALLOW_LIST.contains(packageName)) {
+      return;
+    }
     // Common
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
