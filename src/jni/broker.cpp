@@ -218,9 +218,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_openat: {
         if (!is_trusted) {
+          if (shouldAllowDevProps(path_payload)) {
+            break;
+          }
           if (shouldDenyAccess(path_payload)) {
-            // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            if (starts_with(path_payload, "/dev/__properties__")) {
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied. Trace below:", path_payload);
+              log_violation("Direct access to device props", culprit_lib, ipc_mem->caller_pc, offset);
+            }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
@@ -306,9 +312,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
         if (!is_trusted) {
+          if (shouldAllowDevProps(path_payload)) {
+            break;
+          }
           if (shouldDenyAccess(path_payload)) {
-            // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+            if (starts_with(path_payload, "/dev/__properties__")) {
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied. Trace below:", action_name, path_payload);
+              log_violation("Direct access to device props", culprit_lib, ipc_mem->caller_pc, offset);
+            }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
@@ -552,7 +564,6 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 }
 
 static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);

@@ -463,6 +463,15 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
            strcmp(pathname, "/proc/vmstat") == 0));
 }
 
+__attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathname) {
+  return (
+    strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
+    strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
+    strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
+    strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0
+  );
+}
+
 /**
  * TODO: cache most used ones in a pool
  */
