@@ -46,7 +46,7 @@ fun NativeScreen() {
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
     var mapsReport by remember { mutableStateOf("Maps not scanned yet") }
     var smapsReport by remember { mutableStateOf("Smaps not scanned yet") }
-    var devPropertiesReport by remember { mutableStateOf("dev properties not probed yet") }
+
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
@@ -128,20 +128,6 @@ fun NativeScreen() {
                     ReportTextWithCopy(smapsReport, "Smaps not scanned yet")
                     Button(onClick = { smapsReport = NativeLibWrapper.scanSmaps() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Scan /proc/self/smaps")
-                    }
-                }
-            }
-
-            // TODO: revist this
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "/dev/__properties__", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(devPropertiesReport, "dev properties not probed yet")
-                    Button(onClick = { NativeLibWrapper.scanDevProperties() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Test SELinux enforcement")
                     }
                 }
             }
