@@ -35,10 +35,6 @@ jmp_buf jump_buffer;
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
-__attribute__((constructor))
-void grunfeld_early_init(void) {
-    LOGI("Early init: __attribute__((constructor))");
-}
 
 
 static int is_noise(const char* path);
@@ -47,41 +43,80 @@ static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
+static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
+
+__attribute__((constructor))
+void grunfeld_early_init(void) {
+    char radio1[PROP_VALUE_MAX]  = {0};
+    int len = __system_property_get("gsm.version.baseband", radio1);
+    if (len <= 0) {
+        strncpy(radio1, "gsm.version.baseband", sizeof(radio1));
+    }
+
+    const prop_info* pi = __system_property_find("gsm.version.baseband");
+    char radio2[PROP_VALUE_MAX] = {0};
+    if (pi) {
+        __system_property_read_callback(pi, prop_cb, radio2);
+    } else {
+        strncpy(radio2, "gsm.version.baseband", sizeof(radio2));
+    }
+
+    char operator[PROP_VALUE_MAX] = {0};
+
+    int len1 = __system_property_get("gsm.operator.alpha", operator);
+    if (len1 <= 0) {
+        strncpy(operator, "gsm.operator.alpha", sizeof(operator));
+    }
+
+    char fp[PROP_VALUE_MAX] = {0};
+
+    int len2 = __system_property_get("ro.build.fingerprint", fp);
+    if (len2 <= 0) {
+        strncpy(fp, "ro.build.fingerprint", sizeof(fp));
+    }
+
+    LOGI("[LEGACY] RADIO: %s", radio1);
+    LOGI("[MODERN] RADIO: %s", radio2);
+    LOGI("[LEGACY] OPERATOR: %s", operator);
+    LOGI("[LEGACY] FINGERPRINT: %s", fp);
+    LOGI("Early init: __attribute__((constructor))");
+}
+
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
 
     // ── 1. System properties (native reads — bypasses Java Build fields) ──
-    char board[92]        = {0};
-    char bootloader[92]   = {0};
-    char brand[92]        = {0};
-    char device[92]       = {0};
-    char display[92]      = {0};
-    char fingerprint[92]  = {0};
-    char hardware[92]     = {0};
-    char host[92]         = {0};
-    char build_id[92]     = {0};
-    char manufacturer[92] = {0};
-    char model[92]        = {0};
-    char odm_sku[92]      = {0};
-    char product[92]      = {0};
-    char sku[92]          = {0};
-    char soc_mfr[92]      = {0};
-    char soc_model[92]    = {0};
-    char abi1[92]         = {0};
-    char abi2[92]         = {0};
-    char abi3[92]         = {0};
-    char tags[92]         = {0};
-    char type[92]         = {0};
-    char user[92]         = {0};
-    char radio[92]        = {0};
-    char base_os[92]      = {0};
-    char codename[92]     = {0};
-    char incremental[92]  = {0};
-    char release[92]      = {0};
-    char release_or_codename[92]       = {0};
-    char release_or_preview_display[92] = {0};
-    char security_patch[92] = {0};
+    char board[PROP_VALUE_MAX]        = {0};
+    char bootloader[PROP_VALUE_MAX]   = {0};
+    char brand[PROP_VALUE_MAX]        = {0};
+    char device[PROP_VALUE_MAX]       = {0};
+    char display[PROP_VALUE_MAX]      = {0};
+    char fingerprint[PROP_VALUE_MAX]  = {0};
+    char hardware[PROP_VALUE_MAX]     = {0};
+    char host[PROP_VALUE_MAX]         = {0};
+    char build_id[PROP_VALUE_MAX]     = {0};
+    char manufacturer[PROP_VALUE_MAX] = {0};
+    char model[PROP_VALUE_MAX]        = {0};
+    char odm_sku[PROP_VALUE_MAX]      = {0};
+    char product[PROP_VALUE_MAX]      = {0};
+    char sku[PROP_VALUE_MAX]          = {0};
+    char soc_mfr[PROP_VALUE_MAX]      = {0};
+    char soc_model[PROP_VALUE_MAX]    = {0};
+    char abi1[PROP_VALUE_MAX]         = {0};
+    char abi2[PROP_VALUE_MAX]         = {0};
+    char abi3[PROP_VALUE_MAX]         = {0};
+    char tags[PROP_VALUE_MAX]         = {0};
+    char type[PROP_VALUE_MAX]         = {0};
+    char user[PROP_VALUE_MAX]         = {0};
+    char radio[PROP_VALUE_MAX]        = {0};
+    char base_os[PROP_VALUE_MAX]      = {0};
+    char codename[PROP_VALUE_MAX]     = {0};
+    char incremental[PROP_VALUE_MAX]  = {0};
+    char release[PROP_VALUE_MAX]      = {0};
+    char release_or_codename[PROP_VALUE_MAX]       = {0};
+    char release_or_preview_display[PROP_VALUE_MAX] = {0};
+    char security_patch[PROP_VALUE_MAX] = {0};
 
     get_sys_prop("ro.product.board",              board,                      sizeof(board),                      "unknown");
     get_sys_prop("ro.bootloader",                 bootloader,                 sizeof(bootloader),                 "unknown");
@@ -913,6 +948,16 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
         strncpy(out_val, default_val, max_len);
     }
 }
+
+static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial) {
+    char* out = (char*)cookie;
+    if (!out) {
+        return;
+    }
+    strncpy(out, value, PROP_VALUE_MAX);
+    out[PROP_VALUE_MAX] = '\0';
+}
+
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
