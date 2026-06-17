@@ -450,7 +450,9 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
 
 __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
+           starts_with(pathname, "/dev/tty") ||
            starts_with(pathname, "/proc/meminfo_extra") ||
+           starts_with(pathname, "/dev/__properties__") ||
            // CPU, temperature and platform info
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
