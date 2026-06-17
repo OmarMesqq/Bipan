@@ -188,6 +188,20 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         Log.i(TAG, "Neutered " + method.getName());
         return CARRIER_ID;
 
+      /**
+       * If app doesn't have `READ_PHONE_STATE`, returns null.
+       * However if we don't intercept a system throws `SecurityException`, thus
+       * we need to return early here as to not "confuse" the Proxy
+       * and make it return `UndeclaredThrowableException` which most apps don't
+       * handle
+       * 
+       * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/services/Telephony/src/com/android/phone/PhoneInterfaceManager.java;l=8049
+       */
+      case "getDeviceId":
+      case "getDeviceIdWithFeature":
+        Log.i(TAG, "Neutered " + method.getName());
+        return null;
+
       default:
         Log.i(TAG, "Allowing Telephony method through: " + method.getName());
         return method.invoke(originalITelephony, args);
