@@ -61,6 +61,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
 #endif
 
+  long arg0 = ctx->uc_mcontext.regs[0];
+  long arg1 = ctx->uc_mcontext.regs[1];
+  long arg2 = ctx->uc_mcontext.regs[2];
+  long arg3 = ctx->uc_mcontext.regs[3];
+  long arg4 = ctx->uc_mcontext.regs[4];
+  long arg5 = ctx->uc_mcontext.regs[5];
+
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
     ctx->uc_mcontext.regs[0] = -ENOSYS;
@@ -68,15 +75,24 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  if (nr == __NR_getsockname) {
+    long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+
+    if (r == 0 && arg1 != 0) {
+      struct sockaddr* s = (struct sockaddr*)arg1;
+      scrub_socket(s);
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
+      BIPAN_PANIC();
+    }
+    in_sigsys_handler = false;
+    ctx->uc_mcontext.regs[0] = r;
+    return;
+  }
+
   // TODO: use atomic cas?
   lock_ipc();
-
-  long arg0 = ctx->uc_mcontext.regs[0];
-  long arg1 = ctx->uc_mcontext.regs[1];
-  long arg2 = ctx->uc_mcontext.regs[2];
-  long arg3 = ctx->uc_mcontext.regs[3];
-  long arg4 = ctx->uc_mcontext.regs[4];
-  long arg5 = ctx->uc_mcontext.regs[5];
 
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
@@ -156,7 +172,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         sock_len = temp_len;
       }
     }
-  } else if (nr == __NR_listen || nr == __NR_getsockname) {
+  } else if (nr == __NR_listen) {
     long sockfd = arg0;
     // pre-flighting check
     // listen doesn't give a sockaddr, so we must extract it from the FD
@@ -229,19 +245,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // Deserialize outputs with their exact lengths
     if (nr == __NR_uname && result == 0) {
       my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
-    }
-  } else if (action == ACTION_EXECUTE_AND_SCRUB_SOCK) {
-    if (pre_fd >= 0) {
-      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
-    }
-    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-
-    if (result == 0 && arg1 != 0) {
-      struct sockaddr* s = (struct sockaddr*)arg1;
-      scrub_socket(s);
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
-    } else {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
     }
   }
 

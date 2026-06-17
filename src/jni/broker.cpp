@@ -445,10 +445,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_getsockname: {
-        ipc_mem->action = ACTION_EXECUTE_AND_SCRUB_SOCK;
-        break;
-      }
       case __NR_socket: {
         int domain = ipc_mem->arg0;
         if (domain == AF_NETLINK) {
