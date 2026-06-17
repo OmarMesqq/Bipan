@@ -14,7 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -28,11 +30,13 @@ import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
 
 
-sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object JavaScreen : Screen("java", "Java", Icons.Default.Coffee)
     object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
     object NativeScreen : Screen("native", "Native", Icons.Default.Code)
     object RootCheckerScreen : Screen("root-check", "Root Check", Icons.Default.Android)
+    object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
+    object AboutScreen : Screen("about", "About", Icons.Default.Info)
 }
 
 private const val TAG = "MainActitvity"
