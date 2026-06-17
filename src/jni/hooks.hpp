@@ -141,7 +141,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.build.version.sdk_full", "36.1"},
     {"ro.system_ext.build.version.sdk_full", "36.1"},
     {"ro.system.build.version.sdk_full", "36.1"},
-    
+
     {"ro.build.version.security_patch", "2025-12-05"},
     {"ro.build.version.codename", "REL"},
     {"ro.build.version.base_os", ""},
@@ -180,7 +180,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"persist.sys.usb.config", "none"},
     {"init.svc.adbd", "stopped"},
 
-    // 
     {"ro.boot.hardware", "zuma"},
     // {"ro.hardware.egl", "adreno"},
     // {"ro.hardware.vulkan", "adreno"},
@@ -194,8 +193,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"init.svc.usbd", "stopped"},
     {"init.svc.vaultkeeper", ""},
-    
-    // 
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
