@@ -8,8 +8,6 @@ object NativeLibWrapper {
     external fun getUname(): String
     external fun scanMaps(): String
     external fun scanSmaps() : String
-    external fun scanDevProperties()
-
     external fun testBind(): String
     external fun testListen(): String
     external fun testSendto(): String
