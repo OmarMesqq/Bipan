@@ -98,8 +98,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.verified_boot",
       "android.software.device_id_attestation"));
 
-  private static volatile Object s_pmProxy = null;
-  private static volatile Field s_mPMField = null;
+  public static volatile Object s_pmProxy = null;
+  public static volatile Field s_mPMField = null;
   private static volatile Field s_mUseField = null;
   private static volatile Field s_mCacheField = null;
   private static volatile Field s_mDisabledField = null;
@@ -335,23 +335,19 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     // }
   }
 
-  public static void patchPackageManager(PackageManager pm) {
+  public static void patchPackageManager(PackageManager pm) throws Exception {
     if (pm == null || s_pmProxy == null || s_mPMField == null) {
-      return;
+      throw new Exception(TAG + "'pm', 's_pmProxy', and/or 's_mPMField' are null");
     }
-    try {
-      s_mPMField.set(pm, s_pmProxy);
-      if (s_mUseField != null) {
-        s_mUseField.setBoolean(pm, false);
+    s_mPMField.set(pm, s_pmProxy);
+    if (s_mUseField != null) {
+      s_mUseField.setBoolean(pm, false);
+    }
+    if (s_mCacheField != null && s_mDisabledField != null) {
+      Object pic = s_mCacheField.get(pm);
+      if (pic != null) {
+        s_mDisabledField.setBoolean(pic, true);
       }
-      if (s_mCacheField != null && s_mDisabledField != null) {
-        Object pic = s_mCacheField.get(pm);
-        if (pic != null) {
-          s_mDisabledField.setBoolean(pic, true);
-        }
-      }
-    } catch (Exception e) {
-      Log.w(TAG, "patchPackageManager failed: " + e.getMessage());
     }
   }
 
