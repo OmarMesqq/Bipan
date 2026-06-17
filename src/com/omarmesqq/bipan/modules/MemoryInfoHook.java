@@ -27,16 +27,8 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
   private Object originalIActivityManager;
 
-  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
-      "com.android.vending",
-      "com.google.android.gms"));
-
   @Override
   public void install(Context context) throws Exception {
-    String packageName = context.getPackageName();
-    if (ALLOW_LIST.contains(packageName)) {
-      return;
-    }
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
 

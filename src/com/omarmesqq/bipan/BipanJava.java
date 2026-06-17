@@ -6,8 +6,11 @@ import com.omarmesqq.bipan.modules.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import android.app.Instrumentation;
@@ -22,6 +25,11 @@ public class BipanJava {
 
   private static final CountDownLatch modulesReady = new CountDownLatch(1);
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
+
+  // Spare microG from most hooks as its harmless (i guess)
+  private static final Set<String> GLOBAL_ALLOW_LIST = new HashSet<>(Arrays.asList(
+      "com.android.vending",
+      "com.google.android.gms"));
 
   /**
    * Phase 2: called from C++ my_clampGrowthLimit / my_clearGrowthLimit.
@@ -165,16 +173,20 @@ public class BipanJava {
 
   private static void loadModules(Context context) throws Exception {
     spoofOsVersion();
-
+    String packageName = context.getPackageName();
     List<BaseHook> modules = new ArrayList<>();
 
-    modules.add(new AntiAppInspectionHook());
-    modules.add(new SettingsHook());
-    modules.add(new AntiScreenshotDetectionHook());
-    modules.add(new AntiNetworkDiscoveryHook());
-    modules.add(new NetworkSpoofingHook());
-    modules.add(new TelephonyManagerHook());
-    modules.add(new MemoryInfoHook());
+    if (GLOBAL_ALLOW_LIST.contains(packageName)) {
+      modules.add(new AntiNetworkDiscoveryHook());
+    } else {
+      modules.add(new AntiAppInspectionHook());
+      modules.add(new SettingsHook());
+      modules.add(new AntiScreenshotDetectionHook());
+      modules.add(new AntiNetworkDiscoveryHook());
+      modules.add(new NetworkSpoofingHook());
+      modules.add(new TelephonyManagerHook());
+      modules.add(new MemoryInfoHook());
+    }
 
     for (BaseHook module : modules) {
       try {

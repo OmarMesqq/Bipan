@@ -33,10 +33,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   private Object originalPM;
   private String selfPackageName = "unknown";
 
-  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
-      "com.android.vending",
-      "com.google.android.gms"));
-
   private Object emptyParceledListSlice() throws Exception {
     Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
     Method emptyList = sliceClass.getMethod("emptyList");
@@ -111,9 +107,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
-    if (ALLOW_LIST.contains(selfPackageName)) {
-      return;
-    }
 
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
