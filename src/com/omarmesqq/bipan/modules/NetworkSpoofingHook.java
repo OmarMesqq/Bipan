@@ -5,6 +5,7 @@ import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
 import android.os.Bundle;
 import android.os.Handler;
@@ -31,7 +32,6 @@ import android.net.ConnectivityManager.NetworkCallback;
  * - Hardcodes a fake IPv4 local address
  * - Hardcodes 53Mbps as link speed
  * - Hardcodes `VALIDATED` for connections i.e. not behind captive portal
- * 
  */
 public class NetworkSpoofingHook implements BaseHook {
   private static final String TAG = "BipanNetworkSpoofingHook";
@@ -58,31 +58,17 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private static Boolean isCurrentNetworkMetered = null;
 
+  private static Object cmProxy;
+  private static Object wifiProxy;
+
+  private static String selfPackageName;
+
   @Override
   public void install(Context context) throws Exception {
+    selfPackageName = context.getPackageName();
     ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
     isCurrentNetworkMetered = cm.isActiveNetworkMetered();
-
-    NetworkCallback nc = new NetworkCallback() {
-      @Override
-      public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
-        int[] caps = networkCapabilities.getCapabilities();
-        Log.w(TAG, "ConnectivityManager.onCapabilitiesChanged");
-        for (int cap : caps) {
-          if (cap == NetworkCapabilities.NET_CAPABILITY_NOT_METERED) {
-            isCurrentNetworkMetered = true;
-            break;
-          }
-        }
-      }
-    };
-    try {
-      cm.registerDefaultNetworkCallback(nc);
-    } catch (RuntimeException re) {
-      Log.e(TAG, "Failed register CM callback. App has too many callbacks registered:" + re.getMessage());
-    } catch (Exception e) {
-      Log.e(TAG, "Failed register CM callback. Unknown cause:" + e.getCause() + " Message: " + e.getMessage());
-    }
+    Log.d(TAG, "Initial cm.isActiveNetworkMetered() call. isCurrentNetworkMetered = " + isCurrentNetworkMetered);
 
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
@@ -95,8 +81,53 @@ public class NetworkSpoofingHook implements BaseHook {
 
     setupConnectivitySpoofing(getService, cache);
     setupWifiSpoofing(getService, cache);
+
+    NetworkCallback nc = new NetworkCallback() {
+      @Override
+      public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
+        int[] caps = networkCapabilities.getCapabilities();
+        Log.w(TAG, "ConnectivityManager.onCapabilitiesChanged");
+        for (int cap : caps) {
+          if (cap == NetworkCapabilities.NET_CAPABILITY_NOT_METERED) {
+            isCurrentNetworkMetered = false;
+            break;
+          }
+        }
+        try {
+          Class<?> iConnManagerClz = Class.forName("android.net.IConnectivityManager");
+
+          Method getActiveNetworkMethod = iConnManagerClz.getMethod("getActiveNetwork");
+          Network activeNw = (Network) getActiveNetworkMethod.invoke(cmProxy);
+          Log.d(TAG, "activeNw = " + activeNw);
+
+          if (activeNw == null) {
+            Log.w(TAG, "getActiveNetwork() returned null, skipping getLinkProperties");
+          } else {
+            Method getLinkPropertiesMethod = iConnManagerClz.getMethod("getLinkProperties", Network.class);
+            Object lp = getLinkPropertiesMethod.invoke(cmProxy, activeNw);
+            Log.d(TAG, "lp = " + lp);
+          }
+
+          Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
+          Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
+          getConnectionInfoMethod.invoke(wifiProxy, selfPackageName, null);
+        } catch (Exception e) {
+          Log.e(TAG, "Failed to refresh cached spoofed objects");
+          Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
+          Log.e(TAG, "Stack trace: ", e);
+        }
+      }
+    };
+    try {
+      cm.registerDefaultNetworkCallback(nc);
+    } catch (RuntimeException re) {
+      Log.e(TAG, "Failed register CM callback. App has too many callbacks registered:" + re.getMessage());
+    } catch (Exception e) {
+      Log.e(TAG, "Failed register CM callback. Unknown cause:" + e.getCause() + " Message: " + e.getMessage());
+    }
   }
 
+  @SuppressWarnings("deprecation")
   private void setupConnectivitySpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
     IBinder realBinder = (IBinder) getService.invoke(null, "connectivity");
     if (realBinder == null) {
@@ -144,17 +175,27 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
         spoofLinkProperties((LinkProperties) result);
+      } else if ("getAllNetworks".equals(method.getName())) {
+        return new Network[0];
+      } else if ("getAllNetworkInfo".equals(method.getName())) {
+        return new NetworkInfo[0];
+      } else if ("getBoundNetworkForProcess".equals(method.getName())) {
+        Log.w(TAG, "App called getBoundNetworkForProcess");
+        return new NetworkInfo(0, 0, "WIFI", "");
+      } else if ("bindProcessToNetwork".equals(method.getName())) {
+        Log.w(TAG, "App called bindProcessToNetwork");
       }
 
       return result;
     };
 
-    Object proxy = Proxy.newProxyInstance(iConnManagerClz.getClassLoader(), new Class[] { iConnManagerClz },
+    cmProxy = Proxy.newProxyInstance(iConnManagerClz.getClassLoader(), new Class[] { iConnManagerClz },
         connHandler);
     IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
         IBinder.class.getClassLoader(),
         new Class[] { IBinder.class },
-        (p, method, args) -> "queryLocalInterface".equals(method.getName()) ? proxy : method.invoke(realBinder, args));
+        (p, method, args) -> "queryLocalInterface".equals(method.getName()) ? cmProxy
+            : method.invoke(realBinder, args));
 
     cache.put("connectivity", proxyBinder);
   }
@@ -178,12 +219,13 @@ public class NetworkSpoofingHook implements BaseHook {
       return result;
     };
 
-    Object proxy = Proxy.newProxyInstance(iWifiManagerClz.getClassLoader(), new Class[] { iWifiManagerClz },
+    wifiProxy = Proxy.newProxyInstance(iWifiManagerClz.getClassLoader(), new Class[] { iWifiManagerClz },
         wifiHandler);
     IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
         IBinder.class.getClassLoader(),
         new Class[] { IBinder.class },
-        (p, method, args) -> "queryLocalInterface".equals(method.getName()) ? proxy : method.invoke(realBinder, args));
+        (p, method, args) -> "queryLocalInterface".equals(method.getName()) ? wifiProxy
+            : method.invoke(realBinder, args));
 
     cache.put("wifi", proxyBinder);
   }
@@ -276,8 +318,9 @@ public class NetworkSpoofingHook implements BaseHook {
       dnsServers.add(InetAddress.getByName("8.8.8.8"));
       dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
-      // Default to cellular
-      if (isCurrentNetworkMetered == null || isCurrentNetworkMetered == true) {
+      Log.d(TAG, "spoofLinkProperties: isCurrentNetworkMetered = " + isCurrentNetworkMetered);
+      // We are on cellular
+      if (isCurrentNetworkMetered == true) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 
