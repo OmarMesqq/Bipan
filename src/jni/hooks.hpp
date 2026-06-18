@@ -513,14 +513,16 @@ void preCacheIfaddrs() {
       continue;
     }
 
-    // Remove tun*, rmnet*, v4-* (VPN/mobile data interfaces)
+    // Remove VPN
+    // Keep primary cellular iface, discard others
     bool shouldRemove = false;
     if (ifa->ifa_name != nullptr) {
+      bool isRmnet = strncmp(ifa->ifa_name, "rmnet", 5) == 0;
+      bool isPrimaryRmnet = strcmp(ifa->ifa_name, "rmnet0") == 0;
+
       shouldRemove =
           strncmp(ifa->ifa_name, "tun", 3) == 0 ||
-          strncmp(ifa->ifa_name, "rmnet", 5) == 0 ||
-          strncmp(ifa->ifa_name, "v4-", 3) == 0 ||
-          strncmp(ifa->ifa_name, "utun", 4) == 0;
+          (isRmnet && !isPrimaryRmnet);
     }
 
     if (shouldRemove) {
@@ -531,50 +533,34 @@ void preCacheIfaddrs() {
         prev->ifa_next = next;
       }
       // Note: don't free — freeifaddrs owns all nodes
-      // Unlinked nodes will leak but that's acceptable
+      // Unlinked nodes will leak but that's acceptable (?)
       ifa = next;
       continue;
     }
 
-    // Scrub addresses on kept interfaces
-    if (ifa->ifa_addr != nullptr) {
-      if (ifa->ifa_addr->sa_family == AF_INET) {
-        // Spoof IPv4 address
-        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)
-            ->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
+    // Drop IPv6 entirely
+    if (ifa->ifa_addr != nullptr && ifa->ifa_addr->sa_family == AF_INET6) {
+      if (prev == nullptr) {
+        g_cached_ifaddrs = next;
+      } else {
+        prev->ifa_next = next;
+      }
+      ifa = next;
+      continue;
+    }
 
-        // Spoof netmask → /24 = 255.255.255.0
-        if (ifa->ifa_netmask != nullptr &&
-            ifa->ifa_netmask->sa_family == AF_INET) {
-          reinterpret_cast<struct sockaddr_in*>(ifa->ifa_netmask)
-              ->sin_addr.s_addr = 0x00FFFFFF;  // 255.255.255.0
-        }
+    if (ifa->ifa_addr != nullptr && ifa->ifa_addr->sa_family == AF_INET) {
+      // Spoof IPs
+      reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
 
-        // Spoof broadcast → 10.111.222.255
-        // ifa_broadaddr and ifa_dstaddr share the same union field
-        if (ifa->ifa_broadaddr != nullptr &&
-            ifa->ifa_broadaddr->sa_family == AF_INET) {
-          reinterpret_cast<struct sockaddr_in*>(ifa->ifa_broadaddr)
-              ->sin_addr.s_addr = 0xFFDE6F0A;  // 10.111.222.255
-        }
+      // Spoof broadcast: 10.111.222.255
+      if (ifa->ifa_broadaddr != nullptr && ifa->ifa_broadaddr->sa_family == AF_INET) {
+        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_broadaddr)->sin_addr.s_addr = 0xFFDE6F0A;  // 10.111.222.255
+      }
 
-      } else if (ifa->ifa_addr->sa_family == AF_INET6) {
-        // Spoof IPv6 → fd00::1
-        struct sockaddr_in6* sin6 =
-            reinterpret_cast<struct sockaddr_in6*>(ifa->ifa_addr);
-        my_memset(&sin6->sin6_addr, 0, 16);
-        sin6->sin6_addr.s6_addr[0] = 0xfd;
-        sin6->sin6_addr.s6_addr[15] = 0x01;
-
-        // Spoof IPv6 netmask → /64
-        if (ifa->ifa_netmask != nullptr &&
-            ifa->ifa_netmask->sa_family == AF_INET6) {
-          struct sockaddr_in6* mask6 =
-              reinterpret_cast<struct sockaddr_in6*>(ifa->ifa_netmask);
-          my_memset(&mask6->sin6_addr, 0, 16);
-          // First 8 bytes = 0xFF (64 bits of mask)
-          my_memset(&mask6->sin6_addr, 0xFF, 8);
-        }
+      // Netmask spoofing: /24 = 255.255.255.0
+      if (ifa->ifa_netmask != nullptr && ifa->ifa_netmask->sa_family == AF_INET) {
+        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_netmask)->sin_addr.s_addr = 0x00FFFFFF;  // 255.255.255.0
       }
     }
 
