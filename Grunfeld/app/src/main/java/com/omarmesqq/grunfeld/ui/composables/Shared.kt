@@ -77,17 +77,6 @@ fun ReportTextWithCopy(
             Text(text = text, style = style)
         }
 
-        if (text != initialText) {
-            IconButton(
-                onClick = { clipboardManager.setText(AnnotatedString(text)) },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy",
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
+
     }
 }

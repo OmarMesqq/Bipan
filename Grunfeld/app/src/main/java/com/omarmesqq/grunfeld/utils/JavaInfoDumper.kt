@@ -15,6 +15,7 @@ import android.hardware.SensorManager
 import android.media.MediaDrm
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.NetworkInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
@@ -24,12 +25,15 @@ import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
 import java.io.File
+import java.io.IOException
 import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
-import java.io.IOException
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -91,6 +95,21 @@ fun dumpInstallerInfo(ctx: Context): String {
     """.trimIndent()
 }
 
+/**
+ * Does PTR lookups internally and I shouldn't (nor can)
+ * make network requests in the main thread.
+ * As I didn't want to make dumpNetworkInfo suspend,
+ * we got this
+ */
+val deferredIfaces = GlobalScope.async {
+    val sb = StringBuilder()
+    val interfaces = NetworkInterface.getNetworkInterfaces()
+    for (intf in interfaces.asSequence()) {
+        sb.append(formatInterfaceDetails(intf))
+        sb.append("\n")
+    }
+    return@async sb.toString()
+}
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpNetworkInfo(context: Context): String {
@@ -102,13 +121,12 @@ fun dumpNetworkInfo(context: Context): String {
         if (interfaces == null) {
             sb.append("No interfaces found.\n")
         } else {
-            for (intf in interfaces.asSequence()) {
-                sb.append(formatInterfaceDetails(intf))
-                sb.append("\n")
-            }
+            val ifaces = deferredIfaces.getCompleted()
+            sb.append(ifaces)
         }
     } catch (e: Exception) {
         sb.append("Failed to get interfaces: ${e.message}\n")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
     }
 
     sb.append("\n[WIFI MANAGER INFO]\n")
@@ -126,10 +144,6 @@ fun dumpNetworkInfo(context: Context): String {
     val tx = info.txLinkSpeedMbps
     val rx = info.rxLinkSpeedMbps
     val netid = info.networkId
-//    val ppfqdn = info.passpointFqdn
-//    val ppfriendly = info.passpointProviderFriendlyName
-//    val ppUniqueId = info.passpointUniqueId
-//    val subId = info.subscriptionId
 
     sb.append("IPv4 address: $ipv4Address\n")
     sb.append("BSSID: $bssid\n")
@@ -140,21 +154,45 @@ fun dumpNetworkInfo(context: Context): String {
     sb.append("TX: $tx Mbps\n")
     sb.append("RX: $rx Mbps\n")
     sb.append("Network ID: $netid\n")
-//    sb.append("Passpoint FQDN: $ppfqdn\n")
-//    sb.append("Passpoint Friendly name: $ppfriendly\n")
-//    sb.append("Passpoint Unique ID: $ppUniqueId\n")
-//    sb.append("Subscription ID: $subId\n")
 
-    sb.append("\n[LINK PROPERTIES INFO]\n")
+    sb.append("\n[LINK PROPERTIES INFO (via ConnectivityManager)]\n\n")
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val activeNetwork = cm.activeNetwork
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
 
+
+    val activeNetworkInfo = cm.activeNetworkInfo
+    sb.append("activeNetworkInfo dump:\n")
+    sb.appendLine("========================================")
+    sb.append(formatNetworkInfo(activeNetworkInfo))
+    sb.appendLine("========================================\n")
+
+    val allNetworks = cm.allNetworks
+    sb.append("allNetworks size: ${allNetworks.size}\n")
+    sb.append("allNetworks: ${allNetworks.contentToString()}\n\n")
+
+    val allNetworkInfo = cm.allNetworkInfo
+    sb.append("allNetworkInfo size: ${allNetworkInfo.size}\n")
+    sb.append("allNetworkInfo: ${allNetworkInfo.contentToString()}\n\n")
+    if (allNetworkInfo.size > 0) {
+        sb.append("allNetworkInfo dump:\n")
+        sb.appendLine("========================================")
+        allNetworkInfo.forEach {
+            sb.append(formatNetworkInfo(it))
+        }
+        sb.appendLine("========================================\n")
+    }
+
+
+    val isMetered = cm.isActiveNetworkMetered
+    sb.append("isActiveNetworkMetered: $isMetered\n\n")
+
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
     val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
     val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
-    sb.append("TRANSPORT_VPN: $isVpnTransport\n")
-    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
 
+    sb.append("TRANSPORT_VPN: $isVpnTransport\n")
+    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n")
+
+    val activeNetwork = cm.activeNetwork
     if (activeNetwork == null) {
         sb.append("No active network to query.\n")
     } else {
@@ -164,17 +202,13 @@ fun dumpNetworkInfo(context: Context): String {
         } else {
             val dhcpServerAdddr= linkProperties.dhcpServerAddress
             val dnsServers = linkProperties.dnsServers
-            val dnsDomains = linkProperties.domains
-            val proxy = linkProperties.httpProxy
             val ifaceName = linkProperties.interfaceName
             val addresses = linkProperties.linkAddresses
             val nat64prefix = linkProperties.nat64Prefix
-            val privateDnsServerName = linkProperties.privateDnsServerName
             val routes = linkProperties.routes
-            val isPrivateDnsActive = linkProperties.isPrivateDnsActive
             val mtu = linkProperties.mtu
 
-            sb.append("DHCP Server: $dhcpServerAdddr \n")
+            sb.append("DHCP Server: ${dhcpServerAdddr?.hostAddress ?: "No DHCP server"} \n")
             dnsServers.forEach {
                 sb.append("DNS server: ${it.hostAddress}\n")
             }
@@ -212,37 +246,94 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
 
     // State & Capabilities
     details.append("| Flags: ")
-    if (intf.isUp) details.append("[UP] ")
     if (intf.isLoopback) details.append("[LOOPBACK] ")
-    if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ") // High signal for VPNs
-    if (intf.supportsMulticast()) details.append("[MULTICAST] ")
+    // TODO:
+    if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ")
     if (intf.isVirtual) details.append("[VIRTUAL] ")
+    if (intf.isUp) details.append("[UP] ")
+    // TODO:
+    if (intf.supportsMulticast()) details.append("[MULTICAST] ")
+
     details.append("\n")
+
+    details.appendLine("====== InterfaceAddress ======")
 
     val addrList = intf.interfaceAddresses
     if (addrList.isEmpty()) {
-        details.append("| Addresses: None\n")
+        details.append("| Addresses: empty list!\n")
     } else {
         for (addr in addrList) {
             val ip = addr.address.hostAddress
             val prefix = addr.networkPrefixLength
-            val broadcast = addr.broadcast?.hostAddress ?: "N/A"
-            details.append("| -> IP: $ip/$prefix (Broadcast: $broadcast)\n")
+            val broadcast = addr.broadcast?.hostAddress
+            details.append("| -> IP: $ip/$prefix\n")
+            details.append("| -> Broadcast: $broadcast\n")
+
+            details.appendLine("| -> isAnyLocalAddress: ${addr.address.isAnyLocalAddress}")
+            details.appendLine("| -> isLinkLocalAddress: ${addr.address.isLinkLocalAddress}")
+            details.appendLine("| -> isLoopbackAddress: ${addr.address.isLoopbackAddress}")
+            details.appendLine("| -> isMCGlobal: ${addr.address.isMCGlobal}")
+            details.appendLine("| -> isMCLinkLocal: ${addr.address.isMCLinkLocal}")
+            details.appendLine("| -> isMCNodeLocal: ${addr.address.isMCNodeLocal}")
+            details.appendLine("| -> isMCOrgLocal: ${addr.address.isMCOrgLocal}")
+            details.appendLine("| -> isMulticastAddress: ${addr.address.isMulticastAddress}")
+            details.appendLine("| -> isSiteLocalAddress: ${addr.address.isSiteLocalAddress}")
+            details.appendLine("| -> hostName: ${addr.address.hostName}")
+            details.appendLine("| -> canonicalHostName: ${addr.address.canonicalHostName}")
         }
     }
+    details.appendLine("==============================")
+    
+    details.appendLine("======== InetAddress ===========")
+
+    val inadrs = intf.inetAddresses
+    inadrs.toList().forEach { inadr ->
+        details.appendLine("hostAddress: ${inadr.hostAddress}")
+        details.appendLine("canonicalHostName: ${inadr.canonicalHostName}")
+        details.appendLine("hostName: ${inadr.hostName}")
+        details.appendLine("isSiteLocalAddress: ${inadr.isSiteLocalAddress}")
+        details.appendLine("isLinkLocalAddress: ${inadr.isLinkLocalAddress}")
+        details.appendLine("isAnyLocalAddress: ${inadr.isAnyLocalAddress}")
+        details.appendLine("isMulticastAddress: ${inadr.isMulticastAddress}")
+    }
+    details.appendLine("==============================")
 
     // Hierarchy (Sub-interfaces/VLANs)
     val parent = intf.parent
     if (parent != null) {
         details.append("| Parent: ${parent.name}\n")
     }
-
     val subs = intf.subInterfaces.asSequence().toList()
     if (subs.isNotEmpty()) {
         details.append("| Children: ${subs.joinToString { it.name }}\n")
     }
+    details.append("\n")
 
     return details.toString()
+}
+
+private fun formatNetworkInfo(ni: NetworkInfo?) : String {
+    if (ni == null) {
+        return "Provided NetworkInfo is null"
+    }
+    val sb = StringBuilder()
+
+
+    sb.appendLine("\t Type: ${ni.type}")
+    sb.appendLine("\t Extra info: ${ni.extraInfo}")
+    sb.appendLine("\t State: ${ni.state}")
+    sb.appendLine("\t Detailed state: ${ni.detailedState}")
+    sb.appendLine("\t isAvailable: ${ni.isAvailable}")
+    sb.appendLine("\t isConnected: ${ni.isConnected}")
+    sb.appendLine("\t isConnectedOrConnecting: ${ni.isConnectedOrConnecting}")
+    sb.appendLine("\t isFailover: ${ni.isFailover}")
+    sb.appendLine("\t isRoaming: ${ni.isRoaming}")
+    sb.appendLine("\t reason: ${ni.reason}")
+    sb.appendLine("\t subtype: ${ni.subtype}")
+    sb.appendLine("\t subtypeName: ${ni.subtypeName}")
+    sb.appendLine("\t typeName: ${ni.typeName}\n")
+
+    return sb.toString()
 }
 
 private fun dumpBuildInfo(): String {
@@ -501,17 +592,12 @@ fun getSomeSystemFeatures(ctx: Context): String {
     sb.appendLine("FEATURE_PRINTING: ${pm.hasSystemFeature(PackageManager.FEATURE_PRINTING)}\n")
 
     sb.appendLine("FEATURE_SENSOR_HEART_RATE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE)}")
-    sb.appendLine("FEATURE_SENSOR_HEART_RATE_ECG: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE_ECG)}")
     sb.appendLine("FEATURE_SENSOR_ACCELEROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER)}")
-    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES)}")
-    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES_UNCALIBRATED: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER_LIMITED_AXES_UNCALIBRATED)}")
     sb.appendLine("FEATURE_SENSOR_AMBIENT_TEMPERATURE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_AMBIENT_TEMPERATURE)}")
     sb.appendLine("FEATURE_SENSOR_BAROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_BAROMETER)}")
     sb.appendLine("FEATURE_SENSOR_COMPASS: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_COMPASS)}")
     sb.appendLine("FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER)}")
     sb.appendLine("FEATURE_SENSOR_GYROSCOPE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE)}")
-    sb.appendLine("FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES)}")
-    sb.appendLine("FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES_UNCALIBRATED: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE_LIMITED_AXES_UNCALIBRATED)}")
     sb.appendLine("FEATURE_SENSOR_HEADING: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEADING)}")
     sb.appendLine("FEATURE_SENSOR_HINGE_ANGLE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)}")
     sb.appendLine("FEATURE_SENSOR_LIGHT: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_LIGHT)}")
