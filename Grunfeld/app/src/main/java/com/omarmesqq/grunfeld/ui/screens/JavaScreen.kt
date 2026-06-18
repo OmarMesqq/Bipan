@@ -52,7 +52,7 @@ fun JavaInfoScreen() {
 
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
 
-    var netInfo by remember { mutableStateOf("VPN status not checked yet") }
+    var netInfo by remember { mutableStateOf("") }
 
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }

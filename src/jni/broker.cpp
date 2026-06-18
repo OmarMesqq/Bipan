@@ -455,21 +455,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_socket: {
-        int domain = ipc_mem->arg0;
-        if (domain == AF_NETLINK) {
-          ipc_mem->ret = -EAFNOSUPPORT;
-          ipc_mem->action = ACTION_USE_RET;
-
-          if (is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (socket) AF_NETLINK blocked");
-          } else {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (socket) AF_NETLINK blocked");
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EAFNOSUPPORT, patched_pcs);
-          }
-        }
-        break;
-      }
       case __NR_mmap: {
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "executable (mmap)");
         break;
