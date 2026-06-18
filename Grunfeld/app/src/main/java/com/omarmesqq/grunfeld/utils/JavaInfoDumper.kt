@@ -126,10 +126,10 @@ fun dumpNetworkInfo(context: Context): String {
     val tx = info.txLinkSpeedMbps
     val rx = info.rxLinkSpeedMbps
     val netid = info.networkId
-    val ppfqdn = info.passpointFqdn
-    val ppfriendly = info.passpointProviderFriendlyName
-    val ppUniqueId = info.passpointUniqueId
-    val subId = info.subscriptionId
+//    val ppfqdn = info.passpointFqdn
+//    val ppfriendly = info.passpointProviderFriendlyName
+//    val ppUniqueId = info.passpointUniqueId
+//    val subId = info.subscriptionId
 
     sb.append("IPv4 address: $ipv4Address\n")
     sb.append("BSSID: $bssid\n")
@@ -140,10 +140,10 @@ fun dumpNetworkInfo(context: Context): String {
     sb.append("TX: $tx Mbps\n")
     sb.append("RX: $rx Mbps\n")
     sb.append("Network ID: $netid\n")
-    sb.append("Passpoint FQDN: $ppfqdn\n")
-    sb.append("Passpoint Friendly name: $ppfriendly\n")
-    sb.append("Passpoint Unique ID: $ppUniqueId\n")
-    sb.append("Subscription ID: $subId\n")
+//    sb.append("Passpoint FQDN: $ppfqdn\n")
+//    sb.append("Passpoint Friendly name: $ppfriendly\n")
+//    sb.append("Passpoint Unique ID: $ppUniqueId\n")
+//    sb.append("Subscription ID: $subId\n")
 
     sb.append("\n[LINK PROPERTIES INFO]\n")
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -192,15 +192,8 @@ fun dumpNetworkInfo(context: Context): String {
             routes.forEach { r ->
                 sb.append("Route: $r\n")
             }
-            sb.append("mtu: $mtu\n\n")
-
+            sb.append("mtu: $mtu\n")
             sb.append("nat64prefix: $nat64prefix \n")
-            sb.append("isPrivateDnsActive: $isPrivateDnsActive\n")
-            sb.append("privateDnsServerName: $privateDnsServerName \n")
-            sb.append("HTTP Proxy: $proxy \n")
-            sb.append(
-                "DNS domains search path: ${dnsDomains?.takeIf { it.isNotEmpty() } ?: "None"}\n"
-            )
         }
     }
 
@@ -634,13 +627,6 @@ fun getMemoryInfo(context: Context): String {
 
     return sb.toString()
   
-}
-
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun dumpGpuInfo(context: Context) : String {
-    val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val glesVersion = am.deviceConfigurationInfo.glEsVersion
-    return "OpenGL ES version: $glesVersion"
 }
 
 fun dumpCpuInfo() : String {

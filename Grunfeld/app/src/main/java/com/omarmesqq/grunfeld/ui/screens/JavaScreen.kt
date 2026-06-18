@@ -34,7 +34,6 @@ import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
-import com.omarmesqq.grunfeld.utils.dumpGpuInfo
 import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
@@ -64,7 +63,6 @@ fun JavaInfoScreen() {
     var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
     var memInfo by remember { mutableStateOf("Memory not queried") }
-    var gpuInfo by remember { mutableStateOf("GPU info not queried") }
     var cpuInfo by remember { mutableStateOf("CPU info not queried") }
 
     var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
@@ -231,20 +229,6 @@ fun JavaInfoScreen() {
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            Button(
-                onClick = {
-                    gpuInfo = dumpGpuInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("GPU INFO")
-            }
-
-            Text(
-                text = gpuInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
 
             Button(
                 onClick = {
@@ -263,7 +247,7 @@ fun JavaInfoScreen() {
 
 
 
-        SectionHeader("MORE OS INFO")
+        SectionHeader("SYSTEM PROPERTIES")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
