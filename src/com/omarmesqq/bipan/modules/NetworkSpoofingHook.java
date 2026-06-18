@@ -68,7 +68,6 @@ public class NetworkSpoofingHook implements BaseHook {
     selfPackageName = context.getPackageName();
     ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
     isCurrentNetworkMetered = cm.isActiveNetworkMetered();
-    Log.d(TAG, "Initial cm.isActiveNetworkMetered() call. isCurrentNetworkMetered = " + isCurrentNetworkMetered);
 
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
@@ -98,15 +97,9 @@ public class NetworkSpoofingHook implements BaseHook {
 
           Method getActiveNetworkMethod = iConnManagerClz.getMethod("getActiveNetwork");
           Network activeNw = (Network) getActiveNetworkMethod.invoke(cmProxy);
-          Log.d(TAG, "activeNw = " + activeNw);
 
-          if (activeNw == null) {
-            Log.w(TAG, "getActiveNetwork() returned null, skipping getLinkProperties");
-          } else {
-            Method getLinkPropertiesMethod = iConnManagerClz.getMethod("getLinkProperties", Network.class);
-            Object lp = getLinkPropertiesMethod.invoke(cmProxy, activeNw);
-            Log.d(TAG, "lp = " + lp);
-          }
+          Method getLinkPropertiesMethod = iConnManagerClz.getMethod("getLinkProperties", Network.class);
+          getLinkPropertiesMethod.invoke(cmProxy, activeNw);
 
           Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
           Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
@@ -176,16 +169,20 @@ public class NetworkSpoofingHook implements BaseHook {
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
         spoofLinkProperties((LinkProperties) result);
       } else if ("getAllNetworks".equals(method.getName())) {
+        Log.w(TAG, "App called getAllNetworks");
         return new Network[0];
       } else if ("getAllNetworkInfo".equals(method.getName())) {
+        Log.w(TAG, "App called getAllNetworkInfo");
         return new NetworkInfo[0];
       } else if ("getBoundNetworkForProcess".equals(method.getName())) {
         Log.w(TAG, "App called getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "WIFI", "");
+      } else if ("getActiveNetworkInfo".equals(method.getName())) {
+        Log.w(TAG, "App called getActiveNetworkInfo");
+        return new NetworkInfo(0, 0, "WIFI", "");
       } else if ("bindProcessToNetwork".equals(method.getName())) {
-        Log.w(TAG, "App called bindProcessToNetwork");
+        Log.w(TAG, "App called bindProcessToNetwork. Passing through...");
       }
-
       return result;
     };
 
@@ -318,7 +315,6 @@ public class NetworkSpoofingHook implements BaseHook {
       dnsServers.add(InetAddress.getByName("8.8.8.8"));
       dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
-      Log.d(TAG, "spoofLinkProperties: isCurrentNetworkMetered = " + isCurrentNetworkMetered);
       // We are on cellular
       if (isCurrentNetworkMetered == true) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
