@@ -103,8 +103,9 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
     try {
       return method.invoke(originalIActivityManager, args);
     } catch (Exception e) {
-      Log.w(TAG, "AM passthrough failed for " + method.getName()
-          + ": " + e.getMessage());
+      Log.e(TAG, "AM passthrough failed for " + method.getName());
+      Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
+      Log.e(TAG, "Stacktrace:" + e.getStackTrace().toString());
       return null;
     }
   }

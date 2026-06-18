@@ -223,9 +223,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
           if (shouldDenyAccess(path_payload)) {
             if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied. Trace below:", path_payload);
-              log_violation("Direct access to device props", culprit_lib, ipc_mem->caller_pc, offset);
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
@@ -317,9 +315,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
           if (shouldDenyAccess(path_payload)) {
             if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied. Trace below:", action_name, path_payload);
-              log_violation("Direct access to device props", culprit_lib, ipc_mem->caller_pc, offset);
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
@@ -433,11 +429,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
 
+          std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendto) LAN/discovery spoofed");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
             // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
           }
         }
         break;
@@ -448,11 +445,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
 
+          std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendmsg) to LAN address blocked");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
             // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
           }
         }
         break;

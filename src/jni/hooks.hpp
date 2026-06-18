@@ -591,6 +591,7 @@ int my_getifaddrs(struct ifaddrs** ifap) {
     return -1;
   }
 
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[getifaddrs] called: feeding fake data");
   // Return the cached and scrubbed result
   *ifap = g_cached_ifaddrs;
   return 0;

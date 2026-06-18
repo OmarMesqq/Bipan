@@ -3,6 +3,7 @@ package com.omarmesqq.bipan.modules;
 import android.content.Context;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
+import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiInfo;
 import android.os.Bundle;
@@ -21,6 +22,8 @@ import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
 import java.util.ArrayList;
+import android.net.ConnectivityManager;
+import android.net.ConnectivityManager.NetworkCallback;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
@@ -39,7 +42,7 @@ public class NetworkSpoofingHook implements BaseHook {
    * 
    * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiInfo.java;l=100
    */
-  public static final String DEFAULT_MAC_ADDRESS = "02:00:00:00:00:00";
+  private static final String DEFAULT_MAC_ADDRESS = "02:00:00:00:00:00";
 
   /**
    * Returned when the "if there is no network currently connected
@@ -47,10 +50,40 @@ public class NetworkSpoofingHook implements BaseHook {
    * 
    * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiManager.java;l=1985
    */
-  public static final String UNKNOWN_SSID = "<unknown ssid>";
+  private static final String UNKNOWN_SSID = "<unknown ssid>";
+
+  private static final String CELLULAR_IFACE_NAME = "rmnet0";
+  private static final String WIFI_IFACE_NAME = "wlan0";
+  private static final String FAKE_IP = "10.111.222.1";
+
+  private static Boolean isCurrentNetworkMetered = null;
 
   @Override
   public void install(Context context) throws Exception {
+    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+    isCurrentNetworkMetered = cm.isActiveNetworkMetered();
+
+    NetworkCallback nc = new NetworkCallback() {
+      @Override
+      public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
+        int[] caps = networkCapabilities.getCapabilities();
+        Log.w(TAG, "ConnectivityManager.onCapabilitiesChanged");
+        for (int cap : caps) {
+          if (cap == NetworkCapabilities.NET_CAPABILITY_NOT_METERED) {
+            isCurrentNetworkMetered = true;
+            break;
+          }
+        }
+      }
+    };
+    try {
+      cm.registerDefaultNetworkCallback(nc);
+    } catch (RuntimeException re) {
+      Log.e(TAG, "Failed register CM callback. App has too many callbacks registered:" + re.getMessage());
+    } catch (Exception e) {
+      Log.e(TAG, "Failed register CM callback. Unknown cause:" + e.getCause() + " Message: " + e.getMessage());
+    }
+
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
@@ -243,10 +276,8 @@ public class NetworkSpoofingHook implements BaseHook {
       dnsServers.add(InetAddress.getByName("8.8.8.8"));
       dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
-      String iface = lp.getInterfaceName();
-
-      // We're on cellular
-      if (iface != null && iface.startsWith("rmnet")) {
+      // Default to cellular
+      if (isCurrentNetworkMetered == null || isCurrentNetworkMetered == true) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 
@@ -255,7 +286,7 @@ public class NetworkSpoofingHook implements BaseHook {
         list.clear();
 
         // Use a plausible cellular IP range
-        InetAddress fakeIp = InetAddress.getByName("10.111.222.1");
+        InetAddress fakeIp = InetAddress.getByName(FAKE_IP);
         Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
         ctor.setAccessible(true);
         list.add(ctor.newInstance(fakeIp, 24));
@@ -280,18 +311,18 @@ public class NetworkSpoofingHook implements BaseHook {
         routeCtor.setAccessible(true);
 
         InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
-        InetAddress gatewayAddr = InetAddress.getByName("10.111.222.1"); // same as our IP
+        InetAddress gatewayAddr = InetAddress.getByName(FAKE_IP);
         InetAddress anyAddr = InetAddress.getByName("0.0.0.0");
 
         // Subnet route: 10.111.222.0/24 directly connected
         Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
-        routes.add(routeCtor.newInstance(subnetPrefix, null, iface));
+        routes.add(routeCtor.newInstance(subnetPrefix, null, CELLULAR_IFACE_NAME));
 
         // Default route: 0.0.0.0/0 via gateway
         Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
-        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, iface));
+        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, CELLULAR_IFACE_NAME));
 
-        // Not setting MTU...
+        lp.setMtu(1500);
         lp.setDhcpServerAddress(null);
         lp.setDnsServers(dnsServers);
         return;
@@ -304,7 +335,7 @@ public class NetworkSpoofingHook implements BaseHook {
       ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
       list.clear();
 
-      InetAddress fakeIp = InetAddress.getByName("10.111.222.1");
+      InetAddress fakeIp = InetAddress.getByName(FAKE_IP);
       Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
       ctor.setAccessible(true);
       list.add(ctor.newInstance(fakeIp, 24));
@@ -328,18 +359,18 @@ public class NetworkSpoofingHook implements BaseHook {
       routeCtor.setAccessible(true);
 
       InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
-      InetAddress gatewayAddr = InetAddress.getByName("10.111.222.1"); // same as our IP
+      InetAddress gatewayAddr = InetAddress.getByName(FAKE_IP);
       InetAddress anyAddr = InetAddress.getByName("0.0.0.0");
 
       // Subnet route: 10.111.222.0/24 directly connected
       Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
-      routes.add(routeCtor.newInstance(subnetPrefix, null, "wlan0"));
+      routes.add(routeCtor.newInstance(subnetPrefix, null, WIFI_IFACE_NAME));
 
       // Default route: 0.0.0.0/0 via gateway
       Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
-      routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, "wlan0"));
+      routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, WIFI_IFACE_NAME));
 
-      lp.setInterfaceName("wlan0");
+      lp.setInterfaceName(WIFI_IFACE_NAME);
       lp.setMtu(1500);
       lp.setDhcpServerAddress(null);
 
@@ -374,6 +405,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
       setField(info, "mIpAddress", fakeIp);
       setField(info, "mLinkSpeed", 53); // Mbps
+      setField(info, "mNetworkId", 4);
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       setField(info, "mMaxSupportedRxLinkSpeed", 62);
       setField(info, "mMaxSupportedTxLinkSpeed", 60);
