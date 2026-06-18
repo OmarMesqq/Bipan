@@ -24,7 +24,7 @@ fun MainScreen() {
         Screen.JavaScreen,
         Screen.WebviewScreen,
         Screen.NativeScreen,
-        Screen.SettingsScreen
+        Screen.MoreScreen
     )
 
     Scaffold(
@@ -62,7 +62,10 @@ fun MainScreen() {
             composable(Screen.JavaScreen.route) { JavaInfoScreen() }
             composable(Screen.WebviewScreen.route) { WebviewScreen() }
             composable(Screen.NativeScreen.route) { NativeScreen() }
-            composable(Screen.SettingsScreen.route) { SettingsScreen(navController) }
+
+            composable(Screen.MoreScreen.route) { MoreScreen(navController) }
+
+            composable(Screen.SettingsScreen.route) { SettingsScreen() }
             composable(Screen.RootCheckerScreen.route) { RootCheckerScreen() }
             composable(Screen.AboutScreen.route) { AboutScreen() }
         }
