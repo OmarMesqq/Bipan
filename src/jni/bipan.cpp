@@ -141,8 +141,10 @@ class Bipan : public zygisk::ModuleBase {
     // Native (C/C++ setup)
     registerNativeSensorsHooks();
     registerNativeSystemPropertiesHook();
-    preCacheIfaddrs();
-    registerGetifaddrsHook();
+    // -- TODO: this leaks local IP
+    // preCacheIfaddrs();
+    // registerGetifaddrsHook();
+    // -- 
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
