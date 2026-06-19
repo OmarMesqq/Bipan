@@ -61,8 +61,6 @@ public class SettingsHook implements BaseHook, InvocationHandler {
           if (SSAID_ALLOW_LIST.contains(currentPackageName)) {
             Log.i(TAG, "Returning true SSAID for allowlisted app: " + currentPackageName);
             return method.invoke(originalProvider, args);
-          } else {
-            Log.w(TAG, currentPackageName + " is reading SSAID");
           }
         }
       }

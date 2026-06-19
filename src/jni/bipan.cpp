@@ -82,7 +82,7 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
     snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
     size_t i = 0;
     while (raw_process_name[i] && i < 255) {
@@ -137,14 +137,13 @@ class Bipan : public zygisk::ModuleBase {
     }
 #ifdef DEBUG
     registerDobbyLinkerHooks();
+    // allowing getifaddrs "leaks" your local IP even though it's fake
+    preCacheIfaddrs();
+    registerGetifaddrsHook();
 #endif
     // Native (C/C++ setup)
-    registerNativeSensorsHooks();
     registerNativeSystemPropertiesHook();
-    // -- TODO: this leaks local IP
-    // preCacheIfaddrs();
-    // registerGetifaddrsHook();
-    // -- 
+    registerNativeSensorsHooks();
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -175,7 +174,7 @@ class Bipan : public zygisk::ModuleBase {
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
     if (byteBuffer == nullptr) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to create DirectByteBuffer!");
-      return;
+      BIPAN_PANIC();
     }
 
     // Get the System ClassLoader
@@ -191,7 +190,7 @@ class Bipan : public zygisk::ModuleBase {
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to instantiate InMemoryDexClassLoader! Maybe the .dex is invalid?");
-      return;
+      BIPAN_PANIC();
     }
 
     // Ask the ClassLoader to load BipanJava's entrypoint
@@ -202,6 +201,7 @@ class Bipan : public zygisk::ModuleBase {
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to load BipanJava's class (%s)!", BIPAN_JAVA_PACKAGE_NAME);
+      BIPAN_PANIC();
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
@@ -211,13 +211,14 @@ class Bipan : public zygisk::ModuleBase {
       jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
       if (installMethod == nullptr) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
-        return;
+        BIPAN_PANIC();
       }
 
       env->CallStaticVoidMethod(payloadClass, installMethod);
       if (env->ExceptionCheck()) {
         env->ExceptionClear();
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Could not .install() BipanJava!");
+        BIPAN_PANIC();
       } else {
         write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
       }

@@ -420,7 +420,7 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     }
 
     applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clampGrowthLimit");
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Seccomp applied at clampGrowthLimit");
     seccomp_applied = true;
   }
 
@@ -454,7 +454,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     }
 
     applySeccomp(g_bipan_lib_start, g_bipan_lib_end);
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Seccomp applied at clearGrowthLimit");
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Seccomp applied at clearGrowthLimit");
     seccomp_applied = true;
   }
 
