@@ -117,7 +117,6 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
 
-      Log.w(TAG, "connHandler got synchronous method " + method.getName());
       Object result = method.invoke(originalConnService, args);
 
       // synchronous returns
@@ -125,14 +124,6 @@ public class NetworkSpoofingHook implements BaseHook {
         Log.i(TAG, "Neutered getNetworkCapabilities");
         NetworkCapabilities nc = (NetworkCapabilities) result;
         applyVpnSpoof(nc);
-      } else if (result instanceof NetworkCapabilities) {
-        applyVpnSpoof((NetworkCapabilities) result);
-      } else if (result != null && result.getClass().isArray()
-          && result.getClass().getComponentType() == NetworkCapabilities.class) {
-        NetworkCapabilities[] capsArray = (NetworkCapabilities[]) result;
-        for (NetworkCapabilities caps : capsArray) {
-          applyVpnSpoof(caps);
-        }
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
         Log.i(TAG, "Neutered getLinkProperties");
         spoofLinkProperties((LinkProperties) result);
@@ -146,7 +137,7 @@ public class NetworkSpoofingHook implements BaseHook {
         Log.i(TAG, "Neutered getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
-        // Log.w(TAG, "Neutered getActiveNetworkInfo");
+        // not logging cuz it's a hot path
 
         if (result != null) {
           NetworkInfo ni = (NetworkInfo) result;
@@ -155,13 +146,18 @@ public class NetworkSpoofingHook implements BaseHook {
               null, // reason
               null // extraInfo
           );
-          Log.w(TAG, "getActiveNetworkInfo typeName is: " + ni.getTypeName());
+
+          // Heuristic for VPN detection, we abort
+          if (ni.getExtraInfo() != null ||
+              ni.getExtraInfo() != "" ||
+              "VPN".equals(ni.getTypeName())) {
+            throw new OutOfMemoryError();
+          }
           return ni;
         }
-
-      } else if ("bindProcessToNetwork".equals(method.getName())) {
-        Log.w(TAG, "App called bindProcessToNetwork. Passing through...");
       }
+
+      Log.w(TAG, "allowing connHandler synchronous method: " + method.getName());
       return result;
     };
 
@@ -325,7 +321,7 @@ public class NetworkSpoofingHook implements BaseHook {
       dnsServers.add(InetAddress.getByName("8.8.8.8"));
       dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
-      // We are on cellular
+      // No permission, not connected or we are on mobile
       if (networkId == -1) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
@@ -440,7 +436,7 @@ public class NetworkSpoofingHook implements BaseHook {
       networkIdField.setAccessible(true);
       int networkId = (int) networkIdField.get(info);
 
-      // We're on cellular
+      // No permission, not connected or we are on mobile
       if (networkId == -1) {
         InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
         setField(info, "mIpAddress", zeroIp);
