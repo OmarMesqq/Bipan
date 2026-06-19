@@ -200,6 +200,40 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         Log.i(TAG, "Neutered " + method.getName());
         return null;
 
+      case "getMmsUserAgent":
+      case "getMmsUAProfUrl": {
+        return "";
+      }
+
+      case "hasIccCardUsingSlotIndex": {
+        int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
+        Log.i(TAG, "Neutered hasIccCardUsingSlotIndex slot=" + slotIndex);
+        return slotIndex == 0; // single SIM, slot 0 only
+      }
+      case "getDataNetworkTypeForSubscriber": {
+        Log.i(TAG, "Neutered getDataNetworkTypeForSubscriber");
+        return TelephonyManager.NETWORK_TYPE_LTE;
+      }
+      case "getSimStateForSlotIndex": {
+        int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
+        Log.i(TAG, "Neutered getSimStateForSlotIndex slot=" + slotIndex);
+        if (slotIndex == 0) {
+          return TelephonyManager.SIM_STATE_READY;
+        }
+        return TelephonyManager.SIM_STATE_UNKNOWN;
+      }
+
+      case "getCarrierIdFromMccMnc": {
+        String mccmnc = (args != null && args.length > 1 && args[1] instanceof String)
+            ? (String) args[1]
+            : "";
+        Log.i(TAG, "Neutered getCarrierIdFromMccMnc mccmnc=" + mccmnc);
+        if (MCCMNC_TUPLE.equals(mccmnc)) {
+          return CARRIER_ID;
+        }
+        return TelephonyManager.UNKNOWN_CARRIER_ID;
+      }
+
       default:
         Log.w(TAG, "Allowing Telephony method through: " + method.getName());
         return method.invoke(originalITelephony, args);
