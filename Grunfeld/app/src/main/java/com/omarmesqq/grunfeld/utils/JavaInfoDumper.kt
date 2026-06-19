@@ -171,7 +171,6 @@ fun dumpNetworkInfo(context: Context): String {
 
     val allNetworkInfo = cm.allNetworkInfo
     sb.append("allNetworkInfo size: ${allNetworkInfo.size}\n")
-    sb.append("allNetworkInfo: ${allNetworkInfo.contentToString()}\n\n")
     if (allNetworkInfo.size > 0) {
         sb.append("allNetworkInfo dump:\n")
         sb.appendLine("========================================")
