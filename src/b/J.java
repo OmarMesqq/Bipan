@@ -1,5 +1,6 @@
-package com.omarmesqq.bipan;
+package b;
 
+import com.omarmesqq.bipan.BaseHook;
 import android.content.Context;
 import android.util.Log;
 import com.omarmesqq.bipan.modules.*;
@@ -18,7 +19,7 @@ import android.app.Application;
 import java.lang.OutOfMemoryError;
 import android.app.Activity;
 
-public class BipanJava {
+public class J {
   private static final String TAG = "BipanJava";
 
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
@@ -148,14 +149,9 @@ public class BipanJava {
     }
 
     for (BaseHook module : modules) {
-      try {
-        module.install(context);
-        Log.d(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
-      } catch (Exception e) {
-        Log.e(TAG, "Failed to load module: " + module.getClass().getName(), e);
-        throw e;
-      }
+      module.install(context);
     }
+    Log.i(TAG, "All modules loaded successfully :)");
   }
 
   private static void unseal() throws Exception {

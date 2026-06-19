@@ -5,7 +5,9 @@ set -euo pipefail
 javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
   -sourcepath src \
   -d javac_out \
-  src/com/omarmesqq/bipan/*.java src/com/omarmesqq/bipan/modules/*.java
+  src/b/J.java \
+  src/com/omarmesqq/bipan/BaseHook.java \
+  src/com/omarmesqq/bipan/modules/*.java
 
 # Shrink, obfuscate, and minify all BipanJava.class into DEX
 java -cp $ANDROID_HOME/build-tools/36.0.0/lib/d8.jar \
