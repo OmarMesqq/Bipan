@@ -94,7 +94,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_socket) {
     int domain = arg0;
     if (domain == AF_NETLINK) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, " Blocked AF_NETLINK socket");
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, " Blocked AF_NETLINK socket");
       ctx->uc_mcontext.regs[0] = -EAFNOSUPPORT;
       in_sigsys_handler = false;
       return;

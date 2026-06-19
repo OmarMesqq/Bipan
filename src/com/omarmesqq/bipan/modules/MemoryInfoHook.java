@@ -99,12 +99,12 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
     try {
       return method.invoke(originalIActivityManager, args);
-    } catch (InvocationTargetException e) {
-      // Log.e(TAG, "AM passthrough failed for " + method.getName());
-      // Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
-      // Log.e(TAG, "Stack trace: ", e);
-      
+    } catch (InvocationTargetException e) {      
       throw e.getCause() != null ? e.getCause() : e;
+    } catch (Exception e) {
+      Log.e(TAG, "AM passthrough failed for: " + method.getName() + "Cause: " + e.getCause().toString() + " Message: " + e.getMessage() , e);
+      Log.e(TAG, "Fatally aborting with an Error...");
+      throw new OutOfMemoryError();
     }
   }
 
