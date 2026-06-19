@@ -18,6 +18,7 @@ import com.omarmesqq.bipan.BaseHook;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetAddress;
@@ -125,16 +126,16 @@ public class NetworkSpoofingHook implements BaseHook {
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
         spoofLinkProperties((LinkProperties) result);
       } else if ("getAllNetworks".equals(method.getName())) {
-        Log.w(TAG, "App called getAllNetworks");
+        Log.w(TAG, "Neutered getAllNetworks");
         return new Network[0];
       } else if ("getAllNetworkInfo".equals(method.getName())) {
-        Log.w(TAG, "App called getAllNetworkInfo");
+        Log.w(TAG, "Neutered getAllNetworkInfo");
         return new NetworkInfo[0];
       } else if ("getBoundNetworkForProcess".equals(method.getName())) {
-        Log.w(TAG, "App called getBoundNetworkForProcess");
+        Log.w(TAG, "Neutered getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
-        // Log.w(TAG, "App called getActiveNetworkInfo");
+        // Log.w(TAG, "Neutered getActiveNetworkInfo");
 
         if (result != null) {
           NetworkInfo ni = (NetworkInfo) result;
@@ -275,7 +276,7 @@ public class NetworkSpoofingHook implements BaseHook {
     }
   }
 
-  private void spoofLinkProperties(LinkProperties lp) {
+  private void spoofLinkProperties(LinkProperties lp) throws Throwable {
     try {
       Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
       Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
@@ -389,8 +390,12 @@ public class NetworkSpoofingHook implements BaseHook {
       lp.setDhcpServerAddress(null);
 
       lp.setDnsServers(dnsServers);
+    } catch (InvocationTargetException e) {
+      throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof LinkProperties: ", e);
+      Log.e(TAG, "Failed to spoof LinkProperties. Cause: " + e.getCause().toString() + " Message: " + e.getMessage() , e);
+      Log.e(TAG, "Fatally aborting with an Error...");
+      throw new OutOfMemoryError();
     }
   }
 
