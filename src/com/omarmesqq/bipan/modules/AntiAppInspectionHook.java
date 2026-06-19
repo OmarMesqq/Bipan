@@ -306,7 +306,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
             ? (String) args[0]
             : "unknown";
-        Log.w(TAG, "[Legacy] installer read for: " + targetPkg +
+        Log.i(TAG, "Spoofed Legacy installer read for: " + targetPkg +
             (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
         return "com.android.vending";
       }
@@ -315,7 +315,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
             ? (String) args[0]
             : "unknown";
-        Log.w(TAG, "[Modern] install source read for: " + targetPkg +
+        Log.i(TAG, "Spoofed Modern install source read for: " + targetPkg +
             (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
         return createFakeInstallSourceInfo();
       }
@@ -337,18 +337,18 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             return method.invoke(originalPM, args);
           }
 
-          Log.w(TAG, "Blinded: queryIntentActivities");
+          Log.i(TAG, "Blinded: queryIntentActivities");
         }
         return emptyParceledListSlice();
       }
 
       case "getInstalledApplications": {
-        Log.w(TAG, "Blinded: getInstalledApplications");
+        Log.i(TAG, "Blinded: getInstalledApplications");
         return emptyParceledListSlice();
       }
 
       case "getInstalledPackages": {
-        Log.w(TAG, "Blinded: getInstalledPackages");
+        Log.i(TAG, "Blinded: getInstalledPackages");
         return emptyParceledListSlice();
       }
 
@@ -358,11 +358,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          // Log.i(TAG, "Allowing getPackageInfo for: " + pkg);
           return method.invoke(originalPM, args);
         }
 
-        Log.w(TAG, "Blinded: " + method.getName() + " for: " + pkg);
+        Log.i(TAG, "Blinded getPackageInfo for: " + pkg);
         return null;
       }
 
@@ -372,11 +371,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          // Log.i(TAG, "Allowing getApplicationInfo for: " + pkg);
           return method.invoke(originalPM, args);
         }
 
-        Log.w(TAG, "Blinded: getApplicationInfo for: " + pkg);
+        Log.i(TAG, "Blinded: getApplicationInfo for: " + pkg);
         return null;
       }
 
@@ -397,31 +395,31 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           return method.invoke(originalPM, args);
         }
 
-        Log.w(TAG, "Blinded: getActivityInfo for pkg=" + pkg);
+        Log.i(TAG, "Blinded: getActivityInfo for: " + pkg);
         return null;
       }
       case "getPackageArchiveInfo": {
-        Log.w(TAG, "Blinded: getPackageArchiveInfo");
+        Log.i(TAG, "Blinded: getPackageArchiveInfo");
         return emptyParceledListSlice();
       }
       case "getPackagesHoldingPermissions": {
-        Log.w(TAG, "Blinded: getPackagesHoldingPermissions");
+        Log.i(TAG, "Blinded: getPackagesHoldingPermissions");
         return emptyParceledListSlice();
       }
       case "getPreferredPackages": {
-        Log.w(TAG, "Blinded: getPreferredPackages");
+        Log.i(TAG, "Blinded: getPreferredPackages");
         return emptyParceledListSlice();
       }
       case "getPreferredActivities": {
-        Log.w(TAG, "Blinded: getPreferredActivities");
+        Log.i(TAG, "Blinded: getPreferredActivities");
         return emptyParceledListSlice();
       }
       case "getProperty": {
-        Log.w(TAG, "Blinded: getProperty");
+        Log.i(TAG, "Blinded: getProperty");
         return emptyParceledListSlice();
       }
       case "queryIntentActivityOptions": {
-        Log.w(TAG, "Blinded: queryIntentActivityOptions");
+        Log.i(TAG, "Blinded: queryIntentActivityOptions");
         return emptyParceledListSlice();
       }
       case "resolveActivity": {
@@ -434,11 +432,11 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             return method.invoke(originalPM, args);
           }
         }
-        Log.w(TAG, "Blinded: resolveActivity");
+        Log.i(TAG, "Blinded: resolveActivity");
         return null;
       }
       case "getTargetSdkVersion": {
-        Log.w(TAG, "Blinded: getTargetSdkVersion");
+        Log.i(TAG, "Blinded: getTargetSdkVersion");
         return 36;
       }
 
@@ -452,7 +450,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         }
 
         if (feature != null && FEATURE_ADD_LIST.contains(feature)) {
-          Log.w(TAG, "Added system feature on-the-fly: " + feature);
+          Log.i(TAG, "Added system feature on-the-fly: " + feature);
           return true;
         }
 
@@ -460,7 +458,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
 
       case "getSystemAvailableFeatures": {
-        Log.w(TAG, "Filtering: getSystemAvailableFeatures");
         try {
           Object result = method.invoke(originalPM, args);
           if (result == null) {
@@ -495,6 +492,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             filtered.add(fi);
           }
 
+          Log.i(TAG, "Filted getSystemAvailableFeatures");
           return sliceClass
               .getConstructor(List.class)
               .newInstance(filtered);
@@ -507,10 +505,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
       default: {
         Object result = method.invoke(originalPM, args);
-        // final String stackTrace = Log.getStackTraceString(new Throwable());
-        // Log.i(TAG, "Allowing app Package Manager method: " + method.getName() + "
-        // Stacktrace:\n" + stackTrace);
-        Log.i(TAG, "Allowing app Package Manager method: " + method.getName());
+        Log.i(TAG, "Allowing PM method: " + method.getName());
         return result;
       }
     }

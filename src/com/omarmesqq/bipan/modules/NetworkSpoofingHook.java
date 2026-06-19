@@ -134,11 +134,10 @@ public class NetworkSpoofingHook implements BaseHook {
         Log.w(TAG, "App called getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
-        Log.w(TAG, "App called getActiveNetworkInfo");
+        // Log.w(TAG, "App called getActiveNetworkInfo");
 
-        Object ret = method.invoke(originalConnService, args);
-        if (ret != null) {
-          NetworkInfo ni = (NetworkInfo) ret;
+        if (result != null) {
+          NetworkInfo ni = (NetworkInfo) result;
           ni.setDetailedState(
               NetworkInfo.DetailedState.CONNECTED,
               null, // reason
