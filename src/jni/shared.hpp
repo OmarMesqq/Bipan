@@ -46,7 +46,7 @@ enum IpcAction {
   ACTION_EXIT_PROCESS = 4
 };
 
-#define MAX_STACK_TRACE 40
+#define MAX_STACK_TRACE 60
 
 typedef struct {
   volatile int lock;
