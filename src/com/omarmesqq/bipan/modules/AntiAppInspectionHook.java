@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.pm.ComponentInfo;
 import android.content.pm.FeatureInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -515,9 +514,13 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return null;
       }
 
+      case "isSafeMode": {
+        return false;
+      }
+
       case "setComponentEnabledSetting": {
         if (args != null && args.length >= 3) {
-          ComponentInfo componentName = (ComponentInfo) args[0];
+          Object componentName = args[0];
           int newState = (int) args[1];
           int flags = (int) args[2];
 
@@ -542,11 +545,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
               stateStr = String.valueOf(newState);
           }
 
-          Log.d(TAG, "setComponentEnabledSetting: " +
-              "componentName:" + componentName.toString() +
-              "componentName.name:" + componentName.name +
-              "componentName.processName:" + componentName.processName +
-              "componentName.processName:" + componentName.packageName
+          Log.d(TAG, "setComponentEnabledSetting: component=" + componentName
               + " newState=" + stateStr
               + " flags=" + flags);
         }
@@ -556,6 +555,11 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       case "queryIntentServices": {
         if (args != null && args.length > 0 && args[0] instanceof Intent) {
           Intent intent = (Intent) args[0];
+          String action = intent.getAction();
+          if ("com.facebook.usdid.CROSS_SIGN_SERVICE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices USDID cross-sign service");
+            return emptyParceledListSlice();
+          }
           Log.d(TAG, "queryIntentServices: intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
@@ -564,6 +568,16 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       case "queryIntentReceivers": {
         if (args != null && args.length > 0 && args[0] instanceof Intent) {
           Intent intent = (Intent) args[0];
+          String action = intent.getAction();
+
+          if ("android.intent.action.BOOT_COMPLETED".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers BOOT_COMPLETED");
+            return emptyParceledListSlice();
+          }
+          if ("android.intent.action.BADGE_COUNT_UPDATE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers badge count receiver enumeration");
+            return emptyParceledListSlice();
+          }
           Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
