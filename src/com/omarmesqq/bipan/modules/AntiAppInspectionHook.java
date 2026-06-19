@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ComponentInfo;
 import android.content.pm.FeatureInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -243,7 +244,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (pic == null) {
             throw new Exception(TAG + "ApplicationPackageManager.get(mHasSystemFeatureCache) returned null!");
           }
-          
+
           // Disable Application's Package Manager cache
           Class<?> picClass = Class.forName("android.app.PropertyInvalidatedCache");
           Field mDisabledField = picClass.getDeclaredField("mDisabled");
@@ -252,7 +253,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         }
       }
     } catch (Exception e) {
-      Log.w(TAG, "Could not patch Application PM: " + e.getMessage());
+      Log.e(TAG, "Could not patch Application PM: " + e.getMessage());
     }
 
     // Store fields statically for Activity-time patching via BipanJava
@@ -269,7 +270,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       s_mDisabledField = picClass2.getDeclaredField("mDisabled");
       s_mDisabledField.setAccessible(true);
     } catch (Exception e) {
-      Log.w(TAG, "Failed to store static PM fields: " + e.getMessage());
+      Log.e(TAG, "Failed to store static PM fields: " + e.getMessage());
     }
 
     try {
@@ -446,11 +447,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (feature != null && FEATURE_STRIP_LIST.contains(feature)) {
+          Log.i(TAG, "hasSystemFeature: Trimmed system feature: " + feature);
           return false;
         }
 
         if (feature != null && FEATURE_ADD_LIST.contains(feature)) {
-          Log.i(TAG, "Added system feature on-the-fly: " + feature);
+          Log.i(TAG, "hasSystemFeature: Added system feature: " + feature);
           return true;
         }
 
@@ -492,7 +494,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             filtered.add(fi);
           }
 
-          Log.i(TAG, "Filted getSystemAvailableFeatures");
+          Log.i(TAG, "Filtered getSystemAvailableFeatures");
           return sliceClass
               .getConstructor(List.class)
               .newInstance(filtered);
@@ -503,9 +505,101 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         }
       }
 
+      case "notifyPackagesReplacedReceived": {
+        if (args != null && args.length > 0 && args[0] instanceof String[]) {
+          String[] packages = (String[]) args[0];
+          for (String pkg : packages) {
+            Log.d(TAG, "notifyPackagesReplacedReceived (neutered): " + pkg);
+          }
+        }
+        return null;
+      }
+
+      case "setComponentEnabledSetting": {
+        if (args != null && args.length >= 3) {
+          ComponentInfo componentName = (ComponentInfo) args[0];
+          int newState = (int) args[1];
+          int flags = (int) args[2];
+
+          String stateStr;
+          switch (newState) {
+            case PackageManager.COMPONENT_ENABLED_STATE_DEFAULT:
+              stateStr = "DEFAULT";
+              break;
+            case PackageManager.COMPONENT_ENABLED_STATE_ENABLED:
+              stateStr = "ENABLED";
+              break;
+            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED:
+              stateStr = "DISABLED";
+              break;
+            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER:
+              stateStr = "DISABLED_USER";
+              break;
+            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED:
+              stateStr = "DISABLED_UNTIL_USED";
+              break;
+            default:
+              stateStr = String.valueOf(newState);
+          }
+
+          Log.d(TAG, "setComponentEnabledSetting: " +
+              "componentName:" + componentName.toString() +
+              "componentName.name:" + componentName.name +
+              "componentName.processName:" + componentName.processName +
+              "componentName.processName:" + componentName.packageName
+              + " newState=" + stateStr
+              + " flags=" + flags);
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "queryIntentServices": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          Log.d(TAG, "queryIntentServices: intent: " + dumpIntent(intent));
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "queryIntentReceivers": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "getPropertyAsUser": {
+        if (args != null && args.length > 0) {
+          String className;
+          if (args[2] == null) {
+            className = "null";
+          } else {
+            className = (String) args[2];
+          }
+          Log.d("TAG", "getPropertyAsUser: propertyName " + args[0] + " package: " + args[1] + " className: "
+              + className + " UID: " + args[3]);
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "resolveContentProvider": {
+        if (args != null && args.length > 0 && args[0] instanceof String) {
+          Log.d("TAG", "resolveContentProvider: authority " + args[0] + " flags: " + args[1]);
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "queryIntentContentProviders": {
+        if (args != null && args.length > 0) {
+          Log.d("TAG", "queryIntentContentProviders: intent " + dumpIntent((Intent) args[0]) + " flags: " + args[1]);
+        }
+        return method.invoke(originalPM, args);
+      }
+
       default: {
         Object result = method.invoke(originalPM, args);
-        Log.i(TAG, "Allowing PM method: " + method.getName());
+        Log.w(TAG, "Allowing PM method: " + method.getName());
         return result;
       }
     }
@@ -540,13 +634,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     }
   }
 
-  @SuppressWarnings("unused")
-  private void dumpIntent(Intent intent) {
+  private String dumpIntent(Intent intent) {
     String intentInfo = "\naction=" + intent.getAction()
         + " data=" + intent.getDataString()
         + " pkg=" + intent.getPackage()
         + " component=" + intent.getComponent()
         + " categories=" + intent.getCategories();
-    Log.d(TAG, "intentInfo:" + intentInfo);
+    return intentInfo;
   }
 }

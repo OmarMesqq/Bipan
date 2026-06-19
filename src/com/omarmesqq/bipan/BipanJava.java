@@ -150,7 +150,7 @@ public class BipanJava {
     for (BaseHook module : modules) {
       try {
         module.install(context);
-        Log.i(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
+        Log.d(TAG, "Module successfully loaded: " + module.getClass().getSimpleName());
       } catch (Exception e) {
         Log.e(TAG, "Failed to load module: " + module.getClass().getName(), e);
         throw e;
