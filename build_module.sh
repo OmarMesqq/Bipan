@@ -7,12 +7,14 @@ javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
   -d javac_out \
   src/com/omarmesqq/bipan/*.java src/com/omarmesqq/bipan/modules/*.java
 
-# Convert all BipanJava .class into a single .dex
-d8 --release \
- --lib $ANDROID_HOME/platforms/android-36/android.jar \
- --output . \
- javac_out/com/omarmesqq/bipan/*.class \
- javac_out/com/omarmesqq/bipan/modules/*.class
+# Shrink, obfuscate, and minify all BipanJava.class into DEX
+java -cp $ANDROID_HOME/build-tools/36.0.0/lib/d8.jar \
+  com.android.tools.r8.R8 \
+  --release \
+  --lib $ANDROID_HOME/platforms/android-36/android.jar \
+  --pg-conf bipan-rules.pro \
+  --output . \
+  $(find javac_out -name '*.class' | tr '\n' ' ')
 
 # Convert the ART bytecode into an array of bytes C++ can call
 xxd -i classes.dex > src/jni/bipan_java.h
