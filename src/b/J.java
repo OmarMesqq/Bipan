@@ -19,6 +19,10 @@ import android.app.Application;
 import java.lang.OutOfMemoryError;
 import android.app.Activity;
 
+/**
+ * Entrypoint of BipanJava.
+ * yeah, the name is for obfuscation and code shrinking
+ */
 public class J {
   private static final String TAG = "BipanJava";
 
@@ -73,6 +77,15 @@ public class J {
 
         @Override
         public void callApplicationOnCreate(Application app) {
+          // Hijack Application's ConnectivityManager
+          if (NetworkSpoofingHook.s_cmProxy != null) {
+            try {
+              NetworkSpoofingHook.patchConnectivityManager(app);
+            } catch (Exception e) {
+              throw new OutOfMemoryError(
+                  TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getMessage());
+            }
+          }
           try {
             realInstr.getClass()
                 .getMethod("callApplicationOnCreate", Application.class)
@@ -85,13 +98,23 @@ public class J {
 
         @Override
         public void callActivityOnCreate(Activity activity, Bundle icicle) {
-          // Patch the Activity's PackageManager if app is in blocklist
+          // Hijack Activity's PackageManager
           if (AntiAppInspectionHook.s_mPMField != null && AntiAppInspectionHook.s_pmProxy != null) {
             try {
               AntiAppInspectionHook.patchPackageManager(activity.getPackageManager());
             } catch (Exception e) {
               throw new OutOfMemoryError(
                   TAG + "[!] [1] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
+            }
+          }
+
+          // Hijack Activity's ConnectivityManager
+          if (NetworkSpoofingHook.s_cmProxy != null) {
+            try {
+              NetworkSpoofingHook.patchConnectivityManager(activity);
+            } catch (Exception e) {
+              throw new OutOfMemoryError(
+                  TAG + "[!] [2] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
             }
           }
 
@@ -103,7 +126,7 @@ public class J {
                 .invoke(realInstr, activity, icicle);
           } catch (Exception e) {
             throw new OutOfMemoryError(
-                TAG + "[!] [2] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
+                TAG + "[!] [3] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
             // super.callActivityOnCreate(activity, icicle);
           }
         }
