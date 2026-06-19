@@ -24,6 +24,7 @@ import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
 import java.util.ArrayList;
+import android.net.ConnectivityManager;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
@@ -60,6 +61,8 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private static String selfPackageName;
 
+  public static volatile Object s_cmProxy = null;
+
   @Override
   public void install(Context context) throws Exception {
     selfPackageName = context.getPackageName();
@@ -92,6 +95,7 @@ public class NetworkSpoofingHook implements BaseHook {
     // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
+        Log.e(TAG, "[!!!!!!!] connHandler async got method " + method.getName());
         for (int i = 0; i < args.length; i++) {
           if (args[i] instanceof Messenger) {
             final Messenger originalMessenger = (Messenger) args[i];
@@ -112,10 +116,15 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
 
+      Log.e(TAG, "[!!!!!!!] connHandler synchronous got method " + method.getName());
       Object result = method.invoke(originalConnService, args);
 
       // synchronous returns
-      if (result instanceof NetworkCapabilities) {
+      if ("getNetworkCapabilities".equals(method.getName())) {
+        Log.e(TAG, "[!!!] App called getNetworkCapabilities");
+        NetworkCapabilities nc = (NetworkCapabilities) result;
+        applyVpnSpoof(nc);
+      } else if (result instanceof NetworkCapabilities) {
         applyVpnSpoof((NetworkCapabilities) result);
       } else if (result != null && result.getClass().isArray()
           && result.getClass().getComponentType() == NetworkCapabilities.class) {
@@ -124,15 +133,16 @@ public class NetworkSpoofingHook implements BaseHook {
           applyVpnSpoof(caps);
         }
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
+        Log.i(TAG, "Neutered getLinkProperties");
         spoofLinkProperties((LinkProperties) result);
       } else if ("getAllNetworks".equals(method.getName())) {
-        Log.w(TAG, "Neutered getAllNetworks");
+        Log.i(TAG, "Neutered getAllNetworks");
         return new Network[0];
       } else if ("getAllNetworkInfo".equals(method.getName())) {
-        Log.w(TAG, "Neutered getAllNetworkInfo");
+        Log.i(TAG, "Neutered getAllNetworkInfo");
         return new NetworkInfo[0];
       } else if ("getBoundNetworkForProcess".equals(method.getName())) {
-        Log.w(TAG, "Neutered getBoundNetworkForProcess");
+        Log.i(TAG, "Neutered getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
         // Log.w(TAG, "Neutered getActiveNetworkInfo");
@@ -144,6 +154,7 @@ public class NetworkSpoofingHook implements BaseHook {
               null, // reason
               null // extraInfo
           );
+          Log.w(TAG, "getActiveNetworkInfo typeName is: " + ni.getTypeName());
           return ni;
         }
 
@@ -162,6 +173,7 @@ public class NetworkSpoofingHook implements BaseHook {
             : method.invoke(realBinder, args));
 
     cache.put("connectivity", proxyBinder);
+    s_cmProxy = cmProxy;
   }
 
   private void setupWifiSpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
@@ -192,6 +204,25 @@ public class NetworkSpoofingHook implements BaseHook {
             : method.invoke(realBinder, args));
 
     cache.put("wifi", proxyBinder);
+  }
+
+  public static void patchConnectivityManager(Context context) {
+    if (s_cmProxy == null) {
+      return;
+    }
+    try {
+      ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+      Class<?> cmClass = ConnectivityManager.class;
+      Class<?> iConnClz = Class.forName("android.net.IConnectivityManager");
+      for (Field f : cmClass.getDeclaredFields()) {
+        if (iConnClz.isAssignableFrom(f.getType())) {
+          f.setAccessible(true);
+          f.set(cm, s_cmProxy);
+        }
+      }
+    } catch (Exception e) {
+      Log.e(TAG, "patchConnectivityManager failed", e);
+    }
   }
 
   private void patchAsyncMessage(Message msg) {
@@ -231,7 +262,7 @@ public class NetworkSpoofingHook implements BaseHook {
           }
         }
       } catch (Throwable t) {
-        Log.e(TAG, "Failed to apply Bundle-wrapped async NetworkCapabilities spoof!");
+        Log.e(TAG, "[!!!!] Failed to apply Bundle-wrapped async NetworkCapabilities spoof!");
       }
     }
   }
@@ -270,13 +301,13 @@ public class NetworkSpoofingHook implements BaseHook {
           .getDeclaredField("mLinkDownBandwidthKbps");
       downBwField.setAccessible(true);
       downBwField.setInt(caps, 52000); // 52 Mbps down
-
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof NetworkCapabilities via reflection", e);
+      Log.e(TAG, "[!!!!] Failed to spoof NetworkCapabilities via reflection", e);
     }
   }
 
   private void spoofLinkProperties(LinkProperties lp) throws Throwable {
+    Log.d(TAG, "[!!!!] spoofLinkProperties called");
     try {
       Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
       Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
@@ -292,6 +323,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // We are on cellular
       if (networkId == -1) {
+        Log.d(TAG, "[!!!!] spoofLinkProperties cellular START");
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 
@@ -340,9 +372,11 @@ public class NetworkSpoofingHook implements BaseHook {
         lp.setMtu(1500);
         lp.setDhcpServerAddress(null);
         lp.setDnsServers(dnsServers);
+        Log.d(TAG, "[!!!!] spoofLinkProperties cellular END");
         return;
       }
 
+      Log.d(TAG, "[!!!!] spoofLinkProperties wifi START");
       Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
       field.setAccessible(true);
 
@@ -390,11 +424,14 @@ public class NetworkSpoofingHook implements BaseHook {
       lp.setDhcpServerAddress(null);
 
       lp.setDnsServers(dnsServers);
+      Log.d(TAG, "[!!!!] spoofLinkProperties wifi END");
     } catch (InvocationTargetException e) {
+      Log.d(TAG, "[!!!!] InvocationTargetException in spoofLinkProperties. Propagating");
       throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof LinkProperties. Cause: " + e.getCause().toString() + " Message: " + e.getMessage() , e);
-      Log.e(TAG, "Fatally aborting with an Error...");
+      Log.wtf(TAG,
+          "[!!!] Failed to spoof LinkProperties. Cause: " + e.getCause().toString() + " Message: " + e.getMessage(), e);
+      Log.wtf(TAG, "[!!!] Fatally aborting with an Error...");
       throw new OutOfMemoryError();
     }
   }
@@ -408,6 +445,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // We're on cellular
       if (networkId == -1) {
+        Log.d(TAG, "[!!!!] spoofWifiInfo: we are on cellular START");
         InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
         setField(info, "mIpAddress", zeroIp);
         setField(info, "mLinkSpeed", -1);
@@ -417,9 +455,11 @@ public class NetworkSpoofingHook implements BaseHook {
         setField(info, "mTxLinkSpeed", -1);
         setField(info, "mRxLinkSpeed", -1);
         spoofSsid(info);
+        Log.d(TAG, "[!!!!] spoofWifiInfo: we are on cellular END");
         return;
       }
 
+      Log.d(TAG, "[!!!!] spoofWifiInfo: we are on wifi START");
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);
@@ -431,7 +471,7 @@ public class NetworkSpoofingHook implements BaseHook {
       setField(info, "mTxLinkSpeed", 54);
       setField(info, "mRxLinkSpeed", 54);
       spoofSsid(info);
-
+      Log.d(TAG, "[!!!!] spoofWifiInfo: we are on wifi END");
     } catch (Exception e) {
       Log.e(TAG, "In-place patch failed: ", e);
     }
@@ -457,7 +497,7 @@ public class NetworkSpoofingHook implements BaseHook {
       f.setAccessible(true);
       f.set(obj, value);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to patch field: " + name + ". Exception: " + new Throwable(e));
+      Log.e(TAG, "[!!!!] Failed to patch field: " + name, e);
     }
   }
 }
