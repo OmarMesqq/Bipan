@@ -23,8 +23,6 @@ import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
 import java.util.ArrayList;
-import android.net.ConnectivityManager;
-import android.net.ConnectivityManager.NetworkCallback;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
@@ -56,8 +54,6 @@ public class NetworkSpoofingHook implements BaseHook {
   private static final String WIFI_IFACE_NAME = "wlan0";
   private static final String FAKE_IP = "10.111.222.1";
 
-  private static Boolean isCurrentNetworkMetered = null;
-
   private static Object cmProxy;
   private static Object wifiProxy;
 
@@ -66,8 +62,6 @@ public class NetworkSpoofingHook implements BaseHook {
   @Override
   public void install(Context context) throws Exception {
     selfPackageName = context.getPackageName();
-    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-    isCurrentNetworkMetered = cm.isActiveNetworkMetered();
 
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
@@ -80,44 +74,6 @@ public class NetworkSpoofingHook implements BaseHook {
 
     setupConnectivitySpoofing(getService, cache);
     setupWifiSpoofing(getService, cache);
-
-    NetworkCallback nc = new NetworkCallback() {
-      @Override
-      public void onCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) {
-        int[] caps = networkCapabilities.getCapabilities();
-        Log.w(TAG, "ConnectivityManager.onCapabilitiesChanged");
-        for (int cap : caps) {
-          if (cap == NetworkCapabilities.NET_CAPABILITY_NOT_METERED) {
-            isCurrentNetworkMetered = false;
-            break;
-          }
-        }
-        try {
-          Class<?> iConnManagerClz = Class.forName("android.net.IConnectivityManager");
-
-          Method getActiveNetworkMethod = iConnManagerClz.getMethod("getActiveNetwork");
-          Network activeNw = (Network) getActiveNetworkMethod.invoke(cmProxy);
-
-          Method getLinkPropertiesMethod = iConnManagerClz.getMethod("getLinkProperties", Network.class);
-          getLinkPropertiesMethod.invoke(cmProxy, activeNw);
-
-          Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
-          Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
-          getConnectionInfoMethod.invoke(wifiProxy, selfPackageName, null);
-        } catch (Exception e) {
-          Log.e(TAG, "Failed to refresh cached spoofed objects");
-          Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
-          Log.e(TAG, "Stack trace: ", e);
-        }
-      }
-    };
-    try {
-      cm.registerDefaultNetworkCallback(nc);
-    } catch (RuntimeException re) {
-      Log.e(TAG, "Failed register CM callback. App has too many callbacks registered:" + re.getMessage());
-    } catch (Exception e) {
-      Log.e(TAG, "Failed register CM callback. Unknown cause:" + e.getCause() + " Message: " + e.getMessage());
-    }
   }
 
   @SuppressWarnings("deprecation")
@@ -176,10 +132,21 @@ public class NetworkSpoofingHook implements BaseHook {
         return new NetworkInfo[0];
       } else if ("getBoundNetworkForProcess".equals(method.getName())) {
         Log.w(TAG, "App called getBoundNetworkForProcess");
-        return new NetworkInfo(0, 0, "WIFI", "");
+        return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
         Log.w(TAG, "App called getActiveNetworkInfo");
-        return new NetworkInfo(0, 0, "WIFI", "");
+
+        Object ret = method.invoke(originalConnService, args);
+        if (ret != null) {
+          NetworkInfo ni = (NetworkInfo) ret;
+          ni.setDetailedState(
+              NetworkInfo.DetailedState.CONNECTED,
+              null, // reason
+              null // extraInfo
+          );
+          return ni;
+        }
+
       } else if ("bindProcessToNetwork".equals(method.getName())) {
         Log.w(TAG, "App called bindProcessToNetwork. Passing through...");
       }
@@ -311,12 +278,20 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofLinkProperties(LinkProperties lp) {
     try {
+      Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
+      Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
+      WifiInfo wi = (WifiInfo) getConnectionInfoMethod.invoke(wifiProxy, selfPackageName, null);
+
+      Field networkIdField = wi.getClass().getDeclaredField("mNetworkId");
+      networkIdField.setAccessible(true);
+      int networkId = (int) networkIdField.get(wi);
+
       ArrayList<InetAddress> dnsServers = new ArrayList<>();
       dnsServers.add(InetAddress.getByName("8.8.8.8"));
       dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
       // We are on cellular
-      if (isCurrentNetworkMetered == true) {
+      if (networkId == -1) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 
@@ -361,6 +336,7 @@ public class NetworkSpoofingHook implements BaseHook {
         Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
         routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, CELLULAR_IFACE_NAME));
 
+        lp.setInterfaceName(CELLULAR_IFACE_NAME);
         lp.setMtu(1500);
         lp.setDhcpServerAddress(null);
         lp.setDnsServers(dnsServers);

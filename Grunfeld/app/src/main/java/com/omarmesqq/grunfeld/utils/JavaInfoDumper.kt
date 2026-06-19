@@ -104,9 +104,14 @@ fun dumpInstallerInfo(ctx: Context): String {
 val deferredIfaces = GlobalScope.async {
     val sb = StringBuilder()
     val interfaces = NetworkInterface.getNetworkInterfaces()
-    for (intf in interfaces.asSequence()) {
-        sb.append(formatInterfaceDetails(intf))
-        sb.append("\n")
+
+    if (interfaces == null) {
+        sb.append("No interfaces found.\n")
+    } else {
+        for (intf in interfaces.asSequence()) {
+            sb.append(formatInterfaceDetails(intf))
+            sb.append("\n")
+        }
     }
     return@async sb.toString()
 }
@@ -117,16 +122,11 @@ fun dumpNetworkInfo(context: Context): String {
 
     sb.append("[NETWORK INTERFACES (via getNetworkInterfaces)]\n")
     try {
-        val interfaces = NetworkInterface.getNetworkInterfaces()
-        if (interfaces == null) {
-            sb.append("No interfaces found.\n")
-        } else {
-            val ifaces = deferredIfaces.getCompleted()
-            sb.append(ifaces)
-        }
+        val ifaces = deferredIfaces.getCompleted()
+        sb.append(ifaces)
     } catch (e: Exception) {
         sb.append("Failed to get interfaces: ${e.message}\n")
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
+        // avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
     }
 
     sb.append("\n[WIFI MANAGER INFO]\n")
@@ -240,23 +240,18 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
 
     // Metadata
     details.append("--- Interface: ${intf.name} ---\n")
-    details.append("| Display Name: ${intf.displayName}\n")
     details.append("| Index: ${intf.index}\n")
     details.append("| MTU: ${intf.mtu}\n")
 
     // State & Capabilities
     details.append("| Flags: ")
     if (intf.isLoopback) details.append("[LOOPBACK] ")
-    // TODO:
     if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ")
     if (intf.isVirtual) details.append("[VIRTUAL] ")
     if (intf.isUp) details.append("[UP] ")
-    // TODO:
     if (intf.supportsMulticast()) details.append("[MULTICAST] ")
 
     details.append("\n")
-
-    details.appendLine("====== InterfaceAddress ======")
 
     val addrList = intf.interfaceAddresses
     if (addrList.isEmpty()) {
@@ -268,35 +263,9 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
             val broadcast = addr.broadcast?.hostAddress
             details.append("| -> IP: $ip/$prefix\n")
             details.append("| -> Broadcast: $broadcast\n")
-
-            details.appendLine("| -> isAnyLocalAddress: ${addr.address.isAnyLocalAddress}")
-            details.appendLine("| -> isLinkLocalAddress: ${addr.address.isLinkLocalAddress}")
-            details.appendLine("| -> isLoopbackAddress: ${addr.address.isLoopbackAddress}")
-            details.appendLine("| -> isMCGlobal: ${addr.address.isMCGlobal}")
-            details.appendLine("| -> isMCLinkLocal: ${addr.address.isMCLinkLocal}")
-            details.appendLine("| -> isMCNodeLocal: ${addr.address.isMCNodeLocal}")
-            details.appendLine("| -> isMCOrgLocal: ${addr.address.isMCOrgLocal}")
-            details.appendLine("| -> isMulticastAddress: ${addr.address.isMulticastAddress}")
-            details.appendLine("| -> isSiteLocalAddress: ${addr.address.isSiteLocalAddress}")
-            details.appendLine("| -> hostName: ${addr.address.hostName}")
-            details.appendLine("| -> canonicalHostName: ${addr.address.canonicalHostName}")
+            details.appendLine("| -> HostName: ${addr.address.hostName}")
         }
     }
-    details.appendLine("==============================")
-    
-    details.appendLine("======== InetAddress ===========")
-
-    val inadrs = intf.inetAddresses
-    inadrs.toList().forEach { inadr ->
-        details.appendLine("hostAddress: ${inadr.hostAddress}")
-        details.appendLine("canonicalHostName: ${inadr.canonicalHostName}")
-        details.appendLine("hostName: ${inadr.hostName}")
-        details.appendLine("isSiteLocalAddress: ${inadr.isSiteLocalAddress}")
-        details.appendLine("isLinkLocalAddress: ${inadr.isLinkLocalAddress}")
-        details.appendLine("isAnyLocalAddress: ${inadr.isAnyLocalAddress}")
-        details.appendLine("isMulticastAddress: ${inadr.isMulticastAddress}")
-    }
-    details.appendLine("==============================")
 
     // Hierarchy (Sub-interfaces/VLANs)
     val parent = intf.parent
