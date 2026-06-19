@@ -95,7 +95,7 @@ public class NetworkSpoofingHook implements BaseHook {
     // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
-        Log.e(TAG, "[!!!!!!!] connHandler async got method " + method.getName());
+        Log.w(TAG, "connHandler got async method " + method.getName());
         for (int i = 0; i < args.length; i++) {
           if (args[i] instanceof Messenger) {
             final Messenger originalMessenger = (Messenger) args[i];
@@ -107,7 +107,8 @@ public class NetworkSpoofingHook implements BaseHook {
                 try {
                   originalMessenger.send(safeCopy);
                 } catch (Exception e) {
-                  Log.e(TAG, "Failed to forward callback message", e);
+                  Log.e(TAG, "Failed to forward message", e);
+                  throw new OutOfMemoryError();
                 }
               }
             };
@@ -116,12 +117,12 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
 
-      Log.e(TAG, "[!!!!!!!] connHandler synchronous got method " + method.getName());
+      Log.w(TAG, "connHandler got synchronous method " + method.getName());
       Object result = method.invoke(originalConnService, args);
 
       // synchronous returns
       if ("getNetworkCapabilities".equals(method.getName())) {
-        Log.e(TAG, "[!!!] App called getNetworkCapabilities");
+        Log.i(TAG, "Neutered getNetworkCapabilities");
         NetworkCapabilities nc = (NetworkCapabilities) result;
         applyVpnSpoof(nc);
       } else if (result instanceof NetworkCapabilities) {
@@ -221,7 +222,8 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
     } catch (Exception e) {
-      Log.e(TAG, "patchConnectivityManager failed", e);
+      Log.e(TAG, "Failed to patch CM", e);
+      throw new OutOfMemoryError();
     }
   }
 
@@ -244,7 +246,8 @@ public class NetworkSpoofingHook implements BaseHook {
           }
         }
       } catch (Throwable t) {
-        Log.e(TAG, "Failed to apply direct async NetworkCapabilities spoof!");
+        Log.e(TAG, "Failed to patch async message [1]", t);
+        throw new OutOfMemoryError();
       }
     }
 
@@ -262,7 +265,8 @@ public class NetworkSpoofingHook implements BaseHook {
           }
         }
       } catch (Throwable t) {
-        Log.e(TAG, "[!!!!] Failed to apply Bundle-wrapped async NetworkCapabilities spoof!");
+        Log.e(TAG, "Failed to patch async message [1]", t);
+        throw new OutOfMemoryError();
       }
     }
   }
@@ -302,12 +306,12 @@ public class NetworkSpoofingHook implements BaseHook {
       downBwField.setAccessible(true);
       downBwField.setInt(caps, 52000); // 52 Mbps down
     } catch (Exception e) {
-      Log.e(TAG, "[!!!!] Failed to spoof NetworkCapabilities via reflection", e);
+      Log.e(TAG, "Failed to apply VPN spoof", e);
+      throw new OutOfMemoryError();
     }
   }
 
   private void spoofLinkProperties(LinkProperties lp) throws Throwable {
-    Log.d(TAG, "[!!!!] spoofLinkProperties called");
     try {
       Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
       Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
@@ -323,7 +327,6 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // We are on cellular
       if (networkId == -1) {
-        Log.d(TAG, "[!!!!] spoofLinkProperties cellular START");
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 
@@ -372,11 +375,9 @@ public class NetworkSpoofingHook implements BaseHook {
         lp.setMtu(1500);
         lp.setDhcpServerAddress(null);
         lp.setDnsServers(dnsServers);
-        Log.d(TAG, "[!!!!] spoofLinkProperties cellular END");
         return;
       }
 
-      Log.d(TAG, "[!!!!] spoofLinkProperties wifi START");
       Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
       field.setAccessible(true);
 
@@ -424,14 +425,10 @@ public class NetworkSpoofingHook implements BaseHook {
       lp.setDhcpServerAddress(null);
 
       lp.setDnsServers(dnsServers);
-      Log.d(TAG, "[!!!!] spoofLinkProperties wifi END");
     } catch (InvocationTargetException e) {
-      Log.d(TAG, "[!!!!] InvocationTargetException in spoofLinkProperties. Propagating");
       throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
-      Log.wtf(TAG,
-          "[!!!] Failed to spoof LinkProperties. Cause: " + e.getCause().toString() + " Message: " + e.getMessage(), e);
-      Log.wtf(TAG, "[!!!] Fatally aborting with an Error...");
+      Log.e(TAG, "Failed to spoof LinkProperties", e);
       throw new OutOfMemoryError();
     }
   }
@@ -445,7 +442,6 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // We're on cellular
       if (networkId == -1) {
-        Log.d(TAG, "[!!!!] spoofWifiInfo: we are on cellular START");
         InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
         setField(info, "mIpAddress", zeroIp);
         setField(info, "mLinkSpeed", -1);
@@ -455,11 +451,9 @@ public class NetworkSpoofingHook implements BaseHook {
         setField(info, "mTxLinkSpeed", -1);
         setField(info, "mRxLinkSpeed", -1);
         spoofSsid(info);
-        Log.d(TAG, "[!!!!] spoofWifiInfo: we are on cellular END");
         return;
       }
 
-      Log.d(TAG, "[!!!!] spoofWifiInfo: we are on wifi START");
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);
@@ -471,9 +465,9 @@ public class NetworkSpoofingHook implements BaseHook {
       setField(info, "mTxLinkSpeed", 54);
       setField(info, "mRxLinkSpeed", 54);
       spoofSsid(info);
-      Log.d(TAG, "[!!!!] spoofWifiInfo: we are on wifi END");
     } catch (Exception e) {
-      Log.e(TAG, "In-place patch failed: ", e);
+      Log.e(TAG, "Failed to spoof WifiInfo", e);
+      throw new OutOfMemoryError();
     }
   }
 
@@ -487,7 +481,8 @@ public class NetworkSpoofingHook implements BaseHook {
 
       setField(info, "mWifiSsid", fakeSsid);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof mWifiSsid: ", e);
+      Log.e(TAG, "Failed to spoof SSID", e);
+      throw new OutOfMemoryError();
     }
   }
 
@@ -497,7 +492,8 @@ public class NetworkSpoofingHook implements BaseHook {
       f.setAccessible(true);
       f.set(obj, value);
     } catch (Exception e) {
-      Log.e(TAG, "[!!!!] Failed to patch field: " + name, e);
+      Log.e(TAG, "set field: " + name, e);
+      throw new OutOfMemoryError();
     }
   }
 }
