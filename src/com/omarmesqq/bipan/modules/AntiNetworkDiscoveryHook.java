@@ -60,7 +60,7 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
           methodName.equals("registerRouter2") ||
           methodName.equals("setRouteListingPreference")) {
 
-        Log.w(TAG, "Neutering MediaRouter method call: " + methodName);
+        Log.i(TAG, "Neutering MediaRouter method: " + methodName);
 
         Class<?> returnType = method.getReturnType();
         if (returnType == void.class) {
@@ -120,7 +120,7 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
                     cMethodName.contains("registerService") ||
                     cMethodName.contains("resolveService")) {
 
-                  Log.w(TAG, "Neutering NSD method call: " + cMethodName);
+                  Log.i(TAG, "Neutering NSD method: " + cMethodName);
 
                   Class<?> returnType = cMethod.getReturnType();
                   if (returnType == void.class)
