@@ -139,11 +139,11 @@ public class BipanJava {
       // has to be the first to load!
       modules.add(new AntiAppInspectionHook());
 
-      modules.add(new SettingsHook());
-      modules.add(new AntiScreenshotDetectionHook());
-      modules.add(new AntiNetworkDiscoveryHook());
       modules.add(new NetworkSpoofingHook());
+      modules.add(new SettingsHook());
+      modules.add(new AntiNetworkDiscoveryHook());
       modules.add(new TelephonyManagerHook());
+      modules.add(new AntiScreenshotDetectionHook());
       modules.add(new MemoryInfoHook());
     }
 
