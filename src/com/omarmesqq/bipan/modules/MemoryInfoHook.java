@@ -11,6 +11,7 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.InvocationHandler;
 import android.os.IBinder;
 import java.util.Map;
+import java.lang.reflect.InvocationTargetException;
 
 public class MemoryInfoHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanMemoryInfoHook";
@@ -98,11 +99,12 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
     try {
       return method.invoke(originalIActivityManager, args);
-    } catch (Exception e) {
-      Log.e(TAG, "AM passthrough failed for " + method.getName());
-      Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
-      Log.e(TAG, "Stack trace: ", e);
-      return null;
+    } catch (InvocationTargetException e) {
+      // Log.e(TAG, "AM passthrough failed for " + method.getName());
+      // Log.e(TAG, "Cause: " + e.getCause() + " Message: " + e.getMessage());
+      // Log.e(TAG, "Stack trace: ", e);
+      
+      throw e.getCause() != null ? e.getCause() : e;
     }
   }
 
