@@ -26,7 +26,7 @@ using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
-#define BIPAN_JAVA_PACKAGE_NAME "com.omarmesqq.bipan.BipanJava"
+#define BIPAN_JAVA_PACKAGE_NAME "b.J"
 
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
