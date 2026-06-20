@@ -96,7 +96,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
   private static final Set<String> FEATURE_ADD_LIST = new HashSet<>(Arrays.asList(
       "android.software.verified_boot",
-      "android.software.device_id_attestation"));
+      "android.software.device_id_attestation",
+      "android.hardware.hardware_keystore",
+      "android.hardware.keystore.app_attest_key"
+    ));
 
   public static volatile Object s_pmProxy = null;
   public static volatile Field s_mPMField = null;
