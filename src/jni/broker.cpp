@@ -171,7 +171,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         close(mem_fd);
       } else {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "startBroker: open /proc/<PID>/mem failed!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/<PID>/mem failed!");
       }
     }
 
@@ -199,13 +199,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
                                   (uintptr_t)ipc_mem->arg2,
                                   envp_dump, sizeof(envp_dump));
 
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
                                   "[execve denied INFO!] path=%s argv=%s",
                                   ipc_mem->string_payload, argv_dump);
           }
 #endif
 
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s) denied]", action_name, path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) denied]", action_name, path_payload);
         }
         break;
       }
@@ -223,12 +223,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
           if (shouldDenyAccess(path_payload)) {
             if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] denied", path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] spoofed", path_payload);
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
@@ -246,16 +246,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             int fake_fd = -1;
             if (is_maps(path_payload)) {
               fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_smaps(path_payload)) {
               fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_mounts(path_payload)) {
               fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat VFS:(%s)] spoofed", path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[openat(%s)] spoofed", path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             }
 
             if (fake_fd >= 0) {
@@ -284,7 +284,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef DEBUG
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Allowing untrusted open: %s", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted open: %s", path_payload);
             }
           }
 #endif
@@ -304,7 +304,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
@@ -315,7 +315,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
           if (shouldDenyAccess(path_payload)) {
             if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[%s(%s)] denied", action_name, path_payload);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] denied", action_name, path_payload);
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
@@ -383,7 +383,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (bind) to LAN blocked");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
             // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
@@ -431,7 +431,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
@@ -447,7 +447,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
             patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
@@ -456,11 +456,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "executable (mmap)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "executable (mmap)");
         break;
       }
       case __NR_mprotect: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mprotect)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(mprotect)");
         break;
       }
       default: {
@@ -576,7 +576,7 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
   FILE* f = fopen(path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
     return;
   }
 
@@ -600,7 +600,7 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
     if (matches < 3) {
       // If we see a non-empty line that doesn't match our regex, it's a parse error
       if (line[0] != '\n' && line[0] != '\0') {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Parse failure on line %d: %s", line_count, line);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line %d: %s", line_count, line);
       }
       continue;
     }
@@ -697,7 +697,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   // Open target's memory for writing
   int mem_fd = open(mem_path, O_WRONLY);
   if (mem_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "failed to open app's memory for checking trust");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] failed to open app's memory for checking trust");
     return;
   }
 

@@ -40,7 +40,7 @@ void registerSignalHandler() {
   // Register signal directly with kernel to bypass libsigchain.so
   ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set SIGSYS handler. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to set SIGSYS handler. Aborting for safety!");
     BIPAN_PANIC();
   }
 }
