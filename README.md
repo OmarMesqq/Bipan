@@ -1,12 +1,14 @@
 # Bipan
 
+<img width="192" height="192" alt="ic_launcher" src="https://github.com/user-attachments/assets/a1f55879-0921-4997-9105-c9f91a207262" />
+
 Bipan is an anti-fingerprinting sandbox for Android which works on a per-app
 basis. For the apps you wish to jail, Bipan applies a set of patches *at runtime*
 which mitigate fingerprinting:
 
-- **Phone identity**: Your mobile device will be seen as a Pixel 8 Pro. This includes
-all fields commonly (and sadly) used for fingerprinting such as `MODEL`, `BRAND`,
-`BOARD`, `FINGERPRINT`, etc, as well results from the `uname` syscall and querying `/proc/version`
+- **Phone identity**: Bipan alters your phone model which is quite often queried by apps (sometimes for legitimate purposes).
+This includes fields commonly (and sadly) used for fingerprinting such as `MODEL`, `BRAND`,
+`BOARD`, `FINGERPRINT`, etc, as well results from the `uname` syscall, `/proc/version` querying, and `sysprops` lookups.
 
 - **Sensors blinding**: some apps will map all available sensors in your device, which, by itself, can be a quite unique identification vector. Furthermore, they query those sensors for behavioral tracking (e.g.: how close you are to the phone (proximity), whether you are in car (accelerometer)) and so on. Bipan blocks this at native (C/C++/NDK) and Java layer.
 
@@ -30,7 +32,7 @@ screen captures/recordings while the app is visible.
 Furthermore, those actions *can be blocked* by the application 
 if it deems the currently shown content as sensitive. Bipan bypasses
 these detection and blocking mechanisms, allowing you to screenshot and record
-whatever you want that's in **your** phone. But please, exercise caution and good sense.
+whatever you want that's in **your** phone. *But please, exercise caution and good sense.*
 
 - **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN devices scanning/detection is defeated and your connection link properties always have a hardcoded fake local IP and trims VPN flags from it, as some apps complain about it.
 
@@ -52,7 +54,7 @@ To learn how Bipan does this refer to [INNARDS.md](./INNARDS.md)
 
 
 ## Prerequisites
-- An Android device running the `aarch64`/`arm64-v8a` architecture and rooted with Magisk >= 26 (`26000`)
+- An Android device running the `aarch64`/`arm64-v8a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
 - Android SDK and NDK. The NDK should be at least `25.1.8937393`.
 - SDK and NDK binaries in your `PATH` as well common Unix CLI utils such as `xxd`
 
@@ -91,6 +93,14 @@ Open the folder in Android studio or `cd` into it and run `./gradlew assembleRel
 The app *does* have `INTERNET` permission but you can remove it
 from the Manifest or turn it off in the OS. It's there to test sockets and
 WebView, no data is sent to me (the code is open! you can see for yourself :)
+
+### Notes (important)
+This project is WIP. Some things may break app funcionality. I mostly use it for learning purposes (and oh boy, am I learning)
+and [navigating this odd world](https://en.wikipedia.org/wiki/Surveillance_capitalism). Regarding compatibility: 
+I am almost 100% sure that the native side of Bipan is guaranteed to work on most common OEM and AOSP ROMs as my kernel is quite old
+and Linus tends to be backwards-compatible regarding kernel stuff. Unfortunately, I can't
+say the same for the Java-layer protections as I make extensive use of reflection on hidden system APIs which may change frequently.
+I'm always using the [latest AOSP release](https://cs.android.com/android/platform/superproject/+/android-latest-release:) as reference for `BipanJava`, so just have that in mind.
 
 ### About
 I'm just a curious person concerned about privacy
