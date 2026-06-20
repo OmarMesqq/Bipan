@@ -18,6 +18,7 @@ import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
+import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
@@ -39,6 +40,7 @@ class MainApplication: Application() {
         Log.d(TAG, "onCreate early query (dumpQueryIntentActivities):\n${dumpQueryIntentActivities(this)}")
         Log.d(TAG, "onCreate early query (dumpGetPackageInfo):\n${dumpGetPackageInfo(this, "com.topjohnwu.magisk")}")
         Log.d(TAG, "onCreate early query (dumpGetInstalledApplications):\n${dumpGetInstalledApplications(this)}")
+        Log.d(TAG, "onCreate early query (dumpGetInstalledPackages):\n${dumpGetInstalledPackages(this)}")
         Log.d(TAG, "onCreate early query (dumpGetApplicationInfo):\n${dumpGetApplicationInfo(this)}")
 
         super.onCreate()

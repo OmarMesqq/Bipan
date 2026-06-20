@@ -25,7 +25,6 @@ import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
-import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.File
@@ -34,6 +33,45 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
+
+
+/**
+ * Does PTR lookups internally and I shouldn't (nor can)
+ * make network requests in the main thread.
+ * As I didn't want to make dumpNetworkInfo suspend,
+ * we got this
+ */
+val deferredIfaces = GlobalScope.async {
+    val sb = StringBuilder()
+    val interfaces = NetworkInterface.getNetworkInterfaces()
+
+    if (interfaces == null) {
+        sb.append("No interfaces found.\n")
+    } else {
+        for (intf in interfaces.asSequence()) {
+            sb.append(formatInterfaceDetails(intf))
+            sb.append("\n")
+        }
+    }
+    return@async sb.toString()
+}
+
+// Maybe I could join all of these?
+val deferredMemInfo = GlobalScope.async {
+    val memInfoPath = "/proc/meminfo"
+    File(memInfoPath).readText(Charsets.UTF_8)
+}
+
+val deferredMemInfoExtra = GlobalScope.async {
+    val memInfoPath = "/proc/meminfo_extra"
+    File(memInfoPath).readText(Charsets.UTF_8)
+}
+
+val deferredCpuInfo = GlobalScope.async {
+    val memInfoPath = "/proc/cpuinfo"
+    File(memInfoPath).readText(Charsets.UTF_8)
+}
+
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -95,26 +133,7 @@ fun dumpInstallerInfo(ctx: Context): String {
     """.trimIndent()
 }
 
-/**
- * Does PTR lookups internally and I shouldn't (nor can)
- * make network requests in the main thread.
- * As I didn't want to make dumpNetworkInfo suspend,
- * we got this
- */
-val deferredIfaces = GlobalScope.async {
-    val sb = StringBuilder()
-    val interfaces = NetworkInterface.getNetworkInterfaces()
 
-    if (interfaces == null) {
-        sb.append("No interfaces found.\n")
-    } else {
-        for (intf in interfaces.asSequence()) {
-            sb.append(formatInterfaceDetails(intf))
-            sb.append("\n")
-        }
-    }
-    return@async sb.toString()
-}
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpNetworkInfo(context: Context): String {
@@ -372,26 +391,16 @@ fun dumpQueryIntentActivities(context: Context): String {
     val pm = context.packageManager
     val sb = StringBuilder()
 
-    // 1. Broad sweep — every app with a launcher icon
+    val amountToShow = 5
     val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
         addCategory(Intent.CATEGORY_LAUNCHER)
     }
     val allApps = pm.queryIntentActivities(launcherIntent, 0)
-    allApps.forEach { info ->
-        sb.appendLine("Apps with Launcher: ${info.activityInfo.packageName}")
+    sb.appendLine("Showing $amountToShow apps with Launcher icon")
+    allApps.take(amountToShow).forEach { info ->
+        sb.appendLine(info.activityInfo.packageName)
     }
 
-    val arbitraryPackages = listOf(
-        "com.spotify.music",
-        "com.topjohnwu.magisk"
-    )
-    allApps.filter { app ->
-        arbitraryPackages.any { prefix ->
-            app.activityInfo.packageName.startsWith(prefix)
-        }
-    }.forEach { app ->
-        sb.appendLine("Desired app found: ${app.activityInfo.packageName}")
-    }
 
     return sb.toString()
 }
@@ -456,22 +465,38 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     return sb.toString()
 }
 
+/**
+ * getInstalledApplications:
+ * runtime info only, no components/permissions
+ */
 fun dumpGetInstalledApplications(context: Context): String {
     val pm = context.packageManager
     val sb = StringBuilder()
 
-    // getInstalledApplications: Lighter: runtime info only, no components/permissions
     val apps: List<ApplicationInfo> =
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
 
-    sb.appendLine("\n=== getInstalledApplications (${apps.size} packages) ===")
-    apps.forEach { app: ApplicationInfo ->
+    val amountToShow = 5
+    sb.appendLine("\n=== getInstalledApplications showing $amountToShow of ${apps.size} apps ===")
+    apps.take(amountToShow).forEach { app: ApplicationInfo ->
         val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
         val isDebuggable = (app.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         sb.appendLine("${app.packageName} | system: $isSystem | debuggable: $isDebuggable")
     }
 
-    // getInstalledPackages: heavier: full PackageInfo per app — components + permissions in one shot
+
+
+    return sb.toString()
+}
+
+/**
+ * getInstalledPackages:
+ * full PackageInfo per app — components + permissions in one shot
+ */
+fun dumpGetInstalledPackages(context: Context): String {
+    val pm = context.packageManager
+    val sb = StringBuilder()
+
     val flags = (
             PackageManager.GET_PERMISSIONS or
                     PackageManager.GET_ACTIVITIES or
@@ -481,8 +506,9 @@ fun dumpGetInstalledApplications(context: Context): String {
             )
     val packages: List<PackageInfo> = pm.getInstalledPackages(flags)
 
-    sb.appendLine("\n=== getInstalledPackages (${packages.size} packages) ===")
-    packages.forEach { pkg: PackageInfo ->
+    val amountToShow = 5
+    sb.appendLine("\n=== getInstalledPackages: showing $amountToShow of ${packages.size} packages ===")
+    packages.take(amountToShow).forEach { pkg: PackageInfo ->
         sb.appendLine("\n${pkg.packageName} v${pkg.versionName}")
         sb.appendLine("  Activities : ${pkg.activities?.size ?: 0}")
         sb.appendLine("  Services   : ${pkg.services?.size ?: 0}")
@@ -506,7 +532,15 @@ fun dumpGetApplicationInfo(context: Context) : String {
     val packageName = "com.whatsapp"
 
     val res = try {
-        pm.getApplicationInfo(packageName, 0)
+        val appInfo = pm.getApplicationInfo(packageName, 0)
+        val sb = StringBuilder()
+        sb.appendLine("App Component Factory: ${appInfo.appComponentFactory}")
+        sb.appendLine("Class name: ${appInfo.className}")
+        sb.appendLine("Enabled ?: ${appInfo.enabled}")
+        sb.appendLine("Minimum SDK: ${appInfo.minSdkVersion}")
+        sb.appendLine("UID: ${appInfo.uid}")
+
+        sb.toString()
     } catch (e: Exception) {
         e.cause
     }
@@ -648,7 +682,6 @@ fun getSomeSystemFeatures(ctx: Context): String {
     return sb.toString()
 }
 
-
 fun getMemoryInfo(context: Context): String {
     val sb = StringBuilder()
     val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -658,8 +691,7 @@ fun getMemoryInfo(context: Context): String {
     sb.appendLine("=== [/proc/meminfo] ===")
     val memInfoPath = "/proc/meminfo"
     try {
-        val cpuInfo = File(memInfoPath).readText(Charsets.UTF_8)
-        sb.append(cpuInfo)
+        sb.append(deferredMemInfo.getCompleted())
     } catch (e: IOException) {
         sb.appendLine("Failed to read $memInfoPath: ${e.message}")
     }
@@ -667,8 +699,7 @@ fun getMemoryInfo(context: Context): String {
     sb.appendLine("=== [/proc/meminfo_extra] ===")
     val memInfoExtraPath = "/proc/meminfo_extra"
     try {
-        val cpuInfo = File(memInfoExtraPath).readText(Charsets.UTF_8)
-        sb.append(cpuInfo)
+        sb.append(deferredMemInfoExtra.getCompleted())
     } catch (e: IOException) {
         sb.appendLine("Failed to read $memInfoExtraPath: ${e.message}")
     }
@@ -695,8 +726,7 @@ fun dumpCpuInfo() : String {
 
     val cpuInfoPath = "/proc/cpuinfo"
     try {
-        val cpuInfo = File(cpuInfoPath).readText(Charsets.UTF_8)
-        sb.append(cpuInfo)
+        sb.append(deferredCpuInfo.getCompleted())
     } catch (e: IOException) {
         sb.appendLine("Failed to read $cpuInfoPath: ${e.message}")
     }
@@ -774,10 +804,29 @@ fun dumpDevProperties(): String {
         sb.block()
     }
     fun row(label: String, value: Any?) =
-        sb.appendLine("  %-45s %s".format("$label:", value ?: "<null>"))
+        sb.appendLine("%s\n%s\n".format("$label:", value ?: "<null>"))
 
+    section("Telephony and Radio - SELinux allowed") {
+        row("gsm.version.baseband",              prop("gsm.version.baseband"))
+        row("gsm.version.ril-impl",              prop("gsm.version.ril-impl"))
+        row("ril.sw_ver",              prop("ril.sw_ver"))
+        row("ril.sw_ver2",              prop("ril.sw_ver2"))
+        row("gsm.operator.alpha",                prop("gsm.operator.alpha"))
+        row("gsm.operator.numeric",              prop("gsm.operator.numeric"))
+        row("gsm.sim.state",                     prop("gsm.sim.state"))
+        row("gsm.network.type",                  prop("gsm.network.type"))
+        row("ro.telephony.default_network",              prop("ro.telephony.default_network"))
+        row("ro.telephony.sim_slots.count",              prop("ro.telephony.sim_slots.count"))
+        row("persist.radio.def_network",     prop("persist.radio.def_network"))
+        row("persist.radio.latest-modeltype",     prop("persist.radio.latest-modeltype"))
+    }
 
-    section("vendor_default_prop (?)") {
+    section("Build props - SELinux allowed") {
+        row("ro.system.build.fingerprint",       prop("ro.system.build.fingerprint"))
+        row("ro.vendor.build.fingerprint",       prop("ro.vendor.build.fingerprint"))
+        row("ro.product.build.fingerprint",      prop("ro.product.build.fingerprint"))
+        row("ro.system_ext.build.fingerprint",   prop("ro.system_ext.build.fingerprint"))
+        row("ro.odm.build.fingerprint",          prop("ro.odm.build.fingerprint"))
         row("ro.vendor.build.version.sdk", prop("ro.vendor.build.version.sdk"))
         row("ro.vendor.build.version.release_or_codename", prop("ro.vendor.build.version.release_or_codename"))
         row("ro.vendor.build.version.release", prop("ro.vendor.build.version.release"))
@@ -793,46 +842,62 @@ fun dumpDevProperties(): String {
         row("ro.product.vendor.manufacturer", prop("ro.product.vendor.manufacturer"))
         row("ro.product.vendor.device", prop("ro.product.vendor.device"))
         row("ro.product.vendor.brand", prop("ro.product.vendor.brand"))
-
+        row("ro.build.flavor", prop("ro.build.flavor"))
     }
 
-    section("telephony_config_prop (?)") {
-        row("ro.telephony.default_network",              prop("ro.telephony.default_network"))
-        row("ro.telephony.sim_slots.count",              prop("ro.telephony.sim_slots.count"))
-    }
-
-    section("telephony_status_prop (?)") {
-        row("gsm.version.baseband",              prop("gsm.version.baseband"))
-        row("gsm.version.ril-impl",              prop("gsm.version.ril-impl"))
-        row("ril.sw_ver",              prop("ril.sw_ver"))
-        row("ril.sw_ver2",              prop("ril.sw_ver2"))
-        row("gsm.operator.alpha",                prop("gsm.operator.alpha"))
-        row("gsm.operator.numeric",              prop("gsm.operator.numeric"))
-        row("gsm.operator.iso-country",          prop("gsm.operator.iso-country"))
-        row("gsm.sim.state",                     prop("gsm.sim.state"))
-        row("gsm.network.type",                  prop("gsm.network.type"))
-    }
-
-
-    section("radio_control_prop (?)") {
-        row("persist.radio.multisim.config",     prop("persist.radio.multisim.config"))
-        row("persist.radio.def_network",     prop("persist.radio.def_network"))
-        row("persist.radio.latest-modeltype",     prop("persist.radio.latest-modeltype"))
-    }
-
-    section("fingerprint_prop (?)") {
-        row("ro.system.build.fingerprint",       prop("ro.system.build.fingerprint"))
-        row("ro.vendor.build.fingerprint",       prop("ro.vendor.build.fingerprint"))
-        row("ro.product.build.fingerprint",      prop("ro.product.build.fingerprint"))
-        row("ro.system_ext.build.fingerprint",   prop("ro.system_ext.build.fingerprint"))
-        row("ro.odm.build.fingerprint",          prop("ro.odm.build.fingerprint"))
-    }
-
-    section("bootloader_prop") {
+    section("Bootloader/AVB/Verity - SELinux allowed") {
         row("ro.bootloader",                     prop("ro.bootloader"))
         row("ro.boot.verifiedbootstate",         prop("ro.boot.verifiedbootstate"))
         row("ro.com.google.clientidbase",         prop("ro.com.google.clientidbase"))
+        row("ro.boot.selinux",         prop("ro.boot.selinux"))
+        row("ro.boot.warranty_bit",         prop("ro.boot.warranty_bit"))
+        row("ro.boot.hardware",         prop("ro.boot.hardware"))
+        row("ro.boot.boot_devices",         prop("ro.boot.boot_devices"))
     }
+
+    section("Persist/Init Section - SELinux allowed") {
+        row("persist.sys.usb.config",         prop("persist.sys.usb.config"))
+        row("init.svc.adbd",         prop("init.svc.adbd"))
+    }
+
+    section("telephony_status_prop") {
+        row("gsm.operator.iso-country",          prop("gsm.operator.iso-country"))
+        row("gsm.sim.operator.iso-country", prop("gsm.sim.operator.iso-country"))
+        row("gsm.sim.operator.numeric", prop("gsm.sim.operator.numeric"))
+    }
+
+    section("radio_control_prop") {
+        row("persist.radio.multisim.config",     prop("persist.radio.multisim.config"))
+    }
+
+    section("build_bootimage_prop") {
+        row("ro.bootimage.build.fingerprint",         prop("ro.bootimage.build.fingerprint"))
+        row("ro.bootimage.build.type",         prop("ro.bootimage.build.type"))
+        row("ro.bootimage.build.tags",         prop("ro.bootimage.build.tags"))
+    }
+
+
+    section("userdebug_or_eng_prop") {
+        row("ro.debuggable",         prop("ro.debuggable"))
+        row("ro.secure",         prop("ro.secure"))
+    }
+
+    section("custom_version_prop") {
+        row("ro.lineage.version",         prop("ro.lineage.version"))
+        row("ro.lineage.releasetype",         prop("ro.lineage.releasetype"))
+    }
+
+    section("init_service_status_private_prop") {
+        row("init.svc.adb_root",         prop("init.svc.adb_root"))
+        row("init.svc.flash_recovery",         prop("init.svc.flash_recovery"))
+        row("init.svc.usbd",         prop("init.svc.usbd"))
+        row("init.svc.vaultkeeper",         prop("init.svc.vaultkeeper"))
+    }
+
+    section("serialno_prop") {
+        row("ro.serialno",         prop("ro.serialno"))
+    }
+
 
     return sb.toString()
 }

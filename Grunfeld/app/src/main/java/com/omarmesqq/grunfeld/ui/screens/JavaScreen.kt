@@ -32,6 +32,7 @@ import com.omarmesqq.grunfeld.utils.dumpCpuInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
+import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
 import com.omarmesqq.grunfeld.utils.dumpGsfId
@@ -42,6 +43,8 @@ import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -50,16 +53,17 @@ fun JavaInfoScreen() {
 
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
 
-    var javaSensorsReport by remember { mutableStateOf("Sensors not tested at Java layer yet") }
+    var javaSensorsReport by remember { mutableStateOf("Sensors not tested yet") }
 
     var netInfo by remember { mutableStateOf("") }
 
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
-    var getInstalledPackagesInfo by remember { mutableStateOf("Installed applications not queried") }
-    var applicationInfoForSelf by remember { mutableStateOf("Get Application info not queried") }
-    var getSystemAvailableFeaturesInfo by remember { mutableStateOf("getSystemAvailableFeatures not queried") }
+    var getInstalledApplicationsInfo by remember { mutableStateOf("Installed applications not queried") }
+    var getInstalledPackagesInfo by remember { mutableStateOf("Installed packages not queried") }
+    var applicationInfoForSelf by remember { mutableStateOf("Application info not queried") }
+    var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
     var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
     var memInfo by remember { mutableStateOf("Memory not queried") }
@@ -163,16 +167,28 @@ fun JavaInfoScreen() {
                 Text("getPackageInfo(\"Magisk\")")
             }
 
-            Text(text = "Get Installed Applications and Packages", style = MaterialTheme.typography.titleMedium)
+            Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
+
+            ReportTextWithCopy(getInstalledApplicationsInfo, "Installed applications not queried")
+            Button(
+                onClick = {
+                    getInstalledApplicationsInfo = dumpGetInstalledApplications(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getInstalledApplications()")
+            }
+
+            Text(text = "Get Installed Packages", style = MaterialTheme.typography.titleMedium)
 
             ReportTextWithCopy(getInstalledPackagesInfo, "Installed applications not queried")
             Button(
                 onClick = {
-                    getInstalledPackagesInfo = dumpGetInstalledApplications(context)
+                    getInstalledPackagesInfo = dumpGetInstalledPackages(context)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getInstalledApplications() && getInstalledPackages()")
+                Text("getInstalledPackages()")
             }
 
             Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
