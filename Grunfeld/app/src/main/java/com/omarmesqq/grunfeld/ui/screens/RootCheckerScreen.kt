@@ -13,6 +13,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,13 +23,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.scottyab.rootbeer.RootBeer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
+
+suspend fun checkRoot(ctx: Context): String {
+    var isRooted = ""
+    withContext(Dispatchers.IO) {
+        val rootBeer = RootBeer(ctx)
+        isRooted = if (rootBeer.isRooted) "Rooted!" else "NOT rooted"
+    }
+    return isRooted
+}
 
 @Composable
 fun RootCheckerScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
+
     var isRootedInfo by remember { mutableStateOf("Root not checked") }
+    LaunchedEffect(isRootedInfo) {
+        isRootedInfo = checkRoot(context)
+    }
 
     Column(
         modifier = Modifier
@@ -39,26 +55,8 @@ fun RootCheckerScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "RootBeer check", style = MaterialTheme.typography.titleMedium)
-
-            ReportTextWithCopy(isRootedInfo, "Root not checked")
-            Button(
-                onClick = {
-                    isRootedInfo = checkRootWithRootBeer(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("checkRootWithRootBeer()")
-            }
+            Text(text = "RootBeer check", style = MaterialTheme.typography.titleLarge)
+            Text(text = isRootedInfo, style = MaterialTheme.typography.titleMedium)
         }
-    }
-}
-
-private fun checkRootWithRootBeer(ctx: Context): String {
-    val rootBeer = RootBeer(ctx)
-    if (rootBeer.isRooted) {
-        return "Rooted"
-    } else {
-        return "NOT rooted"
     }
 }
