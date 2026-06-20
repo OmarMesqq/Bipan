@@ -44,14 +44,12 @@ fun NativeScreen() {
 
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
-    var mapsReport by remember { mutableStateOf("Maps not scanned yet") }
-    var smapsReport by remember { mutableStateOf("Smaps not scanned yet") }
 
     var bindReport by remember { mutableStateOf("bind not tested yet") }
     var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
-    var socketReport by remember { mutableStateOf("socket not tested yet") }
+    var socketReport by remember { mutableStateOf("AF_NETLINK socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
@@ -111,27 +109,6 @@ fun NativeScreen() {
                 }
             }
 
-            SectionHeader("FILESYSTEM")
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "/proc/self/maps", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(mapsReport, "Maps not scanned yet")
-                    Button(onClick = { mapsReport = NativeLibWrapper.scanMaps() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Scan /proc/self/maps")
-                    }
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "/proc/self/smaps", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(smapsReport, "Smaps not scanned yet")
-                    Button(onClick = { smapsReport = NativeLibWrapper.scanSmaps() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Scan /proc/self/smaps")
-                    }
-                }
-            }
-
             SectionHeader("NETWORKING")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -166,8 +143,8 @@ fun NativeScreen() {
                     }
                 }
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("socket()")
-                    ReportTextWithCopy(socketReport, "socket not tested yet")
+                    CodeTitle("socket(AF_NETLINK)")
+                    ReportTextWithCopy(socketReport, "AF_NETLINK socket not tested yet")
                     Button(onClick = { socketReport = NativeLibWrapper.testSocket() }, modifier = Modifier.fillMaxWidth()) {
                         Text("AF_NETLINK socket")
                     }
@@ -176,7 +153,7 @@ fun NativeScreen() {
                     CodeTitle("sendmsg()")
                     ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                     Button(onClick = { sendmsgReport = NativeLibWrapper.testSendmsg() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("sendmsg")
+                        Text("sendmsg LAN")
                     }
                 }
             }
