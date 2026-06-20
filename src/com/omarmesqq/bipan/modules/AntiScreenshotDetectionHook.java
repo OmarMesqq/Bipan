@@ -58,7 +58,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
         new Class[] { iWindowManagerClz },
         (proxy, method, args) -> {
           if ("registerScreenRecordingCallback".equals(method.getName())) {
-            Log.w(TAG, "Blocked screen-recording registration: " + method.getName());
+            Log.i(TAG, "Blocked screen-recording registration: " + method.getName());
             return false;
           }
 
@@ -111,7 +111,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
     // Screenshot
     IBinder realActivityTaskBinder = (IBinder) getService.invoke(null, "activity_task");
     if (realActivityTaskBinder == null) {
-      Log.e(TAG, "realActivityTaskBinder is null, attempting fallback...");
+      Log.w(TAG, "realActivityTaskBinder is null, attempting fallback...");
       realActivityTaskBinder = (IBinder) getService.invoke(null, "activity");
     }
 
@@ -159,7 +159,7 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
     String methodName = method.getName();
 
     if (methodName.equals("registerScreenCaptureObserver")) {
-      Log.w(TAG, "Blocked screenshot detection method: " + methodName);
+      Log.i(TAG, "Blocked screenshot detection method: " + methodName);
       return null;
     }
 

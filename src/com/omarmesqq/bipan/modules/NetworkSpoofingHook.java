@@ -147,17 +147,16 @@ public class NetworkSpoofingHook implements BaseHook {
               null // extraInfo
           );
 
-          // Heuristic for VPN detection, we abort
-          if (ni.getExtraInfo() != null ||
-              ni.getExtraInfo() != "" ||
-              "VPN".equals(ni.getTypeName())) {
+          // If VPN, we abort
+          if ("VPN".equals(ni.getTypeName())) {
             throw new OutOfMemoryError();
           }
           return ni;
         }
+      } else {
+        Log.w(TAG, "allowing connHandler synchronous method: " + method.getName());
       }
 
-      Log.w(TAG, "allowing connHandler synchronous method: " + method.getName());
       return result;
     };
 
