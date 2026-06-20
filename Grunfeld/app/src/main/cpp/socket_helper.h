@@ -35,7 +35,7 @@ typedef struct {
 
 
 #define RANDOM_EPHEMERAL_PORT 0 // client behavior
-#define ARBITRARY_PORT 8080 // server behavior
+#define ARBITRARY_PORT 5353 // server behavior
 
 
 SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto);
