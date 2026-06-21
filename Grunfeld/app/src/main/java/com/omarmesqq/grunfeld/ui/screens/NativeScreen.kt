@@ -51,6 +51,7 @@ fun NativeScreen() {
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var socketReport by remember { mutableStateOf("AF_NETLINK socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
+    var getifaddrsReport by remember { mutableStateOf("getifaddrs not tested yet") }
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
@@ -154,6 +155,13 @@ fun NativeScreen() {
                     ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                     Button(onClick = { sendmsgReport = NativeLibWrapper.testSendmsg() }, modifier = Modifier.fillMaxWidth()) {
                         Text("sendmsg LAN")
+                    }
+                }
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("getifaddrs()")
+                    ReportTextWithCopy(getifaddrsReport, "getifaddrs not tested yet")
+                    Button(onClick = { getifaddrsReport = NativeLibWrapper.getifaddrs() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Enumerate interfaces")
                     }
                 }
             }
