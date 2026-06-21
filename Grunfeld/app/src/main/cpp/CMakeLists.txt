@@ -18,10 +18,18 @@ target_compile_options(grunfeld PRIVATE
     -Wdouble-promotion
     -fvisibility=hidden
     -Wno-unused-parameter
+    -ffunction-sections
+    -fdata-sections
 )
 
 # Align the lib to 16KB (Android 15+ requirement)
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+target_link_options(grunfeld PRIVATE
+        "-Wl,-z,max-page-size=16384"
+        "-Wl,--gc-sections"
+        "-Wl,--exclude-libs,ALL"
+        "-Wl,--icf=all"
+)
+
 
 # Link dependencies
 target_link_libraries(grunfeld log android)

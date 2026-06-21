@@ -211,22 +211,22 @@ fun NativeScreen() {
             }
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(18.dp)
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF00FF00))
-                .clickable { /* Handle action */ },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.WifiOff,
-                contentDescription = "Close sockets",
-                tint = Color.Black,
-                modifier = Modifier.size(24.dp)
-            )
-        }
+//        Box(
+//            modifier = Modifier
+//                .align(Alignment.BottomEnd)
+//                .padding(18.dp)
+//                .size(56.dp)
+//                .clip(CircleShape)
+//                .background(Color(0xFF00FF00))
+//                .clickable { /* Handle action */ },
+//            contentAlignment = Alignment.Center
+//        ) {
+//            Icon(
+//                imageVector = Icons.Default.WifiOff,
+//                contentDescription = "Close sockets",
+//                tint = Color.Black,
+//                modifier = Modifier.size(24.dp)
+//            )
+//        }
     }
 }
