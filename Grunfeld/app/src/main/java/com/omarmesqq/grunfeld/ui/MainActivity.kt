@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.Construction
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Public
@@ -39,6 +40,7 @@ open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object RootCheckerScreen : Screen("root-check", "Root Check", Icons.Default.Android)
     object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
     object AboutScreen : Screen("about", "About", Icons.Default.Info)
+    object LogcatScreen : Screen("logcat", "Logcat", Icons.Default.Construction)
 }
 
 private const val TAG = "MainActitvity"
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition {
             !viewModel.isReady.value
         }
+
         // TODO: read from datastore or sth
         this.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
 

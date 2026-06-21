@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Construction
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -40,6 +41,11 @@ fun MoreScreen(navController: NavHostController) {
             title = "About",
             icon = { Icon(Icons.Default.Info, contentDescription = "Info") },
             onClick = { navController.navigate(Screen.AboutScreen.route) }
+        ),
+        MoreItem(
+            title = "Logcat",
+            icon = { Icon(Icons.Default.Construction, contentDescription = "Logcat") },
+            onClick = { navController.navigate(Screen.LogcatScreen.route) }
         ),
     )
 

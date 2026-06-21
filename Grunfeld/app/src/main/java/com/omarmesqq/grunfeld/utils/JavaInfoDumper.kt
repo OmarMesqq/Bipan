@@ -27,8 +27,10 @@ import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
+import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
+import java.io.InputStreamReader
 import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
@@ -929,10 +931,49 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
 
 
-    // sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
+     sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
 
     sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
+
+    return sb.toString()
+}
+
+
+fun readLogcatWithRuntime(): String {
+    val process =  Runtime.getRuntime().exec("logcat -d")
+    val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
+    val sb = StringBuilder()
+    for (i in 1..5) {
+        sb.appendLine(bufferedReader.readLine())
+    }
+    return sb.toString()
+}
+
+fun readLogcatWithProcessBuilder(): String {
+    val sb = StringBuilder()
+
+    val processBuilder = ProcessBuilder()
+    processBuilder.command("logcat", "-v color -v brief")
+    val process = processBuilder.start()
+
+    val exitCode = process.waitFor()
+
+    val inputStream = process.inputStream
+    val errorStream = process.errorStream
+
+    sb.appendLine("Input Stream")
+    sb.appendLine(inputStream.bufferedReader().readText())
+    sb.appendLine("Error Stream")
+    val errors = errorStream.bufferedReader().readText()
+    sb.appendLine(errors)
+
+    inputStream.bufferedReader().close()
+    errorStream.bufferedReader().close()
+    inputStream.close()
+    errorStream.close()
+
+    sb.appendLine("Process exit with code $exitCode")
 
     return sb.toString()
 }
