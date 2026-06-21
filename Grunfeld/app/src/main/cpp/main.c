@@ -16,6 +16,9 @@
 #include <errno.h>
 #include "test_runner.h"
 #include <stdlib.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <ifaddrs.h>
 
 #include "shared.h"
 #include "socket_helper.h"
@@ -279,12 +282,26 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jo
 }
 
 JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobject thiz, jobject context) {
+    struct ifaddrs *ifaddr;
+    const char* successBuf = "SUCCESS";
+    const char* failBuf = "FAILED";
+
+    if (getifaddrs(&ifaddr) == -1) {
+        LOGE("getifaddrs failed! Errno: %d", errno);
+        return (*env)->NewStringUTF(env, failBuf);
+    }
+
+    return (*env)->NewStringUTF(env, successBuf);
+}
+
+JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
     char report[8192] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    #define ADDRESS_COUNT 6
+    #define ADDRESS_COUNT 5
     #define PORT_COUNT 2
     #define PROTO_COUNT 2
     #define FAM_COUNT 2
@@ -294,7 +311,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             "::1", // IPv6 localhost
             "0.0.0.0", // IPv4 unspecified
             "::", // IPv6 unspecified
-            "192.168.68.117", // phone lan ip
             "10.111.222.1", // phone lan ip
     };
 
