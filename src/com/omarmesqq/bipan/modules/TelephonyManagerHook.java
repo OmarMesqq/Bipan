@@ -2,6 +2,7 @@ package com.omarmesqq.bipan.modules;
 
 import android.content.Context;
 import android.os.IBinder;
+import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import com.omarmesqq.bipan.BaseHook;
@@ -232,6 +233,11 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
           return CARRIER_ID;
         }
         return TelephonyManager.UNKNOWN_CARRIER_ID;
+      }
+
+      case "getServiceState": {
+        Log.i(TAG, "Neutered getServiceState");
+        return new ServiceState(); 
       }
 
       default:

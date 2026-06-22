@@ -46,7 +46,7 @@ inline void send_fd(int socket, int fd) {
  */
 __attribute__((always_inline)) inline int recv_fd(int socket) {
   struct msghdr msg;
-  my_memset(&msg, 0, sizeof(msg));  // Freestanding initialization
+  my_memset(&msg, 0, sizeof(msg));
 
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
@@ -60,7 +60,6 @@ __attribute__((always_inline)) inline int recv_fd(int socket) {
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  // Use raw syscall instead of libc recvmsg!
   if (arm64_raw_syscall(__NR_recvmsg, socket, (long)&msg, 0, 0, 0, 0) <= 0) {
     return -1;
   }

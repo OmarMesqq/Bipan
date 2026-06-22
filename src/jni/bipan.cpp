@@ -96,6 +96,9 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] 2nd root companion sockfd: %d", g_broker_socket);
+
+
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -260,6 +263,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
       BIPAN_PANIC();
     }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] 1st root companion sockfd: %d", fd);
 
     // Tell the companion we want to fetch the targets list
     int cmd = CMD_FETCH_TARGETS;

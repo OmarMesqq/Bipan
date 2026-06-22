@@ -94,6 +94,38 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // Anti-anti tamper
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+#ifdef DEBUG
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_inotify_add_watch, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_inotify_init1, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_inotify_rm_watch, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mq_notify, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents64, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettimeofday, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_getres, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_nanosleep, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+#endif
 
       // Networking
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_bind, 0, 1),

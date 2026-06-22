@@ -81,7 +81,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (r == 0 && arg1 != 0) {
       struct sockaddr* s = (struct sockaddr*)arg1;
       scrub_socket(s);
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
       BIPAN_PANIC();
@@ -134,6 +134,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] SIGSYS handler openat memfd: %d", pre_fd);
     // openat takes up to 4 args, so use arg5 as slot for the pre-FD
     ipc_mem->arg5 = pre_fd;
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
