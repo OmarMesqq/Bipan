@@ -1,7 +1,5 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,10 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
@@ -56,7 +46,7 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
-    var procSelfFdReport by remember { mutableStateOf("/proc/self/fd not read yet") }
+    var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -173,10 +163,10 @@ fun NativeScreen() {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Open file descriptors", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfFdReport, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelfFdReport = NativeLibWrapper.getfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/fd")
+                    Text(text = "Get /proc/self/maps FD and possible link", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfMapsFdInfo, "/proc/self/maps FD not read yet")
+                    Button(onClick = { procSelfMapsFdInfo = NativeLibWrapper.getprocselfmapsFd() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("open(/proc/self/fd) && readlink(maps)")
                     }
                 }
 
