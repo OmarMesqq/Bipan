@@ -18,4 +18,5 @@ object NativeLibWrapper {
     external fun getifaddrs():String
     external fun getallfds():String
     external fun getprocselfmapsFd():String
+    external fun inspectLibcHooks(): String
 }
