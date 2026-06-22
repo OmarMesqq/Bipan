@@ -41,10 +41,9 @@ import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
+import com.omarmesqq.grunfeld.utils.getPlayInstallReferrerInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -74,6 +73,7 @@ fun JavaInfoScreen() {
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
+    var playInstallReferrerInfo by remember { mutableStateOf("playInstallReferrerInfo not queried") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
@@ -314,6 +314,20 @@ fun JavaInfoScreen() {
 
             Text(
                 text = mediaDrmIdInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Button(
+                onClick = {
+                    playInstallReferrerInfo = getPlayInstallReferrerInfo(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Play Install Referrer Info")
+            }
+
+            Text(
+                text = playInstallReferrerInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
         }
