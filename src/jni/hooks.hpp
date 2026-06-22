@@ -193,6 +193,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"init.svc.usbd", "stopped"},
     {"init.svc.vaultkeeper", ""},
+    {"ro.hardware.chipname", ""},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {

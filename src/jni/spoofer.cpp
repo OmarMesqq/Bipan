@@ -39,7 +39,9 @@ int create_spoofed_file(const char* fake_content) {
 
 long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    return -1;
+  }
 
   long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
@@ -55,7 +57,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   auto process_and_write_line = [&](char* l, unsigned long len) {
     l[len] = '\0';
 
-    // CRITICAL: Always allow these or the app will crash
+    // Important to allow
     bool is_vital = local_strstr(l, "[stack]") ||
                     local_strstr(l, "[vdso]") ||
                     local_strstr(l, "[vvar]") ||
@@ -88,7 +90,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     }
   }
 
-  // THE FIX: Flush the last line if it didn't end in \n
+  // flush the last line if it didn't end in \n
   if (line_pos > 0) {
     process_and_write_line(line, line_pos);
   }
@@ -100,7 +102,9 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
 long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    return -1;
+  }
 
   long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
@@ -146,7 +150,9 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
 long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    return -1;
+  }
 
   long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {

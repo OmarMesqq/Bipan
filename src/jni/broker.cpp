@@ -229,11 +229,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -350,6 +348,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
           uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv4 bind request to port %d", port);
 
           // Allow 0.0.0.0
           if (ip4 != 0x00000000) {
@@ -361,6 +360,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv6 bind request to port %d", port);
 
           // Allow ::
           bool is_v6_unspecified = true;
@@ -456,11 +456,63 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "executable (mmap)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
         break;
       }
       case __NR_mprotect: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(mprotect)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
+        break;
+      }
+      case __NR_memfd_create: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (memfd_create)!");
+        break;
+      }
+      case __NR_inotify_add_watch: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_add_watch)!");
+        break;
+      }
+      case __NR_inotify_init1: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_init1)!");
+        break;
+      }
+      case __NR_inotify_rm_watch: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_rm_watch)!");
+        break;
+      }
+      case __NR_mq_notify: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
+        break;
+      }
+      case __NR_getdents64: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (getdents64)!");
+        break;
+      }
+      case __NR_readlinkat: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (readlinkat)!");
+        break;
+      }
+      case __NR_mincore: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mincore)!");
+        break;
+      }
+      case __NR_nanosleep: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (nanosleep)!");
+        break;
+      }
+      case __NR_clock_gettime: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
+        break;
+      }
+      case __NR_gettimeofday: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (gettimeofday)!");
+        break;
+      }
+      case __NR_clock_getres: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_getres)!");
+        break;
+      }
+      case __NR_clock_nanosleep: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_nanosleep)!");
         break;
       }
       default: {

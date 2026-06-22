@@ -55,18 +55,22 @@ static void handle_fetch_targets(int fd) {
 static void companion_handler(int sock) {
   CompanionCommand cmd;
 
-  // 1. Read the command ID from the client
+  // Get the command ID from the client
   if (read(sock, &cmd, sizeof(cmd)) <= 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler failed to read CMD from target!");
     return;
   }
 
-  // 2. Route the request
+  // Multiplexing: route the request
   if (cmd == CMD_FETCH_TARGETS) {
     handle_fetch_targets(sock);
   } else if (cmd == CMD_START_BROKER) {
     // Receive the Memory FD from the Target App
     int memfd = recv_fd(sock);
-    if (memfd < 0) return;
+    if (memfd < 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler failed to receive memfd from target!");
+      return;
+    }
 
     // Map the memory for THIS specific app's thread
     SharedIPC* local_ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
