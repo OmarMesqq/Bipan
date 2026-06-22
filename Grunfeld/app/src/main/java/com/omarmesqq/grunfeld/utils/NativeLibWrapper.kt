@@ -16,4 +16,5 @@ object NativeLibWrapper {
     external fun blockSigSys(): Boolean
     external fun queryProcStatus():String
     external fun getifaddrs():String
+    external fun getfds():String
 }

@@ -56,6 +56,7 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
+    var procSelfFdReport by remember { mutableStateOf("/proc/self/fd not read yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -171,6 +172,14 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Open file descriptors", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfFdReport, "/proc/self/fd not read yet")
+                    Button(onClick = { procSelfFdReport = NativeLibWrapper.getfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/fd")
+                    }
+                }
+
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(text = "Attempt to overwrite SIGSYS handler", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
