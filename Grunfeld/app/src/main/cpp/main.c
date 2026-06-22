@@ -51,7 +51,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
- static inline void dump (void *p, int n);
+ static inline void dump (void *p, int n, char* report);
  static inline void print_bytes(void *p, int n);
 
 __attribute__((constructor))
@@ -275,66 +275,23 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectLibcHooks(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
-    char entry[8192] = {0};
+    char finalReport[8192] = {0};
+    char entry[256];
+    int bytesToInspect = 28;
 
-    void* syspropGet = __system_property_get;
-    void* syspropFind = __system_property_find;
-    void* syspropReadCb = __system_property_read_callback;
+    snprintf(entry, sizeof(entry), "__system_property_get at %p. First %d bytes:\n\n", (void *) __system_property_get, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_get, bytesToInspect, finalReport);
 
+    snprintf(entry, sizeof(entry), "\n__system_property_find at %p. First %d bytes:\n\n", (void *) __system_property_find, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_find, bytesToInspect, finalReport);
 
-    snprintf(entry, sizeof(entry), "syspropGet at %p. First 28 bytes:\n\n", syspropGet);
-    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\n__system_property_read_callback at %p. First %d bytes:\n\n", (void *) __system_property_read_callback, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_read_callback, bytesToInspect, finalReport);
 
-    int n = 28;
-    unsigned char *p1 = (unsigned char *) syspropGet;
-    while (n--) {
-        if (n % 4 == 0) {
-            snprintf(entry, sizeof(entry),"%02x\n", *p1);
-        } else {
-            snprintf(entry, sizeof(entry),"%02x ", *p1);
-        }
-        strcat(report, entry);
-
-        p1++;
-    }
-
-
-
-    snprintf(entry, sizeof(entry), "\nsyspropFind at %p. First 28 bytes:\n\n", syspropFind);
-    strcat(report, entry);
-
-    int n1 = 28;
-    unsigned char *p2 = (unsigned char *) syspropFind;
-    while (n1--) {
-        if (n1 % 4 == 0) {
-            snprintf(entry, sizeof(entry),"%02x\n", *p2);
-        } else {
-            snprintf(entry, sizeof(entry),"%02x ", *p2);
-        }
-        strcat(report, entry);
-
-        p2++;
-    }
-
-
-    snprintf(entry, sizeof(entry), "\nsyspropReadCb at %p. First 28 bytes:\n\n", syspropReadCb);
-    strcat(report, entry);
-
-    int n2 = 28;
-    unsigned char *p3 = (unsigned char *) syspropFind;
-    while (n2--) {
-        if (n2 % 4 == 0) {
-            snprintf(entry, sizeof(entry),"%02x\n", *p3);
-        } else {
-            snprintf(entry, sizeof(entry),"%02x ", *p3);
-        }
-        strcat(report, entry);
-
-        p3++;
-    }
-    
-    return (*env)->NewStringUTF(env, report);
+    return (*env)->NewStringUTF(env, finalReport);
 }
 
 
@@ -940,10 +897,17 @@ static inline void early_init_maps_test(void) {
 }
 
 
-static inline void dump (void *p, int n) {
+static inline void dump(void *p, int n, char *report) {
+    char entry[64];
     unsigned char *p1 = p;
     while (n--) {
-        printf("%d ", *p1);
+        if (n % 4 == 0) {
+            snprintf(entry, sizeof(entry), "%02x\n", *p1);
+        }
+        else {
+            snprintf(entry, sizeof(entry), "%02x ", *p1);
+        }
+        strcat(report, entry);
         p1++;
     }
 }
