@@ -41,6 +41,8 @@ jmp_buf jump_buffer;
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 
+static int procSelfMapsFd = -1;
+
 static inline void early_init_sysprop_test(void);
 static inline void early_init_maps_test(void);
 static const char* proto_to_str(int proto);
@@ -271,7 +273,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
 
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getfds(JNIEnv *env, jobject thiz, jobject context) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";
     char report[16384] = {0};
     size_t used = 0;
@@ -313,39 +315,56 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getfds(JNIEnv *env, jobject t
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_opencpuinfo(JNIEnv *env, jobject thiz, jobject context) {
-    const char *path = "/proc/cpuinfo";
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env, jobject thiz) {
+    const char* path = "/proc/self/fd";
+    char report[16384] = {0};
+    size_t used = 0;
+    report[0] = '\0';
 
-    long fd = arm64_raw_syscall(__NR_openat,
-                                (long)AT_FDCWD,
-                                (long)path,
-                                (long)O_RDONLY,
-                                0, 0, 0);
-
-    if (fd == -1) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "Failed to open %s (errno=%d)", path, errno);
-        return (*env)->NewStringUTF(env, msg);
+    struct DIR* dir = opendir(path);
+    if (dir == NULL) {
+        return (*env)->NewStringUTF(env, "Failed to open directory");
     }
 
-    char linkpath[PATH_MAX];
-    snprintf(linkpath, sizeof(linkpath), "%s", path);
 
-    char target[PATH_MAX];
-    ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // skip . and ..
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
 
-    char entry[512];
-    if (len < 0) {
-        snprintf(entry, sizeof(entry),"Opened %s (fd=%ld), but readlink failed (errno=%d)", path, fd, errno);
-        close((int)fd);
-        return (*env)->NewStringUTF(env, entry);
+        // Ugly heuristic: the fd is usually 2 digits
+        int conversionRet = atoi(entry->d_name);
+        if (conversionRet != procSelfMapsFd) {
+            continue;
+        }
+
+        // Build "/proc/self/fd/<entry>"
+        char linkpath[PATH_MAX];
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", path, entry->d_name);
+        if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
+            continue;
+        }
+
+        // Read symlink target
+        char target[PATH_MAX];
+        ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+        if (len < 0) {
+            continue;
+        }
+        target[len] = '\0';
+
+        int line = snprintf(report + used, sizeof(report) - used, "%s -> %s\n", entry->d_name, target);
+        if (line < 0 || (size_t)line >= sizeof(report) - used) {
+            break;
+        }
+        used += (size_t)line;
     }
 
-    target[len] = '\0';
-    snprintf(entry, sizeof(entry),"Opened %s (fd=%ld), readlink target: %s", path, fd, target);
-
-    close((int)fd);
-    return (*env)->NewStringUTF(env, entry);
+    closedir(dir);
+    close((int) procSelfMapsFd);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -765,8 +784,6 @@ static const char* fam_to_str(int fam) {
     }
 }
 
-
-
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
   LOGE("Should never reach here...");
   _exit(-1);
@@ -837,23 +854,23 @@ static inline void early_init_maps_test(void) {
         return;
     }
     LOGI("/proc/self/maps fd: %d", (int) fd);
+    procSelfMapsFd = (int) fd;
 
     char linkpath[PATH_MAX];
     snprintf(linkpath, sizeof(linkpath), "%s", path);
 
     char target[PATH_MAX];
     ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
-
-    char entry[512];
     if (len < 0) {
-        LOGE("Failed to readlink /proc/self/maps");
+        LOGE("Failed to readlink (/proc/self/maps)");
         return;
     }
     target[len] = '\0';
 
-    LOGE("Opened %s (fd=%ld), readlink target: %s", path, fd, target);
+    LOGD("Opened %s (fd=%ld), readlink target: %s", path, fd, target);
 
-//    close((int)fd);
+    // will be closed by Kotlin via JNI in NativeScreen
+    // close((int)fd);
 }
 
 
