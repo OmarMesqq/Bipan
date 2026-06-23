@@ -17,7 +17,7 @@ Some examples are `SSAID` and `boot_count`. Bipan spoofs
 the former at each app launch<sup>[1]</sup> and
 always provides a fixed number of boot counts.
 
-- **Unlocking usage of apps**: apps, more frequently though, Crash Reporting SDKS, occasionally check whether the application was installed from an official App Store or if it was sideloaded. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps.
+- **Unlocking usage of apps**: apps, more frequently though, Crash Reporting SDKs, occasionally check whether the application was installed from an official App Store or if it was sideloaded. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps.
 Additionally, some apps, like banking and gaming ones, will flag or block you
 from using the app if you have Development Settings turned on your phone.
 Bipan reports `adb_enabled`, `development_settings_enabled`, and `wait_for_debugger` as false in all targeted apps.
@@ -34,11 +34,11 @@ if it deems the currently shown content as sensitive. Bipan bypasses
 these detection and blocking mechanisms, allowing you to screenshot and record
 whatever you want that's in **your** phone. *But please, exercise caution and good sense.*
 
-- **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN devices scanning/detection is defeated and your connection link properties always have a hardcoded fake local IP and trims VPN flags from it, as some apps complain about it.
+- **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN probing is either spoofed or blocked, your connection link properties always have a hardcoded fake local IP and VPN flags trimmed, as some apps complain about it.
 
-- **Some security measures**: Bipan blocks requests for the `listen` syscall, which allow your phone to act as server and accept inbound connections<sup>[2]</sup>. Direct binary execution via `execve`/`execveat` is strictly forbidden. Some apps use this for root checking, reading its own `logcat` or straight-up opening a shell!
+- **Some security measures**: Bipan blocks requests for the `listen` syscall, which allows your phone to act as server and accept inbound connections<sup>[2]</sup>. Direct binary execution via `execve`/`execveat` is strictly forbidden. Some apps use this for root checking, reading its own `logcat` or straight-up opening a shell!
 
-- **Root hiding**: I need to be extra careful here. Bipan *does* successfully spoof `su` binaries and tampered mounts common in Magisk, but recall root discovery has evolved significatly and some app developers will resort to the Play Integrity API which Bipan has absolutely no control over.
+- **Root hiding**: I need to be extra careful here. Bipan *does* successfully spoof `su` binaries and tampered mounts common in Magisk, but recall root discovery has evolved significantly and some app developers will resort to the Play Integrity API which Bipan has absolutely no control over.
 
 - **Protection of sensitive filesystem nodes**: potentially identifying and indicators of tampering like `/etc/hosts`, `cpuinfo`, `meminfo`, `build.prop`,
 user-added CAs are shielded by Bipan.
