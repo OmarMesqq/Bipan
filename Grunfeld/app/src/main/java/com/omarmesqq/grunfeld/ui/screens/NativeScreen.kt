@@ -47,6 +47,7 @@ fun NativeScreen() {
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
+    var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var libcHooksInfo by remember { mutableStateOf("libc not inspected yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -168,6 +169,14 @@ fun NativeScreen() {
                     ReportTextWithCopy(procSelfMapsFdInfo, "/proc/self/maps FD not read yet")
                     Button(onClick = { procSelfMapsFdInfo = NativeLibWrapper.getprocselfmapsFd() }, modifier = Modifier.fillMaxWidth()) {
                         Text("open(/proc/self/fd) && readlink(maps)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get all FDs and their links", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Dump all FDs and their symlinks")
                     }
                 }
 
