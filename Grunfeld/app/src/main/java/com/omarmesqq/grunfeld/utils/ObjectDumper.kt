@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.util.Log
+import android.util.ArraySet
 import java.lang.reflect.Array
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -12,21 +13,20 @@ import kotlin.jvm.java
 private const val TAG = "GrunfeldObjectDumper"
 object ObjectDumper {
     /**
-     * My attempt at runtime object dumping
+     * My attempt at dumping JVM objects
+     *
      * Who would win?
      * A framework that erases types at runtime or me?
      */
     fun dumpSomeObject(obj: Any?, depth: Int = 0): String {
-        val sb = StringBuilder()
-        val indentLevel: (d: Int) -> String = {
-            "\t".repeat(it)
-        }
-
         if (obj == null) {
             return ""
         }
 
-        val shortClzName = obj::class.simpleName ?: "NULL class name"
+        val sb = StringBuilder()
+        val indentLevel: (d: Int) -> String = {
+            "\t".repeat(it)
+        }
 
         val declaredFields = obj.javaClass.declaredFields
 
@@ -44,7 +44,9 @@ object ObjectDumper {
             if (!isNoise(f.name)) {
                 val value = f.get(obj)
                 if (f.type.isPrimitive) {
-                    sb.appendLine("${indentLevel(depth)}${f.name}: $value")
+                    if (value != null) {
+                        sb.appendLine("${indentLevel(depth)}${f.name}: $value")
+                    }
                 }
                 else if (f.type.isAssignableFrom(String::class.java)) {
                     val valueCopy = value as String
@@ -53,15 +55,17 @@ object ObjectDumper {
                     }
                 }
                 else {
-                    sb.appendLine("${indentLevel(depth)}${f.name}:")
                     val depthCopy = depth + 1
+                    var nestedRes: String
+                    var arrVal: Any?
+                    var nestedDump = ""
 
                     if (isIterable(f.type)) {
                         val iterableValue = value as Iterable<*>
                         iterableValue.forEach {
-                            val nestedRes = dumpSomeObject(it as Any, depthCopy)
+                            nestedRes = dumpSomeObject(it as Any, depthCopy)
                             if (nestedRes.isNotEmpty()) {
-                                sb.appendLine("${indentLevel(depth)}$nestedRes")
+                                nestedDump = "${indentLevel(depth)}$nestedRes"
                             }
                         }
                     } else if (f.type.isArray) {
@@ -76,21 +80,25 @@ object ObjectDumper {
                         var i = 0
                         while(i < length) {
                             try {
-                                val arrVal = getter.invoke(null, obj, i)
+                                arrVal = getter.invoke(null, obj, i)
                                 if (arrVal != null) {
-                                    sb.appendLine("${indentLevel(depth)}${f.name}: $arrVal")
+                                    nestedDump = "${indentLevel(depth)}${f.name}: $arrVal"
                                 }
                             } catch (e: InvocationTargetException) {
-                                Log.e(TAG, "${indentLevel(depth)}${f.name}: FAILED TO GET VALUE(${e.cause})")
+                                Log.e(TAG, "${indentLevel(depth)}${f.name}: Failed to get supposedly array value: (${e.cause})")
                             } finally {
                                 i += 1
                             }
                         }
                     } else {
-                        val nestedRes = dumpSomeObject(value)
+                        nestedRes = dumpSomeObject(value)
                         if (nestedRes.isNotEmpty()) {
-                            sb.appendLine("${indentLevel(depth)}${nestedRes}")
+                            nestedDump = "${indentLevel(depth)}${nestedRes}"
                         }
+                    }
+                    if (nestedDump.isNotEmpty()) {
+                        sb.appendLine("${indentLevel(depth)}${f.name}:")
+                        sb.appendLine(nestedDump)
                     }
                 }
             }
@@ -99,15 +107,21 @@ object ObjectDumper {
     }
 
     private fun isIterable(clz: Class<*>): Boolean {
-        if (clz.isAssignableFrom(List::class.java)) {
+        if (clz.isArray) {
+            // hack as we handle it explicitly above and not to spam logs
+            return false
+        }
+        else if (clz.isAssignableFrom(List::class.java)) {
             return true
         } else if (clz.isAssignableFrom(Array::class.java)) {
             return true
         } else if (clz.isAssignableFrom(ArrayList::class.java)) {
             return true
+        } else if (clz.isAssignableFrom(ArraySet::class.java)) {
+            return true
         }
         else {
-            Log.e(TAG, "isIterable else case:\n${clz.name} | ${clz.simpleName} | ${clz.canonicalName} | ${clz.typeName}")
+            Log.d(TAG, "isIterable else case:\n${clz.name} | ${clz.simpleName} | ${clz.canonicalName} | ${clz.typeName}")
             return false
         }
     }
