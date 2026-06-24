@@ -343,11 +343,7 @@ fun JavaInfoScreen() {
             ) {
                 Text("Get Telephony info")
             }
-            Text(
-                text = telephonyInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
+            ReportTextWithCopy(telephonyInfo, "", MaterialTheme.typography.bodyMedium)
         }
     }
 }
