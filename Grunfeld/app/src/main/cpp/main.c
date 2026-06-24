@@ -22,10 +22,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 
-#include "shared.h"
 #include "socket_helper.h"
-
-jmp_buf jump_buffer;
 
 #define TAG "GrunfeldNative"
 #define MAX_REPORT_SIZE 8192
@@ -290,7 +287,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectLibcHooks(JNIEnv *env,
     return (*env)->NewStringUTF(env, finalReport);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";
@@ -417,7 +413,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     const int protocols[PROTO_COUNT] = { TCP, UDP };
     const int families[FAM_COUNT] = { IPv4, IPv6 };
 
-    SockFactoryRes res = {0};
+    SockFactoryRes* res = NULL;
     for (int fam_idx = 0; fam_idx < FAM_COUNT; fam_idx++) {
         int fam = families[fam_idx];
 
@@ -433,16 +429,22 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             for (int port_idx = 0; port_idx < PORT_COUNT; port_idx++) {
                 for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
                     res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0, 0);
+                    if (!res) {
+                        snprintf(entry, sizeof(entry), "Failed to create socket!\n");
+                        strcat(report, entry);
+                        continue;
+                    }
 
                     ret = (fam == IPv4)
-                               ? arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas4, sizeof(res.sas.sas4), 0,0,0)
-                               : arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas6, sizeof(res.sas.sas6), 0,0,0);
+                               ? arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas4, sizeof(res->sas.sas4), 0,0,0)
+                               : arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas6, sizeof(res->sas.sas6), 0,0,0);
 
                     snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %s\n",
                              addr_str, ports[port_idx], proto_to_str(protocols[proto_idx]), fam_to_str(fam), ret == 0 ? "SUCESS" : "FAILED");
                     strcat(report, entry);
 
-                    close(res.sock);
+                    close(res->sock);
+                    free(res);
                 }
             }
             strcat(report, "\n");
@@ -457,27 +459,33 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobje
     char entry[256] = {0};
     long ret = 0;
 
-    SockFactoryRes res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     const int backlog = 10;
-    ret = arm64_raw_syscall(__NR_listen, res.sock, backlog, 0, 0, 0, 0);
+    ret = arm64_raw_syscall(__NR_listen, res->sock, backlog, 0, 0, 0, 0);
 
     snprintf(entry, sizeof(entry), "Result: %s\n", ret == 0 ? "SUCCESS" : "FAILED");
     strcat(report, entry);
 
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
-    if (setjmp(jump_buffer) != 0) {
-        return (*env)->NewStringUTF(env, "Socket creation failed");;
-    }
     char report[8192] = {0};
     char entry[256] = {0};
-    long ret = 0;
 
-    SockFactoryRes res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    SockFactoryRes* res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, "OK");
 }
 
@@ -490,13 +498,18 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobje
 
     const int port_ssdp_upnp = 1900;
     const char* ipv4_multicast_addr = "239.255.255.250";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
-    long ret = arm64_raw_syscall(__NR_sendto, res.sock, (long)msg, (long)strlen(msg), 0, (long)&res.sas.sas4, sizeof(res.sas.sas4));
+    long ret = arm64_raw_syscall(__NR_sendto, res->sock, (long)msg, (long)strlen(msg), 0, (long)&res->sas.sas4, sizeof(res->sas.sas4));
 
     snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, ipv4_multicast_addr);
     strcat(report, entry);
 
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
@@ -509,19 +522,25 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
     const int port_dns = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     // use standard connect (Bipan allows public internet)
-    if (connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4)) == -1) {
+    if (connect(res->sock, (struct sockaddr*)&res->sas.sas4, sizeof(res->sas.sas4)) == -1) {
         snprintf(entry, sizeof(entry), "connect failed \n");
         strcat(report, entry);
+
+        close(res->sock);
+        free(res);
         return (*env)->NewStringUTF(env, report);
     }
 
     struct sockaddr_in leaked_addr;
     socklen_t len = sizeof(leaked_addr);
 
-    ret = arm64_raw_syscall(__NR_getsockname, res.sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
@@ -532,20 +551,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     }
 
     strcat(report, entry);
-    close(res.sock);
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
-    if (setjmp(jump_buffer) != 0) {
-        return (*env)->NewStringUTF(env, "Socket creation failed");;
-    }
     char report[8192] = {0};
     char entry[256] = {0};
 
     #define DEST_ADDR "10.111.222.3"
-    SockFactoryRes res = CreateSocket(IPv4, UDP, DEST_ADDR, ARBITRARY_PORT, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, DEST_ADDR, ARBITRARY_PORT, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     // Data to be sent using the Scatter/Gather (iovec) structure
     char* data1 = "Message Header - ";
@@ -560,17 +580,17 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobj
 
     //  msghdr structure
     struct msghdr msg = {0};
-    msg.msg_name = &res.sas.sas4; // Destination address
-    msg.msg_namelen = sizeof(res.sas.sas4);
+    msg.msg_name = &res->sas.sas4; // Destination address
+    msg.msg_namelen = sizeof(res->sas.sas4);
     msg.msg_iov = iov;             // Pointer to the array of iovecs
     msg.msg_iovlen = 2;            // Number of elements in the iovec array
 
-    long ret = arm64_raw_syscall(__NR_sendmsg, res.sock, (long)&msg, 0, 0, 0, 0);
+    long ret = arm64_raw_syscall(__NR_sendmsg, res->sock, (long)&msg, 0, 0, 0, 0);
     snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, DEST_ADDR);
     strcat(report, entry);
 
-    close(res.sock);
-
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 

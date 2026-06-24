@@ -38,6 +38,6 @@ typedef struct {
 #define ARBITRARY_PORT 5353 // server behavior
 
 
-SockFactoryRes CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto);
+SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto);
 
 #endif //SOCKET_HELPER_H
