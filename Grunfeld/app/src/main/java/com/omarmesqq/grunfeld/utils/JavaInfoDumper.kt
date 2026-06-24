@@ -26,6 +26,7 @@ import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
+import com.omarmesqq.grunfeld.utils.ObjectDumper.dumpSomeObject
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.BufferedReader
@@ -931,7 +932,8 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
 
-     sb.appendLine("serviceState: ${telephonyManager.serviceState}\n")
+//    sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
+    sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
 
     sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
