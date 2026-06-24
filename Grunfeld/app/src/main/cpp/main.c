@@ -45,8 +45,7 @@ static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
- static inline void dump (void *p, int n, char* report);
- static inline void print_bytes(void *p, int n);
+static inline void dump (void *p, int n, char* report);
 
 __attribute__((constructor))
 void grunfeld_early_init(void) {
@@ -268,7 +267,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectLibcHooks(JNIEnv *env, jobject thiz) {
-    char finalReport[8192] = {0};
+    char finalReport[MAX_REPORT_SIZE] = {0};
     char entry[256];
     int bytesToInspect = 28;
 
@@ -392,7 +391,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     long ret = 0;
 
@@ -410,12 +409,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     };
 
     const int ports[PORT_COUNT] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
-    const int protocols[PROTO_COUNT] = { TCP, UDP };
-    const int families[FAM_COUNT] = { IPv4, IPv6 };
+    const SockType protocols[PROTO_COUNT] = { TCP, UDP };
+    const SockFamily families[FAM_COUNT] = { IPv4, IPv6 };
 
     SockFactoryRes* res = NULL;
     for (int fam_idx = 0; fam_idx < FAM_COUNT; fam_idx++) {
-        int fam = families[fam_idx];
+        SockFamily fam = families[fam_idx];
 
         for (int addr_idx = 0; addr_idx < ADDRESS_COUNT; addr_idx++) {
             const char* addr_str = addresses[addr_idx];
@@ -440,7 +439,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
                                : arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas6, sizeof(res->sas.sas6), 0,0,0);
 
                     snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %s\n",
-                             addr_str, ports[port_idx], proto_to_str(protocols[proto_idx]), fam_to_str(fam), ret == 0 ? "SUCESS" : "FAILED");
+                             addr_str, ports[port_idx], proto_to_str((int) protocols[proto_idx]), fam_to_str((int) fam), ret == 0 ? "SUCESS" : "FAILED");
                     strcat(report, entry);
 
                     close(res->sock);
@@ -455,7 +454,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     long ret = 0;
 
@@ -477,7 +476,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobje
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
     SockFactoryRes* res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
@@ -491,7 +490,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobje
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     // Multicast / LAN Discovery
     const char* msg = "M-SEARCH * HTTP/1.1";
@@ -516,7 +515,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobje
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
     long ret = 0;
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
     // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
@@ -558,7 +557,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
     #define DEST_ADDR "10.111.222.3"
@@ -598,7 +597,7 @@ JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject thiz) {
     struct utsname buffer = {0};
     long ret;
-    asm volatile(
+    __asm__ volatile(
             "mov x0, %[buf] \n\t"   // place `buffer`'s address in x0
             "mov x8, #160   \n\t"   // 160 is the syscall number for uname
             "svc #0         \n\t"   // Supervisor Call
@@ -758,7 +757,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
         // Calculate the end time for our loop:  current time  + 3 seconds
         struct timespec start_time, current_time;
         clock_gettime(CLOCK_MONOTONIC, &start_time);
-        double start_secs = start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
+        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
         double end_secs = start_secs + 3.0;
 
         int ident;      // Identifier of the event source
@@ -774,7 +773,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
         while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
             // Check if 3 seconds have passed and break if so
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            double now = current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
+            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
             if (now >= end_secs) {
                 sampling = false;
                 continue;
@@ -897,24 +896,6 @@ static inline void dump(void *p, int n, char *report) {
         }
         strcat(report, entry);
         p1++;
-    }
-}
-
-static inline void print_bytes(void *p, int n) {
-    unsigned char *p1 = p;
-
-    for (int i = 0; i < n; i++) {
-        // High nibble: shift right by 4 (since its unsigned, it safely does logical shift instead of arithmetic one)
-        // Low nibble: mask with 0x0F.
-        printf(" %02x   %02x  \n", *p1 >> 4, *p1 & 0x0F);
-        for (int i = 7; i >= 0; i-- ) {
-            if (i == 3) {
-                printf(" ");
-            }
-            printf("%d", (*p1 >> i) & 1);
-        }
-        p1++;
-        printf("\n\n");
     }
 }
 

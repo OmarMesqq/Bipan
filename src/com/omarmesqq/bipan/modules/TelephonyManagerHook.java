@@ -162,11 +162,12 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         Log.i(TAG, "Neutered " + method.getName());
         return createEmptyCellIdentity();
 
-      // case "getServiceState":
-      // case "getServiceStateForSlot":
-      // Log.i(TAG, "Neutered " + method.getName());
-      // return emptyParceledListSlice();
-
+      case "getServiceState":
+      case "getServiceStateForSlot": {
+        Log.i(TAG, "Neutered " + method.getName());
+        return new ServiceState(); 
+      }
+      
       case "getVisualVoicemailPackageName":
         Log.i(TAG, "Neutered " + method.getName());
         return "com.google.android.dialer";
@@ -233,11 +234,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
           return CARRIER_ID;
         }
         return TelephonyManager.UNKNOWN_CARRIER_ID;
-      }
-
-      case "getServiceState": {
-        Log.i(TAG, "Neutered getServiceState");
-        return new ServiceState(); 
       }
 
       default:
