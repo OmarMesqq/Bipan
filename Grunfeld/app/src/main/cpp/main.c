@@ -41,10 +41,7 @@ jmp_buf jump_buffer;
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 
-static int procSelfMapsFd = -1;
-
 static inline void early_init_sysprop_test(void);
-static inline void early_init_maps_test(void);
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
@@ -56,7 +53,6 @@ static void prop_cb(void* cookie, const char* name, const char* value, uint32_t 
 
 __attribute__((constructor))
 void grunfeld_early_init(void) {
-    early_init_maps_test();
     early_init_sysprop_test();
 
     LOGI("Early init: __attribute__((constructor))");
@@ -339,14 +335,22 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobjec
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env, jobject thiz) {
-    const char* path = "/proc/self/fd";
+    const char* mapsPath = "/proc/self/maps";
+
+    long mapsFd = arm64_raw_syscall(__NR_openat,(long)AT_FDCWD,(long)mapsPath,(long)O_RDONLY,0, 0, 0);
+
+    if (mapsFd == -1) {
+        return (*env)->NewStringUTF(env, "Failed to open() /proc/self/maps");
+    }
+
+    const char* selfFdpath = "/proc/self/fd";
     char report[16384] = {0};
     size_t used = 0;
     report[0] = '\0';
 
-    struct DIR* dir = opendir(path);
+    struct DIR* dir = opendir(selfFdpath);
     if (dir == NULL) {
-        return (*env)->NewStringUTF(env, "Failed to open directory");
+        return (*env)->NewStringUTF(env, "Failed to opendir() /proc/self/fd");
     }
 
 
@@ -357,15 +361,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
             continue;
         }
 
-        // Ugly heuristic: the fd is usually 2 digits
+        // Interested only in /proc/self/maps fd
         int conversionRet = atoi(entry->d_name);
-        if (conversionRet != procSelfMapsFd) {
+        if (conversionRet != mapsFd) {
             continue;
         }
 
         // Build "/proc/self/fd/<entry>"
         char linkpath[PATH_MAX];
-        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", path, entry->d_name);
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", selfFdpath, entry->d_name);
         if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
             continue;
         }
@@ -386,7 +390,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
     }
 
     closedir(dir);
-    close((int) procSelfMapsFd);
+    close((int) mapsFd);
     return (*env)->NewStringUTF(env, report);
 }
 
@@ -446,7 +450,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     }
     return (*env)->NewStringUTF(env, report);
 }
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
@@ -602,7 +605,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
 
     return (*env)->NewStringUTF(env, result_str);
 }
-
 
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* env, jobject thiz) {
@@ -863,40 +865,6 @@ static inline void early_init_sysprop_test(void) {
     LOGI("[LEGACY] FINGERPRINT: %s", fp);
 }
 
-static inline void early_init_maps_test(void) {
-    const char *path = "/proc/self/maps";
-
-    long fd = arm64_raw_syscall(__NR_openat,
-                                (long)AT_FDCWD,
-                                (long)path,
-                                (long)O_RDONLY,
-                                0, 0, 0);
-
-    if (fd == -1) {
-        LOGE("Failed to open /proc/self/maps");
-        return;
-    }
-    LOGI("/proc/self/maps fd: %d", (int) fd);
-    procSelfMapsFd = (int) fd;
-
-    char linkpath[PATH_MAX];
-    snprintf(linkpath, sizeof(linkpath), "%s", path);
-
-    char target[PATH_MAX];
-    ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
-    if (len < 0) {
-        LOGE("Failed to readlink (/proc/self/maps)");
-        return;
-    }
-    target[len] = '\0';
-
-    LOGD("Opened %s (fd=%ld), readlink target: %s", path, fd, target);
-
-    // will be closed by Kotlin via JNI in NativeScreen
-    // close((int)fd);
-}
-
-
 static inline void dump(void *p, int n, char *report) {
     char entry[64];
     unsigned char *p1 = p;
@@ -929,7 +897,6 @@ static inline void print_bytes(void *p, int n) {
         printf("\n\n");
     }
 }
-
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
