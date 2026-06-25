@@ -35,6 +35,8 @@
 #include "synchronization.hpp"
 #include "utils.hpp"
 
+#define TAG "BipanBroker"
+
 // Use 64-bit ELF structures for ARM64
 typedef Elf64_Ehdr ElfHeader;
 typedef Elf64_Shdr ElfSection;
@@ -61,8 +63,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
-                                  char* out, size_t out_size);
+static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size_t out_size);
 
 #ifdef DEBUG
 static uint64_t last_dump_ns = 0;
@@ -99,6 +100,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
 
+  pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  std::__thread_id tid = std::this_thread::get_id();
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker's PID: %d | TID: %d", pid, tid);
+
   while (true) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
       futex_wait(&ipc_mem->status, ipc_mem->status);
@@ -134,7 +139,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
       int mem_fd = open(mem_path, O_RDONLY);
 
-      if (mem_fd >= 0) {
+      if (mem_fd < 0) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/%d/mem failed!", ipc_mem->target_pid);
+        return;
+      }
         uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
         uintptr_t current_fp = ipc_mem->caller_fp;
 
@@ -170,9 +178,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
         }
         close(mem_fd);
-      } else {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/<PID>/mem failed!");
-      }
     }
 
     // Default to allow
@@ -243,40 +248,57 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             // Broker generates the fake file locally
             int fake_fd = -1;
             if (is_maps(path_payload)) {
-              fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_smaps(path_payload)) {
-              fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_mounts(path_payload)) {
-              fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             }
 
-            if (fake_fd >= 0) {
-              // GHOST FILL: Root opens the Target's pre_fd and fills it!
-              int target_fd = ipc_mem->arg5;
+            if (fake_fd < 0) {
+              // fallback to denying if Broker can't create a fake fd
+              ipc_mem->ret = -EACCES;
+              ipc_mem->action = ACTION_USE_RET;
+              write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to create fake FD!");
+              break;
+            }
+
+            // Broker opens signal handler's pre_fd and fills it
+            int target_fd = (int)ipc_mem->arg5;
               char proc_path[64];
               snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
 
               int root_fd = open(proc_path, O_WRONLY);
-              if (root_fd >= 0) {
+            if (root_fd < 0) {
+              // same logic:
+              // fallback to denying if Broker can't open target's remote fd
+              write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open target's pre_fd!");
+              ipc_mem->ret = -EACCES;
+              ipc_mem->action = ACTION_USE_RET;
+              break;
+            }
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Filled target's fd: %s", proc_path);
+
                 char buf[4096];
                 ssize_t n;
                 lseek(fake_fd, 0, SEEK_SET);
-                while ((n = read(fake_fd, buf, sizeof(buf))) > 0) write(root_fd, buf, n);
-                lseek(root_fd, 0, SEEK_SET);
-                close(root_fd);
-              }
-              close(fake_fd);  // Cleanup daemon's copy
-
-              ipc_mem->ret = target_fd;  // Tell Target to use the FD it already has!
-            } else {
-              ipc_mem->ret = -EACCES;
+            while ((n = read(fake_fd, buf, sizeof(buf))) > 0) {
+              write(root_fd, buf, n);
             }
+                lseek(root_fd, 0, SEEK_SET);
+
+            // Cleanup daemon's ref of target's pre_fd and its own fake fd
+                close(root_fd);
+            close(fake_fd);
+
+            // Tell target to use the fd it already has
+            ipc_mem->ret = target_fd;
             ipc_mem->action = ACTION_USE_RET;
           }
 #ifdef DEBUG
@@ -362,7 +384,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv6 bind request to port %d", port);
 
-          // Allow ::
+          // TODO: Allow :: ?
           bool is_v6_unspecified = true;
           for (int i = 0; i < 16; i++) {
             if (ip6[i] != 0) {
@@ -526,6 +548,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker ended! PID: %d | TID: %d", pid, tid);
 }
 
 /**
@@ -717,14 +740,22 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   return "[Unknown]";
 }
 
+static thread_local bool inside_remote_patcher = false;
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
+  if (inside_remote_patcher) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Thread reentrancy in remote patcher!");
+    return;
+  }
+  inside_remote_patcher = true;
+
   // Seccomp traps the instruction *after* the syscall.
   // We subtract 4 to target the actual 'svc #0' instruction.
   uintptr_t target_addr = caller_pc - 4;
 
   // anti reentrancy if already patched
   if (patched_pcs.count(target_addr)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] reentrancy in remote patcher!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Reentrancy in remote patcher: PC already patched!");
+    inside_remote_patcher = false;
     return;
   }
 
@@ -758,11 +789,12 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   close(mem_fd);
 
   if (written == sizeof(opcode)) {
-    patched_pcs.insert(target_addr);  // put in thread local cache
+    patched_pcs.insert(target_addr);  // put in thread local cache (TODO: really?)
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
   }
+  inside_remote_patcher = false;
 }
 
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len) {
@@ -779,6 +811,12 @@ static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len)
   }
 }
 
+/**
+ * Returns `true` if an IPv4 or IPv6 socket
+ * has either port 5353 or 1900
+ *
+ * TODO: necessary?
+ */
 static inline bool is_discovery_probe(struct sockaddr* addr) {
   if (!addr) return false;
 
@@ -825,8 +863,7 @@ std::string get_sockaddr_info(const struct sockaddr* sa) {
   }
 }
 
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
-                                  char* out, size_t out_size) {
+static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size_t out_size) {
   char mem_path[64];
   snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
 
@@ -842,7 +879,7 @@ static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
     char arg[256] = {0};
     pread(fd, arg, sizeof(arg) - 1, (off_t)ptrs[i]);
     int n = snprintf(out + written, out_size - written, "[%d]=%s ", i, arg);
-    written += n;
+    written += (size_t)n;
   }
 
   close(fd);
