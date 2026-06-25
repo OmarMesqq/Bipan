@@ -1,13 +1,16 @@
 #include <dirent.h>
-#include <unistd.h>
 #include <sys/mman.h>
+#include <unistd.h>
+
 #include <string>
 
+#include "broker.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "synchronization.hpp"
-#include "broker.hpp"
 #include "zygisk.hpp"
+
+#define TAG "BipanRootCompanion"
 
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
@@ -75,12 +78,12 @@ static void companion_handler(int sock) {
     // Map the memory for THIS specific app's thread
     SharedIPC* local_ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
     close(memfd);
-
-    if (local_ipc_mem != MAP_FAILED) {
-      startBroker(sock, local_ipc_mem);
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to start Broker via root companion!\n");
+    if (local_ipc_mem == MAP_FAILED) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler mmap failed!");
+      return;
     }
+
+    startBroker(sock, local_ipc_mem);
   }
 }
 

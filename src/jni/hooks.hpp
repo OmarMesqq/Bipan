@@ -402,15 +402,16 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     BIPAN_PANIC();
   }
 
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  // Call hookInstrumentation from Java
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
   if (hookMethod == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
   env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
   if (env->ExceptionCheck()) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow threw an exception!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
   }
 
@@ -436,15 +437,16 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     BIPAN_PANIC();
   }
 
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  // Call hookInstrumentation from Java
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
   if (hookMethod == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
   env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
   if (env->ExceptionCheck()) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow threw an exception!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
   }
 

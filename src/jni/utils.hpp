@@ -372,7 +372,11 @@ __attribute__((always_inline)) inline bool is_exact_dir(const char* path, const 
 __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
+      starts_with(pathname, "/data/dalvik-cache") ||
       starts_with(pathname, "/data/app") ||
+      starts_with(pathname, "/system/framework") ||
+      starts_with(pathname, "/system_ext/framework") ||
+      starts_with(pathname, "/data/misc/apexdata/com.android.art") ||
       starts_with(pathname, "/data/user/0") ||
       starts_with(pathname, "/data/user_de/0/") ||
       starts_with(pathname, "/storage/emulated/0/Android/media") ||
@@ -408,7 +412,6 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
   // Ignore EXACT directory opens (directory scans)
   if (is_exact_dir(pathname, "/data") ||
-      is_exact_dir(pathname, "/data/user") ||
       is_exact_dir(pathname, "/data/user") ||
       is_exact_dir(pathname, "/storage/emulated/0") ||
       is_exact_dir(pathname, "/system") ||
