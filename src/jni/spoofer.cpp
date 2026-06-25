@@ -37,13 +37,13 @@ int create_spoofed_file(const char* fake_content) {
   return fd;
 }
 
-long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     return -1;
   }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
@@ -100,13 +100,13 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     return -1;
   }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
@@ -148,13 +148,13 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
     return -1;
   }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
