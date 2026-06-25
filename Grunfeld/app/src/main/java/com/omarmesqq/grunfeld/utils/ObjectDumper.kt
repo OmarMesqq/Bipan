@@ -49,9 +49,11 @@ object ObjectDumper {
                     }
                 }
                 else if (f.type.isAssignableFrom(String::class.java)) {
-                    val valueCopy = value as String
-                    if (valueCopy.isNotEmpty()) {
-                        sb.appendLine("${indentLevel(depth)}${f.name}: $value")
+                    if (value != null) {
+                        val valueCopy = value as String
+                        if (valueCopy.isNotEmpty()) {
+                            sb.appendLine("${indentLevel(depth)}${f.name}: $value")
+                        }
                     }
                 }
                 else {

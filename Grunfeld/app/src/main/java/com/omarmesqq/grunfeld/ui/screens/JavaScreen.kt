@@ -28,6 +28,7 @@ import com.omarmesqq.grunfeld.utils.DumpJavaInfo
 import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.rememberCoroutineScope
 import com.omarmesqq.grunfeld.utils.dumpCpuInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
@@ -44,11 +45,16 @@ import com.omarmesqq.grunfeld.utils.getMemoryInfo
 import com.omarmesqq.grunfeld.utils.getPlayInstallReferrerInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
+    val screenScrollState = rememberScrollState()
+    val composableScope = rememberCoroutineScope()
 
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
 
@@ -76,8 +82,6 @@ fun JavaInfoScreen() {
     var playInstallReferrerInfo by remember { mutableStateOf("playInstallReferrerInfo not queried") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
-
-    val screenScrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
@@ -337,7 +341,11 @@ fun JavaInfoScreen() {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
-                    telephonyInfo = dumpTelephonyInfo(context)
+                    composableScope.launch {
+                        telephonyInfo = withContext(Dispatchers.IO) {
+                            dumpTelephonyInfo(context)
+                        }
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
