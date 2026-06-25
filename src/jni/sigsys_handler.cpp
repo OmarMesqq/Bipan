@@ -61,16 +61,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
 #endif
 
-  long arg0 = ctx->uc_mcontext.regs[0];
-  long arg1 = ctx->uc_mcontext.regs[1];
-  long arg2 = ctx->uc_mcontext.regs[2];
-  long arg3 = ctx->uc_mcontext.regs[3];
-  long arg4 = ctx->uc_mcontext.regs[4];
-  long arg5 = ctx->uc_mcontext.regs[5];
+  long arg0 = (long) ctx->uc_mcontext.regs[0];
+  long arg1 = (long) ctx->uc_mcontext.regs[1];
+  long arg2 = (long) ctx->uc_mcontext.regs[2];
+  long arg3 = (long) ctx->uc_mcontext.regs[3];
+  long arg4 = (long) ctx->uc_mcontext.regs[4];
+  long arg5 = (long) ctx->uc_mcontext.regs[5];
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
-    ctx->uc_mcontext.regs[0] = -ENOSYS;
+    ctx->uc_mcontext.regs[0] = (__u64) -ENOSYS;
     in_sigsys_handler = false;
     return;
   }
@@ -87,21 +87,21 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       BIPAN_PANIC();
     }
     in_sigsys_handler = false;
-    ctx->uc_mcontext.regs[0] = r;
+    ctx->uc_mcontext.regs[0] = (__u64) r;
     return;
   }
 
   if (nr == __NR_socket) {
-    int domain = arg0;
-    if (domain == AF_NETLINK) {
+    // 1st arg is the "domain" of the socket
+    if (arg0 == AF_NETLINK) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, " Blocked AF_NETLINK socket");
-      ctx->uc_mcontext.regs[0] = -EAFNOSUPPORT;
+      ctx->uc_mcontext.regs[0] = (__u64) -EAFNOSUPPORT;
       in_sigsys_handler = false;
       return;
     }
 
     long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = ret;
+    ctx->uc_mcontext.regs[0] = (__u64) ret;
     in_sigsys_handler = false;
     return;
   }
@@ -134,7 +134,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] SIGSYS handler openat memfd: %d", pre_fd);
     // openat takes up to 4 args, so use arg5 as slot for the pre-FD
     ipc_mem->arg5 = pre_fd;
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
@@ -188,7 +187,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         sock_len = temp_len;
       }
     }
-  } else if (nr == __NR_listen) {
+  } else if (nr == __NR_listen) { // TODO: necessary?
     long sockfd = arg0;
     // pre-flighting check
     // listen doesn't give a sockaddr, so we must extract it from the FD
@@ -268,7 +267,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // TODO: use atomic cas?
   unlock_ipc();
 
-  ctx->uc_mcontext.regs[0] = result;
+  ctx->uc_mcontext.regs[0] = (__u64) result;
   in_sigsys_handler = false;
 }
 
