@@ -96,7 +96,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] 2nd root companion sockfd: %d", g_broker_socket);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Root companion sockfd for CMD_START_BROKER: %d", g_broker_socket);
 
 
 
@@ -210,8 +210,8 @@ class Bipan : public zygisk::ModuleBase {
 
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
-      // install() BipanJava!
-      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
+      // Call install from Java-side
+      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "i", "()V");
       if (installMethod == nullptr) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
         BIPAN_PANIC();
@@ -263,7 +263,6 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] 1st root companion sockfd: %d", fd);
 
     // Tell the companion we want to fetch the targets list
     int cmd = CMD_FETCH_TARGETS;

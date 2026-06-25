@@ -20,36 +20,43 @@ import java.lang.OutOfMemoryError;
 import android.app.Activity;
 
 /**
- * Entrypoint of BipanJava.
- * yeah, the name is for obfuscation and code shrinking
+ * Entrypoint of BipanJava
  */
 public class J {
   private static final String TAG = "BipanJava";
 
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
 
-  // Spare microG from most hooks as its harmless (i guess)
+  // Spare GMS and Play Store from most hooks
   private static final Set<String> GLOBAL_ALLOW_LIST = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms"));
 
-  public static void hookInstrumentationNow() throws Exception {
+  
+  /**
+   * hookInstrumentation:
+   * Triggered at either clampGrowthLimit or clearGrowthLimit.
+   * Blocks the start of the app's main thread
+   * and **Java** code for module loading and singleton swapping
+   */
+  public static void h() throws Exception {
     if (!instrumentationHooked.compareAndSet(false, true)) {
-      return; // both clamp and clear may fire — only hook once
+      // both clampGrowthLimit and clearGrowthLimit may fire, only hook once
+      return; 
     }
 
     try {
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Object at = atClz.getMethod("currentActivityThread").invoke(null);
       if (at == null) {
-        throw new Exception("hookInstrumentationNow: ActivityThread is null!");
+        throw new Exception("hookInstrumentation: ActivityThread is null!");
       }
 
       Field mInstrField = atClz.getDeclaredField("mInstrumentation");
       mInstrField.setAccessible(true);
       final Object realInstr = mInstrField.get(at);
       if (realInstr == null) {
-        throw new Exception("hookInstrumentationNow: mInstrumentation is null!");
+        throw new Exception("hookInstrumentation: mInstrumentation is null!");
       }
 
       Instrumentation hooked = new Instrumentation() {
@@ -139,12 +146,17 @@ public class J {
       // This should block before ContentProviders and onCreate
       mInstrField.set(at, hooked);
     } catch (Exception e) {
-      Log.e(TAG, "hookInstrumentationNow failed: ", e);
+      Log.e(TAG, "hookInstrumentation failed: ", e);
       throw e;
     }
   }
 
-  public static void install() {
+  /**
+   * `install`:
+   * unseals ART VM at postAppSpecialize so modules access and modify 
+   * hidden/restricted APIs
+   */
+  public static void i() {
     try {
       unseal();
     } catch (Exception e) {
@@ -160,10 +172,19 @@ public class J {
     if (GLOBAL_ALLOW_LIST.contains(packageName)) {
       modules.add(new AntiNetworkDiscoveryHook());
     } else {
-      // has to be the first to load!
+      // ---------------------------------------------
+      /**
+       * These two should be the first to load,
+       * as they expose public methods that block
+       * the app's main thread (for PM and CM hooking
+       * both Application and Activity-wise)
+       * 
+       * TODO: refactor to undo this tight coupling
+       */
       modules.add(new AntiAppInspectionHook());
-
       modules.add(new NetworkSpoofingHook());
+      // ---------------------------------------------
+
       modules.add(new SettingsHook());
       modules.add(new AntiNetworkDiscoveryHook());
       modules.add(new TelephonyManagerHook());
@@ -216,6 +237,9 @@ public class J {
   }
 
   /**
+   * TODO: guess this could be part of SettingsHook
+   * 
+   * Ref:
    * https://cs.android.com/android/platform/superproject/+/android-latest-release:libcore/ojluni/src/main/java/java/lang/System.java;l=1799?q=java.lang.System&ss=android%2Fplatform%2Fsuperproject
    */
   private static void spoofOsVersion() throws Exception {
