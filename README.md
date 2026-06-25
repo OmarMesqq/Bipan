@@ -53,18 +53,10 @@ user-added CAs are shielded by Bipan.
 To learn how Bipan does this refer to [INNARDS.md](./INNARDS.md)
 
 
-## Prerequisites
-- An Android device running the `aarch64`/`arm64-v8a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
-- Android SDK and NDK. The NDK should be at least `25.1.8937393`.
-- SDK and NDK binaries in your `PATH` as well common Unix CLI utils such as `xxd`
-
-## Building
-1. Clone this repo
-2. Run the `build_module.sh` script
-3. The module's flashable zip will be at the project's root with the name `bipan.zip`
-
-
 ## Usage
+### Prerequisites
+- An Android device running the `aarch64`/`arm64-v8a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
+
 At each app launch, Bipan is invoked by Zygisk and applies the patches to the app
 using info at the module's private folder: `/data/adb/modules/bipan/targets/`  
 To jail an app using Bipan, simply `touch` a file inside this folder with the package name of the targeted app:
@@ -81,6 +73,28 @@ touch /data/adb/modules/bipan/targets/some.app.to.sandbox
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
 any sort of modification to the app's memory.
+
+
+
+## Building
+### Prerequisites
+1. Android SDK, NDK and JDK tools/binaries  in your `PATH`
+  - SDK: Android 16/API level 36 (`android-36`)
+  - NDK >= `25.1.8937393`
+  - JDK: >= `21` (though it may work with 17 or 11)
+  - `ANDROID_HOME` and `NDK_HOME` set
+
+2. Ensure you also have common Unix CLI utils in `PATH`, in special, `xxd` and `zip`
+
+3. `r8`'s JAR file at root of repo:
+  - at least `9.3.7-dev`
+  - you can get it with `curl --get https://storage.googleapis.com/r8-releases/raw/9.3.7-dev/r8lib.jar -o r8lib.jar`
+
+
+4. Clone this repo
+5. Run the `build_module.sh` script
+6. The module's flashable zip will be at the project's root with the name `bipan.zip`
+
 
 ## Testing (does this work?)
 At the project's root you will find a folder named `Grunfeld`
