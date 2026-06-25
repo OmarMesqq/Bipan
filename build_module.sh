@@ -9,8 +9,11 @@ javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
   src/com/omarmesqq/bipan/BaseHook.java \
   src/com/omarmesqq/bipan/modules/*.java
 
+
 # Shrink, obfuscate, and minify all BipanJava.class into DEX
-java -cp $ANDROID_HOME/build-tools/36.0.0/lib/d8.jar \
+mkdir -p ./r8analysis
+java -cp r8lib.jar \
+  -Dcom.android.tools.r8.dumpkeepradiushtmltodirectory=./r8analysis \
   com.android.tools.r8.R8 \
   --release \
   --lib $ANDROID_HOME/platforms/android-36/android.jar \
