@@ -1,5 +1,5 @@
 [versions]
-agp = "9.0.1"
+agp = "9.2.1"
 coreKtx = "1.17.0"
 leakcanaryAndroid = "2.14"
 lifecycleRuntimeKtx = "2.10.0"
@@ -9,7 +9,7 @@ composeBom = "2024.09.00"
 lifecycleViewmodelCompose = "2.10.0"
 navigationCompose = "2.9.7"
 rootbeerLib = "0.1.2"
-webkit = "1.16.0-beta01"
+webkit = "1.16.0"
 coreSplashscreen = "1.2.0"
 
 [libraries]
