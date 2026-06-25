@@ -286,6 +286,7 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
             details.append("| -> IP: $ip/$prefix\n")
             details.append("| -> Broadcast: $broadcast\n")
             details.appendLine("| -> HostName: ${addr.address.hostName}")
+            details.appendLine("| -> Canonical HostName: ${addr.address.canonicalHostName}")
         }
     }
 
@@ -930,9 +931,9 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simCountryIso: ${telephonyManager.simCountryIso}")
     sb.appendLine("simCarrierId: ${telephonyManager.simCarrierId}")
     sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
-    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
+    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}\n")
 
-//    sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
+    sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
     sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
 
     sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
@@ -954,29 +955,17 @@ fun readLogcatWithRuntime(): String {
 
 fun readLogcatWithProcessBuilder(): String {
     val sb = StringBuilder()
-
-    val processBuilder = ProcessBuilder()
-    processBuilder.command("logcat", "-v color -v brief")
+    val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
     val process = processBuilder.start()
 
+    process.inputStream.bufferedReader().useLines { lines ->
+        lines.take(5).forEach { line ->
+            sb.appendLine(line)
+        }
+    }
+
     val exitCode = process.waitFor()
-
-    val inputStream = process.inputStream
-    val errorStream = process.errorStream
-
-    sb.appendLine("Input Stream")
-    sb.appendLine(inputStream.bufferedReader().readText())
-    sb.appendLine("Error Stream")
-    val errors = errorStream.bufferedReader().readText()
-    sb.appendLine(errors)
-
-    inputStream.bufferedReader().close()
-    errorStream.bufferedReader().close()
-    inputStream.close()
-    errorStream.close()
-
-    sb.appendLine("Process exit with code $exitCode")
-
+    sb.appendLine("Process exited with code $exitCode")
     return sb.toString()
 }
 
