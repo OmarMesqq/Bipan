@@ -29,7 +29,7 @@ struct kernel_sigaction {
 };
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void scrub_socket(struct sockaddr* s);
+static bool scrub_socket(struct sockaddr* s);
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -61,16 +61,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
 #endif
 
-  long arg0 = (long) ctx->uc_mcontext.regs[0];
-  long arg1 = (long) ctx->uc_mcontext.regs[1];
-  long arg2 = (long) ctx->uc_mcontext.regs[2];
-  long arg3 = (long) ctx->uc_mcontext.regs[3];
-  long arg4 = (long) ctx->uc_mcontext.regs[4];
-  long arg5 = (long) ctx->uc_mcontext.regs[5];
+  long arg0 = (long)ctx->uc_mcontext.regs[0];
+  long arg1 = (long)ctx->uc_mcontext.regs[1];
+  long arg2 = (long)ctx->uc_mcontext.regs[2];
+  long arg3 = (long)ctx->uc_mcontext.regs[3];
+  long arg4 = (long)ctx->uc_mcontext.regs[4];
+  long arg5 = (long)ctx->uc_mcontext.regs[5];
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
-    ctx->uc_mcontext.regs[0] = (__u64) -ENOSYS;
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
     in_sigsys_handler = false;
     return;
   }
@@ -78,16 +78,18 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_getsockname) {
     long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
-    if (r == 0 && arg1 != 0) {
-      struct sockaddr* s = (struct sockaddr*)arg1;
-      scrub_socket(s);
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
-    } else {
+    if (r != 0 || arg1 == 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
       BIPAN_PANIC();
     }
+
+    struct sockaddr* s = (struct sockaddr*)arg1;
+    if (scrub_socket(s)) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
+    }
+
     in_sigsys_handler = false;
-    ctx->uc_mcontext.regs[0] = (__u64) r;
+    ctx->uc_mcontext.regs[0] = (__u64)r;
     return;
   }
 
@@ -95,13 +97,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // 1st arg is the "domain" of the socket
     if (arg0 == AF_NETLINK) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, " Blocked AF_NETLINK socket");
-      ctx->uc_mcontext.regs[0] = (__u64) -EAFNOSUPPORT;
+      ctx->uc_mcontext.regs[0] = (__u64)-EAFNOSUPPORT;
       in_sigsys_handler = false;
       return;
     }
 
     long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = (__u64) ret;
+    ctx->uc_mcontext.regs[0] = (__u64)ret;
     in_sigsys_handler = false;
     return;
   }
@@ -187,7 +189,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         sock_len = temp_len;
       }
     }
-  } else if (nr == __NR_listen) { // TODO: necessary?
+  } else if (nr == __NR_listen) {  // TODO: necessary?
     long sockfd = arg0;
     // pre-flighting check
     // listen doesn't give a sockaddr, so we must extract it from the FD
@@ -267,17 +269,19 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // TODO: use atomic cas?
   unlock_ipc();
 
-  ctx->uc_mcontext.regs[0] = (__u64) result;
+  ctx->uc_mcontext.regs[0] = (__u64)result;
   in_sigsys_handler = false;
 }
 
-static void scrub_socket(struct sockaddr* s) {
-  if (!s) return;
+static bool scrub_socket(struct sockaddr* s) {
+  if (!s) return false;
 
   if (s->sa_family == AF_INET) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
 
     sin->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
+
+    return true;
   } else if (s->sa_family == AF_INET6) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
@@ -285,5 +289,7 @@ static void scrub_socket(struct sockaddr* s) {
     my_memset(&sin6->sin6_addr, 0, 16);
     sin6->sin6_addr.s6_addr[0] = 0xfd;
     sin6->sin6_addr.s6_addr[15] = 0x01;
+    return true;
   }
+  return false;
 }
