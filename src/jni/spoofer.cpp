@@ -61,7 +61,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   auto process_and_write_line = [&](char* l, unsigned long len) {
     l[len] = '\0';
 
-    // Important to allow
+    // TODO: Important to allow
     bool is_vital = local_strstr(l, "[stack]") ||
                     local_strstr(l, "[vdso]") ||
                     local_strstr(l, "[vvar]") ||
@@ -181,8 +181,7 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
         line[line_pos] = '\0';
 
         bool is_dirty = local_strstr(line, "magisk") || local_strstr(line, "zygisk") ||
-                        local_strstr(line, "bipan") || local_strstr(line, "KSU") ||
-                        local_strstr(line, "KernelSU") || local_strstr(line, "APatch") ||
+                        local_strstr(line, "bipan") ||
                         local_strstr(line, "core/mirror") ||
                         (local_strstr(line, "/etc/security/cacerts") && local_strstr(line, "tmpfs"));
 
