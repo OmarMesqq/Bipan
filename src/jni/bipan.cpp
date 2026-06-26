@@ -116,7 +116,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: Shared IPC mmap'ed at: %p", (void*) ipc_mem);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: Shared IPC mmap'ed at: %p", (void*)ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
