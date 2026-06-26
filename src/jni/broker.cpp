@@ -144,41 +144,41 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/%d/mem failed!", ipc_mem->target_pid);
         return;
       }
-        uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
-        uintptr_t current_fp = ipc_mem->caller_fp;
+      uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
+      uintptr_t current_fp = ipc_mem->caller_fp;
 
-        for (int i = 0; i < MAX_STACK_TRACE; i++) {
-          if (current_pc == 0) break;
+      for (int i = 0; i < MAX_STACK_TRACE; i++) {
+        if (current_pc == 0) break;
 
-          // Stip arm64 PAC bits
-          current_pc &= 0x0000FFFFFFFFFFFFULL;
+        // Stip arm64 PAC bits
+        current_pc &= 0x0000FFFFFFFFFFFFULL;
 
-          uintptr_t frame_offset = 0;
-          std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
+        uintptr_t frame_offset = 0;
+        std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
 
-          if (!is_trusted_library(frame_lib)) {
-            malicious_pc = current_pc;
-            culprit_lib = frame_lib;
-            offset = frame_offset;
-            is_trusted = false;
-            break;
-          }
-
-          // Walk to the next frame in the target process
-          uintptr_t next_fp, next_lr;
-          if (
-              !safe_read(mem_fd, current_fp, &next_fp) ||
-              !safe_read(mem_fd, current_fp + 8, &next_lr)) {
-            break;
-          }
-
-          current_fp = next_fp;
-          current_pc = next_lr;
-          if (!current_fp || (current_fp & 0x7)) {
-            break;
-          }
+        if (!is_trusted_library(frame_lib)) {
+          malicious_pc = current_pc;
+          culprit_lib = frame_lib;
+          offset = frame_offset;
+          is_trusted = false;
+          break;
         }
-        close(mem_fd);
+
+        // Walk to the next frame in the target process
+        uintptr_t next_fp, next_lr;
+        if (
+            !safe_read(mem_fd, current_fp, &next_fp) ||
+            !safe_read(mem_fd, current_fp + 8, &next_lr)) {
+          break;
+        }
+
+        current_fp = next_fp;
+        current_pc = next_lr;
+        if (!current_fp || (current_fp & 0x7)) {
+          break;
+        }
+      }
+      close(mem_fd);
     }
 
     // Default to allow
@@ -272,10 +272,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
             // Broker opens signal handler's pre_fd and fills it
             int target_fd = (int)ipc_mem->arg5;
-              char proc_path[64];
-              snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
+            char proc_path[64];
+            snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
 
-              int root_fd = open(proc_path, O_WRONLY);
+            int root_fd = open(proc_path, O_WRONLY);
             if (root_fd < 0) {
               // same logic:
               // fallback to denying if Broker can't open target's remote fd
@@ -286,16 +286,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Filled target's fd: %s", proc_path);
 
-                char buf[4096];
-                ssize_t n;
-                lseek(fake_fd, 0, SEEK_SET);
+            char buf[4096];
+            ssize_t n;
+            lseek(fake_fd, 0, SEEK_SET);
             while ((n = read(fake_fd, buf, sizeof(buf))) > 0) {
               write(root_fd, buf, n);
             }
-                lseek(root_fd, 0, SEEK_SET);
+            lseek(root_fd, 0, SEEK_SET);
 
             // Cleanup daemon's ref of target's pre_fd and its own fake fd
-                close(root_fd);
+            close(root_fd);
             close(fake_fd);
 
             // Tell target to use the fd it already has
