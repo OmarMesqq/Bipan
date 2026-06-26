@@ -16,23 +16,23 @@
 
 static void handle_fetch_targets(int fd) {
   DIR* dir = opendir(TARGETS_DIR);
-  if (dir) {
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-      if (entry->d_name[0] == '.') {
-        // Skip . and ..
-        continue;
-      }
-
-      auto len = static_cast<uint32_t>(strlen(entry->d_name));
-      write(fd, &len, sizeof(len));
-      write(fd, entry->d_name, len);
-    }
-    closedir(dir);
-  } else {
+  if (!dir) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "handle_fetch_targets: failed to read targets dir (%s)!", TARGETS_DIR);
     return;
   }
+
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (entry->d_name[0] == '.') {
+      // Skip . and ..
+      continue;
+    }
+
+    auto len = static_cast<uint32_t>(strlen(entry->d_name));
+    write(fd, &len, sizeof(len));
+    write(fd, entry->d_name, len);
+  }
+  closedir(dir);
 
   uint32_t done = 0;  // means we are finished
   write(fd, &done, sizeof(done));
@@ -82,8 +82,12 @@ static void companion_handler(int sock) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler mmap failed!");
       return;
     }
-    __sync_synchronize();
 
+    pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+    std::__thread_id tid = std::this_thread::get_id();
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker infinite loop. Root companion's PID: %d and TID: %d", pid, tid);
+
+    __sync_synchronize();
     startBroker(sock, local_ipc_mem);
   }
 }

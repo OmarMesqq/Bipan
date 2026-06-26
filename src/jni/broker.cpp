@@ -96,7 +96,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   std::__thread_id tid = std::this_thread::get_id();
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker's PID: %d | TID: %d", pid, tid);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
 
   // Open target's pidfd
   pid_t client_pid = ipc_mem->target_pid;
@@ -129,19 +129,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   bool client_dead = false;
   while (!client_dead) {
-    int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, 500);
-
-    if (ret == -ETIMEDOUT) {
-      if (client_is_dead(epfd, pidfd)) {
-        client_dead = true;
-        break;
+    while (ipc_mem->status != REQUEST_SYSCALL) {
+      int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, 500);
+      if (ret == -ETIMEDOUT) {
+        if (client_is_dead(epfd, pidfd)) {
+          client_dead = true;
+          goto dead_client_exit;
+        }
       }
-      continue;
-    }
-
-    // EAGAIN/EINTR/0: check actual IPC memory status
-    if (ipc_mem->status != REQUEST_SYSCALL) {
-      continue;
     }
 
     __sync_synchronize();
@@ -596,7 +591,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
-
+dead_client_exit:
   munmap(ipc_mem, sizeof(SharedIPC));
   if (pidfd >= 0) close(pidfd);
   close(epfd);
