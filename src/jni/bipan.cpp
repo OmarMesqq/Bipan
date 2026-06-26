@@ -120,6 +120,7 @@ class Bipan : public zygisk::ModuleBase {
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
+    ipc_mem->target_pid = getpid();
 
     // Teleport the FD to the Root Companion
     send_fd(g_broker_socket, memfd);

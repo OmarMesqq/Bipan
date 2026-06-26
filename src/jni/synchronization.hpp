@@ -81,6 +81,24 @@ __attribute__((always_inline)) inline void futex_wait(volatile int* addr, int ex
 }
 
 /**
+ * Puts the thread to sleep IF the value at *addr equals 'expected'
+ */
+__attribute__((always_inline)) inline int futex_wait_timeout(volatile int* addr, int expected, long timeout_ms) {
+  struct timespec ts;
+  ts.tv_sec = timeout_ms / 1000;
+  ts.tv_nsec = (timeout_ms % 1000) * 1000000L;
+
+  return (int)arm64_raw_syscall(
+      __NR_futex,
+      (long)addr,
+      FUTEX_WAIT,
+      expected,
+      (long)&ts,
+      0,
+      0);
+}
+
+/**
  * Wakes up exactly 1 thread that is sleeping on *addr
  */
 __attribute__((always_inline)) inline void futex_wake(volatile int* addr) {

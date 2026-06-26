@@ -82,6 +82,7 @@ static void companion_handler(int sock) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler mmap failed!");
       return;
     }
+    __sync_synchronize();
 
     startBroker(sock, local_ipc_mem);
   }
