@@ -137,7 +137,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // openat takes up to 4 args, so use arg5 as slot for the pre-FD
     ipc_mem->arg5 = pre_fd;
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx) {
+  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx || nr == __NR_inotify_add_watch) {
     my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);

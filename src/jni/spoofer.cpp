@@ -27,24 +27,28 @@ int uname_spoofer(struct utsname* buf) {
 
 int create_spoofed_file(const char* fake_content) {
   int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"BipanAnon", MFD_CLOEXEC, 0, 0, 0, 0);
-  if (fd >= 0) {
-    size_t len = local_strlen(fake_content);
-    arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
-    arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
-  } else {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "memfd_create failed");
+  if (fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
+    return fd;
   }
+
+  size_t len = local_strlen(fake_content);
+  arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
+
   return fd;
 }
 
 int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: openat real dir failed!");
     return -1;
   }
 
-  int fake_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
@@ -103,11 +107,13 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: openat real dir failed!");
     return -1;
   }
 
-  int fake_fd = (int) arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
@@ -151,11 +157,13 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
   if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
     return -1;
   }
 
   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }

@@ -96,9 +96,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Root companion sockfd for CMD_START_BROKER: %d", g_broker_socket);
-
-
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: root companion sockfd (g_broker_socket): %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -118,6 +116,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: Shared IPC mmap'ed at: %p", (void*) ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
