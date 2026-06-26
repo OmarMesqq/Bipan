@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
@@ -490,11 +491,43 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_inotify_add_watch: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_add_watch)!");
+        int fd = (int)ipc_mem->arg0;
+        const char* path = (const char*)ipc_mem->string_payload == nullptr ? "NULL path" : ipc_mem->string_payload;
+        uint32_t mask = (uint32_t)ipc_mem->arg2;
+
+        std::string maskAnalysis = "";
+        maskAnalysis.reserve(500);
+        if (mask & IN_ACCESS) maskAnalysis += " File accessed |";
+        if (mask & IN_ATTRIB) maskAnalysis += " Metadata changes (perms, timestamps) |";
+        if (mask & IN_CLOSE_WRITE) maskAnalysis += " File opened for writing was closed |";
+        if (mask & IN_CLOSE_NOWRITE) maskAnalysis += " File or directory not opened for writing was closed |";
+        if (mask & IN_CREATE) maskAnalysis += " File/directory created in watched directory |";
+        if (mask & IN_DELETE) maskAnalysis += " File/directory deleted from watched directory |";
+        if (mask & IN_DELETE_SELF) maskAnalysis += " Watched file/directory was deleted/moved |";
+        if (mask & IN_MODIFY) maskAnalysis += " File modifed |";
+        if (mask & IN_MOVE_SELF) maskAnalysis += " File was moved |";
+        if (mask & IN_MOVED_FROM) maskAnalysis += " Generated for the directory containing the old filename when a file is renamed |";
+        if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
+        if (mask & IN_OPEN) maskAnalysis += " File or directory was opened |";
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
         break;
       }
       case __NR_inotify_init1: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_init1)!");
+        int flags = (int)ipc_mem->arg0;
+        if (!flags) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with no flags, behave like 'inotify_init'");
+          break;
+        }
+
+        if (flags & (IN_NONBLOCK | IN_CLOEXEC)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking and close-on-exec");
+        } else if (flags & IN_NONBLOCK) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking I/O");
+        } else if (flags & IN_CLOEXEC) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with close-on-exec on the new FD");
+        }
+
         break;
       }
       case __NR_inotify_rm_watch: {
