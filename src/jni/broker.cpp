@@ -69,16 +69,6 @@ static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 
-#ifdef DEBUG
-static uint64_t last_dump_ns = 0;
-
-static inline uint64_t monotonic_ns() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-  return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-}
-#endif
-
 /**
  * `BipanBroker` runs as thread of root companion, as such,
  * it inherits its powerful capabilities.
@@ -156,20 +146,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     __sync_synchronize();
 
-#ifdef DEBUG
-    uint64_t now = monotonic_ns();
-    if (now - last_dump_ns >= 1000000000ULL) {
-      last_dump_ns = now;
-      uint64_t total = s_violation_count.exchange(0, std::memory_order_relaxed);
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "violations/sec: %lu", total);
-      for (int i = 0; i < 512; i++) {
-        uint64_t c = s_syscall_counts[i].exchange(0, std::memory_order_relaxed);
-        if (c > 0)
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "  [%d]: %lu/s", i, c);
-      }
-    }
-#endif
-
     int nr = ipc_mem->nr;
     const char* path_payload = ipc_mem->string_payload;
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
@@ -241,18 +217,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             char argv_dump[512] = {0};
             char envp_dump[512] = {0};
 
-            read_argv_from_tracee(ipc_mem->target_pid,
-                                  (uintptr_t)ipc_mem->arg1,
-                                  argv_dump, sizeof(argv_dump));
+            read_argv_from_tracee(ipc_mem->target_pid, (uintptr_t)ipc_mem->arg1, argv_dump, sizeof(argv_dump));
 
-            // envp is usually large, just read first few
-            read_argv_from_tracee(ipc_mem->target_pid,
-                                  (uintptr_t)ipc_mem->arg2,
-                                  envp_dump, sizeof(envp_dump));
+            // read just first few of envp
+            read_argv_from_tracee(ipc_mem->target_pid, (uintptr_t)ipc_mem->arg2, envp_dump, sizeof(envp_dump));
 
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                                  "[execve denied INFO!] path=%s argv=%s",
-                                  ipc_mem->string_payload, argv_dump);
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[execve denied INFO!] path=%s argv=%s", ipc_mem->string_payload, argv_dump);
           }
 #endif
 

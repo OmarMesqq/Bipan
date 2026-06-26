@@ -56,11 +56,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
   in_sigsys_handler = true;
 
-#ifdef DEBUG
-  s_violation_count.fetch_add(1, std::memory_order_relaxed);
-  s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
-#endif
-
   long arg0 = (long)ctx->uc_mcontext.regs[0];
   long arg1 = (long)ctx->uc_mcontext.regs[1];
   long arg2 = (long)ctx->uc_mcontext.regs[2];
