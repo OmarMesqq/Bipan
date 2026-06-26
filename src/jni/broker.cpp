@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -65,6 +66,8 @@ static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len)
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
 static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size_t out_size);
+static inline bool client_is_dead(int epfd, int pidfd);
+static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 
 #ifdef DEBUG
 static uint64_t last_dump_ns = 0;
@@ -105,10 +108,52 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::__thread_id tid = std::this_thread::get_id();
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker's PID: %d | TID: %d", pid, tid);
 
-  while (true) {
-    while (ipc_mem->status != REQUEST_SYSCALL) {
-      futex_wait(&ipc_mem->status, ipc_mem->status);
+  // Open target's pidfd
+  pid_t client_pid = ipc_mem->target_pid;
+  int pidfd = bipan_pidfd_open(client_pid, 0);
+  if (pidfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] pidfd_open failed for client PID %d", client_pid);
+  }
+
+  // epoll monitoring socket and pidfd
+  int epfd = epoll_create1(EPOLL_CLOEXEC);
+  if (epfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
+    // without epoll we don't have a watchdog, kill broker
+    munmap(ipc_mem, sizeof(SharedIPC));
+    return;
+  }
+
+  struct epoll_event ev{};
+  ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
+  ev.data.fd = sock;
+  epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
+  if (pidfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_ctl for Broker's socket and pidfd failed!");
+    munmap(ipc_mem, sizeof(SharedIPC));
+    return;
+  }
+
+  ev.data.fd = pidfd;
+  epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
+
+  bool client_dead = false;
+  while (!client_dead) {
+    int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, 500);
+
+    if (ret == -ETIMEDOUT) {
+      if (client_is_dead(epfd, pidfd)) {
+        client_dead = true;
+        break;
+      }
+      continue;
     }
+
+    // EAGAIN/EINTR/0: check actual IPC memory status
+    if (ipc_mem->status != REQUEST_SYSCALL) {
+      continue;
+    }
+
     __sync_synchronize();
 
 #ifdef DEBUG
@@ -581,7 +626,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker ended! PID: %d | TID: %d", pid, tid);
+
+  munmap(ipc_mem, sizeof(SharedIPC));
+  if (pidfd >= 0) close(pidfd);
+  close(epfd);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (TID: %d) exiting for dead client PID %d", tid, client_pid);
 }
 
 /**
@@ -916,4 +965,25 @@ static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size
   }
 
   close(fd);
+}
+
+static inline bool client_is_dead(int epfd, int pidfd) {
+  struct epoll_event events[2];
+  int n = epoll_wait(epfd, events, 2, 0);
+  for (int i = 0; i < n; i++) {
+    if (
+        events[i].data.fd == pidfd &&
+        (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLIN))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Wrapper for `pidfd_open` as even with correct headers, the NDK
+ * says it's an 'undeclared identifier'
+ */
+static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
+  return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
 }

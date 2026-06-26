@@ -26,7 +26,7 @@ int uname_spoofer(struct utsname* buf) {
 }
 
 int create_spoofed_file(const char* fake_content) {
-  int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"BipanAnon", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
     return fd;
