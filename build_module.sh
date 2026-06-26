@@ -42,6 +42,14 @@ cd ..
 cd module
 mkdir -p zygisk
 cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
+$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objcopy \
+  --strip-all \
+  -R .eh_frame \
+  -R .eh_frame_hdr \
+  -R .gcc_except_table \
+  -R .note.gnu.build-id \
+  -R .note.android.ident \
+  ./zygisk/arm64-v8a.so
 
 # Create the final flashable zip with no compression
 rm -f ../bipan.zip
