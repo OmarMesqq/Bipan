@@ -1,8 +1,9 @@
 #ifndef BIPAN_SHARED_H
 #define BIPAN_SHARED_H
 
-#include <string>
 #include <jni.h>
+
+#include <string>
 #include <unordered_set>
 
 #define TAG "Bipan"
@@ -20,13 +21,6 @@ extern uintptr_t g_bipan_lib_end;
 extern char package_name[256];
 extern jclass g_bipanJavaClass;
 extern std::unordered_set<std::string> telephonySpoofingAllowlist;
-
-
-
-#ifdef DEBUG
-inline std::atomic<uint64_t> s_violation_count{0};
-inline std::atomic<uint64_t> s_syscall_counts[512]{};
-#endif
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,
