@@ -175,9 +175,9 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.verifiedbootstate", "green"},
     {"ro.com.google.clientidbase", "android-google"},
     {"ro.boot.selinux", "enforcing"},
-    {"ro.boot.warranty_bit", "0"},
-    {"init.svc.adb_root", "stopped"},
-    {"persist.sys.usb.config", "none"},
+    {"ro.boot.warranty_bit", ""},
+    {"init.svc.adb_root", ""},
+    {"persist.sys.usb.config", ""},
     {"init.svc.adbd", "stopped"},
 
     {"ro.boot.hardware", "zuma"},
