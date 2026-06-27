@@ -21,6 +21,7 @@
 #include <ifaddrs.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 #include "socket_helper.h"
 
@@ -37,8 +38,15 @@
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
+/**
+ * func-like macro to convert negative error values provided by the kernel to raw syscalls
+ * back to nice libc/bionic errnos
+ */
+#define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
-static inline void early_init_sysprop_test(void);
+
+static inline void early_init_sysprop_tests(void);
+static inline void early_init_stat_tests(void);
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
@@ -47,9 +55,9 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 static inline void dump (void *p, int n, char* report);
 
-__attribute__((constructor))
-void grunfeld_early_init(void) {
-    early_init_sysprop_test();
+__attribute__((constructor)) void grunfeld_early_init(void) {
+    early_init_sysprop_tests();
+    early_init_stat_tests();
 
     LOGI("Early init: __attribute__((constructor))");
 }
@@ -849,7 +857,7 @@ static void prop_cb(void* cookie, const char* name, const char* value, uint32_t 
     out[PROP_VALUE_MAX] = '\0';
 }
 
-static inline void early_init_sysprop_test(void) {
+static inline void early_init_sysprop_tests(void) {
     char radio1[PROP_VALUE_MAX]  = {0};
     int len = __system_property_get("gsm.version.baseband", radio1);
     if (len <= 0) {
@@ -884,6 +892,159 @@ static inline void early_init_sysprop_test(void) {
     LOGI("[LEGACY] FINGERPRINT: %s", fp);
 }
 
+static inline void early_init_stat_tests(void) {
+    const char* hosts1 = "/etc/hosts";
+    const char* hosts2 = "/system/etc/hosts";
+    const char* perfEventParanoid = "/proc/sys/kernel/perf_event_paranoid";
+    long ret = 0; // result of syscall
+
+
+    // ----------------- start faccessat block ----------------------
+
+    int faccessatMode1 = F_OK; // tests existence of file
+    int faccessatMode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
+    int faccessatMode3 = R_OK; // exists and has read
+
+    int faccessatFlags1 = AT_EACCESS; // performs access using effective UID and GID
+    int faccessatFlags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
+    int faccessatFlags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
+
+
+    // should fail: requested permissions not satisfied
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode2, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // should return zero: perms granted
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode3, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // should return zero: mode is F_OK and file exists requested permissions granted
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode1, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end faccessat block ----------------------
+
+    // ----------------- start newfstatat block ----------------------
+
+
+    struct stat statbuf = {0};
+    // if path = "", operate on the file referred to by dirfd
+    // If path is a symbolic link, do not dereference it: instead return information about the link itself
+    int newfstatatFlags = AT_EMPTY_PATH  | AT_SYMLINK_NOFOLLOW;
+
+    ret = arm64_raw_syscall(__NR_newfstatat, 0 , (long) hosts1, (long) &statbuf, newfstatatFlags, 0, 0);
+    if (ret == 0) {
+        LOGI("newfstatat(%s) - flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
+        LOGI("--- struct stat Dump ---");
+        LOGI("st_dev (Device ID):     %lu", (unsigned long)statbuf.st_dev);
+        LOGI("st_ino (inode number):     %lu", (unsigned long)statbuf.st_ino);
+        LOGI("Hard link count:   %lu", (unsigned long)statbuf.st_nlink);
+        LOGI("UID:     %u", statbuf.st_uid);
+        LOGI("GID:     %u", statbuf.st_gid);
+        LOGI("st_rdev (Device ID for special files i.e under /dev):    %lu", (unsigned long)statbuf.st_rdev);
+        LOGI("Size:    %ld bytes", (long)statbuf.st_size);
+        LOGI("I/O Block Size (preferred size for doing I/O): %d bytes", statbuf.st_blksize);
+        LOGI("Allocated Physical Blocks:  %ld (512B blocks)", statbuf.st_blocks);
+
+        // Timestamps
+        char access_time_str[64];
+        char modify_time_str[64];
+        char change_time_str[64];
+        struct tm tm_info;
+
+        // 1. Format Access Time
+        localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+        strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // 2. Format Modification Time
+        localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+        strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // 3. Format Status Change Time
+        localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+        strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // Log the human-readable versions with their nanoseconds appended
+        LOGI("Access time:         %s.%09ld", access_time_str, statbuf.st_atim.tv_nsec);
+        LOGI("Modification time:   %s.%09ld", modify_time_str, statbuf.st_mtim.tv_nsec);
+        LOGI("Status Change Time (last time file metadata changed):  %s.%09ld", change_time_str, statbuf.st_ctim.tv_nsec);
+
+        // st_mode: file type + permission/special flags
+        // LOGI("st_mode:    0o%o (Octal)", statbuf.st_mode);
+        const char* file_type = "Unknown";
+        if (S_ISREG(statbuf.st_mode))  file_type = "Regular File";
+        else if (S_ISDIR(statbuf.st_mode))  file_type = "Directory";
+        else if (S_ISLNK(statbuf.st_mode))  file_type = "Symbolic Link";
+        else if (S_ISCHR(statbuf.st_mode))  file_type = "Character Device";
+        else if (S_ISBLK(statbuf.st_mode))  file_type = "Block Device";
+        else if (S_ISFIFO(statbuf.st_mode)) file_type = "FIFO/Pipe";
+        else if (S_ISSOCK(statbuf.st_mode)) file_type = "Socket";
+
+        LOGI("  -> File Type: %s", file_type);
+
+        // 2. Extract Special Flags (SUID, SGID, Sticky Bit)
+        LOGI("  -> Special Flags: SUID=%d, SGID=%d, Sticky=%d",
+             (statbuf.st_mode & S_ISUID) ? 1 : 0,
+             (statbuf.st_mode & S_ISGID) ? 1 : 0,
+             (statbuf.st_mode & S_ISVTX) ? 1 : 0);
+
+        // 3. Extract Permissions (Owner, Group, Other)
+        LOGI("  -> Permissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)",
+             (statbuf.st_mode & S_IRUSR) ? 'r' : '-',
+             (statbuf.st_mode & S_IWUSR) ? 'w' : '-',
+             (statbuf.st_mode & S_IXUSR) ? 'x' : '-',
+
+             (statbuf.st_mode & S_IRGRP) ? 'r' : '-',
+             (statbuf.st_mode & S_IWGRP) ? 'w' : '-',
+             (statbuf.st_mode & S_IXGRP) ? 'x' : '-',
+
+             (statbuf.st_mode & S_IROTH) ? 'r' : '-',
+             (statbuf.st_mode & S_IWOTH) ? 'w' : '-',
+             (statbuf.st_mode & S_IXOTH) ? 'x' : '-');
+    } else {
+        LOGE("newfstatat(%s) - flags: flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end newfstatat block ----------------------
+
+    // ----------------- start statx block ----------------------
+
+    struct statx statxbuf = {0};
+    int statxFlags = AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW;
+    int statxMode = STATX_BASIC_STATS | STATX_BTIME;
+
+    /**
+     * int statx(
+     *          int dirfd,
+     *          const char *_Nullable restrict path,
+     *          int flags,
+     *          unsigned int mask,
+     *          struct statx *restrict statxbuf
+     * )
+     */
+    ret = arm64_raw_syscall(__NR_statx, 0 , (long) hosts1, (long) statxFlags, statxMode, (long) &statxbuf, 0);
+    if (ret == 0) {
+        LOGI("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end statx block ----------------------
+
+}
+
 static inline void dump(void *p, int n, char *report) {
     char entry[64];
     unsigned char *p1 = p;
@@ -901,7 +1062,7 @@ static inline void dump(void *p, int n, char *report) {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
-static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+__attribute__((always_inline))  static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
     register long x8 __asm__("x8") = sysno;
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;
