@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.rootbeer.lib)
+    implementation(libs.androidx.datastore.preferences)
 
     "debugLeakCanaryImplementation"(libs.leakcanary.android)
 }
