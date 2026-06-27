@@ -32,7 +32,6 @@ public class J {
       "com.android.vending",
       "com.google.android.gms"));
 
-  
   /**
    * hookInstrumentation:
    * Triggered at either clampGrowthLimit or clearGrowthLimit.
@@ -42,7 +41,7 @@ public class J {
   public static void h() throws Exception {
     if (!instrumentationHooked.compareAndSet(false, true)) {
       // both clampGrowthLimit and clearGrowthLimit may fire, only hook once
-      return; 
+      return;
     }
 
     try {
@@ -70,7 +69,7 @@ public class J {
             }
             loadModules(ctx);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + "[!] [1] Instrumentation.onCreate failure: " + e.getMessage());
+            throw new OutOfMemoryError(TAG + " [!] [1] Instrumentation.onCreate failure: " + e.getMessage());
           }
 
           try {
@@ -153,7 +152,7 @@ public class J {
 
   /**
    * `install`:
-   * unseals ART VM at postAppSpecialize so modules access and modify 
+   * unseals ART VM at postAppSpecialize so modules access and modify
    * hidden/restricted APIs
    */
   public static void i() {
@@ -172,24 +171,35 @@ public class J {
     if (GLOBAL_ALLOW_LIST.contains(packageName)) {
       modules.add(new AntiNetworkDiscoveryHook());
     } else {
-      // ---------------------------------------------
       /**
-       * These two should be the first to load,
-       * as they expose public methods that block
-       * the app's main thread (for PM and CM hooking
-       * both Application and Activity-wise)
+       * Isolated processes (Services to be more precise) are quite restricted
+       * and can't touch most system APIs, so just install modules for things it
+       * CAN touch
        * 
-       * TODO: refactor to undo this tight coupling
+       * https://developer.android.com/guide/topics/manifest/service-element#isolated
        */
-      modules.add(new AntiAppInspectionHook());
-      modules.add(new NetworkSpoofingHook());
-      // ---------------------------------------------
-
-      modules.add(new SettingsHook());
-      modules.add(new AntiNetworkDiscoveryHook());
-      modules.add(new TelephonyManagerHook());
-      modules.add(new AntiScreenshotDetectionHook());
-      modules.add(new MemoryInfoHook());
+      if (isIsolatedProcess()) {
+        modules.add(new AntiAppInspectionHook());
+        modules.add(new MemoryInfoHook());
+      } else {
+        // ---------------------------------------------
+        /**
+         * These two should be the first to load,
+         * as they expose public methods that block
+         * the app's main thread (for PM and CM hooking
+         * both Application and Activity-wise)
+         * 
+         * TODO: refactor to undo this tight coupling
+         */
+        modules.add(new AntiAppInspectionHook());
+        modules.add(new NetworkSpoofingHook());
+        // ---------------------------------------------
+        modules.add(new SettingsHook());
+        modules.add(new AntiNetworkDiscoveryHook());
+        modules.add(new TelephonyManagerHook());
+        modules.add(new AntiScreenshotDetectionHook());
+        modules.add(new MemoryInfoHook());
+      }
     }
 
     for (BaseHook module : modules) {
@@ -253,5 +263,24 @@ public class J {
 
     // Bypasses PropertiesWithNonOverrideableDefaults "protections"
     unchangeableProps.put("os.version", "6.6.56-android16-11-g8a3e2b1c4d5f");
+  }
+
+  private static boolean isIsolatedProcess() {
+    try {
+      Class<?> processClass = Class.forName("android.os.Process");
+      Method isIsolated = processClass.getDeclaredMethod("isIsolated");
+      boolean isolated = (boolean) isIsolated.invoke(null);
+      if (isolated) {
+        Class<?> atClz = Class.forName("android.app.ActivityThread");
+        Method currentProcessName = atClz.getDeclaredMethod("currentProcessName");
+        String processName = (String) currentProcessName.invoke(null);
+        Log.w(TAG, "Isolated process detected: " + processName + " . Skipping most modules");
+      }
+
+      return isolated;
+    } catch (Exception e) {
+      Log.e(TAG, "isIsolatedProcess e:", e);
+      return false;
+    }
   }
 }
