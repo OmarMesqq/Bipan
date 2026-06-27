@@ -290,20 +290,90 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 // ==========================================
 // Linker hooks
 // ==========================================
+struct DumpContext {
+  const char* target_soname;
+};
+
+static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data) {
+  DumpContext* ctx = (DumpContext*)data;
+
+  if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
+    return 0;  // continua iterando
+  }
+
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] found: %s base=0x%lx", info->dlpi_name, (uintptr_t)info->dlpi_addr);
+
+  for (int i = 0; i < info->dlpi_phnum; i++) {
+    const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
+
+    if (phdr->p_type != PT_LOAD) continue;
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[phdr] flags=0x%x vaddr=0x%lx memsz=%zu filesz=%zu", phdr->p_flags, phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
+
+    uintptr_t start = info->dlpi_addr + phdr->p_vaddr;
+    size_t len = phdr->p_memsz;
+
+    char dumppath[128];
+    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", package_name, start);
+
+    int out_fd = open(dumppath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out_fd < 0) {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] failed to open %s: %s", dumppath, strerror(errno));
+      continue;
+    }
+
+    uint8_t buf[4096];
+    size_t remaining = len;
+    uintptr_t cur = start;
+    while (remaining > 0) {
+      size_t to_read = remaining < sizeof(buf) ? remaining : sizeof(buf);
+      memcpy(buf, (void*)cur, to_read);
+      write(out_fd, buf, to_read);
+      cur += to_read;
+      remaining -= to_read;
+    }
+    close(out_fd);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] wrote 0x%lx len=%zu -> %s", start, len, dumppath);
+  }
+  return 0;
+}
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dlopen(%s)", filename);
   }
-  return orig_dlopen(filename, flag);
+  void* result = orig_dlopen(filename, flag);
+  const char* soname = strrchr(filename, '/');
+  soname = soname ? soname + 1 : filename;
+
+  if (
+      strstr(filename, "libholmes") ||
+      strstr(filename, "libreveny")
+  ) {
+    DumpContext ctx = {soname};
+    dl_iterate_phdr(dump_phdr_callback, &ctx);
+  }
+
+  return result;
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] android_dlopen_ext(%s)", filename);
   }
 
-  return orig_android_dlopen_ext(filename, flag, extinfo);
+  void* result = orig_android_dlopen_ext(filename, flag, extinfo);
+  if (
+      strstr(filename, "libholmes") ||
+      strstr(filename, "libreveny")
+  ) {
+    const char* soname = strrchr(filename, '/');
+    soname = soname ? soname + 1 : filename;
+
+    DumpContext ctx = {soname};
+    dl_iterate_phdr(dump_phdr_callback, &ctx);
+  }
+
+  return result;
 }
 
 // ==========================================

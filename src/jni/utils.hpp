@@ -116,6 +116,8 @@ inline bool is_smaps(const char* pathname) {
 inline bool is_mounts(const char* pathname) {
   return (strcmp(pathname, "/proc/mounts") == 0) ||
          (strcmp(pathname, "/proc/self/mounts") == 0) ||
+         (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+         is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
 }
 
