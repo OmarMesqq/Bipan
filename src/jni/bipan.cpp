@@ -138,7 +138,10 @@ class Bipan : public zygisk::ModuleBase {
     if (!isTargetApp) {
       return;
     }
-    // Native (C/C++ setup)
+// Native (C/C++ setup)
+#ifdef DEBUG
+    registerDobbyLinkerHooks();
+#endif
     registerNativeSystemPropertiesHook();
     registerNativeSensorsHooks();
 

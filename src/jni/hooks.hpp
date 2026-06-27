@@ -2,7 +2,9 @@
 #define HOOKS_HPP
 
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <ifaddrs.h>
+#include <link.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
@@ -158,7 +160,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
 
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
-    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver", ""},
     {"ril.sw_ver2", ""},
 
     {"nfc.initialized", "false"},
