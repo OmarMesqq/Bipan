@@ -76,35 +76,6 @@ inline const char* local_strchr(const char* s, int c) {
   return nullptr;
 }
 
-inline int local_atoi(const char* s) {
-  if (!s) return 0;
-
-  int res = 0;
-  int sign = 1;
-
-  // 1. Skip leading whitespace
-  while (*s == ' ' || *s == '\t' || *s == '\n' ||
-         *s == '\r' || *s == '\f' || *s == '\v') {
-    s++;
-  }
-
-  // 2. Handle optional sign
-  if (*s == '-') {
-    sign = -1;
-    s++;
-  } else if (*s == '+') {
-    s++;
-  }
-
-  // 3. Process digits and stop at the first non-digit
-  while (*s >= '0' && *s <= '9') {
-    res = res * 10 + (*s - '0');
-    s++;
-  }
-
-  return res * sign;
-}
-
 // Verifies if a segment of a string is purely numbers (a PID)
 __attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size_t len) {
   if (len == 0) return false;
@@ -270,58 +241,6 @@ inline bool is_lan_address(struct sockaddr* addr) {
   return false;
 }
 
-inline void get_socket_info(int sockfd,
-                            struct sockaddr* sockAddrStruct,
-                            char* protocol,
-                            int* port,
-                            char* ipAddr,
-                            char* family) {
-  if (sockAddrStruct == nullptr) {
-    return;
-  }
-  int sock_type = 0;
-  socklen_t optlen = sizeof(sock_type);
-
-  long ret = arm64_raw_syscall(__NR_getsockopt,
-                               sockfd, SOL_SOCKET,
-                               SO_TYPE,
-                               (long)&sock_type,
-                               (long)&optlen,
-                               0);
-
-  if (ret != 0) {
-    BIPAN_PANIC();
-  }
-
-  if (sock_type == SOCK_STREAM) {
-    write_to_char_buf(protocol, "TCP", 4);
-  } else if (sock_type == SOCK_DGRAM) {
-    write_to_char_buf(protocol, "UDP", 4);
-  } else {
-    write_to_char_buf(protocol, "UNKNOWN", 8);
-  }
-
-  if (sockAddrStruct->sa_family == AF_INET) {
-    struct sockaddr_in* ipv4 = (struct sockaddr_in*)sockAddrStruct;
-
-    *port = ntohs(ipv4->sin_port);
-    inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddr, INET_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv4", 5);
-  } else if (sockAddrStruct->sa_family == AF_INET6) {
-    struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)sockAddrStruct;
-
-    *port = ntohs(ipv6->sin6_port);
-    inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv6", 5);
-  } else {
-    write_to_char_buf(family, "UNKNOWN", 8);
-  }
-}
-
-inline bool is_network_socket(const char* family) {
-  return (strcmp(family, "IPv4") == 0) ||
-         (strcmp(family, "IPv6") == 0);
-}
 
 __attribute__((always_inline)) static inline size_t my_strlen(const char* s) {
   size_t len = 0;
@@ -340,17 +259,6 @@ __attribute__((always_inline)) static inline char* my_strncpy(char* dest, const 
   for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
   for (; i < n; i++) dest[i] = '\0';
   return dest;
-}
-
-__attribute__((always_inline)) static inline void my_reverse(char* str, int len) {
-  int i = 0, j = len - 1;
-  while (i < j) {
-    char t = str[i];
-    str[i] = str[j];
-    str[j] = t;
-    i++;
-    j--;
-  }
 }
 
 __attribute__((always_inline)) static inline void* my_memcpy(void* dest, const void* src, size_t n) {

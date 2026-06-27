@@ -65,7 +65,6 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size_t out_size);
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 
@@ -207,20 +206,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_EXIT_PROCESS;
-#ifdef DEBUG
-          if (nr == __NR_execve) {
-            char argv_dump[512] = {0};
-            char envp_dump[512] = {0};
-
-            read_argv_from_tracee(ipc_mem->target_pid, (uintptr_t)ipc_mem->arg1, argv_dump, sizeof(argv_dump));
-
-            // read just first few of envp
-            read_argv_from_tracee(ipc_mem->target_pid, (uintptr_t)ipc_mem->arg2, envp_dump, sizeof(envp_dump));
-
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[execve denied INFO!] path=%s argv=%s", ipc_mem->string_payload, argv_dump);
-          }
-#endif
-
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) denied]", action_name, path_payload);
         }
         break;
@@ -908,28 +893,6 @@ std::string get_sockaddr_info(const struct sockaddr* sa) {
     default:
       return "Family " + std::to_string(sa->sa_family);
   }
-}
-
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr, char* out, size_t out_size) {
-  char mem_path[64];
-  snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
-
-  int fd = open(mem_path, O_RDONLY);
-  if (fd < 0) return;
-
-  // Read the argv pointer array (up to N pointers)
-  uintptr_t ptrs[32] = {0};
-  pread(fd, ptrs, sizeof(ptrs), (off_t)argv_ptr);
-
-  size_t written = 0;
-  for (int i = 0; i < 32 && ptrs[i] != 0 && written < out_size - 1; i++) {
-    char arg[256] = {0};
-    pread(fd, arg, sizeof(arg) - 1, (off_t)ptrs[i]);
-    int n = snprintf(out + written, out_size - written, "[%d]=%s ", i, arg);
-    written += (size_t)n;
-  }
-
-  close(fd);
 }
 
 static inline bool client_is_dead(int epfd, int pidfd) {

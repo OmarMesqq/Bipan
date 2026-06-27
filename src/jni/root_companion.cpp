@@ -83,10 +83,6 @@ static void companion_handler(int sock) {
       return;
     }
 
-    pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-    std::__thread_id tid = std::this_thread::get_id();
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker infinite loop. Root companion's PID: %d and TID: %d", pid, tid);
-
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
   }
