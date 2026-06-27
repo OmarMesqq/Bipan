@@ -687,6 +687,7 @@ fun getSomeSystemFeatures(ctx: Context): String {
     return sb.toString()
 }
 
+// TODO: why isn't Bipan catching this?
 fun getMemoryInfo(context: Context): String {
     val sb = StringBuilder()
     val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -719,6 +720,7 @@ fun getMemoryInfo(context: Context): String {
   
 }
 
+// TODO: why isn't Bipan catching this?
 fun dumpCpuInfo() : String {
     val sb = StringBuilder()
 

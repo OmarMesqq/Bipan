@@ -11,8 +11,10 @@ navigationCompose = "2.9.7"
 rootbeerLib = "0.1.2"
 webkit = "1.16.0"
 coreSplashscreen = "1.2.0"
+datastorePreferences = "1.2.1"
 
 [libraries]
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }

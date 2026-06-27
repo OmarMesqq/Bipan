@@ -23,6 +23,7 @@ import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import java.util.concurrent.Executors
+import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 
 
 private const val TAG = "MainApplication"
@@ -33,6 +34,8 @@ class MainApplication: Application() {
             System.loadLibrary("grunfeld")
         }
     }
+    lateinit var configRepository: GrunfeldConfigs
+        private  set
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
@@ -72,6 +75,7 @@ class MainApplication: Application() {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "CRITICAL_ERROR: Uncaught exception in ${thread.name}", tr= throwable, shouldToast = true)
             defaultHandler?.uncaughtException(thread, throwable)
         }
+        configRepository = GrunfeldConfigs(this)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
