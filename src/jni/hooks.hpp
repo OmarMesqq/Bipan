@@ -24,6 +24,12 @@ struct PropCallbackCtx {
   void* user_cookie;
 };
 
+// type for spoofing dl_iterate_phdr
+struct FilteredCallback {
+  int (*real_cb)(struct dl_phdr_info*, size_t, void*);
+  void* real_data;
+};
+
 // sysprop overrides equivalent to `spoofBuildFields` ART fields
 static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.board", "husky"},
@@ -266,6 +272,7 @@ static bool g_ifaddrs_cached = false;
 
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
 void my_freeifaddrs(struct ifaddrs* ifa);
+static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data);
 
 // ==========================================
 // Original function pointers
@@ -276,6 +283,7 @@ static void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 static void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
 static void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
+static int (*orig_dl_iterate_phdr)(int (*)(struct dl_phdr_info*, size_t, void*), void*) = nullptr;
 
 static ASensorManager* (*orig_ASensorManager_getInstance)();
 static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*);
@@ -341,41 +349,44 @@ static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dlopen(%s)", filename);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] dlopen(%s)", filename);
   }
   void* result = orig_dlopen(filename, flag);
   const char* soname = strrchr(filename, '/');
   soname = soname ? soname + 1 : filename;
 
-  if (
-      strstr(filename, "libholmes") ||
-      strstr(filename, "libreveny")
-  ) {
-    DumpContext ctx = {soname};
-    dl_iterate_phdr(dump_phdr_callback, &ctx);
-  }
+  // if (
+  //     strstr(filename, "libholmes") ||
+  //     strstr(filename, "libreveny")) {
+  //   DumpContext ctx = {soname};
+  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
+  // }
 
   return result;
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] android_dlopen_ext(%s)", filename);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] android_dlopen_ext(%s)", filename);
   }
 
   void* result = orig_android_dlopen_ext(filename, flag, extinfo);
-  if (
-      strstr(filename, "libholmes") ||
-      strstr(filename, "libreveny")
-  ) {
-    const char* soname = strrchr(filename, '/');
-    soname = soname ? soname + 1 : filename;
+  // if (
+  //     strstr(filename, "libholmes") ||
+  //     strstr(filename, "libreveny")) {
+  //   const char* soname = strrchr(filename, '/');
+  //   soname = soname ? soname + 1 : filename;
 
-    DumpContext ctx = {soname};
-    dl_iterate_phdr(dump_phdr_callback, &ctx);
-  }
+  //   DumpContext ctx = {soname};
+  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
+  // }
 
   return result;
+}
+
+static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
+  FilteredCallback ctx = {cb, data};
+  return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
 }
 
 // ==========================================
@@ -658,7 +669,7 @@ int my_getifaddrs(struct ifaddrs** ifap) {
   return 0;
 }
 
-void registerNativeSensorsHooks() {
+void registerDobbyNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
   if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
 
@@ -706,11 +717,13 @@ void registerDobbyLinkerHooks() {
 
   void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
   void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+  void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
 
-  if (dlopen_addr && android_dlopen_ext_addr) {
+  if (dlopen_addr && android_dlopen_ext_addr && dl_iterate_phdr_addr) {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
+    int dl_iterate_phdrHookRes = DobbyHook(dl_iterate_phdr_addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
+    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0 && dl_iterate_phdrHookRes == 0) {
       linker_hooked = true;
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
@@ -718,7 +731,7 @@ void registerDobbyLinkerHooks() {
   }
 }
 
-void registerNativeSystemPropertiesHook() {
+void registerDobbyNativeSystemPropertiesHook() {
   void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
   void* addr_readcb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
   if (!addr_get || !addr_readcb) {
@@ -788,6 +801,12 @@ void my_freeifaddrs(struct ifaddrs* ifa) {
     return;
   }
   orig_freeifaddrs(ifa);
+}
+
+static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data) {
+  FilteredCallback* ctx = (FilteredCallback*)data;
+  if (info->dlpi_addr == (ElfW(Addr))g_bipan_lib_start) return 0;
+  return ctx->real_cb(info, size, ctx->real_data);
 }
 
 #endif
