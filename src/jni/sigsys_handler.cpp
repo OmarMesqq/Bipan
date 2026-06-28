@@ -275,6 +275,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (nr == __NR_uname && result == 0) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
+    if (nr == __NR_readlinkat && result > 0) {
+      char* app_buf = (char*)ipc_mem->arg2;
+      size_t app_bufsiz = (size_t)ipc_mem->arg3;
+      size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
+      local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
+      app_buf[copy_len] = '\0';
+    }
   }
 
   ipc_mem->status = IDLE;
