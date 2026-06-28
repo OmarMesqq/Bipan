@@ -428,6 +428,9 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
       starts_with(pathname, "/sys/devices/system/cpu/present")) {
     return "0-3\n";
   }
+  if (starts_with(pathname, "/sys/devices/system/cpu/kernel_max")) {
+    return "4\n";
+  }
   if (starts_with(pathname, "/sys/devices/system/cpu") &&
       strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
     if (strstr(pathname, "cpu0") || strstr(pathname, "cpu1")) {
@@ -436,6 +439,20 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
     if (strstr(pathname, "cpu2") || strstr(pathname, "cpu3")) {
       return "1900000\n";
     }
+  }
+  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
+      strstr(pathname, "/topology/physical_package_id")) {
+    return "0\n";
+  }
+
+  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
+      strstr(pathname, "/topology/core_siblings_list")) {
+    return "0-3\n";
+  }
+
+  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
+      strstr(pathname, "/topology/cluster_cpus_list")) {
+    return "0-3\n";
   }
 
   return nullptr;
