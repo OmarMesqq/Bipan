@@ -368,7 +368,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
           uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv4 bind request to port %d", port);
+          if (port != 0) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv4 bind request: sockfd: %d, port %d", (int)ipc_mem->arg0, port);
+          }
 
           // Allow 0.0.0.0
           if (ip4 != 0x00000000) {
@@ -380,7 +382,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv6 bind request to port %d", port);
+          if (port != 0) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv6 bind request: sockfd: %d, port %d", (int)ipc_mem->arg0, port);
+          }
 
           // TODO: Allow :: ?
           bool is_v6_unspecified = true;

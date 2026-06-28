@@ -69,6 +69,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private static final Set<String> BENIGN_CM_METHODS = new HashSet<>(Arrays.asList(
       "getNetworkInfo",
+      "getNetworkInfoForUid",
       "getActiveNetwork",
       "isActiveNetworkMetered"));
 
