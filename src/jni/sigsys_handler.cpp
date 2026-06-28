@@ -70,6 +70,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  if (nr == __NR_listen) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Spoofing listen...");
+    ctx->uc_mcontext.regs[0] = 0;
+    in_sigsys_handler = false;
+    return;
+  }
+
   if (nr == __NR_getsockname) {
     long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
@@ -183,17 +190,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         sock_ptr = (long)&temp_addr;
         sock_len = temp_len;
       }
-    }
-  } else if (nr == __NR_listen) {  // TODO: necessary?
-    long sockfd = arg0;
-    // pre-flighting check
-    // listen doesn't give a sockaddr, so we must extract it from the FD
-    long temp_len = sizeof(temp_addr);
-    my_memset(&temp_addr, 0, sizeof(temp_addr));
-
-    if (arm64_raw_syscall(__NR_getsockname, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
-      sock_ptr = (long)&temp_addr;
-      sock_len = temp_len;
     }
   }
 

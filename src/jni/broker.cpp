@@ -433,16 +433,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_listen: {
-        if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
-
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
-        }
-        break;
-      }
       case __NR_sendto: {
         if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
