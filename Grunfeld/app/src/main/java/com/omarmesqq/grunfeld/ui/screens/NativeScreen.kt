@@ -46,6 +46,7 @@ fun NativeScreen() {
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
+    var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var libcHooksInfo by remember { mutableStateOf("libc not inspected yet") }
@@ -173,6 +174,14 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
+                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dl_iterate_phdrTest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("dl_iterate_phdr()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "Get all FDs and their links", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
                     Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
@@ -227,23 +236,5 @@ fun NativeScreen() {
                 }
             }
         }
-
-//        Box(
-//            modifier = Modifier
-//                .align(Alignment.BottomEnd)
-//                .padding(18.dp)
-//                .size(56.dp)
-//                .clip(CircleShape)
-//                .background(Color(0xFF00FF00))
-//                .clickable { /* Handle action */ },
-//            contentAlignment = Alignment.Center
-//        ) {
-//            Icon(
-//                imageVector = Icons.Default.WifiOff,
-//                contentDescription = "Close sockets",
-//                tint = Color.Black,
-//                modifier = Modifier.size(24.dp)
-//            )
-//        }
     }
 }
