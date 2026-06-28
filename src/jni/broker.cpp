@@ -310,15 +310,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat:
-      case __NR_newfstatat:
-      case __NR_statx: {
+      case __NR_newfstatat: {
         const char* action_name;
         if (nr == __NR_faccessat) {
           action_name = "faccessat";
         } else if (nr == __NR_newfstatat) {
           action_name = "newfstatat";
-        } else {
-          action_name = "statx";
         }
 
         if (shouldSpoofExistence(path_payload)) {
@@ -477,10 +474,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
         break;
       }
-      case __NR_memfd_create: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (memfd_create)!");
-        break;
-      }
       case __NR_inotify_add_watch: {
         int fd = (int)ipc_mem->arg0;
         const char* path = (const char*)ipc_mem->string_payload == nullptr ? "NULL path" : ipc_mem->string_payload;
@@ -549,10 +542,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_readlinkat: {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (readlinkat)!");
-        break;
-      }
-      case __NR_mincore: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mincore)!");
         break;
       }
       case __NR_nanosleep: {
