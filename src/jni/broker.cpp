@@ -55,6 +55,8 @@ struct MapEntry {
   std::string path;
 };
 
+#define SPOOFED_WD 224
+
 static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps);
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
@@ -505,6 +507,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
         if (mask & IN_OPEN) maskAnalysis += " File or directory was opened |";
 
+        if (strstr(path, "Screenshots")) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_add_watch): Neutered for path: %s", path);
+          ipc_mem->ret = SPOOFED_WD;
+          ipc_mem->action = ACTION_USE_RET;
+          break;
+        }
+
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
         break;
       }
@@ -526,6 +535,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_inotify_rm_watch: {
+        int wd = (int)ipc_mem->arg2;
+        if (wd == SPOOFED_WD) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_rm_watch): Closed spoofed watch");
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
+          break;
+        }
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_rm_watch)!");
         break;
       }

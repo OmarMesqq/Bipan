@@ -243,7 +243,6 @@ inline bool is_lan_address(struct sockaddr* addr) {
   return false;
 }
 
-
 __attribute__((always_inline)) static inline size_t my_strlen(const char* s) {
   size_t len = 0;
   while (s[len]) len++;
@@ -357,8 +356,8 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
-      strstr(pathname, "Screenshots") != nullptr ||
-      strstr(pathname, "Camera") != nullptr ||
+      // strstr(pathname, "Screenshots") != nullptr ||
+      // strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
@@ -378,11 +377,10 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
 
 __attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathname) {
   return (
-    strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0
-  );
+      strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
+      strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
+      strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
+      strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
 }
 
 /**
@@ -404,7 +402,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";  // Generic mid-range (Snapdragon 625-ish)
+           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";
   }
 
   if (strcmp(pathname, "/proc/meminfo") == 0) {
@@ -424,6 +422,22 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
+  if (
+      starts_with(pathname, "/sys/devices/system/cpu/possible") ||
+      starts_with(pathname, "/sys/devices/system/cpu/online") ||
+      starts_with(pathname, "/sys/devices/system/cpu/present")) {
+    return "0-3\n";
+  }
+  if (starts_with(pathname, "/sys/devices/system/cpu") &&
+      strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
+    if (strstr(pathname, "cpu0") || strstr(pathname, "cpu1")) {
+      return "1590000\n";
+    }
+    if (strstr(pathname, "cpu2") || strstr(pathname, "cpu3")) {
+      return "1900000\n";
+    }
+  }
+
   return nullptr;
 }
 
