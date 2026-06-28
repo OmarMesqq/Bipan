@@ -70,6 +70,27 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  if (nr == __NR_statx) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about statx existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_mincore) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about mincore existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_memfd_create) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about memfd_create existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Spoofing listen...");
     ctx->uc_mcontext.regs[0] = 0;
