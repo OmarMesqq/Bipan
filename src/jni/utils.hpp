@@ -285,12 +285,13 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
       starts_with(pathname, "/data/app") ||
       starts_with(pathname, "/system/framework") ||
       starts_with(pathname, "/system_ext/framework") ||
+      starts_with(pathname, "/system_ext/bin/hwservicemanager") ||
       starts_with(pathname, "/data/misc/apexdata/com.android.art") ||
       starts_with(pathname, "/data/user/0") ||
       starts_with(pathname, "/data/user_de/0/") ||
       starts_with(pathname, "/storage/emulated/0/Android/media") ||
       starts_with(pathname, "/storage/emulated/0/Android/data") ||
-      starts_with(pathname, "/data/misc/profiles") ||
+      // starts_with(pathname, "/data/misc/profiles") ||
       starts_with(pathname, "/data/misc/shared_relro") ||
       starts_with(pathname, "/product/app/webview") ||
       starts_with(pathname, "/apex/com.android") ||
@@ -302,6 +303,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   if (starts_with(pathname, "/dev/ashmem") ||
       starts_with(pathname, "/dev/urandom") ||
       starts_with(pathname, "/dev/random") ||
+      starts_with(pathname, "/dev/hwbinder") ||
       starts_with(pathname, "/dev/zero") ||
       starts_with(pathname, "/dev/null")) {
     return false;
@@ -321,6 +323,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
   // Ignore EXACT directory opens (directory scans)
   if (is_exact_dir(pathname, "/data") ||
+      is_exact_dir(pathname, "/system/lib/") ||
       is_exact_dir(pathname, "/data/user") ||
       is_exact_dir(pathname, "/storage/emulated/0") ||
       is_exact_dir(pathname, "/system") ||
@@ -342,6 +345,10 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
   return ((  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu4")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu5")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu6")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu7")) ||
       // VPN tunnel
       starts_with(pathname, "/sys/class/net/tun") ||
       // Crash reports
@@ -352,6 +359,10 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       strstr(pathname, "magisk") != nullptr ||
       strstr(pathname, "resetprop") != nullptr ||
       strstr(pathname, "supolicy") != nullptr ||
+      starts_with(pathname, "/vendor/bin/install-recovery.sh") ||
+      starts_with(pathname, "/data/adb/modules") ||
+      strstr(pathname, "lineage") != nullptr ||
+      strstr(pathname, "Lineage") != nullptr ||
       starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
@@ -383,9 +394,6 @@ __attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathn
       strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
 }
 
-/**
- * TODO: cache most used ones in a pool
- */
 __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pathname) {
   if (strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
