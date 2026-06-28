@@ -46,11 +46,11 @@ inline void send_fd(int socket, int fd) {
  */
 __attribute__((always_inline)) inline int recv_fd(int socket) {
   struct msghdr msg;
-  my_memset(&msg, 0, sizeof(msg));
+  local_memset(&msg, 0, sizeof(msg));
 
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
-  my_memset(buf, 0, sizeof(buf));
+  local_memset(buf, 0, sizeof(buf));
 
   char dummy[1];
   struct iovec io = {.iov_base = dummy, .iov_len = sizeof(dummy)};

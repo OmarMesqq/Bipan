@@ -147,9 +147,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg5 = arg5;
 
   // Zero-out string payloads
-  my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
-  my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
-  my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+  local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
+  local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
+  local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
 
   __sync_synchronize();
 
@@ -161,11 +161,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
     // openat takes up to 4 args, so use arg5 as slot for the pre-FD
     ipc_mem->arg5 = pre_fd;
-    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx || nr == __NR_inotify_add_watch) {
-    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
-    my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+    local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
   // Serialize binary structures with their exact lengths
@@ -204,7 +204,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
      */
     if (sock_ptr == 0) {
       long temp_len = sizeof(temp_addr);
-      my_memset(&temp_addr, 0, sizeof(temp_addr));
+      local_memset(&temp_addr, 0, sizeof(temp_addr));
 
       // getpeername gives us the destination IP of a connected socket
       if (arm64_raw_syscall(__NR_getpeername, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
@@ -217,7 +217,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // getsockname populates the struct on return, no need to send it upfront
   if (sock_ptr != 0 && sock_len > 0) {
     size_t copy_len = (sock_len > 127) ? 127 : (size_t)sock_len;
-    my_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
+    local_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
   }
 
   // Wake Broker & Wait
@@ -273,7 +273,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
     // Deserialize outputs with their exact lengths
     if (nr == __NR_uname && result == 0) {
-      my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
+      local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
   }
 
@@ -298,7 +298,7 @@ static bool scrub_socket(struct sockaddr* s) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
     // Unique Local Address (ULA) like fd00::1
-    my_memset(&sin6->sin6_addr, 0, 16);
+    local_memset(&sin6->sin6_addr, 0, 16);
     sin6->sin6_addr.s6_addr[0] = 0xfd;
     sin6->sin6_addr.s6_addr[15] = 0x01;
     return true;
