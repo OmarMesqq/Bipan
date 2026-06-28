@@ -63,6 +63,8 @@ typedef struct {
   long ret;  // return value provided by kernel
 
   uintptr_t stack_trace[MAX_STACK_TRACE];
+
+  int appSockFd;
 } SharedIPC;
 
 /**

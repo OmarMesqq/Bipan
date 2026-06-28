@@ -96,7 +96,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: root companion sockfd (g_broker_socket): %d", g_broker_socket);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: In-app Broker socket: %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -121,6 +121,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
+    ipc_mem->appSockFd = g_broker_socket;
 
     // Teleport the FD to the Root Companion
     send_fd(g_broker_socket, memfd);
@@ -138,12 +139,11 @@ class Bipan : public zygisk::ModuleBase {
     if (!isTargetApp) {
       return;
     }
-// Native (C/C++ setup)
-#ifdef DEBUG
+
+    // Native (C/C++ setup)
     registerDobbyLinkerHooks();
-#endif
-    registerNativeSystemPropertiesHook();
-    registerNativeSensorsHooks();
+    registerDobbyNativeSystemPropertiesHook();
+    registerDobbyNativeSensorsHooks();
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -151,10 +151,10 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
 
-#ifdef DEBUG
     size_t lib_size = my_lib.end - my_lib.start;
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start= 0x%lx, End= 0x%lx, Size= %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
-#endif
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+
+    // TODO: move this below?
     // Install process-wide SIGSYS handler for seccomp
     registerSignalHandler();
 
