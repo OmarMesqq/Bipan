@@ -1,5 +1,0 @@
-- Investigate [packages.xml spoofing of installers](https://github.com/Pixel-Props/BetterKnownInstalled)
-- Investigate [pairipfix (app not installed from Play)](https://github.com/ahmedmani/pairipfix)
-- Implement SafetyNet/[Integrity](https://github.com/1nikolas/play-integrity-checker-app)
-- Implement [TOML configuration](https://toml.io/en/)
-- Learn more about ART-hooking frameworks like [LSPlant](https://github.com/LSPosed/LSPlant)
