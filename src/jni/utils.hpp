@@ -41,13 +41,7 @@ inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
-inline void write_to_char_buf(char* dest, const char* src, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    dest[i] = src[i];
-  }
-}
-
-inline size_t local_strlen(const char* s) {
+__attribute__((always_inline)) inline size_t local_strlen(const char* s) {
   size_t len = 0;
   while (s[len]) len++;
   return len;
@@ -119,16 +113,6 @@ inline bool is_mounts(const char* pathname) {
          (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
          is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
-}
-
-inline size_t get_msghdr_len(const struct msghdr* msg) {
-  size_t total = 0;
-  if (msg && msg->msg_iov) {
-    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
-      total += msg->msg_iov[i].iov_len;
-    }
-  }
-  return total;
 }
 
 /**
@@ -243,26 +227,20 @@ inline bool is_lan_address(struct sockaddr* addr) {
   return false;
 }
 
-__attribute__((always_inline)) static inline size_t my_strlen(const char* s) {
-  size_t len = 0;
-  while (s[len]) len++;
-  return len;
-}
-
-__attribute__((always_inline)) static inline void* my_memset(void* s, int c, size_t n) {
+__attribute__((always_inline)) static inline void* local_memset(void* s, int c, size_t n) {
   unsigned char* p = (unsigned char*)s;
   while (n--) *p++ = (unsigned char)c;
   return s;
 }
 
-__attribute__((always_inline)) static inline char* my_strncpy(char* dest, const char* src, size_t n) {
+__attribute__((always_inline)) static inline char* local_strncpy(char* dest, const char* src, size_t n) {
   size_t i;
   for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
   for (; i < n; i++) dest[i] = '\0';
   return dest;
 }
 
-__attribute__((always_inline)) static inline void* my_memcpy(void* dest, const void* src, size_t n) {
+__attribute__((always_inline)) static inline void* local_memcpy(void* dest, const void* src, size_t n) {
   unsigned char* d = (unsigned char*)dest;
   const unsigned char* s = (const unsigned char*)src;
   while (n--) *d++ = *s++;

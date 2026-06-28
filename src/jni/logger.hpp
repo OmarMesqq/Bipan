@@ -42,9 +42,9 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
     }
 
     struct sockaddr_un addr;
-    my_memset(&addr, 0, sizeof(addr));
+    local_memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    my_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    local_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
     if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
       arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
@@ -72,9 +72,9 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   vec[1].iov_base = &priority;
   vec[1].iov_len = 1;
   vec[2].iov_base = (void*)tag;
-  vec[2].iov_len = my_strlen(tag) + 1;
+  vec[2].iov_len = local_strlen(tag) + 1;
   vec[3].iov_base = (void*)msg;
-  vec[3].iov_len = my_strlen(msg) + 1;
+  vec[3].iov_len = local_strlen(msg) + 1;
 
   // Atomic write to socket
   arm64_raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
