@@ -16,8 +16,10 @@ object NativeLibWrapper {
     external fun blockSigSys(): Boolean
     external fun queryProcStatus():String
     external fun getifaddrs():String
-    external fun getallfds():String
+    external fun getallsocketfds():String
     external fun getprocselfmapsFd():String
-    external fun inspectLibcHooks(): String
+    external fun inspectHooks(): String
     external fun dl_iterate_phdrTest(): String
+    external fun testProcSelfAuxv(): String
+    external fun testProcSelfTask(): String
 }
