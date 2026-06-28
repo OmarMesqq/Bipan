@@ -65,11 +65,15 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dl_1iterate_1phdrTest(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-    dl_iterate_phdr(dlIteratePhdrCallback, NULL);
+    char* report = (char*) calloc(50000, sizeof(char));
+    if (!report) {
+        return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
+    }
+    dl_iterate_phdr(dlIteratePhdrCallback, report);
 
-    return (*env)->NewStringUTF(env, report);
+    jstring result = (*env)->NewStringUTF(env, report);
+    free(report);
+    return result;
 }
 
 
@@ -1073,10 +1077,15 @@ static inline void dump(void *p, int n, char *report) {
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data) {
     char *type;
     int p_type;
-    
-    LOGI("Name: \"%s\" (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
+
+    char entry[512];
+    snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
+    strcat((char*)data, entry);
 
     for (size_t j = 0; j < info->dlpi_phnum; j++) {
+        if (!strstr(info->dlpi_name, "memfd"))  {
+            continue;
+        }
         p_type = info->dlpi_phdr[j].p_type;
         type = (p_type == PT_LOAD) ? "PT_LOAD" :
                (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
@@ -1089,17 +1098,19 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
                (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
                (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
 
-        LOGI("    %2zu: [%14p; memsz:%7jx] flags: %#jx; ", j,
-               (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
-               (uintmax_t) info->dlpi_phdr[j].p_memsz,
-               (uintmax_t) info->dlpi_phdr[j].p_flags);
-        
+        snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
+                 (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
+                 (uintmax_t) info->dlpi_phdr[j].p_memsz,
+                 (uintmax_t) info->dlpi_phdr[j].p_flags);
+        strcat((char*)data, entry);
+
         if (type != NULL) {
-            LOGI("%s\n", type);
+            snprintf(entry, sizeof(entry), "%s\n", type);
         }
         else {
-            LOGI("[other (%#x)]\n", p_type);
+            snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
         }
+        strcat((char*)data, entry);
     }
     return 0;
 }
