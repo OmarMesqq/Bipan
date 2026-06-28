@@ -290,8 +290,6 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   // Ignore some /proc stats
   if (starts_with(pathname, "/proc/")) {
     if (strstr(pathname, "/cmdline") ||
-        strstr(pathname, "/task") ||
-        strstr(pathname, "/cgroup") ||
         strstr(pathname, "/oom") ||
         strstr(pathname, "/comm") ||
         strstr(pathname, "/stat")) {

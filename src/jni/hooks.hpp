@@ -308,7 +308,7 @@ static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data
   DumpContext* ctx = (DumpContext*)data;
 
   if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
-    return 0;  // continua iterando
+    return 0;
   }
 
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] found: %s base=0x%lx", info->dlpi_name, (uintptr_t)info->dlpi_addr);
@@ -316,7 +316,10 @@ static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data
   for (int i = 0; i < info->dlpi_phnum; i++) {
     const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
 
-    if (phdr->p_type != PT_LOAD) continue;
+    if (phdr->p_type != PT_LOAD) {
+      // interested only in sections to be eagerly loaded by the linker
+      continue;
+    }
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[phdr] flags=0x%x vaddr=0x%lx memsz=%zu filesz=%zu", phdr->p_flags, phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
 
     uintptr_t start = info->dlpi_addr + phdr->p_vaddr;
@@ -351,6 +354,8 @@ static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] dlopen(%s)", filename);
   }
+
+  // calling the original here probably already calls .init_array
   void* result = orig_dlopen(filename, flag);
   const char* soname = strrchr(filename, '/');
   soname = soname ? soname + 1 : filename;
@@ -370,6 +375,7 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] android_dlopen_ext(%s)", filename);
   }
 
+  // calling the original here probably already calls .init_array
   void* result = orig_android_dlopen_ext(filename, flag, extinfo);
   // if (
   //     strstr(filename, "libholmes") ||

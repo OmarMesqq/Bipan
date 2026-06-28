@@ -564,28 +564,74 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_readlinkat: {
         int dirfd = (int)ipc_mem->arg0;
-        const char* pathname = (const char*)ipc_mem->string_payload == nullptr
-                                   ? "NULL path"
-                                   : ipc_mem->string_payload;
+        const char* pathname = ipc_mem->string_payload[0] != '\0' ? ipc_mem->string_payload : nullptr;
+        size_t bufsiz = (size_t)ipc_mem->arg3;
 
+        int app_sock = ipc_mem->appSockFd;
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker readlinkat case: app sockfd is %d", app_sock);
+        char* out = (char*)ipc_mem->out_buffer;
+        if (bufsiz > sizeof(ipc_mem->out_buffer) - 1) {
+          bufsiz = sizeof(ipc_mem->out_buffer) - 1;
+        }
+
+        char path_self[64], path_pid[64];
+        snprintf(path_self, sizeof(path_self), "/proc/self/fd/%d", app_sock);
+        snprintf(path_pid, sizeof(path_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, app_sock);
+
+        auto is_our_socket = [&](const char* p) {
+          return p && (strcmp(p, path_self) == 0 || strcmp(p, path_pid) == 0);
+        };
+
+        // The path we'll actually readlink
+        char resolved[512];
         if (dirfd == AT_FDCWD || dirfd == 0) {
-          // Absolute path or CWD-relative — pathname is the whole story
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(AT_FDCWD, %s)", pathname);
+          if (pathname && strncmp(pathname, "/proc/self/", 11) == 0) {
+            // Rewrite /proc/self/ -> /proc/<target_pid>/
+            snprintf(resolved, sizeof(resolved), "/proc/%d/%s",
+                     ipc_mem->target_pid, pathname + 11);
         } else {
-          // dirfd is a real directory fd — resolve it to get the base dir
+            snprintf(resolved, sizeof(resolved), "%s", pathname ? pathname : "");
+          }
+        } else {
+          // Resolve dirfd via /proc/<pid>/fd/<dirfd>, then append pathname
           char proc_fd_path[512];
-          snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
-
+          snprintf(proc_fd_path, sizeof(proc_fd_path),
+                   "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
           char base_dir[512];
           ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, base_dir, sizeof(base_dir) - 1);
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat: failed to resolve dirfd %d: %s", dirfd, strerror(errno));
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(fd=%d, %s)", dirfd, pathname);
-          } else {
-            base_dir[len] = '\0';
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s, %s)", base_dir, pathname);
+            ipc_mem->ret = -1;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
           }
+            base_dir[len] = '\0';
+          snprintf(resolved, sizeof(resolved), "%s/%s", base_dir, pathname ? pathname : "");
         }
+
+        // Spoof check
+        if (is_our_socket(resolved)) {
+          strncpy(out, "/dev/null", bufsiz - 1);
+          out[bufsiz - 1] = '\0';
+          ipc_mem->ret = strlen("/dev/null");
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
+          break;
+        }
+
+        // Actually perform the readlinkat
+        ssize_t real_len = readlinkat(AT_FDCWD, resolved, out, bufsiz - 1);
+        if (real_len == -1) {
+          ipc_mem->ret = -errno;
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat(%s) failed: %s", resolved, strerror(errno));
+          break;
+        }
+        out[real_len] = '\0';
+        ipc_mem->ret = real_len;
+        ipc_mem->action = ACTION_USE_RET;
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s) -> %s", resolved, out);
         break;
       }
       case __NR_nanosleep: {
