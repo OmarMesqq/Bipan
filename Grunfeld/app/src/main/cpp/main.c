@@ -23,6 +23,11 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <link.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <elf.h>
+#include <sys/auxv.h>
+#include <dlfcn.h>
 
 #include "socket_helper.h"
 
@@ -55,12 +60,105 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 static inline void dump (void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
+static inline unsigned char starts_with(const char* str, const char* prefix);
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_sysprop_tests();
     early_init_stat_tests();
 
     LOGI("Early init: __attribute__((constructor))");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env, jobject thiz) {
+    DIR *dir = opendir("/proc/self/task");
+    if (!dir) {
+        return (*env)->NewStringUTF(env, "Failed to open /proc/self/task");
+    }
+
+    char result[4096] = {0};
+    size_t offset = 0;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (entry->d_name[0] == '.') continue;
+
+        // Read /proc/self/task/<tid>/comm
+        char comm_path[64];
+        snprintf(comm_path, sizeof(comm_path), "/proc/self/task/%s/comm", entry->d_name);
+
+        int comm_fd = open(comm_path, O_RDONLY);
+        if (comm_fd < 0) continue;
+
+        char thread_name[64] = {0};
+        ssize_t n = read(comm_fd, thread_name, sizeof(thread_name) - 1);
+        close(comm_fd);
+
+        if (n > 0) {
+            // Strip trailing newline
+            if (thread_name[n - 1] == '\n') thread_name[n - 1] = '\0';
+
+            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "[%s] %s\n",entry->d_name, thread_name);
+        }
+    }
+
+    closedir(dir);
+    return (*env)->NewStringUTF(env, result[0] ? result : "No threads found");
+}
+
+JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfAuxv(JNIEnv *env, jobject thiz) {
+    char report[MAX_REPORT_SIZE] = {0};
+    char entry[512] = {0};
+
+    static const unsigned long types[] = {
+            AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY,
+            AT_RANDOM, AT_HWCAP, AT_HWCAP2, AT_CLKTCK,
+            AT_UID, AT_EUID, AT_GID, AT_EGID, AT_SECURE, AT_PLATFORM,
+            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF,
+            AT_RSEQ_FEATURE_SIZE, AT_RSEQ_ALIGN, AT_HWCAP3, AT_HWCAP4, AT_MINSIGSTKSZ,
+            AT_NULL, AT_IGNORE, AT_FLAGS, AT_BASE_PLATFORM
+    };
+
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+        unsigned long type = types[i];
+        unsigned long val = getauxval(type);
+
+        switch (type) {
+            case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR     = %#lx\n", val); break;
+            case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM    = %lu\n",  val); break;
+            case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ   = %lu\n",  val); break;
+            case AT_BASE:     snprintf(entry, sizeof(entry), "AT_BASE     = %#lx\n", val); break;
+            case AT_ENTRY:    snprintf(entry, sizeof(entry), "AT_ENTRY    = %#lx\n", val); break;
+            case AT_RANDOM:   snprintf(entry, sizeof(entry), "AT_RANDOM   = %#lx\n", val); break;
+            case AT_HWCAP:    snprintf(entry, sizeof(entry), "AT_HWCAP    = %#lx\n", val); break;
+            case AT_HWCAP2:   snprintf(entry, sizeof(entry), "AT_HWCAP2   = %#lx\n", val); break;
+            case AT_CLKTCK:   snprintf(entry, sizeof(entry), "AT_CLKTCK   = %lu\n",  val); break;
+            case AT_UID:      snprintf(entry, sizeof(entry), "AT_UID      = %lu\n",  val); break;
+            case AT_EUID:     snprintf(entry, sizeof(entry), "AT_EUID     = %lu\n",  val); break;
+            case AT_GID:      snprintf(entry, sizeof(entry), "AT_GID      = %lu\n",  val); break;
+            case AT_EGID:     snprintf(entry, sizeof(entry), "AT_EGID     = %lu\n",  val); break;
+            case AT_SECURE:   snprintf(entry, sizeof(entry), "AT_SECURE   = %lu\n",  val); break;
+            case AT_PLATFORM: snprintf(entry, sizeof(entry), "AT_PLATFORM = %s\n",   (char*)val); break;
+            case AT_EXECFN:   snprintf(entry, sizeof(entry), "AT_EXECFN   = %s\n",  (char*)val); break;
+            case AT_EXECFD:           snprintf(entry, sizeof(entry), "AT_EXECFD           = %lu\n",  val); break;
+            case AT_PHENT:            snprintf(entry, sizeof(entry), "AT_PHENT            = %lu\n",  val); break;
+            case AT_NOTELF:           snprintf(entry, sizeof(entry), "AT_NOTELF           = %lu\n",  val); break;
+            case AT_RSEQ_FEATURE_SIZE:snprintf(entry, sizeof(entry), "AT_RSEQ_FEATURE_SIZE= %lu\n",  val); break;
+            case AT_RSEQ_ALIGN:       snprintf(entry, sizeof(entry), "AT_RSEQ_ALIGN       = %lu\n",  val); break;
+            case AT_HWCAP3:           snprintf(entry, sizeof(entry), "AT_HWCAP3           = %#lx\n", val); break;
+            case AT_HWCAP4:           snprintf(entry, sizeof(entry), "AT_HWCAP4           = %#lx\n", val); break;
+            case AT_MINSIGSTKSZ:      snprintf(entry, sizeof(entry), "AT_MINSIGSTKSZ      = %lu\n",  val); break;
+            case AT_FLAGS:            snprintf(entry, sizeof(entry), "AT_FLAGS            = %#lx\n", val); break;
+            case AT_BASE_PLATFORM:    snprintf(entry, sizeof(entry), "AT_BASE_PLATFORM    = %s\n",   (char*)val); break;
+            case AT_NULL:             snprintf(entry, sizeof(entry), "AT_NULL             = %lu\n",  val); break;
+            case AT_IGNORE:           snprintf(entry, sizeof(entry), "AT_IGNORE           = %lu\n",  val); break;
+            default:                  snprintf(entry, sizeof(entry), "type(key): %lu -> no value\n",  type); break;
+        }
+        strncat(report, entry, sizeof(report) - strlen(report) - 1);
+    }
+
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -288,28 +386,61 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectLibcHooks(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectHooks(JNIEnv *env, jobject thiz) {
     char finalReport[MAX_REPORT_SIZE] = {0};
     char entry[256];
     int bytesToInspect = 28;
+
+    snprintf(entry, sizeof(entry), "dlopen at %p. First %d bytes:\n\n", (void *) dlopen, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) dlopen, bytesToInspect, finalReport);
+
+    // TODO: android_dlopen_ext
+
+    snprintf(entry, sizeof(entry), "\ndl_iterate_phdr at %p. First %d bytes:\n\n", (void *) dl_iterate_phdr, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) dl_iterate_phdr, bytesToInspect, finalReport);
 
     snprintf(entry, sizeof(entry), "__system_property_get at %p. First %d bytes:\n\n", (void *) __system_property_get, bytesToInspect);
     strcat(finalReport, entry);
     dump((void*) __system_property_get, bytesToInspect, finalReport);
 
-    snprintf(entry, sizeof(entry), "\n__system_property_find at %p. First %d bytes:\n\n", (void *) __system_property_find, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) __system_property_find, bytesToInspect, finalReport);
-
     snprintf(entry, sizeof(entry), "\n__system_property_read_callback at %p. First %d bytes:\n\n", (void *) __system_property_read_callback, bytesToInspect);
     strcat(finalReport, entry);
     dump((void*) __system_property_read_callback, bytesToInspect, finalReport);
+
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getInstance at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstance, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getInstance, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getInstanceForPackage at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstanceForPackage, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getInstanceForPackage, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getSensorList at %p. First %d bytes:\n\n", (void *) ASensorManager_getSensorList, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getSensorList, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getDefaultSensor at %p. First %d bytes:\n\n", (void *) ASensorManager_getDefaultSensor, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getDefaultSensor, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_createEventQueue at %p. First %d bytes:\n\n", (void *) ASensorManager_createEventQueue, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_createEventQueue, bytesToInspect, finalReport);
+
+
+    // Not hooked
+    snprintf(entry, sizeof(entry), "\n__system_property_find at %p. First %d bytes:\n\n", (void *) __system_property_find, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_find, bytesToInspect, finalReport);
 
     return (*env)->NewStringUTF(env, finalReport);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";
     char report[16384] = {0};
     size_t used = 0;
@@ -338,6 +469,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobjec
             continue;
         }
         target[len] = '\0';
+
+        if (!starts_with(target, "socket")) {
+            continue;
+        }
 
         int line = snprintf(report + used, sizeof(report) - used, "%s -> %s\n", entry->d_name, target);
         if (line < 0 || (size_t)line >= sizeof(report) - used) {
@@ -693,7 +828,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryProcStatus(JNIEnv* env, 
             "State:",
             "Pid:",
             "PPid:",
-            "TracerPid:"
+            "TracerPid:",
+            "Threads:",
+            "NoNewPrivs:",
+            "Seccomp:",
+            "Cpus_allowed_list:"
     };
     int num_prefixes = sizeof(relevant_prefixes) / sizeof(relevant_prefixes[0]);
 
@@ -1113,6 +1252,10 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
         strcat((char*)data, entry);
     }
     return 0;
+}
+
+static inline unsigned char starts_with(const char* str, const char* prefix) {
+    return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
 #pragma clang diagnostic push

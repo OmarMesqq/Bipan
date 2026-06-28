@@ -49,7 +49,9 @@ fun NativeScreen() {
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
-    var libcHooksInfo by remember { mutableStateOf("libc not inspected yet") }
+    var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
+    var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
+    var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -182,18 +184,42 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get all FDs and their links", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Get socket FDs and their links", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Dump all FDs and their symlinks")
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallsocketfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Dump socket FDs and their symlinks")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Read program's auxiliary vector", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfAuxvInfo, "/proc/self/auxv not read yet")
+                    Button(onClick = { procSelfAuxvInfo = NativeLibWrapper.testProcSelfAuxv() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("parse /proc/self/auxv")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
+                    Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("open(/proc/self/task)")
                     }
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "Inspect libc for hooks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(libcHooksInfo, "libc not inspected yet")
-                    Button(onClick = { libcHooksInfo = NativeLibWrapper.inspectLibcHooks() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("get libc functions info")
+                    ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
+                    Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Study function prologues for hooks")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/status")
                     }
                 }
 
@@ -224,14 +250,6 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("sigprocmask SIGSYS")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
-                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/status")
                     }
                 }
             }
