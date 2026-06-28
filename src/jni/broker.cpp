@@ -1,7 +1,9 @@
 #include "broker.hpp"
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <elf.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
@@ -53,6 +55,14 @@ typedef struct {
 struct MapEntry {
   uintptr_t start, end, offset;
   std::string path;
+};
+
+struct linux_dirent64 {
+  ino64_t d_ino;           /* 64-bit inode number */
+  off64_t d_off;           /* Not an offset; see getdents() */
+  unsigned short d_reclen; /* Size of this dirent */
+  unsigned char d_type;    /* File type */
+  char d_name[];           /* Filename (null-terminated) */
 };
 
 #define SPOOFED_WD 224
@@ -302,7 +312,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef DEBUG
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted open: %s", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted openat(%s)", path_payload);
             }
           }
 #endif
@@ -342,7 +352,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef DEBUG
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Allowing untrusted open: %s", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[D] Allowing untrusted %s(%s)", action_name, path_payload);
             }
           }
 #endif
@@ -537,11 +547,45 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_getdents64: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (getdents64)!");
+        int fd = (int)ipc_mem->arg0;
+        struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
+        size_t count = (size_t)ipc_mem->arg2;
+
+        char proc_self_fd_path[512];
+        snprintf(proc_self_fd_path, sizeof(proc_self_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+        char filename[512];
+        if (readlinkat(0, proc_self_fd_path, filename, sizeof(filename)) == -1) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
         break;
       }
       case __NR_readlinkat: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (readlinkat)!");
+        int dirfd = (int)ipc_mem->arg0;
+        const char* pathname = (const char*)ipc_mem->string_payload == nullptr
+                                   ? "NULL path"
+                                   : ipc_mem->string_payload;
+
+        if (dirfd == AT_FDCWD || dirfd == 0) {
+          // Absolute path or CWD-relative — pathname is the whole story
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(AT_FDCWD, %s)", pathname);
+        } else {
+          // dirfd is a real directory fd — resolve it to get the base dir
+          char proc_fd_path[512];
+          snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
+
+          char base_dir[512];
+          ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, base_dir, sizeof(base_dir) - 1);
+          if (len == -1) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat: failed to resolve dirfd %d: %s", dirfd, strerror(errno));
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(fd=%d, %s)", dirfd, pathname);
+          } else {
+            base_dir[len] = '\0';
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s, %s)", base_dir, pathname);
+          }
+        }
         break;
       }
       case __NR_nanosleep: {
