@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <link.h>
 
 #include "socket_helper.h"
 
@@ -29,7 +30,6 @@
 #define MAX_REPORT_SIZE 8192
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -54,12 +54,22 @@ static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 static inline void dump (void *p, int n, char* report);
+static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_sysprop_tests();
     early_init_stat_tests();
 
     LOGI("Early init: __attribute__((constructor))");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dl_1iterate_1phdrTest(JNIEnv *env, jobject thiz) {
+    char report[MAX_REPORT_SIZE] = {0};
+    char entry[256] = {0};
+    dl_iterate_phdr(dlIteratePhdrCallback, NULL);
+
+    return (*env)->NewStringUTF(env, report);
 }
 
 
@@ -1058,6 +1068,40 @@ static inline void dump(void *p, int n, char *report) {
         strcat(report, entry);
         p1++;
     }
+}
+
+static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data) {
+    char *type;
+    int p_type;
+    
+    LOGI("Name: \"%s\" (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
+
+    for (size_t j = 0; j < info->dlpi_phnum; j++) {
+        p_type = info->dlpi_phdr[j].p_type;
+        type = (p_type == PT_LOAD) ? "PT_LOAD" :
+               (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
+               (p_type == PT_INTERP) ? "PT_INTERP" :
+               (p_type == PT_NOTE) ? "PT_NOTE" :
+               (p_type == PT_INTERP) ? "PT_INTERP" :
+               (p_type == PT_PHDR) ? "PT_PHDR" :
+               (p_type == PT_TLS) ? "PT_TLS" :
+               (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
+               (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
+               (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
+
+        LOGI("    %2zu: [%14p; memsz:%7jx] flags: %#jx; ", j,
+               (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
+               (uintmax_t) info->dlpi_phdr[j].p_memsz,
+               (uintmax_t) info->dlpi_phdr[j].p_flags);
+        
+        if (type != NULL) {
+            LOGI("%s\n", type);
+        }
+        else {
+            LOGI("[other (%#x)]\n", p_type);
+        }
+    }
+    return 0;
 }
 
 #pragma clang diagnostic push
