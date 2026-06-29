@@ -10,6 +10,7 @@ include $(PREBUILT_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
 LOCAL_SRC_FILES := bipan.cpp \
+										bipan_hash_table.cpp \
 										broker.cpp \
 										filter.cpp \
 										root_companion.cpp \
