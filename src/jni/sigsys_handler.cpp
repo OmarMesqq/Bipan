@@ -20,6 +20,7 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "utils.hpp"
+#include "bipan_hash_table.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -30,6 +31,7 @@ struct kernel_sigaction {
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static bool scrub_socket(struct sockaddr* s);
+static BipanHashTable bht;
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
