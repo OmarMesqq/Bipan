@@ -439,6 +439,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectHooks(JNIEnv *env, job
     return (*env)->NewStringUTF(env, finalReport);
 }
 
+/**
+ * TODO: xref with fdinfo?
+ */
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";
@@ -487,22 +490,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, 
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env, jobject thiz) {
-    const char* mapsPath = "/proc/self/maps";
+    const char* path = "/proc/self/maps";
 
-    long mapsFd = arm64_raw_syscall(__NR_openat,(long)AT_FDCWD,(long)mapsPath,(long)O_RDONLY,0, 0, 0);
-
-    if (mapsFd == -1) {
-        return (*env)->NewStringUTF(env, "Failed to open() /proc/self/maps");
+    long fd = arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)path, (long)O_RDONLY, 0, 0, 0);
+    if (fd == -1) {
+        return (*env)->NewStringUTF(env, "Failed to openat(/proc/self/maps)");
     }
 
-    const char* selfFdpath = "/proc/self/fd";
+    const char* selfFdPath = "/proc/self/fd";
     char report[16384] = {0};
     size_t used = 0;
     report[0] = '\0';
 
-    struct DIR* dir = opendir(selfFdpath);
-    if (dir == NULL) {
-        return (*env)->NewStringUTF(env, "Failed to opendir() /proc/self/fd");
+    struct DIR* dir = opendir(selfFdPath);
+    if (!dir) {
+        return (*env)->NewStringUTF(env, "Failed to opendir(/proc/self/fd)");
     }
 
 
@@ -515,13 +517,13 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
 
         // Interested only in /proc/self/maps fd
         int conversionRet = atoi(entry->d_name);
-        if (conversionRet != mapsFd) {
+        if (conversionRet != fd) {
             continue;
         }
 
         // Build "/proc/self/fd/<entry>"
         char linkpath[PATH_MAX];
-        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", selfFdpath, entry->d_name);
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", selfFdPath, entry->d_name);
         if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
             continue;
         }
@@ -542,7 +544,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
     }
 
     closedir(dir);
-    close((int) mapsFd);
+    close((int) fd);
     return (*env)->NewStringUTF(env, report);
 }
 
