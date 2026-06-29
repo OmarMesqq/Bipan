@@ -1,0 +1,4 @@
+#ifndef BIPAN_HASH_TABLE_HPP
+#define BIPAN_HASH_TABLE_HPP
+
+#endif  // BIPAN_HASH_TABLE_HPP
