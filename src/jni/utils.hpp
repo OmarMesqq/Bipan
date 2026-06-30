@@ -2,7 +2,6 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
-
 #include <syscall.h>
 
 #include "shared.hpp"
@@ -54,6 +53,17 @@ __attribute__((always_inline)) inline int local_strncmp(const char* a, const cha
   return 0;
 }
 
+__attribute__((always_inline)) inline int local_strcmp(const char* a, const char* b) {
+  size_t i = 0;
+  while (a[i] == b[i]) {
+    if (a[i] == '\0') {
+      return 0;
+    }
+    i++;
+  }
+  return (unsigned char)a[i] - (unsigned char)b[i];
+}
+
 __attribute__((always_inline)) inline bool starts_with(const char* str, const char* prefix) {
   return local_strncmp(str, prefix, local_strlen(prefix)) == 0;
 }
@@ -93,11 +103,11 @@ __attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size
 // Validates any /proc/<PID>/target_file layout
 static bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
   // 1. Must start with "/proc/"
-  if (strncmp(pathname, "/proc/", 6) != 0) return false;
+  if (local_strncmp(pathname, "/proc/", 6) != 0) return false;
 
   // 2. Locate the next slash after "/proc/"
   const char* pid_start = pathname + 6;
-  const char* next_slash = strchr(pid_start, '/');
+  const char* next_slash = local_strchr(pid_start, '/');
   if (!next_slash) return false;
 
   // 3. Ensure the characters between the slashes are a valid PID number
@@ -105,28 +115,28 @@ static bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
   if (!is_pure_numeric(pid_start, pid_len)) return false;
 
   // 4. Check if the remaining suffix matches exactly (e.g., "/maps" or "/smaps")
-  return strcmp(next_slash, suffix) == 0;
+  return local_strcmp(next_slash, suffix) == 0;
 }
 
 inline bool is_maps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/maps") == 0) ||
+  return (local_strcmp(pathname, "/proc/self/maps") == 0) ||
          is_dynamic_proc_file(pathname, "/maps");
 }
 
 inline bool is_proc_status(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/status") == 0) ||
+  return (local_strcmp(pathname, "/proc/self/status") == 0) ||
          is_dynamic_proc_file(pathname, "/status");
 }
 
 inline bool is_smaps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
+  return (local_strcmp(pathname, "/proc/self/smaps") == 0) ||
          is_dynamic_proc_file(pathname, "/smaps");
 }
 
 inline bool is_mounts(const char* pathname) {
-  return (strcmp(pathname, "/proc/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+  return (local_strcmp(pathname, "/proc/mounts") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mounts") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mountinfo") == 0) ||
          is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
 }
@@ -265,7 +275,7 @@ __attribute__((always_inline)) static inline void* local_memcpy(void* dest, cons
 
 __attribute__((always_inline)) static inline bool is_exact_dir(const char* path, const char* target_dir) {
   size_t len = strlen(target_dir);
-  if (strncmp(path, target_dir, len) == 0) {
+  if (local_strncmp(path, target_dir, len) == 0) {
     // Return true if it ends exactly at the dir name, or has a trailing slash
     return path[len] == '\0' || (path[len] == '/' && path[len + 1] == '\0');
   }
@@ -305,10 +315,10 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
   // Ignore some /proc stats
   if (starts_with(pathname, "/proc/")) {
-    if (strstr(pathname, "/cmdline") ||
-        strstr(pathname, "/oom") ||
-        strstr(pathname, "/comm") ||
-        strstr(pathname, "/stat")) {
+    if (local_strstr(pathname, "/cmdline") ||
+        local_strstr(pathname, "/oom") ||
+        local_strstr(pathname, "/comm") ||
+        local_strstr(pathname, "/stat")) {
       return false;
     }
   }
@@ -335,32 +345,32 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
 __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
-      strstr(pathname, "c7981ca8.0") != nullptr ||
+      local_strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu4")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu5")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu6")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && strstr(pathname, "cpu7")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu4")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu5")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu6")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu7")) ||
       // VPN tunnel
       starts_with(pathname, "/sys/class/net/tun") ||
       // Crash reports
       starts_with(pathname, "/data/anr") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
       // Root
-      strstr(pathname, "zygisk") != nullptr ||
-      strstr(pathname, "magisk") != nullptr ||
-      strstr(pathname, "resetprop") != nullptr ||
-      strstr(pathname, "supolicy") != nullptr ||
+      local_strstr(pathname, "zygisk") != nullptr ||
+      local_strstr(pathname, "magisk") != nullptr ||
+      local_strstr(pathname, "resetprop") != nullptr ||
+      local_strstr(pathname, "supolicy") != nullptr ||
       starts_with(pathname, "/vendor/bin/install-recovery.sh") ||
       starts_with(pathname, "/data/adb/modules") ||
-      strstr(pathname, "lineage") != nullptr ||
-      strstr(pathname, "Lineage") != nullptr ||
+      local_strstr(pathname, "lineage") != nullptr ||
+      local_strstr(pathname, "Lineage") != nullptr ||
       starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
-      // strstr(pathname, "Screenshots") != nullptr ||
-      // strstr(pathname, "Camera") != nullptr ||
+      // local_strstr(pathname, "Screenshots") != nullptr ||
+      // local_strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
@@ -374,30 +384,30 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")) ||
-          (strcmp(pathname, "/proc/zoneinfo") == 0 ||
-           strcmp(pathname, "/proc/vmstat") == 0));
+          (local_strcmp(pathname, "/proc/zoneinfo") == 0 ||
+           local_strcmp(pathname, "/proc/vmstat") == 0));
 }
 
 __attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathname) {
   return (
-      strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
-      strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
-      strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
-      strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
 }
 
 __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pathname) {
-  if (strstr(pathname, "build.prop") != nullptr) {
+  if (local_strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
   }
-  if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
+  if (local_strcmp(pathname, "/etc/hosts") == 0 || local_strcmp(pathname, "/system/etc/hosts") == 0) {
     return "127.0.0.1       localhost\n::1       localhost\n";
   }
-  if (strcmp(pathname, "/proc/version") == 0) {
+  if (local_strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
 
-  if (strcmp(pathname, "/proc/cpuinfo") == 0) {
+  if (local_strcmp(pathname, "/proc/cpuinfo") == 0) {
     return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
@@ -405,7 +415,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";
   }
 
-  if (strcmp(pathname, "/proc/meminfo") == 0) {
+  if (local_strcmp(pathname, "/proc/meminfo") == 0) {
     return "MemTotal:        3901140 kB\n"
            "MemFree:          258600 kB\n"
            "MemAvailable:    1234768 kB\n"
@@ -419,7 +429,7 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "VmallocTotal:   263061440 kB\n"
            "CmaTotal:         159744 kB\n";
   }
-  if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
+  if (local_strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
   if (
@@ -432,26 +442,26 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
     return "4\n";
   }
   if (starts_with(pathname, "/sys/devices/system/cpu") &&
-      strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
-    if (strstr(pathname, "cpu0") || strstr(pathname, "cpu1")) {
+      local_strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
+    if (local_strstr(pathname, "cpu0") || local_strstr(pathname, "cpu1")) {
       return "1590000\n";
     }
-    if (strstr(pathname, "cpu2") || strstr(pathname, "cpu3")) {
+    if (local_strstr(pathname, "cpu2") || local_strstr(pathname, "cpu3")) {
       return "1900000\n";
     }
   }
   if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      strstr(pathname, "/topology/physical_package_id")) {
+      local_strstr(pathname, "/topology/physical_package_id")) {
     return "0\n";
   }
 
   if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      strstr(pathname, "/topology/core_siblings_list")) {
+      local_strstr(pathname, "/topology/core_siblings_list")) {
     return "0-3\n";
   }
 
   if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      strstr(pathname, "/topology/cluster_cpus_list")) {
+      local_strstr(pathname, "/topology/cluster_cpus_list")) {
     return "0-3\n";
   }
 
