@@ -111,7 +111,7 @@ void BipanHashTable::dump() {
 }
 
 BipanHashTable::~BipanHashTable() {
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] Destroying Bipan Hash Table");
+  // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] Destroying Bipan Hash Table");
 }
 
 unsigned char maxPrimaryTableSize;

@@ -28,8 +28,10 @@
 
 #include <atomic>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -104,6 +106,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
+  std::unordered_set<int> spoofedFds;
+  std::unordered_map<int, const char*> preFds;
 
   pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   std::__thread_id tid = std::this_thread::get_id();
@@ -291,7 +295,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               ipc_mem->action = ACTION_USE_RET;
               break;
             }
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Filled target's fd: %s", proc_path);
+
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Filled app's pre_fd: %s", proc_path);
+
+            preFds[target_fd] = path_payload;
+            if (ipc_mem->spoofedFd != -1) {
+              spoofedFds.insert(ipc_mem->spoofedFd);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached handler's spoofed fd(%d) and app's pre_fd(%d)", ipc_mem->spoofedFd, target_fd);
+            } else {
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's pre_fd(%d)", target_fd);
+            }
 
             char buf[4096];
             ssize_t n;
@@ -301,8 +314,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
             lseek(root_fd, 0, SEEK_SET);
 
-            // Cleanup daemon's ref of target's pre_fd and its own fake fd
+            // Cleanup daemon's ref of target's pre_fd
             close(root_fd);
+            // Cleanup daemon's own fake fd
             close(fake_fd);
 
             // Tell target to use the fd it already has
@@ -558,8 +572,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
           break;
         }
-
+        if (!starts_with(filename, "/data/data") && !starts_with(filename, "/data/app")) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
+        }
         break;
       }
       case __NR_readlinkat: {
@@ -568,7 +583,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         size_t bufsiz = (size_t)ipc_mem->arg3;
 
         int app_sock = ipc_mem->appSockFd;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker readlinkat case: app sockfd is %d", app_sock);
         char* out = (char*)ipc_mem->out_buffer;
         if (bufsiz > sizeof(ipc_mem->out_buffer) - 1) {
           bufsiz = sizeof(ipc_mem->out_buffer) - 1;
