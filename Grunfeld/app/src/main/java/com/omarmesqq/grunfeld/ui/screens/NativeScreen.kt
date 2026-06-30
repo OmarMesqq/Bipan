@@ -233,13 +233,18 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Attempt to overwrite SIGSYS handler", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
                     Button(
                         onClick = {
-                            val success = NativeLibWrapper.installSigsysHandler()
-                            signalHandlerStatus = if (success) "Active" else "Failed"
+                            val installed = NativeLibWrapper.installSigsysHandler()
+                            if (!installed) {
+                                signalHandlerStatus = "Failed to install handler"
+                                return@Button
+                            }
+                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
+                            signalHandlerStatus = if (actionCaptured) "Installed and captured!" else "Installed, but failed to capture trigger"
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {

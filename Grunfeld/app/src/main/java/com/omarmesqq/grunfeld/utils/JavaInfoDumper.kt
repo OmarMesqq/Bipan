@@ -23,6 +23,7 @@ import android.provider.Settings
 import android.provider.Settings.Global
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
@@ -37,6 +38,7 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
+import java.lang.reflect.Proxy
 
 
 /**
@@ -1011,5 +1013,52 @@ fun getPlayInstallReferrerInfo(ctx: Context): String {
         sb.appendLine("Debuggable?: $isDebuggable")
     }
     return sb.toString()
+}
+
+
+fun DumpStackTraceAt(tr: Throwable, th: Thread) : String {
+    val sb = StringBuilder()
+
+    val trMsg = Log.getStackTraceString(tr)
+    sb.appendLine("Throwable Stack Trace Msg: $trMsg")
+
+    val threadName = th.name
+    val threadStackTrace = th.stackTrace
+    sb.appendLine("Thread $threadName Stack Trace: ${stackToString(threadStackTrace)}")
+
+    return sb.toString()
+}
+
+fun inspectPackageManager(ctx: Context): String {
+    val sb = StringBuilder()
+    val pm = ctx.packageManager
+
+    // 1. Get the actual class hierarchy details
+    val clazz = pm.javaClass
+    sb.appendLine("Simple Name: ${clazz.simpleName}")
+    sb.appendLine("Canonical Name: ${clazz.canonicalName}")
+
+    // 2. Check if it's a standard Java Dynamic Proxy
+    val isProxy = Proxy.isProxyClass(clazz)
+    sb.appendLine("Is Proxy? $isProxy")
+
+    if (isProxy) {
+        // Extract the InvocationHandler if it is a proxy
+        val handler = Proxy.getInvocationHandler(pm)
+        sb.appendLine("InvocationHandler Class: ${handler.javaClass.name}")
+    }
+
+    // 3. Check for other common proxy frameworks
+    sb.appendLine("Superclass: ${clazz.superclass?.name}")
+    sb.appendLine("Interfaces implemented: ${clazz.interfaces.joinToString { it.name }}")
+
+    // 4. Look for common indicators of synthetic/generated wrappers
+    sb.appendLine("Is Synthetic Class? ${clazz.isSynthetic}")
+
+    return sb.toString()
+}
+
+private fun stackToString(frames: Array<StackTraceElement>): String {
+    return frames.joinToString("\n") { "at $it" }
 }
 
