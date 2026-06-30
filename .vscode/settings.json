@@ -7,6 +7,7 @@
   "conventionalCommits.scopes": [
     "Grunfeld",
     "Bipan",
+    "Broker",
     "BipanJava"
   ],
   "C_Cpp.errorSquiggles": "enabled",
