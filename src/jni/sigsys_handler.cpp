@@ -30,7 +30,9 @@ struct kernel_sigaction {
 };
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static bool scrub_socket(struct sockaddr* s);
+static void scrub_socket(struct sockaddr* s);
+inline static bool shouldCache(const char* filename);
+
 static BipanHashTable bht;
 
 void registerSignalHandler() {
@@ -110,9 +112,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
     struct sockaddr* s = (struct sockaddr*)arg1;
     scrub_socket(s);
-    // if (scrub_socket(s)) {
-    //   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
-    // }
 
     in_sigsys_handler = false;
     ctx->uc_mcontext.regs[0] = (__u64)r;
@@ -138,15 +137,17 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int pre_fd = -1;
   int spoofedFd = -1;
 
-  // if (nr == __NR_openat) {
-  //   spoofedFd = bht.retrieve((const char*)arg1);
-  //   // cache hit
-  //   if (spoofedFd != -1) {
-  //     ctx->uc_mcontext.regs[0] = (__u64)spoofedFd;
-  //     in_sigsys_handler = false;
-  //     return;
-  //   }
-  // }
+  if (nr == __NR_openat) {
+    spoofedFd = bht.retrieve((const char*)arg1);
+    if (spoofedFd != -1) {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Hash table HIT: serving %s with fd %d", (const char*)arg1, spoofedFd);
+      // Reset position so app always reads from beginning
+      lseek(spoofedFd, 0, SEEK_SET);
+      ctx->uc_mcontext.regs[0] = (__u64)spoofedFd;
+      in_sigsys_handler = false;
+      return;
+    }
+  }
 
   // TODO: use atomic cas?
   lock_ipc();
@@ -179,7 +180,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     ipc_mem->arg5 = pre_fd;  // leverage unused 5th register for pre_fd (the one the app will receive)
     ipc_mem->spoofedFd = spoofedFd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx || nr == __NR_inotify_add_watch || nr == __NR_readlinkat) {
+  } else if (nr == __NR_faccessat ||
+             nr == __NR_newfstatat ||
+             nr == __NR_statx ||
+             nr == __NR_inotify_add_watch ||
+             nr == __NR_readlinkat ||
+             nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
@@ -252,9 +258,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
-    // if (spoofedFd >= 0) {
-    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
-    // }
     ipc_mem->status = IDLE;
     unlock_ipc();
 
@@ -265,9 +268,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
-    // if (spoofedFd >= 0) {
-    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
-    // }
 
     // fork family handling:
     // clear reentrancy flag and IPC lock before the exec'ing
@@ -288,12 +288,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
   } else if (action == ACTION_USE_RET) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
-      // Cleanup if Broker gave -EACCES
+      // Cleanup if Broker rejected
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+      if (spoofedFd >= 0) {
+        arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+      }
     }
-    // if (spoofedFd >= 0) {
-    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
-    // }
+
     result = ipc_mem->ret;
 
     // Deserialize outputs with their exact lengths
@@ -307,20 +308,38 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
       app_buf[copy_len] = '\0';
     }
-    // if (nr == __NR_openat) {
-    //   char buf[4096];  // page size
-    //   ssize_t n;
-    //   lseek(pre_fd, 0, SEEK_SET);
-    //   while ((n = read(pre_fd, buf, sizeof(buf))) > 0) {
-    //     write(spoofedFd, buf, n);
-    //   }
-    //   lseek(spoofedFd, 0, SEEK_SET);
-    //   lseek(pre_fd, 0, SEEK_SET);
-    //   char cachedFilename[256];
-    //   local_memset(cachedFilename, 0, sizeof(cachedFilename));
-    //   local_strncpy(cachedFilename, (const char*)arg1, 255);
-    //   bht.insert(cachedFilename, spoofedFd);
-    // }
+    if (nr == __NR_openat) {
+      if (result == (long)pre_fd) {
+        // Broker accepted: copy pre_fd content into spoofedFd
+        char buf[4096];
+        ssize_t n;
+        lseek(pre_fd, 0, SEEK_SET);
+        while ((n = read(pre_fd, buf, sizeof(buf))) > 0) {
+          write(spoofedFd, buf, n);
+        }
+        lseek(spoofedFd, 0, SEEK_SET);
+
+        // Close pre_fd — app will never see it
+        arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+        pre_fd = -1;
+
+        // Cache spoofedFd by filename
+        char cachedFilename[256];
+        local_memset(cachedFilename, 0, sizeof(cachedFilename));
+        local_strncpy(cachedFilename, (const char*)arg1, 255);
+        if (shouldCache(cachedFilename)) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s for future use...", cachedFilename);
+          bht.insert(cachedFilename, spoofedFd);
+        }
+
+        // Return spoofedFd to app, NOT pre_fd
+        result = spoofedFd;
+      } else {
+        // Broker denied — close both
+        if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+        if (spoofedFd >= 0) arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+      }
+    }
   }
 
   ipc_mem->status = IDLE;
@@ -331,15 +350,15 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   in_sigsys_handler = false;
 }
 
-static bool scrub_socket(struct sockaddr* s) {
-  if (!s) return false;
+static void scrub_socket(struct sockaddr* s) {
+  if (!s) return;
 
   if (s->sa_family == AF_INET) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
 
     sin->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
 
-    return true;
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv4 (getsockname) scrubbed");
   } else if (s->sa_family == AF_INET6) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
@@ -347,7 +366,13 @@ static bool scrub_socket(struct sockaddr* s) {
     local_memset(&sin6->sin6_addr, 0, 16);
     sin6->sin6_addr.s6_addr[0] = 0xfd;
     sin6->sin6_addr.s6_addr[15] = 0x01;
-    return true;
+
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
   }
-  return false;
+}
+
+inline static bool shouldCache(const char* filename) {
+  return (
+      (shouldFakeFile(filename) != nullptr) ||
+      is_mounts(filename));
 }
