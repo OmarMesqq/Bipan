@@ -562,7 +562,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 
 // Legacy: __system_property_get
 static int hook_system_property_get(const char* name, char* value) {
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_get called!");
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_get called!");
   if (name != nullptr) {
     auto it = g_prop_overrides.find(name);
     if (it != g_prop_overrides.end()) {
@@ -584,7 +584,7 @@ static int hook_system_property_get(const char* name, char* value) {
 
 // Modern: __system_property_read_callback
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) {
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_read_callback called!");
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_read_callback called!");
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 

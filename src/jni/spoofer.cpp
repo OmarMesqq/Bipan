@@ -197,3 +197,82 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
   return fake_fd;
 }
+
+int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
+  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: openat real dir failed!");
+    return -1;
+  }
+
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+  if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
+    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    return -1;
+  }
+
+  char buf[1024];
+  char line[1024];
+  long bytes_read;
+  size_t line_pos = 0;
+
+  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+    for (int i = 0; i < bytes_read; i++) {
+      // Avoid buffer overflow in the line accumulation buffer
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
+      // Process when a newline is encountered or line buffer is full
+      if (buf[i] == '\n' || line_pos >= sizeof(line) - 1) {
+        line[line_pos] = '\0';  // Null-terminate for string functions
+
+        const char* output_line = line;
+        size_t output_len = line_pos;
+
+        // Check and replace target keys
+        if (starts_with(line, "TracerPid:")) {
+          output_line = "TracerPid:\t0\n";
+          output_len = local_strlen(output_line);
+        } else if (starts_with(line, "NoNewPrivs:")) {
+          output_line = "NoNewPrivs:\t0\n";
+          output_len = local_strlen(output_line);
+        } else if (starts_with(line, "Cpus_allowed_list:")) {
+          output_line = "Cpus_allowed_list:\t0-3\n";
+          output_len = local_strlen(output_line);
+        }
+
+        // Write the line to the anonymous file descriptor
+        arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
+
+        // Reset line position counter for the next line
+        line_pos = 0;
+      }
+    }
+  }
+
+  // Handle any remaining data if the file didn't end with a newline
+  if (line_pos > 0) {
+    line[line_pos] = '\0';
+    const char* output_line = line;
+    size_t output_len = line_pos;
+
+    if (starts_with(line, "TracerPid:")) {
+      output_line = "TracerPid:\t0\n";
+      output_len = local_strlen(output_line);
+    } else if (starts_with(line, "NoNewPrivs:")) {
+      output_line = "NoNewPrivs:\t0\n";
+      output_len = local_strlen(output_line);
+    } else if (starts_with(line, "Cpus_allowed_list:")) {
+      output_line = "Cpus_allowed_list:\t0-3\n";
+      output_len = local_strlen(output_line);
+    }
+
+    arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
+  }
+
+  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  return fake_fd;
+}
