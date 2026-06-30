@@ -49,6 +49,7 @@ struct LibBounds {
 };
 
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
+static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data);
 
 std::unordered_set<std::string> telephonySpoofingAllowlist = {
     "com.android.vending",
@@ -122,7 +123,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
     ipc_mem->appSockFd = g_broker_socket;
-    
+
     memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
     strncpy(ipc_mem->package_name, package_name, 255);
 
@@ -143,11 +144,6 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    // Native (C/C++ setup)
-    registerDobbyLinkerHooks();
-    registerDobbyNativeSystemPropertiesHook();
-    registerDobbyNativeSensorsHooks();
-
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
     dl_iterate_phdr(find_lib_bounds, &my_lib);
@@ -157,12 +153,23 @@ class Bipan : public zygisk::ModuleBase {
     size_t lib_size = my_lib.end - my_lib.start;
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
-    // TODO: move this below?
-    // Install process-wide SIGSYS handler for seccomp
-    registerSignalHandler();
+    // char loadedSharedLibs[1024];
+    // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
+    // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
 
-    // Java-layer setup
+    // Native (C/C++ setup)
+    registerDobbyLinkerHooks();
+    registerDobbyNativeSystemPropertiesHook();
+    registerDobbyNativeSensorsHooks();
+
+    // Unseal the VM
     initBipanJava();
+
+    // Install application-wide SIGSYS handler
+    registerSignalHandler();
+    // Setup tripwires for seccomp
     hookJniFunctions();
   }
 
@@ -172,6 +179,10 @@ class Bipan : public zygisk::ModuleBase {
   std::unordered_set<std::string> targetsSet;
   bool isTargetApp;
 
+  /**
+   * Calls `BipanJava`'s `install` method:
+   * Unseals the ART VM
+   */
   void initBipanJava() {
     // Map the .dex byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
@@ -300,6 +311,12 @@ class Bipan : public zygisk::ModuleBase {
     env->DeleteLocalRef(newStr);
   }
 
+  /**
+   * 1. Spoofs `Build` fields
+   * 2. Hooks JNI sensors functions
+   * 3. Sets up the ART tripwires (`clampGrowthLimit`/`clearGrowthLimit`) for
+   * applying seccomp and loading BipanJava modules
+   */
   void hookJniFunctions() {
     jclass buildClass = env->FindClass("android/os/Build");
     if (buildClass == nullptr) {
@@ -384,6 +401,10 @@ class Bipan : public zygisk::ModuleBase {
   }
 };
 
+/**
+ * `dl_iterate_phdr` callback:
+ * Purpose: find Bipan's start and end in mappings
+ */
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
@@ -401,6 +422,19 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
     }
     return 1;  // Stop iteration
   }
+  return 0;
+}
+
+/**
+ * `dl_iterate_phdr` callback:
+ * Purpose: find all shared objects before app starts
+ */
+static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data) {
+  char entry[512];  // for each shared lib
+
+  snprintf(entry, sizeof(entry), "%s\n", info->dlpi_name);
+  strcat((char*)data, entry);
+
   return 0;
 }
 
