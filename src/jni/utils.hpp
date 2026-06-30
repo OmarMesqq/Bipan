@@ -6,6 +6,22 @@
 
 #include "shared.hpp"
 
+
+/**
+ * Collection of AS-safe clones
+ * of string manipulation libc functions.
+ * Also features one of Bipan's multiple hearts:
+ * the `raw_syscall` function for directly asking the kernel for
+ * a resource.
+ * 
+ * This is necessary a good chunk of Bipan is injected into the process
+ * and seccomp needs a signal handler. Turns out there are tons of limitations
+ * on what you can do inside one. 
+ * 
+ * Please read:
+ * https://www.man7.org/linux/man-pages/man7/signal-safety.7.html
+ */
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 

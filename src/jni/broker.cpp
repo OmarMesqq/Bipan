@@ -21,6 +21,7 @@
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/sysmacros.h>
 #include <sys/utsname.h>
 #include <syscall.h>
 #include <time.h>
@@ -104,6 +105,16 @@ static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 void startBroker(int sock, SharedIPC* ipc_mem) {
   const char* last_dot = strrchr(ipc_mem->package_name, '.');
   const char* short_name = last_dot ? last_dot + 1 : ipc_mem->package_name;
+
+  // If the last segment is generic/short (e.g. "unstable", "music", "app"),
+  // prefer the second-to-last segment for more identifying info
+  if (last_dot && local_strlen(short_name) <= 4) {
+    char buf[256];
+    strncpy(buf, ipc_mem->package_name, last_dot - ipc_mem->package_name);
+    buf[last_dot - ipc_mem->package_name] = '\0';
+    const char* second_last_dot = strrchr(buf, '.');
+    short_name = second_last_dot ? second_last_dot + 1 : buf;
+  }
 
   // 16 bytes only: https://man7.org/linux/man-pages/man2/PR_SET_NAME.2const.html
   char threadName[16];
@@ -306,11 +317,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               break;
             }
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Filled app's pre_fd: %s", proc_path);
-
             preFds[target_fd] = path_payload;
+            // char* stable_path = strdup(path_payload);
+            // preFds[target_fd] = stable_path;
             if (ipc_mem->spoofedFd != -1) {
               spoofedFds.insert(ipc_mem->spoofedFd);
+              preFds[ipc_mem->spoofedFd] = path_payload;
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached handler's spoofed fd(%d) and app's pre_fd(%d)", ipc_mem->spoofedFd, target_fd);
             } else {
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's pre_fd(%d)", target_fd);
@@ -332,6 +344,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             // Tell target to use the fd it already has
             ipc_mem->ret = target_fd;
             ipc_mem->action = ACTION_USE_RET;
+
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's preFd pool size: %d", preFds.size());
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's spoofedFd pool size: %d", spoofedFds.size());
           }
 #ifdef DEBUG
           else {
@@ -643,10 +658,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         // Spoof check
-        if (is_our_socket(resolved) || is_spoofed_fd) {
+        if (is_our_socket(resolved)) {
           strncpy(out, "/dev/null", bufsiz - 1);
           out[bufsiz - 1] = '\0';
-          ipc_mem->ret = strlen("/dev/null");
+          ipc_mem->ret = (long)strlen("/dev/null");
           ipc_mem->action = ACTION_USE_RET;
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
           break;
@@ -658,12 +673,20 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
               strncpy(out, path.c_str(), bufsiz - 1);
               out[bufsiz - 1] = '\0';
-              ipc_mem->ret = strlen(path.c_str());
+              ipc_mem->ret = (long)strlen(path.c_str());
               ipc_mem->action = ACTION_USE_RET;
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed pre_fd %s -> %s", resolved, path.c_str());
               break;
             }
           }
+          break;
+        } else if (is_spoofed_fd) {
+          // spoofedFds not in preFds — truly internal fds with no legitimate path to reveal
+          strncpy(out, "/dev/null", bufsiz - 1);
+          out[bufsiz - 1] = '\0';
+          ipc_mem->ret = (long)strlen("/dev/null");
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
           break;
         }
 

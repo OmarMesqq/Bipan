@@ -160,7 +160,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
 
   // Promise the kernel we won't ask for elevated privileges
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: prctl failed: %d", errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] applySeccomp: prctl failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
 
@@ -170,7 +170,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
    */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "applySeccomp: failed to apply seccomp (errno %d)", errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] applySeccomp: failed to apply seccomp (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
 }
