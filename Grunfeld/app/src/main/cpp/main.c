@@ -28,6 +28,7 @@
 #include <elf.h>
 #include <sys/auxv.h>
 #include <dlfcn.h>
+#include <sys/wait.h>
 
 #include "socket_helper.h"
 
@@ -67,6 +68,67 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_stat_tests();
 
     LOGI("Early init: __attribute__((constructor))");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
+    char tmpBuffer[512] = {0};
+    pid_t pid = fork();
+    if (pid == -1) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "'fork' failed. errno: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, tmpBuffer);
+    }
+
+    if (pid == 0) {
+        LOGI("Child: fork succeeded");
+        sleep(2); // some delay to let log above to appear
+
+        const char* path = "/system/bin/uname";
+        char* const argv[] = {"uname", "-a", NULL};
+        // char *const envp[] = {NULL};
+
+        int execRet = execve(path, argv, environ);
+        LOGE("[!] Something bad happened: execve returned. ret:%d | errno: %s", execRet, strerror(errno));
+        _exit(execRet);
+    }
+
+    int wstatus = 0;
+    /**
+     * Suspends this calling thread (which is probably Main Thread (?), as it's called from MainActivity)
+     * wait for any child process (`-1`), writes results into `wstatus`, and return immediately if no child has exited (`WNOHANG`)
+     */
+    pid_t waitRes = waitpid(-1, &wstatus, WNOHANG);
+    if (waitRes == -1) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "'waitpid' failed. errno: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, tmpBuffer);
+    }
+    char finalReport[1024] = {0};
+
+    snprintf(tmpBuffer, sizeof(tmpBuffer), "waitpid result: %d\n", waitRes);
+    strcat(finalReport, tmpBuffer);
+
+    if (WIFEXITED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child terminated normally. Exit code: %d\n", WEXITSTATUS(wstatus));
+        strcat(finalReport, tmpBuffer);
+    }
+    if (WIFSIGNALED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "[!] Child terminated by signal: %d\n", WTERMSIG(wstatus));
+        strcat(finalReport, tmpBuffer);
+        if (WCOREDUMP(wstatus)) {
+            snprintf(tmpBuffer, sizeof(tmpBuffer), "Child produced core dump.\n");
+            strcat(finalReport, tmpBuffer);
+        }
+    }
+    if (WIFSTOPPED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "[! likely ptrace] Child stopped by a signal: %d\n", WSTOPSIG(wstatus));
+        strcat(finalReport, tmpBuffer);
+    }
+    if (WIFCONTINUED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child was resumed i.e. got SIGCONT\n");
+        strcat(finalReport, tmpBuffer);
+    }
+
+    return (*env)->NewStringUTF(env, finalReport);
 }
 
 JNIEXPORT jstring JNICALL

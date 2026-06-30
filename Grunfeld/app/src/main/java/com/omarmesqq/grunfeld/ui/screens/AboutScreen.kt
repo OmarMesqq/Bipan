@@ -109,9 +109,7 @@ fun AboutScreen() {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("✦ Grunfeld", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-            Text(" · ", color = MaterialTheme.colorScheme.outline)
-            Text("v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+            Text("✦ v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
         }
 
     }

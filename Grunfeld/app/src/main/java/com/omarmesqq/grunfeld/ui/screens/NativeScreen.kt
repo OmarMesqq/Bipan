@@ -52,6 +52,7 @@ fun NativeScreen() {
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
+    var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -220,6 +221,14 @@ fun NativeScreen() {
                     ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
                     Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
                         Text("read /proc/self/status")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fork()/exec()")
+                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
+                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Create a child process and inspect its result")
                     }
                 }
 
