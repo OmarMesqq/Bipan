@@ -396,12 +396,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
           uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
-          if (port != 0) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv4 bind request: sockfd: %d, port %d", (int)ipc_mem->arg0, port);
-          }
 
-          // Allow 0.0.0.0
-          if (ip4 != 0x00000000) {
+          // Allow 0.0.0.0 and loopback (127.0.0.0/8)
+          if (ip4 != 0x00000000 || ((ip4 & 0xFF000000) != 0x7F000000)) {
             if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
               should_block = true;
             }
@@ -410,33 +407,19 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
-          if (port != 0) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Got IPv6 bind request: sockfd: %d, port %d", (int)ipc_mem->arg0, port);
-          }
 
-          // TODO: Allow :: ?
-          bool is_v6_unspecified = true;
-          for (int i = 0; i < 16; i++) {
-            if (ip6[i] != 0) {
-              is_v6_unspecified = false;
-              break;
-            }
-          }
-
-          if (!is_v6_unspecified) {
-            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-              should_block = true;
-            }
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+            should_block = true;
           }
         }
 
         if (should_block) {
-          ipc_mem->ret = -EADDRNOTAVAIL;
+          ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
