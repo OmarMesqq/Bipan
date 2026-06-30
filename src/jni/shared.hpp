@@ -8,7 +8,7 @@
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
-// #define DEBUG
+#define DEBUG
 
 // Globals populated in entrypoint
 
@@ -42,6 +42,7 @@ enum IpcAction {
 
 #define MAX_STACK_TRACE 60
 
+// Some fields here are unused
 typedef struct {
   volatile int lock;
   volatile int status;
@@ -65,7 +66,8 @@ typedef struct {
   uintptr_t stack_trace[MAX_STACK_TRACE];
 
   int appSockFd;
-int spoofedFd;
+  int spoofedFd;
+  char package_name[256];
 } SharedIPC;
 
 /**

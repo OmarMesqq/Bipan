@@ -109,9 +109,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
 
     struct sockaddr* s = (struct sockaddr*)arg1;
-    if (scrub_socket(s)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
-    }
+    scrub_socket(s);
+    // if (scrub_socket(s)) {
+    //   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) sockfd: %d scrubbed", (int)arg0);
+    // }
 
     in_sigsys_handler = false;
     ctx->uc_mcontext.regs[0] = (__u64)r;
@@ -173,7 +174,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialize Strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
-    // spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+    spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
 
     ipc_mem->arg5 = pre_fd;  // leverage unused 5th register for pre_fd (the one the app will receive)
     ipc_mem->spoofedFd = spoofedFd;

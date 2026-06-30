@@ -122,6 +122,9 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
     ipc_mem->appSockFd = g_broker_socket;
+    
+    memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
+    strncpy(ipc_mem->package_name, package_name, 255);
 
     // Teleport the FD to the Root Companion
     send_fd(g_broker_socket, memfd);

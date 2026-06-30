@@ -102,12 +102,19 @@ static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
-  prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
+  const char* last_dot = strrchr(ipc_mem->package_name, '.');
+  const char* short_name = last_dot ? last_dot + 1 : ipc_mem->package_name;
+
+  // 16 bytes only: https://man7.org/linux/man-pages/man2/PR_SET_NAME.2const.html
+  char threadName[16];
+  snprintf(threadName, sizeof(threadName), "bb-%s", short_name);
+  prctl(PR_SET_NAME, threadName, 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
   std::unordered_set<int> spoofedFds;
-  std::unordered_map<int, const char*> preFds;
+  // even though std::string uses heap, it manages its ownership, I'm gonna go with it
+  std::unordered_map<int, std::string> preFds;
 
   pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   std::__thread_id tid = std::this_thread::get_id();
@@ -596,26 +603,49 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           return p && (strcmp(p, path_self) == 0 || strcmp(p, path_pid) == 0);
         };
 
+        bool is_spoofed_fd = [&]() -> bool {
+          for (const int fd : spoofedFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", fd);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              return true;
+            }
+          }
+          return false;
+        }();
+
+        bool is_pre_fd = [&]() -> bool {
+          for (const auto& kv : preFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", kv.first);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, kv.first);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              return true;
+            }
+          }
+          return false;
+        }();
+
         // The path we'll actually readlink
         char resolved[512];
-        if (dirfd == AT_FDCWD || dirfd == 0) {
+        if (dirfd == AT_FDCWD) {
           if (pathname && strncmp(pathname, "/proc/self/", 11) == 0) {
             // Rewrite /proc/self/ -> /proc/<target_pid>/
-            snprintf(resolved, sizeof(resolved), "/proc/%d/%s",
-                     ipc_mem->target_pid, pathname + 11);
+            snprintf(resolved, sizeof(resolved), "/proc/%d/%s", ipc_mem->target_pid, pathname + 11);
         } else {
             snprintf(resolved, sizeof(resolved), "%s", pathname ? pathname : "");
           }
         } else {
           // Resolve dirfd via /proc/<pid>/fd/<dirfd>, then append pathname
           char proc_fd_path[512];
-          snprintf(proc_fd_path, sizeof(proc_fd_path),
-                   "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
+          snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
           char base_dir[512];
           ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, base_dir, sizeof(base_dir) - 1);
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat: failed to resolve dirfd %d: %s", dirfd, strerror(errno));
-            ipc_mem->ret = -1;
+            // let app handle
+            ipc_mem->ret = len;
             ipc_mem->action = ACTION_USE_RET;
             break;
           }
@@ -624,12 +654,27 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         // Spoof check
-        if (is_our_socket(resolved)) {
+        if (is_our_socket(resolved) || is_spoofed_fd) {
           strncpy(out, "/dev/null", bufsiz - 1);
           out[bufsiz - 1] = '\0';
           ipc_mem->ret = strlen("/dev/null");
           ipc_mem->action = ACTION_USE_RET;
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
+          break;
+        } else if (is_pre_fd) {
+          for (const auto& [fd, path] : preFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", fd);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              strncpy(out, path.c_str(), bufsiz - 1);
+              out[bufsiz - 1] = '\0';
+              ipc_mem->ret = strlen(path.c_str());
+              ipc_mem->action = ACTION_USE_RET;
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed pre_fd %s -> %s", resolved, path.c_str());
+              break;
+            }
+          }
           break;
         }
 
@@ -645,7 +690,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->ret = real_len;
         ipc_mem->action = ACTION_USE_RET;
 
+        char foo[256];
+        snprintf(foo, sizeof(foo), "/proc/%d/fd", ipc_mem->target_pid);
+        if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, foo)) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s) -> %s", resolved, out);
+        }
+
         break;
       }
       case __NR_nanosleep: {
