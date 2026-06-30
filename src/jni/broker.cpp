@@ -240,7 +240,32 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_EXIT_PROCESS;
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) denied]", action_name, path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
+          if (nr == __NR_execve && ipc_mem->argv_count > 0) {
+            char log_buf[1536] = {0};
+            size_t off = 0;
+            off += snprintf(log_buf + off, sizeof(log_buf) - off, "argv: [");
+            const char* p = ipc_mem->argv_payload;
+            const char* end = ipc_mem->argv_payload + ipc_mem->argv_count;
+            while (p < end && off < sizeof(log_buf) - 1) {
+              size_t len = strnlen(p, end - p);
+              off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", p);
+              p += len + 1;
+            }
+            off += snprintf(log_buf + off, sizeof(log_buf) - off, "]");
+
+            if (ipc_mem->envp_count > 0) {
+              off += snprintf(log_buf + off, sizeof(log_buf) - off, " envp: [");
+              const char* ep = ipc_mem->envp_payload;
+              const char* eend = ipc_mem->envp_payload + ipc_mem->envp_count;
+              while (ep < eend && off < sizeof(log_buf) - 1) {
+                size_t len = strnlen(ep, eend - ep);
+                off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", ep);
+                ep += len + 1;
+              }
+              snprintf(log_buf + off, sizeof(log_buf) - off, "]");
+            }
+          }
         }
         break;
       }
@@ -663,7 +688,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           out[bufsiz - 1] = '\0';
           ipc_mem->ret = (long)strlen("/dev/null");
           ipc_mem->action = ACTION_USE_RET;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed our sockfd: %s -> /dev/null", resolved);
           break;
         } else if (is_pre_fd) {
           for (const auto& [fd, path] : preFds) {
@@ -675,7 +700,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               out[bufsiz - 1] = '\0';
               ipc_mem->ret = (long)strlen(path.c_str());
               ipc_mem->action = ACTION_USE_RET;
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed pre_fd %s -> %s", resolved, path.c_str());
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed pre_fd: %s -> %s", resolved, path.c_str());
               break;
             }
           }
@@ -686,7 +711,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           out[bufsiz - 1] = '\0';
           ipc_mem->ret = (long)strlen("/dev/null");
           ipc_mem->action = ACTION_USE_RET;
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed %s -> /dev/null", resolved);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed Bipan fd: %s -> /dev/null", resolved);
           break;
         }
 
@@ -704,20 +729,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->ret = real_len;
         ipc_mem->action = ACTION_USE_RET;
 
-        char foo[256];
-        snprintf(foo, sizeof(foo), "/proc/%d/fd", ipc_mem->target_pid);
-        if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, foo)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s) -> %s", resolved, out);
+        char procPidFdPath[256];
+        snprintf(procPidFdPath, sizeof(procPidFdPath), "/proc/%d/fd", ipc_mem->target_pid);
+        if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, procPidFdPath)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] unprotected readlinkat: %s -> %s", resolved, out);
         }
-
-        break;
-      }
-      case __NR_nanosleep: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (nanosleep)!");
-        break;
-      }
-      case __NR_clock_gettime: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
         break;
       }
       case __NR_gettimeofday: {
@@ -730,6 +746,66 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_clock_nanosleep: {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_nanosleep)!");
+        break;
+      }
+      case __NR_mknodat: {
+        int dirfd = (int)ipc_mem->arg0;
+        const char* pathname = ipc_mem->string_payload[0] != '\0' ? ipc_mem->string_payload : nullptr;
+        mode_t mode = (mode_t)ipc_mem->arg2;
+        dev_t dev = (dev_t)ipc_mem->arg3;
+
+        int file_type = mode & S_IFMT;
+        const char* type_str =
+            (file_type == S_IFIFO) ? "FIFO" : (file_type == S_IFCHR) ? "char_dev"
+                                          : (file_type == S_IFBLK)   ? "block_dev"
+                                          : (file_type == S_IFSOCK)  ? "socket"
+                                          : (file_type == S_IFREG)   ? "regular"
+                                                                     : "unknown";
+
+        char dev_str[32] = "n/a";
+        if (file_type == S_IFCHR || file_type == S_IFBLK) {
+          snprintf(dev_str, sizeof(dev_str), "%u:%u", major(dev), minor(dev));
+        }
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] mknodat(dirfd=%d, path=%s, type=%s, perms=%#o, dev=%s)", dirfd, pathname, type_str, mode & 0777, dev_str);
+        break;
+      }
+      case __NR_process_vm_readv:
+      case __NR_process_vm_writev: {
+        pid_t target_pid = (pid_t)ipc_mem->arg0;
+        const struct iovec* local_iov = (const struct iovec*)ipc_mem->arg1;
+        unsigned long liovcnt = (unsigned long)ipc_mem->arg2;
+        const struct iovec* remote_iov = (const struct iovec*)ipc_mem->arg3;
+        unsigned long riovcnt = (unsigned long)ipc_mem->arg4;
+        unsigned long flags = (unsigned long)ipc_mem->arg5;
+
+        const char* call_name = (nr == __NR_process_vm_readv) ? "process_vm_readv" : "process_vm_writev";
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] %s(pid=%d, local_iov=%p liovcnt=%lu, remote_iov=%p riovcnt=%lu, flags=%lu)", call_name, target_pid, (void*)local_iov, liovcnt, (void*)remote_iov, riovcnt, flags);
+
+        if (target_pid == ipc_mem->target_pid) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] %s targeting SELF (pid=%d) — possible memory self-scan", call_name, target_pid);
+        }
+
+        break;
+      }
+      case __NR_clock_gettime: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
+        break;
+      }
+      case __NR_prctl: {
+        int op = (int)ipc_mem->arg0;
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] prctl(%d)", op);
+        break;
+      }
+      case __NR_epoll_ctl: {
+        int fd = (int)ipc_mem->arg2;
+        // TODO: logic for our FD
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] epoll_ctl on fd %d", fd);
+        break;
+      }
+      case __NR_nanosleep: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (nanosleep)!");
         break;
       }
       default: {
@@ -850,11 +926,11 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
   FILE* f = fopen(path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %s)", path, strerror(errno));
     return;
   }
 
-  char line[1024];  // Increased buffer to handle exceptionally long paths
+  char line[2048];
   int line_count = 0;
 
   while (fgets(line, sizeof(line), f)) {
@@ -867,14 +943,13 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
 
     // Format: address(start-end) perms offset dev inode pathname
     // Example: 7b1c428000-7b1c517000 r--p 00000000 fd:29 259069 /lib/libiconv.so
-    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n",
-                         &start, &end, &offset, &path_pos);
+    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n", &start, &end, &offset, &path_pos);
 
     // Basic structural check
     if (matches < 3) {
       // If we see a non-empty line that doesn't match our regex, it's a parse error
       if (line[0] != '\n' && line[0] != '\0') {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line %d: %s", line_count, line);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line[%d] = %s", line_count, line);
       }
       continue;
     }
