@@ -22,4 +22,5 @@ object NativeLibWrapper {
     external fun dl_iterate_phdrTest(): String
     external fun testProcSelfAuxv(): String
     external fun testProcSelfTask(): String
+    external fun testForkExec(progname: String): String
 }
