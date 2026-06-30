@@ -5,11 +5,13 @@
 // putting to half for simplicity, not many files to spoof
 #define MAX_CHAINING_LIST_SIZE(x) MAX_TABLE_SIZE / 2
 
+#define MAX_KEY_LEN 256
+
 // Should be 16 bytes
 typedef struct _node {
-  int key;             // for differentiating nodes on chaining
-  int val;             // the actual FD
-  struct _node* next;  // for chaining, if necessary
+  char key[MAX_KEY_LEN];  // for differentiating nodes on chaining
+  int val;                // the actual FD
+  struct _node* next;     // for chaining, if necessary
 } Node;
 
 /**
@@ -42,8 +44,7 @@ class BipanHashTable {
   // Methods
 
   unsigned int hash(const char* name);
-  unsigned int keyHash(const char* name);
-  int allocate(int key, int val, Node* next);
+  int allocate(const char* name, int val, Node* next);
 };
 
 #endif  // BIPAN_HASH_TABLE_HPP
