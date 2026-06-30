@@ -15,12 +15,12 @@
 
 #include <atomic>
 
+#include "bipan_hash_table.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "utils.hpp"
-#include "bipan_hash_table.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -133,6 +133,20 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  // app-side FD to be filled by Broker in relevant syscalls
+  int pre_fd = -1;
+  int spoofedFd = -1;
+
+  // if (nr == __NR_openat) {
+  //   spoofedFd = bht.retrieve((const char*)arg1);
+  //   // cache hit
+  //   if (spoofedFd != -1) {
+  //     ctx->uc_mcontext.regs[0] = (__u64)spoofedFd;
+  //     in_sigsys_handler = false;
+  //     return;
+  //   }
+  // }
+
   // TODO: use atomic cas?
   lock_ipc();
 
@@ -147,6 +161,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
+  ipc_mem->spoofedFd = spoofedFd;
 
   // Zero-out string payloads
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
@@ -155,14 +170,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   __sync_synchronize();
 
-  // app-side FD to be filled by Broker in relevant syscalls
-  int pre_fd = -1;
-
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
-    // openat takes up to 4 args, so use arg5 as slot for the pre-FD
-    ipc_mem->arg5 = pre_fd;
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+    // spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+
+    ipc_mem->arg5 = pre_fd;  // leverage unused 5th register for pre_fd (the one the app will receive)
+    ipc_mem->spoofedFd = spoofedFd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx || nr == __NR_inotify_add_watch || nr == __NR_readlinkat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
@@ -237,6 +251,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
+    // if (spoofedFd >= 0) {
+    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+    // }
     ipc_mem->status = IDLE;
     unlock_ipc();
 
@@ -245,9 +262,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
-      // Cleanup ghost FD
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
+    // if (spoofedFd >= 0) {
+    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+    // }
 
     // fork family handling:
     // clear reentrancy flag and IPC lock before the exec'ing
@@ -271,6 +290,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       // Cleanup if Broker gave -EACCES
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
+    // if (spoofedFd >= 0) {
+    //   arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+    // }
     result = ipc_mem->ret;
 
     // Deserialize outputs with their exact lengths
@@ -284,6 +306,20 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
       app_buf[copy_len] = '\0';
     }
+    // if (nr == __NR_openat) {
+    //   char buf[4096];  // page size
+    //   ssize_t n;
+    //   lseek(pre_fd, 0, SEEK_SET);
+    //   while ((n = read(pre_fd, buf, sizeof(buf))) > 0) {
+    //     write(spoofedFd, buf, n);
+    //   }
+    //   lseek(spoofedFd, 0, SEEK_SET);
+    //   lseek(pre_fd, 0, SEEK_SET);
+    //   char cachedFilename[256];
+    //   local_memset(cachedFilename, 0, sizeof(cachedFilename));
+    //   local_strncpy(cachedFilename, (const char*)arg1, 255);
+    //   bht.insert(cachedFilename, spoofedFd);
+    // }
   }
 
   ipc_mem->status = IDLE;

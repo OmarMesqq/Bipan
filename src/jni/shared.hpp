@@ -65,6 +65,7 @@ typedef struct {
   uintptr_t stack_trace[MAX_STACK_TRACE];
 
   int appSockFd;
+int spoofedFd;
 } SharedIPC;
 
 /**
