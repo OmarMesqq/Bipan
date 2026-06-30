@@ -238,7 +238,7 @@ public class J {
             (Object) new Class[] { String[].class });
         setHiddenApiExemptions.invoke(
             vmRuntime, new Object[] { new String[] { "L" } });
-        Log.i(TAG, "ART VM unsealed (Modern approach)");
+        // Log.i(TAG, "ART VM unsealed (Modern approach)");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
         throw e2;
