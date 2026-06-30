@@ -2,11 +2,7 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
-#include <sys/mman.h>
 #include <syscall.h>
-
-#include <atomic>
-#include <string>
 
 #include "shared.hpp"
 
@@ -37,14 +33,28 @@ __attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0
 
 #pragma clang diagnostic pop
 
-inline bool starts_with(const char* str, const char* prefix) {
-  return strncmp(str, prefix, strlen(prefix)) == 0;
-}
-
 __attribute__((always_inline)) inline size_t local_strlen(const char* s) {
   size_t len = 0;
   while (s[len]) len++;
   return len;
+}
+
+__attribute__((always_inline)) inline size_t local_strnlen(const char* s, size_t maxlen) {
+  size_t len = 0;
+  while (len < maxlen && s[len]) len++;
+  return len;
+}
+
+__attribute__((always_inline)) inline int local_strncmp(const char* a, const char* b, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    if (a[i] != b[i]) return (unsigned char)a[i] - (unsigned char)b[i];
+    if (a[i] == '\0') return 0;
+  }
+  return 0;
+}
+
+__attribute__((always_inline)) inline bool starts_with(const char* str, const char* prefix) {
+  return local_strncmp(str, prefix, local_strlen(prefix)) == 0;
 }
 
 inline const char* local_strstr(const char* haystack, const char* needle) {
