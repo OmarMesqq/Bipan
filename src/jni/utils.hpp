@@ -80,7 +80,7 @@ __attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size
 }
 
 // Validates any /proc/<PID>/target_file layout
-__attribute__((always_inline)) inline bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
+static bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
   // 1. Must start with "/proc/"
   if (strncmp(pathname, "/proc/", 6) != 0) return false;
 
@@ -120,7 +120,7 @@ inline bool is_mounts(const char* pathname) {
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
  */
-inline bool filterIPv4LanAccess(uint32_t ip4) {
+__attribute__((always_inline)) inline static bool filterIPv4LanAccess(uint32_t ip4) {
   // Unspecified address (0.0.0.0)
   if (ip4 == 0x00000000) {
     return true;
@@ -158,7 +158,7 @@ inline bool filterIPv4LanAccess(uint32_t ip4) {
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
  */
-inline bool filterIPv6LanAccess(uint8_t* ip6) {
+__attribute__((always_inline)) inline static bool filterIPv6LanAccess(uint8_t* ip6) {
   if (!ip6) {
     return false;
   }
@@ -247,7 +247,7 @@ __attribute__((always_inline)) static inline void* local_memcpy(void* dest, cons
   return dest;
 }
 
-__attribute__((always_inline)) inline bool is_exact_dir(const char* path, const char* target_dir) {
+__attribute__((always_inline)) static inline bool is_exact_dir(const char* path, const char* target_dir) {
   size_t len = strlen(target_dir);
   if (strncmp(path, target_dir, len) == 0) {
     // Return true if it ends exactly at the dir name, or has a trailing slash
