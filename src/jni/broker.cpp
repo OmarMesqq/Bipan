@@ -579,8 +579,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
           break;
         }
-        if (!starts_with(filename, "/data/data") && !starts_with(filename, "/data/app")) {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
+        if (
+            !starts_with(filename, "/data/data") &&
+            !starts_with(filename, "/data/app") &&
+            !starts_with(filename, "/storage/emulated/0/Android")) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
         }
         break;
       }
@@ -633,7 +636,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (pathname && strncmp(pathname, "/proc/self/", 11) == 0) {
             // Rewrite /proc/self/ -> /proc/<target_pid>/
             snprintf(resolved, sizeof(resolved), "/proc/%d/%s", ipc_mem->target_pid, pathname + 11);
-        } else {
+          } else {
             snprintf(resolved, sizeof(resolved), "%s", pathname ? pathname : "");
           }
         } else {
@@ -649,7 +652,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->action = ACTION_USE_RET;
             break;
           }
-            base_dir[len] = '\0';
+          base_dir[len] = '\0';
           snprintf(resolved, sizeof(resolved), "%s/%s", base_dir, pathname ? pathname : "");
         }
 
@@ -678,8 +681,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
 
-        // Actually perform the readlinkat
-        ssize_t real_len = readlinkat(AT_FDCWD, resolved, out, bufsiz - 1);
+        // Due to different mount namespaces, use the `root` symlink that privileged processes can open
+        char target_relative[600];
+        snprintf(target_relative, sizeof(target_relative), "/proc/%d/root%s", ipc_mem->target_pid, resolved);
+        ssize_t real_len = readlinkat(AT_FDCWD, target_relative, out, bufsiz - 1);
         if (real_len == -1) {
           ipc_mem->ret = -errno;
           ipc_mem->action = ACTION_USE_RET;
@@ -693,7 +698,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         char foo[256];
         snprintf(foo, sizeof(foo), "/proc/%d/fd", ipc_mem->target_pid);
         if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, foo)) {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s) -> %s", resolved, out);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat(%s) -> %s", resolved, out);
         }
 
         break;
