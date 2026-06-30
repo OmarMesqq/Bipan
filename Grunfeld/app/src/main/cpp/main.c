@@ -142,16 +142,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env,
     size_t offset = 0;
 
     struct dirent *entry;
+    unsigned int threadCount = 0;
     while ((entry = readdir(dir)) != NULL) {
         // Skip . and ..
         if (entry->d_name[0] == '.') continue;
 
+        threadCount++;
         // Read /proc/self/task/<tid>/comm
         char comm_path[64];
         snprintf(comm_path, sizeof(comm_path), "/proc/self/task/%s/comm", entry->d_name);
 
         int comm_fd = open(comm_path, O_RDONLY);
-        if (comm_fd < 0) continue;
+        if (comm_fd < 0) {
+            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Failed to open comm fd for thread at %s\n",comm_path);
+            continue;
+        }
 
         char thread_name[64] = {0};
         ssize_t n = read(comm_fd, thread_name, sizeof(thread_name) - 1);
@@ -161,25 +166,27 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env,
             // Strip trailing newline
             if (thread_name[n - 1] == '\n') thread_name[n - 1] = '\0';
 
-            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "[%s] %s\n",entry->d_name, thread_name);
+            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "%s\n",thread_name);
         }
     }
+    offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Found %d threads\n", threadCount);
 
     closedir(dir);
     return (*env)->NewStringUTF(env, result[0] ? result : "No threads found");
 }
 
+/**
+ * Double check on whether this is true for Android
+ */
 JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfAuxv(JNIEnv *env, jobject thiz) {
     char report[MAX_REPORT_SIZE] = {0};
     char entry[512] = {0};
 
     static const unsigned long types[] = {
             AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY,
-            AT_RANDOM, AT_HWCAP, AT_HWCAP2, AT_CLKTCK,
+            AT_RANDOM, AT_HWCAP, AT_CLKTCK,
             AT_UID, AT_EUID, AT_GID, AT_EGID, AT_SECURE, AT_PLATFORM,
-            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF,
-            AT_RSEQ_FEATURE_SIZE, AT_RSEQ_ALIGN, AT_HWCAP3, AT_HWCAP4, AT_MINSIGSTKSZ,
-            AT_NULL, AT_IGNORE, AT_FLAGS, AT_BASE_PLATFORM
+            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF
     };
 
     for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
@@ -187,35 +194,24 @@ JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_tes
         unsigned long val = getauxval(type);
 
         switch (type) {
-            case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR     = %#lx\n", val); break;
-            case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM    = %lu\n",  val); break;
-            case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ   = %lu\n",  val); break;
-            case AT_BASE:     snprintf(entry, sizeof(entry), "AT_BASE     = %#lx\n", val); break;
-            case AT_ENTRY:    snprintf(entry, sizeof(entry), "AT_ENTRY    = %#lx\n", val); break;
-            case AT_RANDOM:   snprintf(entry, sizeof(entry), "AT_RANDOM   = %#lx\n", val); break;
-            case AT_HWCAP:    snprintf(entry, sizeof(entry), "AT_HWCAP    = %#lx\n", val); break;
-            case AT_HWCAP2:   snprintf(entry, sizeof(entry), "AT_HWCAP2   = %#lx\n", val); break;
-            case AT_CLKTCK:   snprintf(entry, sizeof(entry), "AT_CLKTCK   = %lu\n",  val); break;
-            case AT_UID:      snprintf(entry, sizeof(entry), "AT_UID      = %lu\n",  val); break;
-            case AT_EUID:     snprintf(entry, sizeof(entry), "AT_EUID     = %lu\n",  val); break;
-            case AT_GID:      snprintf(entry, sizeof(entry), "AT_GID      = %lu\n",  val); break;
-            case AT_EGID:     snprintf(entry, sizeof(entry), "AT_EGID     = %lu\n",  val); break;
-            case AT_SECURE:   snprintf(entry, sizeof(entry), "AT_SECURE   = %lu\n",  val); break;
-            case AT_PLATFORM: snprintf(entry, sizeof(entry), "AT_PLATFORM = %s\n",   (char*)val); break;
-            case AT_EXECFN:   snprintf(entry, sizeof(entry), "AT_EXECFN   = %s\n",  (char*)val); break;
-            case AT_EXECFD:           snprintf(entry, sizeof(entry), "AT_EXECFD           = %lu\n",  val); break;
-            case AT_PHENT:            snprintf(entry, sizeof(entry), "AT_PHENT            = %lu\n",  val); break;
-            case AT_NOTELF:           snprintf(entry, sizeof(entry), "AT_NOTELF           = %lu\n",  val); break;
-            case AT_RSEQ_FEATURE_SIZE:snprintf(entry, sizeof(entry), "AT_RSEQ_FEATURE_SIZE= %lu\n",  val); break;
-            case AT_RSEQ_ALIGN:       snprintf(entry, sizeof(entry), "AT_RSEQ_ALIGN       = %lu\n",  val); break;
-            case AT_HWCAP3:           snprintf(entry, sizeof(entry), "AT_HWCAP3           = %#lx\n", val); break;
-            case AT_HWCAP4:           snprintf(entry, sizeof(entry), "AT_HWCAP4           = %#lx\n", val); break;
-            case AT_MINSIGSTKSZ:      snprintf(entry, sizeof(entry), "AT_MINSIGSTKSZ      = %lu\n",  val); break;
-            case AT_FLAGS:            snprintf(entry, sizeof(entry), "AT_FLAGS            = %#lx\n", val); break;
-            case AT_BASE_PLATFORM:    snprintf(entry, sizeof(entry), "AT_BASE_PLATFORM    = %s\n",   (char*)val); break;
-            case AT_NULL:             snprintf(entry, sizeof(entry), "AT_NULL             = %lu\n",  val); break;
-            case AT_IGNORE:           snprintf(entry, sizeof(entry), "AT_IGNORE           = %lu\n",  val); break;
-            default:                  snprintf(entry, sizeof(entry), "type(key): %lu -> no value\n",  type); break;
+            case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR (address of Program Header Table)     = %#lx\n\n", val); break;
+            case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM (amount of program headers in the executable's header table)    = %lu\n\n",  val); break;
+            case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ (page size)   = %lu\n\n",  val); break;
+            case AT_BASE:     snprintf(entry, sizeof(entry), "AT_BASE (base address of the linker, 0 if statically linked)     = %#lx\n\n", val); break;
+            case AT_ENTRY:    snprintf(entry, sizeof(entry), "AT_ENTRY (virtual memory address of the entry point of the executable: _start (?))     = %#lx\n\n", val); break;
+            case AT_RANDOM:   snprintf(entry, sizeof(entry), "AT_RANDOM (pointer to 16 bytes of \"true random data\" provided by the kernel's entropy pool)  = %#lx\n\n", val); break;
+            case AT_HWCAP:    snprintf(entry, sizeof(entry), "AT_HWCAP (bitmask of hw caps)   = %#lx\n\n", val); break;
+            case AT_CLKTCK:   snprintf(entry, sizeof(entry), "AT_CLKTCK (frequency of system timer ticks per second)   = %lu\n\n",  val); break;
+            case AT_UID:      snprintf(entry, sizeof(entry), "AT_UID      = %lu\n\n",  val); break;
+            case AT_EUID:     snprintf(entry, sizeof(entry), "AT_EUID     = %lu\n\n",  val); break;
+            case AT_GID:      snprintf(entry, sizeof(entry), "AT_GID      = %lu\n\n",  val); break;
+            case AT_EGID:     snprintf(entry, sizeof(entry), "AT_EGID     = %lu\n\n",  val); break;
+            case AT_SECURE:   snprintf(entry, sizeof(entry), "AT_SECURE (elevated process if 1?)  = %lu\n\n",  val); break;
+            case AT_PLATFORM: snprintf(entry, sizeof(entry), "AT_PLATFORM (system's architecture) = %s\n\n",   (char*)val); break;
+            case AT_EXECFN:   snprintf(entry, sizeof(entry), "AT_EXECFN (executable's name)   = %s\n\n",  (char*)val); break;
+            case AT_EXECFD:           snprintf(entry, sizeof(entry), "AT_EXECFD (file descriptor of executable)           = %lu\n\n",  val); break;
+            case AT_PHENT:            snprintf(entry, sizeof(entry), "AT_PHENT (size in bytes of a single program header entry)           = %lu\n\n",  val); break;
+            case AT_NOTELF:           snprintf(entry, sizeof(entry), "AT_NOTELF (1 if the kernel determines that the program is not structurally sound as an ELF file)           = %lu\n\n",  val); break;
         }
         strncat(report, entry, sizeof(report) - strlen(report) - 1);
     }
@@ -598,7 +594,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env
         }
         target[len] = '\0';
 
-        int line = snprintf(report + used, sizeof(report) - used, "%s -> %s\n", entry->d_name, target);
+        int line = snprintf(report + used, sizeof(report) - used, "/proc/self/fd/%s -> %s\n", entry->d_name, target);
         if (line < 0 || (size_t)line >= sizeof(report) - used) {
             break;
         }
@@ -1036,6 +1032,26 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_buffer);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv *env, jobject thiz) {
+    long bogusSyscall = 0xB050517;
+    long ret = -10;
+
+    // attempt with inline asm first
+    ret = arm64_raw_syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
+    if (ret != 21) {
+        return JNI_TRUE;
+    }
+    // fallback to bionic wrapper
+    ret = syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
+    if (ret != 21) {
+        return JNI_TRUE;
+    }
+
+    return JNI_FALSE;
+}
+
+
 static const char* proto_to_str(int proto) {
     switch (proto) {
         case TCP: return "TCP";
@@ -1054,8 +1070,16 @@ static const char* fam_to_str(int fam) {
 }
 
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
-  LOGE("Should never reach here...");
-  _exit(-1);
+    ucontext_t* ctx = (ucontext_t*)void_context;
+    int nr = info->si_syscall;
+
+    if (nr == 0xB050517) {
+        ctx->uc_mcontext.regs[0] = 21;
+    }
+    ctx->uc_mcontext.regs[0] = (__u64) -1;
+
+    LOGI("Grunfeld's handler dying....");
+    _exit(-1);
 }
 
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {

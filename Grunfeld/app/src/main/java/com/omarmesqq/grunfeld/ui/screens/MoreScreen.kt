@@ -33,6 +33,11 @@ fun MoreScreen(navController: NavHostController) {
             onClick = { navController.navigate(Screen.RootCheckerScreen.route) }
         ),
         MoreItem(
+            title = "Logcat",
+            icon = { Icon(Icons.Default.Construction, contentDescription = "Logcat") },
+            onClick = { navController.navigate(Screen.LogcatScreen.route) }
+        ),
+        MoreItem(
             title = "Settings",
             icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
             onClick = { navController.navigate(Screen.SettingsScreen.route) }
@@ -41,11 +46,6 @@ fun MoreScreen(navController: NavHostController) {
             title = "About",
             icon = { Icon(Icons.Default.Info, contentDescription = "Info") },
             onClick = { navController.navigate(Screen.AboutScreen.route) }
-        ),
-        MoreItem(
-            title = "Logcat",
-            icon = { Icon(Icons.Default.Construction, contentDescription = "Logcat") },
-            onClick = { navController.navigate(Screen.LogcatScreen.route) }
         ),
     )
 

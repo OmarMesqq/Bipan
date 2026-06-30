@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld
 
 import android.app.Application
+import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.StrictMode
@@ -13,9 +14,11 @@ import androidx.webkit.WebViewOutcomeReceiver
 import androidx.webkit.WebViewStartUpConfig
 import androidx.webkit.WebViewStartUpResult
 import androidx.webkit.WebViewStartupException
+import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.DumpStackTraceAt
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
@@ -23,7 +26,6 @@ import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import java.util.concurrent.Executors
-import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 
 
 private const val TAG = "MainApplication"
@@ -34,6 +36,17 @@ class MainApplication: Application() {
             System.loadLibrary("grunfeld")
         }
     }
+
+    override fun attachBaseContext(base: Context) {
+        val th = Thread.currentThread()
+        val tr = Throwable()
+        baseCtxStackTrace = DumpStackTraceAt(tr, th)
+        super.attachBaseContext(base)
+    }
+
+    lateinit var baseCtxStackTrace: String
+        private  set
+
     lateinit var configRepository: GrunfeldConfigs
         private  set
 
