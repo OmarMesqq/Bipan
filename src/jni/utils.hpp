@@ -2,6 +2,7 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
+
 #include <syscall.h>
 
 #include "shared.hpp"

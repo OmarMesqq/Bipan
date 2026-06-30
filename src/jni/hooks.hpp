@@ -391,6 +391,7 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
 }
 
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dl_iterate_phdr called!");
   FilteredCallback ctx = {cb, data};
   return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
 }
@@ -446,7 +447,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
 #define NATIVE_SENSORS_FUNCTIONS_COUNT 5
 
 ASensorManager* hook_ASensorManager_getInstance() {
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
   return nullptr;
 }
 
@@ -461,7 +462,7 @@ ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager,
   (void)ident;
   (void)cb;
   (void)data;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native createEventQueue");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native createEventQueue");
   return nullptr;
 }
 
@@ -470,14 +471,14 @@ int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** lis
   if (list != nullptr) {
     *list = nullptr;
   }
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getSensorList");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native getSensorList");
   return 0;
 }
 
 ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
   (void)manager;
   (void)type;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getDefaultSensor");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native getDefaultSensor");
   return nullptr;
 }
 
@@ -561,6 +562,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 
 // Legacy: __system_property_get
 static int hook_system_property_get(const char* name, char* value) {
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_get called!");
   if (name != nullptr) {
     auto it = g_prop_overrides.find(name);
     if (it != g_prop_overrides.end()) {
@@ -582,6 +584,7 @@ static int hook_system_property_get(const char* name, char* value) {
 
 // Modern: __system_property_read_callback
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) {
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_read_callback called!");
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
