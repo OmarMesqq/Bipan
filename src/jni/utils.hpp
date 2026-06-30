@@ -113,6 +113,11 @@ inline bool is_maps(const char* pathname) {
          is_dynamic_proc_file(pathname, "/maps");
 }
 
+inline bool is_proc_status(const char* pathname) {
+  return (strcmp(pathname, "/proc/self/status") == 0) ||
+         is_dynamic_proc_file(pathname, "/status");
+}
+
 inline bool is_smaps(const char* pathname) {
   return (strcmp(pathname, "/proc/self/smaps") == 0) ||
          is_dynamic_proc_file(pathname, "/smaps");
