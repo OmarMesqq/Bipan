@@ -1,4 +1,4 @@
-package com.omarmesqq.bipan.modules;
+package b.modules;
 
 import android.content.Context;
 import android.os.Bundle;
@@ -12,7 +12,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.Random;
 import java.util.Map;
-import com.omarmesqq.bipan.BaseHook;
+import b.BaseHook;
 import android.provider.Settings.Secure;
 import android.provider.Settings.Global;;
 

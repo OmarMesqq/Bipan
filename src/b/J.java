@@ -1,9 +1,8 @@
 package b;
 
-import com.omarmesqq.bipan.BaseHook;
 import android.content.Context;
 import android.util.Log;
-import com.omarmesqq.bipan.modules.*;
+import b.modules.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;

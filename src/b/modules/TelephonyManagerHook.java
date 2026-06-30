@@ -1,11 +1,11 @@
-package com.omarmesqq.bipan.modules;
+package b.modules;
 
 import android.content.Context;
 import android.os.IBinder;
 import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import com.omarmesqq.bipan.BaseHook;
+import b.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
