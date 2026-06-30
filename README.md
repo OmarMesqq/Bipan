@@ -50,7 +50,7 @@ user-added CAs are shielded by Bipan.
 
 [2] This obviously breaks apps which may use this for good reasons such setting up a hotspot or a NAS-like server.
 
-To learn how Bipan does this refer to [INNARDS.md](./INNARDS.md)
+To learn how Bipan does this refer to [this blog post](https://i2dk.com/essays/todo)
 
 
 ## Usage
