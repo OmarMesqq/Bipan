@@ -6,7 +6,6 @@
 
 #include "shared.hpp"
 
-
 /**
  * Collection of AS-safe clones
  * of string manipulation libc functions.

@@ -33,7 +33,7 @@ bool BipanHashTable::insert(const char* name, int fd) {
 
     // Found empty slot
     if (table[i].key == 0) {
-      table[i].key = key;
+      table[i].key = (unsigned short)key;  // guess this cast is acceptable for now
       table[i].val = fd;
       return true;
     }
@@ -80,7 +80,7 @@ void BipanHashTable::logStats() {
 }
 
 BipanHashTable::~BipanHashTable() {
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Destroying Bipan Hash Table");
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Destroying Bipan Hash Table");
 }
 
 unsigned char tableSize;

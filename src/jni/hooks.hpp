@@ -326,7 +326,7 @@ static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data
     size_t len = phdr->p_memsz;
 
     char dumppath[128];
-    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", package_name, start);
+    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", g_package_name, start);
 
     int out_fd = open(dumppath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (out_fd < 0) {
@@ -570,7 +570,7 @@ static int hook_system_property_get(const char* name, char* value) {
       value[91] = '\0';
       return (int)strlen(value);
     }
-    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
+    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         strncpy(value, it->second.c_str(), 91);
@@ -793,7 +793,7 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
       override_buf = it->second;
       effective = override_buf.c_str();
     }
-    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
+    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         override_buf = it->second;
