@@ -12,11 +12,11 @@
  * Also features one of Bipan's multiple hearts:
  * the `raw_syscall` function for directly asking the kernel for
  * a resource.
- * 
+ *
  * This is necessary a good chunk of Bipan is injected into the process
  * and seccomp needs a signal handler. Turns out there are tons of limitations
- * on what you can do inside one. 
- * 
+ * on what you can do inside one.
+ *
  * Please read:
  * https://www.man7.org/linux/man-pages/man7/signal-safety.7.html
  */
@@ -151,7 +151,9 @@ inline bool is_smaps(const char* pathname) {
 inline bool is_mounts(const char* pathname) {
   return (local_strcmp(pathname, "/proc/mounts") == 0) ||
          (local_strcmp(pathname, "/proc/self/mounts") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mountstats") == 0) ||
          (local_strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+         is_dynamic_proc_file(pathname, "/mountstats") ||
          is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
 }
@@ -465,19 +467,24 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
       return "1900000\n";
     }
   }
-  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      local_strstr(pathname, "/topology/physical_package_id")) {
-    return "0\n";
+  if (starts_with(pathname, "/sys/devices/system/cpu/cpu")) {
+    if (local_strstr(pathname, "/topology/physical_package_id")) {
+      return "0\n";
+    } else if (local_strstr(pathname, "/topology/core_siblings_list")) {
+      return "0-3\n";
+    }
   }
 
-  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      local_strstr(pathname, "/topology/core_siblings_list")) {
-    return "0-3\n";
+  if (local_strcmp(pathname, "/proc/sys/kernel/version") == 0) {
+    return "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
 
-  if (starts_with(pathname, "/sys/devices/system/cpu/cpu") &&
-      local_strstr(pathname, "/topology/cluster_cpus_list")) {
-    return "0-3\n";
+  if (local_strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) {
+    return "6.6.56-android16-11-g8a3e2b1c4d5f\n";
+  }
+
+  if (local_strcmp(pathname, "/proc/asound/version") == 0) {
+    return "Advanced Linux Sound Architecture Driver Version k6.6.56-android16-11-g8a3e2b1c4d5f.\n";
   }
 
   return nullptr;

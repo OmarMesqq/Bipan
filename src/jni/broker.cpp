@@ -147,6 +147,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     return;
   }
 
+  /**
+   * TODO:
+   * Does this create something in /proc/<PID>/fd(info)?
+   * 'anon_inode:[eventfd]'
+   * 'anon_inode:[eventpoll]'
+   */
   struct epoll_event ev{};
   ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
   ev.data.fd = sock;
