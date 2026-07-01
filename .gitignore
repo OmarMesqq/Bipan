@@ -17,5 +17,6 @@ perf.data
 simple_report.html
 firefox_report.json
 
+lab/**
 *.jar
 r8analysis/

@@ -11,11 +11,6 @@
 
 #include "utils.hpp"
 
-/**
- * Credits to:
- * https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
- */
-
 #define LOGCAT_SOCKET_PATH "/dev/socket/logdw"
 
 // Force the compiler to remove padding
@@ -69,10 +64,13 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   struct iovec vec[4];
   vec[0].iov_base = &header;
   vec[0].iov_len = sizeof(header);
+
   vec[1].iov_base = &priority;
   vec[1].iov_len = 1;
+
   vec[2].iov_base = (void*)tag;
   vec[2].iov_len = local_strlen(tag) + 1;
+
   vec[3].iov_base = (void*)msg;
   vec[3].iov_len = local_strlen(msg) + 1;
 
@@ -82,13 +80,18 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
 
 /**
  * Writes a message to Android Logcat in an AS-safe way
+ *
+ * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
  */
 inline void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
   char buffer[1024];  // Local stack buffer, no heap
 
+  /**
+   * Welp, this is from libc. Probably not AS-safe :/
+   * Formats the string into our local buffer
+   */
   va_list args;
   va_start(args, fmt);
-  // Format the string into our local buffer
   vsnprintf(buffer, sizeof(buffer), fmt, args);
   va_end(args);
 

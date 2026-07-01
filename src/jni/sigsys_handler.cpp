@@ -149,7 +149,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
   }
 
-  // TODO: use atomic cas?
   lock_ipc();
 
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
@@ -389,8 +388,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         local_memset(cachedFilename, 0, sizeof(cachedFilename));
         local_strncpy(cachedFilename, (const char*)arg1, 255);
         if (shouldCache(cachedFilename)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s for future use...", cachedFilename);
-          bht.insert(cachedFilename, spoofedFd);
+          if (bht.insert(cachedFilename, spoofedFd)) {
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s for future use", cachedFilename);
+            bht.logStats();
+          }
         }
 
         // Return spoofedFd to app, NOT pre_fd
@@ -404,7 +405,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   ipc_mem->status = IDLE;
-  // TODO: use atomic cas?
   unlock_ipc();
 
   ctx->uc_mcontext.regs[0] = (__u64)result;

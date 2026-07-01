@@ -80,9 +80,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
     }
 
     if (pid == 0) {
-        LOGI("Child: fork succeeded");
-        sleep(2); // some delay to let log above to appear
-
         const char* path = "/system/bin/uname";
         char* const argv[] = {"uname", "-a", NULL};
         // char *const envp[] = {NULL};
