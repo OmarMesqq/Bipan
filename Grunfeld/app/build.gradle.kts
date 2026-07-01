@@ -16,7 +16,7 @@ android {
         minSdk = 33
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.1.0"
 
         ndk {
             //noinspection ChromeOsAbiSupport
@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.rootbeer.lib)
+    implementation(libs.androidx.datastore.preferences)
 
     "debugLeakCanaryImplementation"(libs.leakcanary.android)
 }

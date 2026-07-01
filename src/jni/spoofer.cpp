@@ -26,23 +26,29 @@ int uname_spoofer(struct utsname* buf) {
 }
 
 int create_spoofed_file(const char* fake_content) {
-  int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"BipanAnon", MFD_CLOEXEC, 0, 0, 0, 0);
-  if (fd >= 0) {
-    size_t len = local_strlen(fake_content);
-    arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
-    arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
-  } else {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "memfd_create failed");
+  int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
+  if (fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
+    return fd;
   }
+
+  size_t len = local_strlen(fake_content);
+  arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
+
   return fd;
 }
 
-long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: openat real dir failed!");
+    return -1;
+  }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
@@ -55,7 +61,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   auto process_and_write_line = [&](char* l, unsigned long len) {
     l[len] = '\0';
 
-    // CRITICAL: Always allow these or the app will crash
+    // TODO: Important to allow
     bool is_vital = local_strstr(l, "[stack]") ||
                     local_strstr(l, "[vdso]") ||
                     local_strstr(l, "[vvar]") ||
@@ -88,7 +94,7 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     }
   }
 
-  // THE FIX: Flush the last line if it didn't end in \n
+  // flush the last line if it didn't end in \n
   if (line_pos > 0) {
     process_and_write_line(line, line_pos);
   }
@@ -98,12 +104,16 @@ long clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: openat real dir failed!");
+    return -1;
+  }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
@@ -144,12 +154,16 @@ long clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
+int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
-  if (real_fd < 0) return -1;
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
+    return -1;
+  }
 
-  long fake_fd = arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
     arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
     return -1;
   }
@@ -167,8 +181,7 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
         line[line_pos] = '\0';
 
         bool is_dirty = local_strstr(line, "magisk") || local_strstr(line, "zygisk") ||
-                        local_strstr(line, "bipan") || local_strstr(line, "KSU") ||
-                        local_strstr(line, "KernelSU") || local_strstr(line, "APatch") ||
+                        local_strstr(line, "bipan") ||
                         local_strstr(line, "core/mirror") ||
                         (local_strstr(line, "/etc/security/cacerts") && local_strstr(line, "tmpfs"));
 
@@ -178,6 +191,85 @@ long clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) 
         line_pos = 0;
       }
     }
+  }
+
+  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  return fake_fd;
+}
+
+int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
+  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: openat real dir failed!");
+    return -1;
+  }
+
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+  if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
+    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    return -1;
+  }
+
+  char buf[1024];
+  char line[1024];
+  long bytes_read;
+  size_t line_pos = 0;
+
+  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+    for (int i = 0; i < bytes_read; i++) {
+      // Avoid buffer overflow in the line accumulation buffer
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
+      // Process when a newline is encountered or line buffer is full
+      if (buf[i] == '\n' || line_pos >= sizeof(line) - 1) {
+        line[line_pos] = '\0';  // Null-terminate for string functions
+
+        const char* output_line = line;
+        size_t output_len = line_pos;
+
+        // Check and replace target keys
+        if (starts_with(line, "TracerPid:")) {
+          output_line = "TracerPid:\t0\n";
+          output_len = local_strlen(output_line);
+        } else if (starts_with(line, "NoNewPrivs:")) {
+          output_line = "NoNewPrivs:\t0\n";
+          output_len = local_strlen(output_line);
+        } else if (starts_with(line, "Cpus_allowed_list:")) {
+          output_line = "Cpus_allowed_list:\t0-3\n";
+          output_len = local_strlen(output_line);
+        }
+
+        // Write the line to the anonymous file descriptor
+        arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
+
+        // Reset line position counter for the next line
+        line_pos = 0;
+      }
+    }
+  }
+
+  // Handle any remaining data if the file didn't end with a newline
+  if (line_pos > 0) {
+    line[line_pos] = '\0';
+    const char* output_line = line;
+    size_t output_len = line_pos;
+
+    if (starts_with(line, "TracerPid:")) {
+      output_line = "TracerPid:\t0\n";
+      output_len = local_strlen(output_line);
+    } else if (starts_with(line, "NoNewPrivs:")) {
+      output_line = "NoNewPrivs:\t0\n";
+      output_len = local_strlen(output_line);
+    } else if (starts_with(line, "Cpus_allowed_list:")) {
+      output_line = "Cpus_allowed_list:\t0-3\n";
+      output_len = local_strlen(output_line);
+    }
+
+    arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
   }
 
   arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);

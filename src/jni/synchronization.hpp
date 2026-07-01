@@ -46,11 +46,11 @@ inline void send_fd(int socket, int fd) {
  */
 __attribute__((always_inline)) inline int recv_fd(int socket) {
   struct msghdr msg;
-  my_memset(&msg, 0, sizeof(msg));  // Freestanding initialization
+  local_memset(&msg, 0, sizeof(msg));
 
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
-  my_memset(buf, 0, sizeof(buf));
+  local_memset(buf, 0, sizeof(buf));
 
   char dummy[1];
   struct iovec io = {.iov_base = dummy, .iov_len = sizeof(dummy)};
@@ -60,7 +60,6 @@ __attribute__((always_inline)) inline int recv_fd(int socket) {
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  // Use raw syscall instead of libc recvmsg!
   if (arm64_raw_syscall(__NR_recvmsg, socket, (long)&msg, 0, 0, 0, 0) <= 0) {
     return -1;
   }
@@ -79,6 +78,24 @@ __attribute__((always_inline)) inline int recv_fd(int socket) {
  */
 __attribute__((always_inline)) inline void futex_wait(volatile int* addr, int expected) {
   arm64_raw_syscall(__NR_futex, (long)addr, FUTEX_WAIT, expected, 0, 0, 0);
+}
+
+/**
+ * Puts the thread to sleep IF the value at *addr equals 'expected'
+ */
+__attribute__((always_inline)) inline int futex_wait_timeout(volatile int* addr, int expected, long timeout_ms) {
+  struct timespec ts;
+  ts.tv_sec = timeout_ms / 1000;
+  ts.tv_nsec = (timeout_ms % 1000) * 1000000L;
+
+  return (int)arm64_raw_syscall(
+      __NR_futex,
+      (long)addr,
+      FUTEX_WAIT,
+      expected,
+      (long)&ts,
+      0,
+      0);
 }
 
 /**

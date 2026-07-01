@@ -24,38 +24,6 @@ static void test_openat_faked(void);
 
 
 void run_all_tests(void) {
-    const char* hosts1 = "/etc/hosts";
-    const char* hosts2 = "/system/etc/hosts";
-
-    int rc1 = faccessat(AT_FDCWD, hosts1, R_OK, 0);
-    if (rc1 == 0) {
-        LOGW("%s is readable\n", hosts1);
-    } else {
-        LOGE("[!] %s is NOT readable\n", hosts1);
-    }
-
-    int rc2 = faccessat(AT_FDCWD, hosts2, R_OK, 0);
-    if (rc2 == 0) {
-        LOGW("%s is readable\n", hosts2);
-    } else {
-        LOGE("[!] %s is NOT readable\n", hosts2);
-    }
-
-    const char* perfEventParanoid = "/proc/sys/kernel/perf_event_paranoid";
-    struct stat sb;
-    if (fstatat(AT_FDCWD, perfEventParanoid, &sb, 0) == -1)  {
-        LOGE("[!] Can't fstatat (newfstatat) %s!\n", perfEventParanoid);
-        return;
-    }
-
-
-    LOGW("File size: %lld bytes\n", (long long)sb.st_size);
-    LOGW("Permissions: %o\n", sb.st_mode & 0777);
-    LOGW("Last modification: %ld\n", (long)sb.st_mtime);
-
-
-
-    return;
     test_uname();
     test_execve();
     test_openat_denied_and_spoofed();

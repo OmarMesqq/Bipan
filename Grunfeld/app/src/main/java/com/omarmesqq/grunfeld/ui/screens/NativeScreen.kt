@@ -1,7 +1,5 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,16 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,10 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
@@ -51,10 +41,18 @@ fun NativeScreen() {
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
     var socketReport by remember { mutableStateOf("AF_NETLINK socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
+    var getifaddrsReport by remember { mutableStateOf("getifaddrs not tested yet") }
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
+    var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
+    var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
+    var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
+    var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
+    var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
+    var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
+    var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -156,6 +154,13 @@ fun NativeScreen() {
                         Text("sendmsg LAN")
                     }
                 }
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("getifaddrs()")
+                    ReportTextWithCopy(getifaddrsReport, "getifaddrs not tested yet")
+                    Button(onClick = { getifaddrsReport = NativeLibWrapper.getifaddrs() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Enumerate interfaces")
+                    }
+                }
             }
 
             SectionHeader("ANTI-TAMPER")
@@ -163,14 +168,83 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get /proc/self/maps FD and possible link", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfMapsFdInfo, "/proc/self/maps FD not read yet")
+                    Button(onClick = { procSelfMapsFdInfo = NativeLibWrapper.getprocselfmapsFd() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("open(/proc/self/fd) && readlink(maps)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
+                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dl_iterate_phdrTest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("dl_iterate_phdr()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get socket FDs and their links", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallsocketfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Dump socket FDs and their symlinks")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Read program's auxiliary vector", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfAuxvInfo, "/proc/self/auxv not read yet")
+                    Button(onClick = { procSelfAuxvInfo = NativeLibWrapper.testProcSelfAuxv() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("parse /proc/self/auxv")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
+                    Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("open(/proc/self/task)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Inspect libc for hooks", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
+                    Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Study function prologues for hooks")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/status")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fork()/exec()")
+                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
+                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Create a child process and inspect its result")
+                    }
+                }
+
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Attempt to overwrite SIGSYS handler", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
                     Button(
                         onClick = {
-                            val success = NativeLibWrapper.installSigsysHandler()
-                            signalHandlerStatus = if (success) "Active" else "Failed"
+                            val installed = NativeLibWrapper.installSigsysHandler()
+                            if (!installed) {
+                                signalHandlerStatus = "Failed to install handler"
+                                return@Button
+                            }
+                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
+                            signalHandlerStatus = if (actionCaptured) "Installed and captured!" else "Installed, but failed to capture trigger"
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -192,33 +266,7 @@ fun NativeScreen() {
                         Text("sigprocmask SIGSYS")
                     }
                 }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
-                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/status")
-                    }
-                }
             }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(18.dp)
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF00FF00))
-                .clickable { /* Handle action */ },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.WifiOff,
-                contentDescription = "Close sockets",
-                tint = Color.Black,
-                modifier = Modifier.size(24.dp)
-            )
         }
     }
 }

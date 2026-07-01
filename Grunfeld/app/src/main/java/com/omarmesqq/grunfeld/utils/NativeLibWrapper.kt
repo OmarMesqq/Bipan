@@ -13,6 +13,15 @@ object NativeLibWrapper {
     external fun testSocket(): String
     external fun testSendmsg(): String
     external fun installSigsysHandler(): Boolean
+    external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
     external fun queryProcStatus():String
+    external fun getifaddrs():String
+    external fun getallsocketfds():String
+    external fun getprocselfmapsFd():String
+    external fun inspectHooks(): String
+    external fun dl_iterate_phdrTest(): String
+    external fun testProcSelfAuxv(): String
+    external fun testProcSelfTask(): String
+    external fun testForkExec(progname: String): String
 }

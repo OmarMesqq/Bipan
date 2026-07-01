@@ -1,7 +1,9 @@
 #include "broker.hpp"
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <elf.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
@@ -13,10 +15,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
+#include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/sysmacros.h>
 #include <sys/utsname.h>
 #include <syscall.h>
 #include <time.h>
@@ -24,8 +29,10 @@
 
 #include <atomic>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -34,6 +41,8 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "utils.hpp"
+
+#define TAG "BipanBroker"
 
 // Use 64-bit ELF structures for ARM64
 typedef Elf64_Ehdr ElfHeader;
@@ -51,6 +60,16 @@ struct MapEntry {
   std::string path;
 };
 
+struct linux_dirent64 {
+  ino64_t d_ino;           /* 64-bit inode number */
+  off64_t d_off;           /* Not an offset; see getdents() */
+  unsigned short d_reclen; /* Size of this dirent */
+  unsigned char d_type;    /* File type */
+  char d_name[];           /* Filename (null-terminated) */
+};
+
+#define SPOOFED_WD 224
+
 static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps);
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
@@ -61,18 +80,8 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
 static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
-                                  char* out, size_t out_size);
-
-#ifdef DEBUG
-static uint64_t last_dump_ns = 0;
-
-static inline uint64_t monotonic_ns() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-  return (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
-}
-#endif
+static inline bool client_is_dead(int epfd, int pidfd);
+static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -94,30 +103,82 @@ static inline uint64_t monotonic_ns() {
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
-  prctl(PR_SET_NAME, "K67v3741S1Xm", 0, 0, 0);
+  const char* last_dot = strrchr(ipc_mem->package_name, '.');
+  const char* short_name = last_dot ? last_dot + 1 : ipc_mem->package_name;
+
+  // If the last segment is generic/short (e.g. "unstable", "music", "app"),
+  // prefer the second-to-last segment for more identifying info
+  if (last_dot && local_strlen(short_name) <= 4) {
+    char buf[256];
+    strncpy(buf, ipc_mem->package_name, last_dot - ipc_mem->package_name);
+    buf[last_dot - ipc_mem->package_name] = '\0';
+    const char* second_last_dot = strrchr(buf, '.');
+    short_name = second_last_dot ? second_last_dot + 1 : buf;
+  }
+
+  // 16 bytes only: https://man7.org/linux/man-pages/man2/PR_SET_NAME.2const.html
+  char threadName[16];
+  snprintf(threadName, sizeof(threadName), "bb-%s", short_name);
+  prctl(PR_SET_NAME, threadName, 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
+  std::unordered_set<int> spoofedFds;
+  // even though std::string uses heap, it manages its ownership, I'm gonna go with it
+  std::unordered_map<int, std::string> preFds;
 
-  while (true) {
+  pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  std::__thread_id tid = std::this_thread::get_id();
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
+
+  // Open target's pidfd
+  pid_t client_pid = ipc_mem->target_pid;
+  int pidfd = bipan_pidfd_open(client_pid, 0);
+  if (pidfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] pidfd_open failed for client PID %d", client_pid);
+  }
+
+  // epoll monitoring socket and pidfd
+  int epfd = epoll_create1(EPOLL_CLOEXEC);
+  if (epfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
+    // without epoll we don't have a watchdog, kill broker
+    munmap(ipc_mem, sizeof(SharedIPC));
+    return;
+  }
+
+  /**
+   * TODO:
+   * Does this create something in /proc/<PID>/fd(info)?
+   * 'anon_inode:[eventfd]'
+   * 'anon_inode:[eventpoll]'
+   */
+  struct epoll_event ev{};
+  ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
+  ev.data.fd = sock;
+  epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
+  if (pidfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_ctl for Broker's socket and pidfd failed!");
+    munmap(ipc_mem, sizeof(SharedIPC));
+    return;
+  }
+
+  ev.data.fd = pidfd;
+  epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
+
+  bool client_dead = false;
+  while (!client_dead) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
-      futex_wait(&ipc_mem->status, ipc_mem->status);
-    }
-    __sync_synchronize();
-
-#ifdef DEBUG
-    uint64_t now = monotonic_ns();
-    if (now - last_dump_ns >= 1000000000ULL) {
-      last_dump_ns = now;
-      uint64_t total = s_violation_count.exchange(0, std::memory_order_relaxed);
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "violations/sec: %lu", total);
-      for (int i = 0; i < 512; i++) {
-        uint64_t c = s_syscall_counts[i].exchange(0, std::memory_order_relaxed);
-        if (c > 0)
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "  [%d]: %lu/s", i, c);
+      int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, 500);
+      if (ret == -ETIMEDOUT) {
+        if (client_is_dead(epfd, pidfd)) {
+          client_dead = true;
+          goto dead_client_exit;
+        }
       }
     }
-#endif
+
+    __sync_synchronize();
 
     int nr = ipc_mem->nr;
     const char* path_payload = ipc_mem->string_payload;
@@ -134,45 +195,45 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
       int mem_fd = open(mem_path, O_RDONLY);
 
-      if (mem_fd >= 0) {
-        uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
-        uintptr_t current_fp = ipc_mem->caller_fp;
-
-        for (int i = 0; i < MAX_STACK_TRACE; i++) {
-          if (current_pc == 0) break;
-
-          // Stip arm64 PAC bits
-          current_pc &= 0x0000FFFFFFFFFFFFULL;
-
-          uintptr_t frame_offset = 0;
-          std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
-
-          if (!is_trusted_library(frame_lib)) {
-            malicious_pc = current_pc;
-            culprit_lib = frame_lib;
-            offset = frame_offset;
-            is_trusted = false;
-            break;
-          }
-
-          // Walk to the next frame in the target process
-          uintptr_t next_fp, next_lr;
-          if (
-              !safe_read(mem_fd, current_fp, &next_fp) ||
-              !safe_read(mem_fd, current_fp + 8, &next_lr)) {
-            break;
-          }
-
-          current_fp = next_fp;
-          current_pc = next_lr;
-          if (!current_fp || (current_fp & 0x7)) {
-            break;
-          }
-        }
-        close(mem_fd);
-      } else {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/<PID>/mem failed!");
+      if (mem_fd < 0) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] startBroker: open /proc/%d/mem failed!", ipc_mem->target_pid);
+        return;
       }
+      uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
+      uintptr_t current_fp = ipc_mem->caller_fp;
+
+      for (int i = 0; i < MAX_STACK_TRACE; i++) {
+        if (current_pc == 0) break;
+
+        // Stip arm64 PAC bits
+        current_pc &= 0x0000FFFFFFFFFFFFULL;
+
+        uintptr_t frame_offset = 0;
+        std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
+
+        if (!is_trusted_library(frame_lib)) {
+          malicious_pc = current_pc;
+          culprit_lib = frame_lib;
+          offset = frame_offset;
+          is_trusted = false;
+          break;
+        }
+
+        // Walk to the next frame in the target process
+        uintptr_t next_fp, next_lr;
+        if (
+            !safe_read(mem_fd, current_fp, &next_fp) ||
+            !safe_read(mem_fd, current_fp + 8, &next_lr)) {
+          break;
+        }
+
+        current_fp = next_fp;
+        current_pc = next_lr;
+        if (!current_fp || (current_fp & 0x7)) {
+          break;
+        }
+      }
+      close(mem_fd);
     }
 
     // Default to allow
@@ -185,27 +246,32 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_EXIT_PROCESS;
-#ifdef DEBUG
-          if (nr == __NR_execve) {
-            char argv_dump[512] = {0};
-            char envp_dump[512] = {0};
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
+          if (nr == __NR_execve && ipc_mem->argv_count > 0) {
+            char log_buf[1536] = {0};
+            size_t off = 0;
+            off += snprintf(log_buf + off, sizeof(log_buf) - off, "argv: [");
+            const char* p = ipc_mem->argv_payload;
+            const char* end = ipc_mem->argv_payload + ipc_mem->argv_count;
+            while (p < end && off < sizeof(log_buf) - 1) {
+              size_t len = strnlen(p, end - p);
+              off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", p);
+              p += len + 1;
+            }
+            off += snprintf(log_buf + off, sizeof(log_buf) - off, "]");
 
-            read_argv_from_tracee(ipc_mem->target_pid,
-                                  (uintptr_t)ipc_mem->arg1,
-                                  argv_dump, sizeof(argv_dump));
-
-            // envp is usually large, just read first few
-            read_argv_from_tracee(ipc_mem->target_pid,
-                                  (uintptr_t)ipc_mem->arg2,
-                                  envp_dump, sizeof(envp_dump));
-
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                                  "[execve denied INFO!] path=%s argv=%s",
-                                  ipc_mem->string_payload, argv_dump);
+            if (ipc_mem->envp_count > 0) {
+              off += snprintf(log_buf + off, sizeof(log_buf) - off, " envp: [");
+              const char* ep = ipc_mem->envp_payload;
+              const char* eend = ipc_mem->envp_payload + ipc_mem->envp_count;
+              while (ep < eend && off < sizeof(log_buf) - 1) {
+                size_t len = strnlen(ep, eend - ep);
+                off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", ep);
+                ep += len + 1;
+              }
+              snprintf(log_buf + off, sizeof(log_buf) - off, "]");
+            }
           }
-#endif
-
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) denied]", action_name, path_payload);
         }
         break;
       }
@@ -229,11 +295,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            // log_violation(path_payload, culprit_lib, ipc_mem->caller_pc, offset);
+          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || is_proc_status(path_payload) || shouldFakeFile(path_payload)) {
             // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -245,46 +309,80 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             // Broker generates the fake file locally
             int fake_fd = -1;
             if (is_maps(path_payload)) {
-              fake_fd = clean_proc_maps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_smaps(path_payload)) {
-              fake_fd = clean_proc_smaps(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else if (is_mounts(path_payload)) {
-              fake_fd = clean_proc_mounts(ipc_mem->arg0, real_path, ipc_mem->arg2, ipc_mem->arg3);
+              fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
+            } else if (is_proc_status(path_payload)) {
+              fake_fd = clean_proc_status((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             }
 
-            if (fake_fd >= 0) {
-              // GHOST FILL: Root opens the Target's pre_fd and fills it!
-              int target_fd = ipc_mem->arg5;
-              char proc_path[64];
-              snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
-
-              int root_fd = open(proc_path, O_WRONLY);
-              if (root_fd >= 0) {
-                char buf[4096];
-                ssize_t n;
-                lseek(fake_fd, 0, SEEK_SET);
-                while ((n = read(fake_fd, buf, sizeof(buf))) > 0) write(root_fd, buf, n);
-                lseek(root_fd, 0, SEEK_SET);
-                close(root_fd);
-              }
-              close(fake_fd);  // Cleanup daemon's copy
-
-              ipc_mem->ret = target_fd;  // Tell Target to use the FD it already has!
-            } else {
+            if (fake_fd < 0) {
+              // fallback to denying if Broker can't create a fake fd
               ipc_mem->ret = -EACCES;
+              ipc_mem->action = ACTION_USE_RET;
+              write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to create fake FD!");
+              break;
             }
+
+            // Broker opens signal handler's pre_fd and fills it
+            int target_fd = (int)ipc_mem->arg5;
+            char proc_path[64];
+            snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", ipc_mem->target_pid, target_fd);
+
+            int root_fd = open(proc_path, O_WRONLY);
+            if (root_fd < 0) {
+              // same logic:
+              // fallback to denying if Broker can't open target's remote fd
+              write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open target's pre_fd!");
+              ipc_mem->ret = -EACCES;
+              ipc_mem->action = ACTION_USE_RET;
+              break;
+            }
+
+            preFds[target_fd] = path_payload;
+            // char* stable_path = strdup(path_payload);
+            // preFds[target_fd] = stable_path;
+            if (ipc_mem->spoofedFd != -1) {
+              spoofedFds.insert(ipc_mem->spoofedFd);
+              preFds[ipc_mem->spoofedFd] = path_payload;
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached handler's spoofed fd(%d) and app's pre_fd(%d)", ipc_mem->spoofedFd, target_fd);
+            } else {
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's pre_fd(%d)", target_fd);
+            }
+
+            char buf[4096];
+            ssize_t n;
+            lseek(fake_fd, 0, SEEK_SET);
+            while ((n = read(fake_fd, buf, sizeof(buf))) > 0) {
+              write(root_fd, buf, n);
+            }
+            lseek(root_fd, 0, SEEK_SET);
+
+            // Cleanup daemon's ref of target's pre_fd
+            close(root_fd);
+            // Cleanup daemon's own fake fd
+            close(fake_fd);
+
+            // Tell target to use the fd it already has
+            ipc_mem->ret = target_fd;
             ipc_mem->action = ACTION_USE_RET;
+
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's preFd pool size: %d", preFds.size());
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's spoofedFd pool size: %d", spoofedFds.size());
           }
 #ifdef DEBUG
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted open: %s", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted openat(%s)", path_payload);
             }
           }
 #endif
@@ -292,15 +390,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat:
-      case __NR_newfstatat:
-      case __NR_statx: {
+      case __NR_newfstatat: {
         const char* action_name;
         if (nr == __NR_faccessat) {
           action_name = "faccessat";
         } else if (nr == __NR_newfstatat) {
           action_name = "newfstatat";
-        } else {
-          action_name = "statx";
         }
 
         if (shouldSpoofExistence(path_payload)) {
@@ -319,7 +414,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || is_proc_status(path_payload) || shouldFakeFile(path_payload)) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
@@ -327,7 +422,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef DEBUG
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Allowing untrusted open: %s", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[D] Allowing untrusted %s(%s)", action_name, path_payload);
             }
           }
 #endif
@@ -351,8 +446,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           uint16_t port = ntohs(sin->sin_port);
           uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
 
-          // Allow 0.0.0.0
-          if (ip4 != 0x00000000) {
+          // Allow 0.0.0.0 and loopback (127.0.0.0/8)
+          if (ip4 != 0x00000000 || ((ip4 & 0xFF000000) != 0x7F000000)) {
             if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
               should_block = true;
             }
@@ -362,29 +457,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           uint16_t port = ntohs(sin6->sin6_port);
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
 
-          // Allow ::
-          bool is_v6_unspecified = true;
-          for (int i = 0; i < 16; i++) {
-            if (ip6[i] != 0) {
-              is_v6_unspecified = false;
-              break;
-            }
-          }
-
-          if (!is_v6_unspecified) {
-            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
-              should_block = true;
-            }
+          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+            should_block = true;
           }
         }
 
         if (should_block) {
-          ipc_mem->ret = -EADDRNOTAVAIL;
+          ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, -EADDRNOTAVAIL, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
@@ -410,16 +494,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           const char* type = is_discovery ? "discovery" : "LAN";
-        }
-        break;
-      }
-      case __NR_listen: {
-        if (sock_payload->sa_family == AF_INET || sock_payload->sa_family == AF_INET6) {
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
-
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
-          patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
         }
         break;
       }
@@ -456,11 +530,288 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "executable (mmap)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
         break;
       }
       case __NR_mprotect: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(mprotect)");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
+        break;
+      }
+      case __NR_inotify_add_watch: {
+        int fd = (int)ipc_mem->arg0;
+        const char* path = (const char*)ipc_mem->string_payload == nullptr ? "NULL path" : ipc_mem->string_payload;
+        uint32_t mask = (uint32_t)ipc_mem->arg2;
+
+        std::string maskAnalysis = "";
+        maskAnalysis.reserve(500);
+        if (mask & IN_ACCESS) maskAnalysis += " File accessed |";
+        if (mask & IN_ATTRIB) maskAnalysis += " Metadata changes (perms, timestamps) |";
+        if (mask & IN_CLOSE_WRITE) maskAnalysis += " File opened for writing was closed |";
+        if (mask & IN_CLOSE_NOWRITE) maskAnalysis += " File or directory not opened for writing was closed |";
+        if (mask & IN_CREATE) maskAnalysis += " File/directory created in watched directory |";
+        if (mask & IN_DELETE) maskAnalysis += " File/directory deleted from watched directory |";
+        if (mask & IN_DELETE_SELF) maskAnalysis += " Watched file/directory was deleted/moved |";
+        if (mask & IN_MODIFY) maskAnalysis += " File modifed |";
+        if (mask & IN_MOVE_SELF) maskAnalysis += " File was moved |";
+        if (mask & IN_MOVED_FROM) maskAnalysis += " Generated for the directory containing the old filename when a file is renamed |";
+        if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
+        if (mask & IN_OPEN) maskAnalysis += " File or directory was opened |";
+
+        if (strstr(path, "Screenshots")) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_add_watch): Neutered for path: %s", path);
+          ipc_mem->ret = SPOOFED_WD;
+          ipc_mem->action = ACTION_USE_RET;
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
+        break;
+      }
+      case __NR_inotify_init1: {
+        int flags = (int)ipc_mem->arg0;
+        if (!flags) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with no flags, behave like 'inotify_init'");
+          break;
+        }
+
+        if (flags & (IN_NONBLOCK | IN_CLOEXEC)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking and close-on-exec");
+        } else if (flags & IN_NONBLOCK) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking I/O");
+        } else if (flags & IN_CLOEXEC) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with close-on-exec on the new FD");
+        }
+
+        break;
+      }
+      case __NR_inotify_rm_watch: {
+        int wd = (int)ipc_mem->arg2;
+        if (wd == SPOOFED_WD) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_rm_watch): Closed spoofed watch");
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
+          break;
+        }
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_rm_watch)!");
+        break;
+      }
+      case __NR_mq_notify: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
+        break;
+      }
+      case __NR_getdents64: {
+        int fd = (int)ipc_mem->arg0;
+        struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
+        size_t count = (size_t)ipc_mem->arg2;
+
+        char proc_self_fd_path[512];
+        snprintf(proc_self_fd_path, sizeof(proc_self_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+        char filename[512];
+        if (readlinkat(0, proc_self_fd_path, filename, sizeof(filename)) == -1) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
+          break;
+        }
+        if (
+            !starts_with(filename, "/data/data") &&
+            !starts_with(filename, "/data/app") &&
+            !starts_with(filename, "/storage/emulated/0/Android")) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
+        }
+        break;
+      }
+      case __NR_readlinkat: {
+        int dirfd = (int)ipc_mem->arg0;
+        const char* pathname = ipc_mem->string_payload[0] != '\0' ? ipc_mem->string_payload : nullptr;
+        size_t bufsiz = (size_t)ipc_mem->arg3;
+
+        int app_sock = ipc_mem->appSockFd;
+        char* out = (char*)ipc_mem->out_buffer;
+        if (bufsiz > sizeof(ipc_mem->out_buffer) - 1) {
+          bufsiz = sizeof(ipc_mem->out_buffer) - 1;
+        }
+
+        char path_self[64], path_pid[64];
+        snprintf(path_self, sizeof(path_self), "/proc/self/fd/%d", app_sock);
+        snprintf(path_pid, sizeof(path_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, app_sock);
+
+        auto is_our_socket = [&](const char* p) {
+          return p && (strcmp(p, path_self) == 0 || strcmp(p, path_pid) == 0);
+        };
+
+        bool is_spoofed_fd = [&]() -> bool {
+          for (const int fd : spoofedFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", fd);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              return true;
+            }
+          }
+          return false;
+        }();
+
+        bool is_pre_fd = [&]() -> bool {
+          for (const auto& kv : preFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", kv.first);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, kv.first);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              return true;
+            }
+          }
+          return false;
+        }();
+
+        // The path we'll actually readlink
+        char resolved[512];
+        if (dirfd == AT_FDCWD) {
+          if (pathname && strncmp(pathname, "/proc/self/", 11) == 0) {
+            // Rewrite /proc/self/ -> /proc/<target_pid>/
+            snprintf(resolved, sizeof(resolved), "/proc/%d/%s", ipc_mem->target_pid, pathname + 11);
+          } else {
+            snprintf(resolved, sizeof(resolved), "%s", pathname ? pathname : "");
+          }
+        } else {
+          // Resolve dirfd via /proc/<pid>/fd/<dirfd>, then append pathname
+          char proc_fd_path[512];
+          snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
+          char base_dir[512];
+          ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, base_dir, sizeof(base_dir) - 1);
+          if (len == -1) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat: failed to resolve dirfd %d: %s", dirfd, strerror(errno));
+            // let app handle
+            ipc_mem->ret = len;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
+          }
+          base_dir[len] = '\0';
+          snprintf(resolved, sizeof(resolved), "%s/%s", base_dir, pathname ? pathname : "");
+        }
+
+        // Spoof check
+        if (is_our_socket(resolved)) {
+          strncpy(out, "/dev/null", bufsiz - 1);
+          out[bufsiz - 1] = '\0';
+          ipc_mem->ret = (long)strlen("/dev/null");
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed our sockfd: %s -> /dev/null", resolved);
+          break;
+        } else if (is_pre_fd) {
+          for (const auto& [fd, path] : preFds) {
+            char fd_self[64], fd_pid[64];
+            snprintf(fd_self, sizeof(fd_self), "/proc/self/fd/%d", fd);
+            snprintf(fd_pid, sizeof(fd_pid), "/proc/%d/fd/%d", ipc_mem->target_pid, fd);
+            if (pathname && (strcmp(pathname, fd_self) == 0 || strcmp(pathname, fd_pid) == 0)) {
+              strncpy(out, path.c_str(), bufsiz - 1);
+              out[bufsiz - 1] = '\0';
+              ipc_mem->ret = (long)strlen(path.c_str());
+              ipc_mem->action = ACTION_USE_RET;
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed pre_fd: %s -> %s", resolved, path.c_str());
+              break;
+            }
+          }
+          break;
+        } else if (is_spoofed_fd) {
+          // spoofedFds not in preFds — truly internal fds with no legitimate path to reveal
+          strncpy(out, "/dev/null", bufsiz - 1);
+          out[bufsiz - 1] = '\0';
+          ipc_mem->ret = (long)strlen("/dev/null");
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed Bipan fd: %s -> /dev/null", resolved);
+          break;
+        }
+
+        // Due to different mount namespaces, use the `root` symlink that privileged processes can open
+        char target_relative[600];
+        snprintf(target_relative, sizeof(target_relative), "/proc/%d/root%s", ipc_mem->target_pid, resolved);
+        ssize_t real_len = readlinkat(AT_FDCWD, target_relative, out, bufsiz - 1);
+        if (real_len == -1) {
+          ipc_mem->ret = -errno;
+          ipc_mem->action = ACTION_USE_RET;
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat(%s) failed: %s", resolved, strerror(errno));
+          break;
+        }
+        out[real_len] = '\0';
+        ipc_mem->ret = real_len;
+        ipc_mem->action = ACTION_USE_RET;
+
+        char procPidFdPath[256];
+        snprintf(procPidFdPath, sizeof(procPidFdPath), "/proc/%d/fd", ipc_mem->target_pid);
+        if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, procPidFdPath)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] unprotected readlinkat: %s -> %s", resolved, out);
+        }
+        break;
+      }
+      case __NR_gettimeofday: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (gettimeofday)!");
+        break;
+      }
+      case __NR_clock_getres: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_getres)!");
+        break;
+      }
+      case __NR_clock_nanosleep: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_nanosleep)!");
+        break;
+      }
+      case __NR_mknodat: {
+        int dirfd = (int)ipc_mem->arg0;
+        const char* pathname = ipc_mem->string_payload[0] != '\0' ? ipc_mem->string_payload : nullptr;
+        mode_t mode = (mode_t)ipc_mem->arg2;
+        dev_t dev = (dev_t)ipc_mem->arg3;
+
+        int file_type = mode & S_IFMT;
+        const char* type_str =
+            (file_type == S_IFIFO) ? "FIFO" : (file_type == S_IFCHR) ? "char_dev"
+                                          : (file_type == S_IFBLK)   ? "block_dev"
+                                          : (file_type == S_IFSOCK)  ? "socket"
+                                          : (file_type == S_IFREG)   ? "regular"
+                                                                     : "unknown";
+
+        char dev_str[32] = "n/a";
+        if (file_type == S_IFCHR || file_type == S_IFBLK) {
+          snprintf(dev_str, sizeof(dev_str), "%u:%u", major(dev), minor(dev));
+        }
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] mknodat(dirfd=%d, path=%s, type=%s, perms=%#o, dev=%s)", dirfd, pathname, type_str, mode & 0777, dev_str);
+        break;
+      }
+      case __NR_process_vm_readv:
+      case __NR_process_vm_writev: {
+        pid_t target_pid = (pid_t)ipc_mem->arg0;
+        const struct iovec* local_iov = (const struct iovec*)ipc_mem->arg1;
+        unsigned long liovcnt = (unsigned long)ipc_mem->arg2;
+        const struct iovec* remote_iov = (const struct iovec*)ipc_mem->arg3;
+        unsigned long riovcnt = (unsigned long)ipc_mem->arg4;
+        unsigned long flags = (unsigned long)ipc_mem->arg5;
+
+        const char* call_name = (nr == __NR_process_vm_readv) ? "process_vm_readv" : "process_vm_writev";
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] %s(pid=%d, local_iov=%p liovcnt=%lu, remote_iov=%p riovcnt=%lu, flags=%lu)", call_name, target_pid, (void*)local_iov, liovcnt, (void*)remote_iov, riovcnt, flags);
+
+        if (target_pid == ipc_mem->target_pid) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] %s targeting SELF (pid=%d) — possible memory self-scan", call_name, target_pid);
+        }
+
+        break;
+      }
+      case __NR_clock_gettime: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
+        break;
+      }
+      case __NR_prctl: {
+        int op = (int)ipc_mem->arg0;
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] prctl(%d)", op);
+        break;
+      }
+      case __NR_epoll_ctl: {
+        int fd = (int)ipc_mem->arg2;
+        // TODO: logic for our FD
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] epoll_ctl on fd %d", fd);
+        break;
+      }
+      case __NR_nanosleep: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (nanosleep)!");
         break;
       }
       default: {
@@ -474,6 +825,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
+dead_client_exit:
+  munmap(ipc_mem, sizeof(SharedIPC));
+  if (pidfd >= 0) close(pidfd);
+  close(epfd);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (TID: %d) exiting for dead client PID %d", tid, client_pid);
 }
 
 /**
@@ -576,11 +932,11 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
   FILE* f = fopen(path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %d - %s)", path, errno, strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %s)", path, strerror(errno));
     return;
   }
 
-  char line[1024];  // Increased buffer to handle exceptionally long paths
+  char line[2048];
   int line_count = 0;
 
   while (fgets(line, sizeof(line), f)) {
@@ -593,14 +949,13 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
 
     // Format: address(start-end) perms offset dev inode pathname
     // Example: 7b1c428000-7b1c517000 r--p 00000000 fd:29 259069 /lib/libiconv.so
-    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n",
-                         &start, &end, &offset, &path_pos);
+    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n", &start, &end, &offset, &path_pos);
 
     // Basic structural check
     if (matches < 3) {
       // If we see a non-empty line that doesn't match our regex, it's a parse error
       if (line[0] != '\n' && line[0] != '\0') {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line %d: %s", line_count, line);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line[%d] = %s", line_count, line);
       }
       continue;
     }
@@ -665,14 +1020,22 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   return "[Unknown]";
 }
 
+static thread_local bool inside_remote_patcher = false;
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
+  if (inside_remote_patcher) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Thread reentrancy in remote patcher!");
+    return;
+  }
+  inside_remote_patcher = true;
+
   // Seccomp traps the instruction *after* the syscall.
   // We subtract 4 to target the actual 'svc #0' instruction.
   uintptr_t target_addr = caller_pc - 4;
 
   // anti reentrancy if already patched
   if (patched_pcs.count(target_addr)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] reentrancy in remote patcher!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Reentrancy in remote patcher: PC already patched!");
+    inside_remote_patcher = false;
     return;
   }
 
@@ -706,11 +1069,12 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   close(mem_fd);
 
   if (written == sizeof(opcode)) {
-    patched_pcs.insert(target_addr);  // put in thread local cache
+    patched_pcs.insert(target_addr);  // put in thread local cache (TODO: really?)
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
   }
+  inside_remote_patcher = false;
 }
 
 static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len) {
@@ -727,6 +1091,12 @@ static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len)
   }
 }
 
+/**
+ * Returns `true` if an IPv4 or IPv6 socket
+ * has either port 5353 or 1900
+ *
+ * TODO: necessary?
+ */
 static inline bool is_discovery_probe(struct sockaddr* addr) {
   if (!addr) return false;
 
@@ -773,25 +1143,23 @@ std::string get_sockaddr_info(const struct sockaddr* sa) {
   }
 }
 
-static void read_argv_from_tracee(pid_t pid, uintptr_t argv_ptr,
-                                  char* out, size_t out_size) {
-  char mem_path[64];
-  snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
-
-  int fd = open(mem_path, O_RDONLY);
-  if (fd < 0) return;
-
-  // Read the argv pointer array (up to N pointers)
-  uintptr_t ptrs[32] = {0};
-  pread(fd, ptrs, sizeof(ptrs), (off_t)argv_ptr);
-
-  size_t written = 0;
-  for (int i = 0; i < 32 && ptrs[i] != 0 && written < out_size - 1; i++) {
-    char arg[256] = {0};
-    pread(fd, arg, sizeof(arg) - 1, (off_t)ptrs[i]);
-    int n = snprintf(out + written, out_size - written, "[%d]=%s ", i, arg);
-    written += n;
+static inline bool client_is_dead(int epfd, int pidfd) {
+  struct epoll_event events[2];
+  int n = epoll_wait(epfd, events, 2, 0);
+  for (int i = 0; i < n; i++) {
+    if (
+        events[i].data.fd == pidfd &&
+        (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLIN))) {
+      return true;
+    }
   }
+  return false;
+}
 
-  close(fd);
+/**
+ * Wrapper for `pidfd_open` as even with correct headers, the NDK
+ * says it's an 'undeclared identifier'
+ */
+static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
+  return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
 }

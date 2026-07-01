@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.Construction
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Public
@@ -23,12 +24,16 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import java.util.function.Consumer
+import androidx.lifecycle.lifecycleScope
+import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import java.util.function.Consumer
 
 
 open class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -39,13 +44,15 @@ open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object RootCheckerScreen : Screen("root-check", "Root Check", Icons.Default.Android)
     object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
     object AboutScreen : Screen("about", "About", Icons.Default.Info)
+    object LogcatScreen : Screen("logcat", "Logcat", Icons.Default.Construction)
 }
 
 private const val TAG = "MainActitvity"
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
-        MainViewModelFactory()
+        val app = application as MainApplication
+        MainViewModelFactory(app.configRepository)
     }
 
     private val screenCaptureCallback = ScreenCaptureCallback {
@@ -61,8 +68,19 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition {
             !viewModel.isReady.value
         }
-        // TODO: read from datastore or sth
-        this.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+
+        lifecycleScope.launch {
+            viewModel.isFlagSecureEnable.collectLatest { isEnabled ->
+                if (isEnabled) {
+                    window.setFlags(
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                        WindowManager.LayoutParams.FLAG_SECURE
+                    )
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+        }
 
         super.onCreate(savedInstanceState)
 

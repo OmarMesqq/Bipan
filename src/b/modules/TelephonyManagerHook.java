@@ -1,10 +1,11 @@
-package com.omarmesqq.bipan.modules;
+package b.modules;
 
 import android.content.Context;
 import android.os.IBinder;
+import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import com.omarmesqq.bipan.BaseHook;
+import b.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -161,11 +162,12 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         Log.i(TAG, "Neutered " + method.getName());
         return createEmptyCellIdentity();
 
-      // case "getServiceState":
-      // case "getServiceStateForSlot":
-      // Log.i(TAG, "Neutered " + method.getName());
-      // return emptyParceledListSlice();
-
+      case "getServiceState":
+      case "getServiceStateForSlot": {
+        Log.i(TAG, "Neutered " + method.getName());
+        return new ServiceState(); 
+      }
+      
       case "getVisualVoicemailPackageName":
         Log.i(TAG, "Neutered " + method.getName());
         return "com.google.android.dialer";

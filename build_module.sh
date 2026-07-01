@@ -5,12 +5,13 @@ set -euo pipefail
 javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
   -sourcepath src \
   -d javac_out \
-  src/b/J.java \
-  src/com/omarmesqq/bipan/BaseHook.java \
-  src/com/omarmesqq/bipan/modules/*.java
+  src/b/*.java \
+  src/b/**/*.java
 
 # Shrink, obfuscate, and minify all BipanJava.class into DEX
-java -cp $ANDROID_HOME/build-tools/36.0.0/lib/d8.jar \
+mkdir -p ./r8analysis
+java -cp r8lib.jar \
+  -Dcom.android.tools.r8.dumpkeepradiushtmltodirectory=./r8analysis \
   com.android.tools.r8.R8 \
   --release \
   --lib $ANDROID_HOME/platforms/android-36/android.jar \
@@ -39,6 +40,14 @@ cd ..
 cd module
 mkdir -p zygisk
 cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
+$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objcopy \
+  --strip-all \
+  -R .eh_frame \
+  -R .eh_frame_hdr \
+  -R .gcc_except_table \
+  -R .note.gnu.build-id \
+  -R .note.android.ident \
+  ./zygisk/arm64-v8a.so
 
 # Create the final flashable zip with no compression
 rm -f ../bipan.zip

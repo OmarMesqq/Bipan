@@ -1,6 +1,8 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.app.Activity
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,16 +20,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
-import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
-import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
-import androidx.annotation.RequiresApi
 import com.omarmesqq.grunfeld.utils.dumpCpuInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
@@ -37,19 +38,26 @@ import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
 import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
+import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
+import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
+import com.omarmesqq.grunfeld.utils.getPlayInstallReferrerInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
-import kotlinx.coroutines.GlobalScope
+import com.omarmesqq.grunfeld.utils.inspectPackageManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
+    val screenScrollState = rememberScrollState()
+    val composableScope = rememberCoroutineScope()
 
     var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
 
@@ -74,10 +82,11 @@ fun JavaInfoScreen() {
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
+    var playInstallReferrerInfo by remember { mutableStateOf("playInstallReferrerInfo not queried") }
+    var packageManagerClassInfo by remember { mutableStateOf("PM not inspected") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
-
-    val screenScrollState = rememberScrollState()
+    var stackTraceInfo by remember { mutableStateOf("Stack trace info not queried") }
 
     Column(
         modifier = Modifier
@@ -227,6 +236,16 @@ fun JavaInfoScreen() {
                 Text("getSomeSystemFeatures()")
             }
 
+            Text(text = "Inspect PM", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(packageManagerClassInfo, "PM not inspected")
+            Button(
+                onClick = {
+                    packageManagerClassInfo = inspectPackageManager(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Inspect Package Manager with reflection")
+            }
         }
 
         SectionHeader("HARDWARE")
@@ -316,6 +335,20 @@ fun JavaInfoScreen() {
                 text = mediaDrmIdInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
+
+            Button(
+                onClick = {
+                    playInstallReferrerInfo = getPlayInstallReferrerInfo(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Play Install Referrer Info")
+            }
+
+            Text(
+                text = playInstallReferrerInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
 
 
@@ -323,17 +356,32 @@ fun JavaInfoScreen() {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
-                    telephonyInfo = dumpTelephonyInfo(context)
+                    composableScope.launch {
+                        telephonyInfo = withContext(Dispatchers.IO) {
+                            dumpTelephonyInfo(context)
+                        }
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Get Telephony info")
             }
-            Text(
-                text = telephonyInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            ReportTextWithCopy(telephonyInfo, "", MaterialTheme.typography.bodyMedium)
+        }
 
+        SectionHeader("ANTI-TAMPER")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    val activity = context as? Activity
+                    val app = activity?.application as MainApplication
+                    stackTraceInfo = app.baseCtxStackTrace
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Dump early application's stack trace")
+            }
+            ReportTextWithCopy(stackTraceInfo, "", MaterialTheme.typography.bodyMedium)
         }
     }
 }

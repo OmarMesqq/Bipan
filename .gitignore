@@ -1,6 +1,6 @@
 .idea
-
 .DS_Store
+a.out*
 
 zygisk/
 *.zip
@@ -16,3 +16,7 @@ bipan_java.h
 perf.data
 simple_report.html
 firefox_report.json
+
+lab/**
+*.jar
+r8analysis/

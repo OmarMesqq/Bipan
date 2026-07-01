@@ -16,17 +16,26 @@
 #include <errno.h>
 #include "test_runner.h"
 #include <stdlib.h>
+#include <sys/types.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <link.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <elf.h>
+#include <sys/auxv.h>
+#include <dlfcn.h>
+#include <sys/wait.h>
 
-#include "shared.h"
 #include "socket_helper.h"
-
-jmp_buf jump_buffer;
 
 #define TAG "GrunfeldNative"
 #define MAX_REPORT_SIZE 8192
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -35,50 +44,189 @@ jmp_buf jump_buffer;
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 #define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
+/**
+ * func-like macro to convert negative error values provided by the kernel to raw syscalls
+ * back to nice libc/bionic errnos
+ */
+#define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
 
+static inline void early_init_sysprop_tests(void);
+static inline void early_init_stat_tests(void);
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
+static inline void dump (void *p, int n, char* report);
+static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
+static inline unsigned char starts_with(const char* str, const char* prefix);
 
-__attribute__((constructor))
-void grunfeld_early_init(void) {
-    char radio1[PROP_VALUE_MAX]  = {0};
-    int len = __system_property_get("gsm.version.baseband", radio1);
-    if (len <= 0) {
-        strncpy(radio1, "gsm.version.baseband", sizeof(radio1));
-    }
+__attribute__((constructor)) void grunfeld_early_init(void) {
+    early_init_sysprop_tests();
+    early_init_stat_tests();
 
-    const prop_info* pi = __system_property_find("gsm.version.baseband");
-    char radio2[PROP_VALUE_MAX] = {0};
-    if (pi) {
-        __system_property_read_callback(pi, prop_cb, radio2);
-    } else {
-        strncpy(radio2, "gsm.version.baseband", sizeof(radio2));
-    }
-
-    char operator[PROP_VALUE_MAX] = {0};
-
-    int len1 = __system_property_get("gsm.operator.alpha", operator);
-    if (len1 <= 0) {
-        strncpy(operator, "gsm.operator.alpha", sizeof(operator));
-    }
-
-    char fp[PROP_VALUE_MAX] = {0};
-
-    int len2 = __system_property_get("ro.build.fingerprint", fp);
-    if (len2 <= 0) {
-        strncpy(fp, "ro.build.fingerprint", sizeof(fp));
-    }
-
-    LOGI("[LEGACY] RADIO: %s", radio1);
-    LOGI("[MODERN] RADIO: %s", radio2);
-    LOGI("[LEGACY] OPERATOR: %s", operator);
-    LOGI("[LEGACY] FINGERPRINT: %s", fp);
     LOGI("Early init: __attribute__((constructor))");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
+    char tmpBuffer[512] = {0};
+    pid_t pid = fork();
+    if (pid == -1) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "'fork' failed. errno: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, tmpBuffer);
+    }
+
+    if (pid == 0) {
+        const char* path = "/system/bin/uname";
+        char* const argv[] = {"uname", "-a", NULL};
+        // char *const envp[] = {NULL};
+
+        int execRet = execve(path, argv, environ);
+        LOGE("[!] Something bad happened: execve returned. ret:%d | errno: %s", execRet, strerror(errno));
+        _exit(execRet);
+    }
+
+    int wstatus = 0;
+    /**
+     * Suspends this calling thread (which is probably Main Thread (?), as it's called from MainActivity)
+     * wait for any child process (`-1`), writes results into `wstatus`, and return immediately if no child has exited (`WNOHANG`)
+     */
+    pid_t waitRes = waitpid(-1, &wstatus, WNOHANG);
+    if (waitRes == -1) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "'waitpid' failed. errno: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, tmpBuffer);
+    }
+    char finalReport[1024] = {0};
+
+    snprintf(tmpBuffer, sizeof(tmpBuffer), "waitpid result: %d\n", waitRes);
+    strcat(finalReport, tmpBuffer);
+
+    if (WIFEXITED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child terminated normally. Exit code: %d\n", WEXITSTATUS(wstatus));
+        strcat(finalReport, tmpBuffer);
+    }
+    if (WIFSIGNALED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "[!] Child terminated by signal: %d\n", WTERMSIG(wstatus));
+        strcat(finalReport, tmpBuffer);
+        if (WCOREDUMP(wstatus)) {
+            snprintf(tmpBuffer, sizeof(tmpBuffer), "Child produced core dump.\n");
+            strcat(finalReport, tmpBuffer);
+        }
+    }
+    if (WIFSTOPPED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "[! likely ptrace] Child stopped by a signal: %d\n", WSTOPSIG(wstatus));
+        strcat(finalReport, tmpBuffer);
+    }
+    if (WIFCONTINUED(wstatus)) {
+        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child was resumed i.e. got SIGCONT\n");
+        strcat(finalReport, tmpBuffer);
+    }
+
+    return (*env)->NewStringUTF(env, finalReport);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env, jobject thiz) {
+    DIR *dir = opendir("/proc/self/task");
+    if (!dir) {
+        return (*env)->NewStringUTF(env, "Failed to open /proc/self/task");
+    }
+
+    char result[4096] = {0};
+    size_t offset = 0;
+
+    struct dirent *entry;
+    unsigned int threadCount = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (entry->d_name[0] == '.') continue;
+
+        threadCount++;
+        // Read /proc/self/task/<tid>/comm
+        char comm_path[64];
+        snprintf(comm_path, sizeof(comm_path), "/proc/self/task/%s/comm", entry->d_name);
+
+        int comm_fd = open(comm_path, O_RDONLY);
+        if (comm_fd < 0) {
+            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Failed to open comm fd for thread at %s\n",comm_path);
+            continue;
+        }
+
+        char thread_name[64] = {0};
+        ssize_t n = read(comm_fd, thread_name, sizeof(thread_name) - 1);
+        close(comm_fd);
+
+        if (n > 0) {
+            // Strip trailing newline
+            if (thread_name[n - 1] == '\n') thread_name[n - 1] = '\0';
+
+            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "%s\n",thread_name);
+        }
+    }
+    offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Found %d threads\n", threadCount);
+
+    closedir(dir);
+    return (*env)->NewStringUTF(env, result[0] ? result : "No threads found");
+}
+
+/**
+ * Double check on whether this is true for Android
+ */
+JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfAuxv(JNIEnv *env, jobject thiz) {
+    char report[MAX_REPORT_SIZE] = {0};
+    char entry[512] = {0};
+
+    static const unsigned long types[] = {
+            AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY,
+            AT_RANDOM, AT_HWCAP, AT_CLKTCK,
+            AT_UID, AT_EUID, AT_GID, AT_EGID, AT_SECURE, AT_PLATFORM,
+            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF
+    };
+
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+        unsigned long type = types[i];
+        unsigned long val = getauxval(type);
+
+        switch (type) {
+            case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR (address of Program Header Table)     = %#lx\n\n", val); break;
+            case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM (amount of program headers in the executable's header table)    = %lu\n\n",  val); break;
+            case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ (page size)   = %lu\n\n",  val); break;
+            case AT_BASE:     snprintf(entry, sizeof(entry), "AT_BASE (base address of the linker, 0 if statically linked)     = %#lx\n\n", val); break;
+            case AT_ENTRY:    snprintf(entry, sizeof(entry), "AT_ENTRY (virtual memory address of the entry point of the executable: _start (?))     = %#lx\n\n", val); break;
+            case AT_RANDOM:   snprintf(entry, sizeof(entry), "AT_RANDOM (pointer to 16 bytes of \"true random data\" provided by the kernel's entropy pool)  = %#lx\n\n", val); break;
+            case AT_HWCAP:    snprintf(entry, sizeof(entry), "AT_HWCAP (bitmask of hw caps)   = %#lx\n\n", val); break;
+            case AT_CLKTCK:   snprintf(entry, sizeof(entry), "AT_CLKTCK (frequency of system timer ticks per second)   = %lu\n\n",  val); break;
+            case AT_UID:      snprintf(entry, sizeof(entry), "AT_UID      = %lu\n\n",  val); break;
+            case AT_EUID:     snprintf(entry, sizeof(entry), "AT_EUID     = %lu\n\n",  val); break;
+            case AT_GID:      snprintf(entry, sizeof(entry), "AT_GID      = %lu\n\n",  val); break;
+            case AT_EGID:     snprintf(entry, sizeof(entry), "AT_EGID     = %lu\n\n",  val); break;
+            case AT_SECURE:   snprintf(entry, sizeof(entry), "AT_SECURE (elevated process if 1?)  = %lu\n\n",  val); break;
+            case AT_PLATFORM: snprintf(entry, sizeof(entry), "AT_PLATFORM (system's architecture) = %s\n\n",   (char*)val); break;
+            case AT_EXECFN:   snprintf(entry, sizeof(entry), "AT_EXECFN (executable's name)   = %s\n\n",  (char*)val); break;
+            case AT_EXECFD:           snprintf(entry, sizeof(entry), "AT_EXECFD (file descriptor of executable)           = %lu\n\n",  val); break;
+            case AT_PHENT:            snprintf(entry, sizeof(entry), "AT_PHENT (size in bytes of a single program header entry)           = %lu\n\n",  val); break;
+            case AT_NOTELF:           snprintf(entry, sizeof(entry), "AT_NOTELF (1 if the kernel determines that the program is not structurally sound as an ELF file)           = %lu\n\n",  val); break;
+        }
+        strncat(report, entry, sizeof(report) - strlen(report) - 1);
+    }
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dl_1iterate_1phdrTest(JNIEnv *env, jobject thiz) {
+    char* report = (char*) calloc(50000, sizeof(char));
+    if (!report) {
+        return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
+    }
+    dl_iterate_phdr(dlIteratePhdrCallback, report);
+
+    jstring result = (*env)->NewStringUTF(env, report);
+    free(report);
+    return result;
 }
 
 
@@ -279,12 +427,189 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jo
 }
 
 JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobject thiz) {
+    struct ifaddrs *ifaddr;
+    const char* successBuf = "SUCCESS";
+    const char* failBuf = "FAILED";
+
+    if (getifaddrs(&ifaddr) == -1) {
+        LOGE("getifaddrs failed! Errno: %d", errno);
+        return (*env)->NewStringUTF(env, failBuf);
+    }
+
+    return (*env)->NewStringUTF(env, successBuf);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectHooks(JNIEnv *env, jobject thiz) {
+    char finalReport[MAX_REPORT_SIZE] = {0};
+    char entry[256];
+    int bytesToInspect = 28;
+
+    snprintf(entry, sizeof(entry), "dlopen at %p. First %d bytes:\n\n", (void *) dlopen, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) dlopen, bytesToInspect, finalReport);
+
+    // TODO: android_dlopen_ext
+
+    snprintf(entry, sizeof(entry), "\ndl_iterate_phdr at %p. First %d bytes:\n\n", (void *) dl_iterate_phdr, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) dl_iterate_phdr, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "__system_property_get at %p. First %d bytes:\n\n", (void *) __system_property_get, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_get, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\n__system_property_read_callback at %p. First %d bytes:\n\n", (void *) __system_property_read_callback, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_read_callback, bytesToInspect, finalReport);
+
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getInstance at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstance, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getInstance, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getInstanceForPackage at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstanceForPackage, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getInstanceForPackage, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getSensorList at %p. First %d bytes:\n\n", (void *) ASensorManager_getSensorList, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getSensorList, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_getDefaultSensor at %p. First %d bytes:\n\n", (void *) ASensorManager_getDefaultSensor, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_getDefaultSensor, bytesToInspect, finalReport);
+
+    snprintf(entry, sizeof(entry), "\nASensorManager_createEventQueue at %p. First %d bytes:\n\n", (void *) ASensorManager_createEventQueue, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) ASensorManager_createEventQueue, bytesToInspect, finalReport);
+
+
+    // Not hooked
+    snprintf(entry, sizeof(entry), "\n__system_property_find at %p. First %d bytes:\n\n", (void *) __system_property_find, bytesToInspect);
+    strcat(finalReport, entry);
+    dump((void*) __system_property_find, bytesToInspect, finalReport);
+
+    return (*env)->NewStringUTF(env, finalReport);
+}
+
+/**
+ * TODO: xref with fdinfo?
+ */
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, jobject thiz) {
+    const char* path = "/proc/self/fd";
+    char report[16384] = {0};
+    size_t used = 0;
+    report[0] = '\0';
+
+    struct DIR* dir = opendir(path);
+    if (dir == NULL) {
+        return (*env)->NewStringUTF(env, "Failed to open directory");
+    }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        // Build "/proc/self/fd/<entry>"
+        char linkpath[PATH_MAX];
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", path, entry->d_name);
+        if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
+            continue;
+        }
+
+        // Read symlink target
+        char target[PATH_MAX];
+        ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+        if (len < 0) {
+            continue;
+        }
+        target[len] = '\0';
+
+        if (!starts_with(target, "socket")) {
+            continue;
+        }
+
+        int line = snprintf(report + used, sizeof(report) - used, "%s -> %s\n", entry->d_name, target);
+        if (line < 0 || (size_t)line >= sizeof(report) - used) {
+            break;
+        }
+        used += (size_t)line;
+    }
+
+    closedir(dir);
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env, jobject thiz) {
+    const char* path = "/proc/self/maps";
+
+    long fd = arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)path, (long)O_RDONLY, 0, 0, 0);
+    if (fd == -1) {
+        return (*env)->NewStringUTF(env, "Failed to openat(/proc/self/maps)");
+    }
+
+    const char* selfFdPath = "/proc/self/fd";
+    char report[16384] = {0};
+    size_t used = 0;
+    report[0] = '\0';
+
+    struct DIR* dir = opendir(selfFdPath);
+    if (!dir) {
+        return (*env)->NewStringUTF(env, "Failed to opendir(/proc/self/fd)");
+    }
+
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // skip . and ..
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        // Interested only in /proc/self/maps fd
+        int conversionRet = atoi(entry->d_name);
+        if (conversionRet != fd) {
+            continue;
+        }
+
+        // Build "/proc/self/fd/<entry>"
+        char linkpath[PATH_MAX];
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", selfFdPath, entry->d_name);
+        if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
+            continue;
+        }
+
+        // Read symlink target
+        char target[PATH_MAX];
+        ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+        if (len < 0) {
+            continue;
+        }
+        target[len] = '\0';
+
+        int line = snprintf(report + used, sizeof(report) - used, "/proc/self/fd/%s -> %s\n", entry->d_name, target);
+        if (line < 0 || (size_t)line >= sizeof(report) - used) {
+            break;
+        }
+        used += (size_t)line;
+    }
+
+    closedir(dir);
+    close((int) fd);
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    #define ADDRESS_COUNT 6
+    #define ADDRESS_COUNT 5
     #define PORT_COUNT 2
     #define PROTO_COUNT 2
     #define FAM_COUNT 2
@@ -294,17 +619,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             "::1", // IPv6 localhost
             "0.0.0.0", // IPv4 unspecified
             "::", // IPv6 unspecified
-            "192.168.68.117", // phone lan ip
             "10.111.222.1", // phone lan ip
     };
 
     const int ports[PORT_COUNT] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
-    const int protocols[PROTO_COUNT] = { TCP, UDP };
-    const int families[FAM_COUNT] = { IPv4, IPv6 };
+    const SockType protocols[PROTO_COUNT] = { TCP, UDP };
+    const SockFamily families[FAM_COUNT] = { IPv4, IPv6 };
 
-    SockFactoryRes res = {0};
+    SockFactoryRes* res = NULL;
     for (int fam_idx = 0; fam_idx < FAM_COUNT; fam_idx++) {
-        int fam = families[fam_idx];
+        SockFamily fam = families[fam_idx];
 
         for (int addr_idx = 0; addr_idx < ADDRESS_COUNT; addr_idx++) {
             const char* addr_str = addresses[addr_idx];
@@ -318,16 +642,22 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
             for (int port_idx = 0; port_idx < PORT_COUNT; port_idx++) {
                 for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
                     res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0, 0);
+                    if (!res) {
+                        snprintf(entry, sizeof(entry), "Failed to create socket!\n");
+                        strcat(report, entry);
+                        continue;
+                    }
 
                     ret = (fam == IPv4)
-                               ? arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas4, sizeof(res.sas.sas4), 0,0,0)
-                               : arm64_raw_syscall(__NR_bind, res.sock, (long)&res.sas.sas6, sizeof(res.sas.sas6), 0,0,0);
+                               ? arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas4, sizeof(res->sas.sas4), 0,0,0)
+                               : arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas6, sizeof(res->sas.sas6), 0,0,0);
 
                     snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %s\n",
-                             addr_str, ports[port_idx], proto_to_str(protocols[proto_idx]), fam_to_str(fam), ret == 0 ? "SUCESS" : "FAILED");
+                             addr_str, ports[port_idx], proto_to_str((int) protocols[proto_idx]), fam_to_str((int) fam), ret == 0 ? "SUCESS" : "FAILED");
                     strcat(report, entry);
 
-                    close(res.sock);
+                    close(res->sock);
+                    free(res);
                 }
             }
             strcat(report, "\n");
@@ -336,78 +666,94 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject
     return (*env)->NewStringUTF(env, report);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     long ret = 0;
 
-    SockFactoryRes res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     const int backlog = 10;
-    ret = arm64_raw_syscall(__NR_listen, res.sock, backlog, 0, 0, 0, 0);
+    ret = arm64_raw_syscall(__NR_listen, res->sock, backlog, 0, 0, 0, 0);
 
     snprintf(entry, sizeof(entry), "Result: %s\n", ret == 0 ? "SUCCESS" : "FAILED");
     strcat(report, entry);
 
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
-    if (setjmp(jump_buffer) != 0) {
-        return (*env)->NewStringUTF(env, "Socket creation failed");;
-    }
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
-    long ret = 0;
 
-    SockFactoryRes res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    SockFactoryRes* res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, "OK");
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
     // Multicast / LAN Discovery
     const char* msg = "M-SEARCH * HTTP/1.1";
 
     const int port_ssdp_upnp = 1900;
     const char* ipv4_multicast_addr = "239.255.255.250";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
-    long ret = arm64_raw_syscall(__NR_sendto, res.sock, (long)msg, (long)strlen(msg), 0, (long)&res.sas.sas4, sizeof(res.sas.sas4));
+    long ret = arm64_raw_syscall(__NR_sendto, res->sock, (long)msg, (long)strlen(msg), 0, (long)&res->sas.sas4, sizeof(res->sas.sas4));
 
     snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, ipv4_multicast_addr);
     strcat(report, entry);
 
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
     long ret = 0;
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
     // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
     const int port_dns = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
-    SockFactoryRes res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     // use standard connect (Bipan allows public internet)
-    if (connect(res.sock, (struct sockaddr*)&res.sas.sas4, sizeof(res.sas.sas4)) == -1) {
+    if (connect(res->sock, (struct sockaddr*)&res->sas.sas4, sizeof(res->sas.sas4)) == -1) {
         snprintf(entry, sizeof(entry), "connect failed \n");
         strcat(report, entry);
+
+        close(res->sock);
+        free(res);
         return (*env)->NewStringUTF(env, report);
     }
 
     struct sockaddr_in leaked_addr;
     socklen_t len = sizeof(leaked_addr);
 
-    ret = arm64_raw_syscall(__NR_getsockname, res.sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN];
@@ -418,20 +764,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     }
 
     strcat(report, entry);
-    close(res.sock);
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
-    if (setjmp(jump_buffer) != 0) {
-        return (*env)->NewStringUTF(env, "Socket creation failed");;
-    }
-    char report[8192] = {0};
+    char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
     #define DEST_ADDR "10.111.222.3"
-    SockFactoryRes res = CreateSocket(IPv4, UDP, DEST_ADDR, ARBITRARY_PORT, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, DEST_ADDR, ARBITRARY_PORT, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
 
     // Data to be sent using the Scatter/Gather (iovec) structure
     char* data1 = "Message Header - ";
@@ -446,17 +793,17 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobj
 
     //  msghdr structure
     struct msghdr msg = {0};
-    msg.msg_name = &res.sas.sas4; // Destination address
-    msg.msg_namelen = sizeof(res.sas.sas4);
+    msg.msg_name = &res->sas.sas4; // Destination address
+    msg.msg_namelen = sizeof(res->sas.sas4);
     msg.msg_iov = iov;             // Pointer to the array of iovecs
     msg.msg_iovlen = 2;            // Number of elements in the iovec array
 
-    long ret = arm64_raw_syscall(__NR_sendmsg, res.sock, (long)&msg, 0, 0, 0, 0);
+    long ret = arm64_raw_syscall(__NR_sendmsg, res->sock, (long)&msg, 0, 0, 0, 0);
     snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, DEST_ADDR);
     strcat(report, entry);
 
-    close(res.sock);
-
+    close(res->sock);
+    free(res);
     return (*env)->NewStringUTF(env, report);
 }
 
@@ -464,7 +811,7 @@ JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject thiz) {
     struct utsname buffer = {0};
     long ret;
-    asm volatile(
+    __asm__ volatile(
             "mov x0, %[buf] \n\t"   // place `buffer`'s address in x0
             "mov x8, #160   \n\t"   // 160 is the syscall number for uname
             "svc #0         \n\t"   // Supervisor Call
@@ -491,7 +838,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
 
     return (*env)->NewStringUTF(env, result_str);
 }
-
 
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* env, jobject thiz) {
@@ -539,7 +885,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryProcStatus(JNIEnv* env, 
             "State:",
             "Pid:",
             "PPid:",
-            "TracerPid:"
+            "TracerPid:",
+            "Threads:",
+            "NoNewPrivs:",
+            "Seccomp:",
+            "Cpus_allowed_list:"
     };
     int num_prefixes = sizeof(relevant_prefixes) / sizeof(relevant_prefixes[0]);
 
@@ -625,7 +975,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
         // Calculate the end time for our loop:  current time  + 3 seconds
         struct timespec start_time, current_time;
         clock_gettime(CLOCK_MONOTONIC, &start_time);
-        double start_secs = start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
+        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
         double end_secs = start_secs + 3.0;
 
         int ident;      // Identifier of the event source
@@ -641,7 +991,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
         while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
             // Check if 3 seconds have passed and break if so
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            double now = current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
+            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
             if (now >= end_secs) {
                 sampling = false;
                 continue;
@@ -679,6 +1029,26 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_buffer);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv *env, jobject thiz) {
+    long bogusSyscall = 0xB050517;
+    long ret = -10;
+
+    // attempt with inline asm first
+    ret = arm64_raw_syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
+    if (ret != 21) {
+        return JNI_TRUE;
+    }
+    // fallback to bionic wrapper
+    ret = syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
+    if (ret != 21) {
+        return JNI_TRUE;
+    }
+
+    return JNI_FALSE;
+}
+
+
 static const char* proto_to_str(int proto) {
     switch (proto) {
         case TCP: return "TCP";
@@ -696,11 +1066,17 @@ static const char* fam_to_str(int fam) {
     }
 }
 
-
-
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
-  LOGE("Should never reach here...");
-  _exit(-1);
+    ucontext_t* ctx = (ucontext_t*)void_context;
+    int nr = info->si_syscall;
+
+    if (nr == 0xB050517) {
+        ctx->uc_mcontext.regs[0] = 21;
+    }
+    ctx->uc_mcontext.regs[0] = (__u64) -1;
+
+    LOGI("Grunfeld's handler dying....");
+    _exit(-1);
 }
 
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {
@@ -719,10 +1095,257 @@ static void prop_cb(void* cookie, const char* name, const char* value, uint32_t 
     out[PROP_VALUE_MAX] = '\0';
 }
 
+static inline void early_init_sysprop_tests(void) {
+    char radio1[PROP_VALUE_MAX]  = {0};
+    int len = __system_property_get("gsm.version.baseband", radio1);
+    if (len <= 0) {
+        strncpy(radio1, "gsm.version.baseband", sizeof(radio1));
+    }
+
+    const prop_info* pi = __system_property_find("gsm.version.baseband");
+    char radio2[PROP_VALUE_MAX] = {0};
+    if (pi) {
+        __system_property_read_callback(pi, prop_cb, radio2);
+    } else {
+        strncpy(radio2, "gsm.version.baseband", sizeof(radio2));
+    }
+
+    char operator[PROP_VALUE_MAX] = {0};
+
+    int len1 = __system_property_get("gsm.operator.alpha", operator);
+    if (len1 <= 0) {
+        strncpy(operator, "gsm.operator.alpha", sizeof(operator));
+    }
+
+    char fp[PROP_VALUE_MAX] = {0};
+
+    int len2 = __system_property_get("ro.build.fingerprint", fp);
+    if (len2 <= 0) {
+        strncpy(fp, "ro.build.fingerprint", sizeof(fp));
+    }
+
+    LOGI("[LEGACY] RADIO: %s", radio1);
+    LOGI("[MODERN] RADIO: %s", radio2);
+    LOGI("[LEGACY] OPERATOR: %s", operator);
+    LOGI("[LEGACY] FINGERPRINT: %s", fp);
+}
+
+static inline void early_init_stat_tests(void) {
+    const char* hosts1 = "/etc/hosts";
+    const char* hosts2 = "/system/etc/hosts";
+    const char* perfEventParanoid = "/proc/sys/kernel/perf_event_paranoid";
+    long ret = 0; // result of syscall
+
+
+    // ----------------- start faccessat block ----------------------
+
+    int faccessatMode1 = F_OK; // tests existence of file
+    int faccessatMode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
+    int faccessatMode3 = R_OK; // exists and has read
+
+    int faccessatFlags1 = AT_EACCESS; // performs access using effective UID and GID
+    int faccessatFlags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
+    int faccessatFlags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
+
+
+    // should fail: requested permissions not satisfied
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode2, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // should return zero: perms granted
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode3, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // should return zero: mode is F_OK and file exists requested permissions granted
+    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode1, faccessatFlags1, 0, 0);
+    if (ret == 0) {
+        LOGI("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end faccessat block ----------------------
+
+    // ----------------- start newfstatat block ----------------------
+
+
+    struct stat statbuf = {0};
+    // if path = "", operate on the file referred to by dirfd
+    // If path is a symbolic link, do not dereference it: instead return information about the link itself
+    int newfstatatFlags = AT_EMPTY_PATH  | AT_SYMLINK_NOFOLLOW;
+
+    ret = arm64_raw_syscall(__NR_newfstatat, 0 , (long) hosts1, (long) &statbuf, newfstatatFlags, 0, 0);
+    if (ret == 0) {
+        LOGI("newfstatat(%s) - flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
+        LOGI("--- struct stat Dump ---");
+        LOGI("st_dev (Device ID):     %lu", (unsigned long)statbuf.st_dev);
+        LOGI("st_ino (inode number):     %lu", (unsigned long)statbuf.st_ino);
+        LOGI("Hard link count:   %lu", (unsigned long)statbuf.st_nlink);
+        LOGI("UID:     %u", statbuf.st_uid);
+        LOGI("GID:     %u", statbuf.st_gid);
+        LOGI("st_rdev (Device ID for special files i.e under /dev):    %lu", (unsigned long)statbuf.st_rdev);
+        LOGI("Size:    %ld bytes", (long)statbuf.st_size);
+        LOGI("I/O Block Size (preferred size for doing I/O): %d bytes", statbuf.st_blksize);
+        LOGI("Allocated Physical Blocks:  %ld (512B blocks)", statbuf.st_blocks);
+
+        // Timestamps
+        char access_time_str[64];
+        char modify_time_str[64];
+        char change_time_str[64];
+        struct tm tm_info;
+
+        // 1. Format Access Time
+        localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+        strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // 2. Format Modification Time
+        localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+        strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // 3. Format Status Change Time
+        localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+        strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+        // Log the human-readable versions with their nanoseconds appended
+        LOGI("Access time:         %s.%09ld", access_time_str, statbuf.st_atim.tv_nsec);
+        LOGI("Modification time:   %s.%09ld", modify_time_str, statbuf.st_mtim.tv_nsec);
+        LOGI("Status Change Time (last time file metadata changed):  %s.%09ld", change_time_str, statbuf.st_ctim.tv_nsec);
+
+        // st_mode: file type + permission/special flags
+        // LOGI("st_mode:    0o%o (Octal)", statbuf.st_mode);
+        const char* file_type = "Unknown";
+        if (S_ISREG(statbuf.st_mode))  file_type = "Regular File";
+        else if (S_ISDIR(statbuf.st_mode))  file_type = "Directory";
+        else if (S_ISLNK(statbuf.st_mode))  file_type = "Symbolic Link";
+        else if (S_ISCHR(statbuf.st_mode))  file_type = "Character Device";
+        else if (S_ISBLK(statbuf.st_mode))  file_type = "Block Device";
+        else if (S_ISFIFO(statbuf.st_mode)) file_type = "FIFO/Pipe";
+        else if (S_ISSOCK(statbuf.st_mode)) file_type = "Socket";
+
+        LOGI("  -> File Type: %s", file_type);
+
+        // 2. Extract Special Flags (SUID, SGID, Sticky Bit)
+        LOGI("  -> Special Flags: SUID=%d, SGID=%d, Sticky=%d",
+             (statbuf.st_mode & S_ISUID) ? 1 : 0,
+             (statbuf.st_mode & S_ISGID) ? 1 : 0,
+             (statbuf.st_mode & S_ISVTX) ? 1 : 0);
+
+        // 3. Extract Permissions (Owner, Group, Other)
+        LOGI("  -> Permissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)",
+             (statbuf.st_mode & S_IRUSR) ? 'r' : '-',
+             (statbuf.st_mode & S_IWUSR) ? 'w' : '-',
+             (statbuf.st_mode & S_IXUSR) ? 'x' : '-',
+
+             (statbuf.st_mode & S_IRGRP) ? 'r' : '-',
+             (statbuf.st_mode & S_IWGRP) ? 'w' : '-',
+             (statbuf.st_mode & S_IXGRP) ? 'x' : '-',
+
+             (statbuf.st_mode & S_IROTH) ? 'r' : '-',
+             (statbuf.st_mode & S_IWOTH) ? 'w' : '-',
+             (statbuf.st_mode & S_IXOTH) ? 'x' : '-');
+    } else {
+        LOGE("newfstatat(%s) - flags: flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end newfstatat block ----------------------
+
+    // ----------------- start statx block ----------------------
+
+    struct statx statxbuf = {0};
+    int statxFlags = AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW;
+    int statxMode = STATX_BASIC_STATS | STATX_BTIME;
+
+    /**
+     * int statx(
+     *          int dirfd,
+     *          const char *_Nullable restrict path,
+     *          int flags,
+     *          unsigned int mask,
+     *          struct statx *restrict statxbuf
+     * )
+     */
+    ret = arm64_raw_syscall(__NR_statx, 0 , (long) hosts1, (long) statxFlags, statxMode, (long) &statxbuf, 0);
+    if (ret == 0) {
+        LOGI("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
+    } else {
+        LOGE("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    // ----------------- end statx block ----------------------
+
+}
+
+static inline void dump(void *p, int n, char *report) {
+    char entry[64];
+    unsigned char *p1 = p;
+    while (n--) {
+        if (n % 4 == 0) {
+            snprintf(entry, sizeof(entry), "%02x\n", *p1);
+        }
+        else {
+            snprintf(entry, sizeof(entry), "%02x ", *p1);
+        }
+        strcat(report, entry);
+        p1++;
+    }
+}
+
+static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data) {
+    char *type;
+    int p_type;
+
+    char entry[512];
+    snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
+    strcat((char*)data, entry);
+
+    for (size_t j = 0; j < info->dlpi_phnum; j++) {
+        if (!strstr(info->dlpi_name, "memfd"))  {
+            continue;
+        }
+        p_type = info->dlpi_phdr[j].p_type;
+        type = (p_type == PT_LOAD) ? "PT_LOAD" :
+               (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
+               (p_type == PT_INTERP) ? "PT_INTERP" :
+               (p_type == PT_NOTE) ? "PT_NOTE" :
+               (p_type == PT_INTERP) ? "PT_INTERP" :
+               (p_type == PT_PHDR) ? "PT_PHDR" :
+               (p_type == PT_TLS) ? "PT_TLS" :
+               (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
+               (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
+               (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
+
+        snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
+                 (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
+                 (uintmax_t) info->dlpi_phdr[j].p_memsz,
+                 (uintmax_t) info->dlpi_phdr[j].p_flags);
+        strcat((char*)data, entry);
+
+        if (type != NULL) {
+            snprintf(entry, sizeof(entry), "%s\n", type);
+        }
+        else {
+            snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
+        }
+        strcat((char*)data, entry);
+    }
+    return 0;
+}
+
+static inline unsigned char starts_with(const char* str, const char* prefix) {
+    return strncmp(str, prefix, strlen(prefix)) == 0;
+}
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
-static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+__attribute__((always_inline))  static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
     register long x8 __asm__("x8") = sysno;
     register long x0 __asm__("x0") = a0;
     register long x1 __asm__("x1") = a1;

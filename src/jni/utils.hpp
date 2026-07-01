@@ -2,13 +2,24 @@
 #define UTILS_HPP
 
 #include <arpa/inet.h>
-#include <sys/mman.h>
 #include <syscall.h>
 
-#include <atomic>
-#include <string>
-
 #include "shared.hpp"
+
+/**
+ * Collection of AS-safe clones
+ * of string manipulation libc functions.
+ * Also features one of Bipan's multiple hearts:
+ * the `raw_syscall` function for directly asking the kernel for
+ * a resource.
+ *
+ * This is necessary a good chunk of Bipan is injected into the process
+ * and seccomp needs a signal handler. Turns out there are tons of limitations
+ * on what you can do inside one.
+ *
+ * Please read:
+ * https://www.man7.org/linux/man-pages/man7/signal-safety.7.html
+ */
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
@@ -37,20 +48,39 @@ __attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0
 
 #pragma clang diagnostic pop
 
-inline bool starts_with(const char* str, const char* prefix) {
-  return strncmp(str, prefix, strlen(prefix)) == 0;
-}
-
-inline void write_to_char_buf(char* dest, const char* src, size_t len) {
-  for (size_t i = 0; i < len; i++) {
-    dest[i] = src[i];
-  }
-}
-
-inline size_t local_strlen(const char* s) {
+__attribute__((always_inline)) inline size_t local_strlen(const char* s) {
   size_t len = 0;
   while (s[len]) len++;
   return len;
+}
+
+__attribute__((always_inline)) inline size_t local_strnlen(const char* s, size_t maxlen) {
+  size_t len = 0;
+  while (len < maxlen && s[len]) len++;
+  return len;
+}
+
+__attribute__((always_inline)) inline int local_strncmp(const char* a, const char* b, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    if (a[i] != b[i]) return (unsigned char)a[i] - (unsigned char)b[i];
+    if (a[i] == '\0') return 0;
+  }
+  return 0;
+}
+
+__attribute__((always_inline)) inline int local_strcmp(const char* a, const char* b) {
+  size_t i = 0;
+  while (a[i] == b[i]) {
+    if (a[i] == '\0') {
+      return 0;
+    }
+    i++;
+  }
+  return (unsigned char)a[i] - (unsigned char)b[i];
+}
+
+__attribute__((always_inline)) inline bool starts_with(const char* str, const char* prefix) {
+  return local_strncmp(str, prefix, local_strlen(prefix)) == 0;
 }
 
 inline const char* local_strstr(const char* haystack, const char* needle) {
@@ -76,35 +106,6 @@ inline const char* local_strchr(const char* s, int c) {
   return nullptr;
 }
 
-inline int local_atoi(const char* s) {
-  if (!s) return 0;
-
-  int res = 0;
-  int sign = 1;
-
-  // 1. Skip leading whitespace
-  while (*s == ' ' || *s == '\t' || *s == '\n' ||
-         *s == '\r' || *s == '\f' || *s == '\v') {
-    s++;
-  }
-
-  // 2. Handle optional sign
-  if (*s == '-') {
-    sign = -1;
-    s++;
-  } else if (*s == '+') {
-    s++;
-  }
-
-  // 3. Process digits and stop at the first non-digit
-  while (*s >= '0' && *s <= '9') {
-    res = res * 10 + (*s - '0');
-    s++;
-  }
-
-  return res * sign;
-}
-
 // Verifies if a segment of a string is purely numbers (a PID)
 __attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size_t len) {
   if (len == 0) return false;
@@ -115,13 +116,13 @@ __attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size
 }
 
 // Validates any /proc/<PID>/target_file layout
-__attribute__((always_inline)) inline bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
+static bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
   // 1. Must start with "/proc/"
-  if (strncmp(pathname, "/proc/", 6) != 0) return false;
+  if (local_strncmp(pathname, "/proc/", 6) != 0) return false;
 
   // 2. Locate the next slash after "/proc/"
   const char* pid_start = pathname + 6;
-  const char* next_slash = strchr(pid_start, '/');
+  const char* next_slash = local_strchr(pid_start, '/');
   if (!next_slash) return false;
 
   // 3. Ensure the characters between the slashes are a valid PID number
@@ -129,33 +130,32 @@ __attribute__((always_inline)) inline bool is_dynamic_proc_file(const char* path
   if (!is_pure_numeric(pid_start, pid_len)) return false;
 
   // 4. Check if the remaining suffix matches exactly (e.g., "/maps" or "/smaps")
-  return strcmp(next_slash, suffix) == 0;
+  return local_strcmp(next_slash, suffix) == 0;
 }
 
 inline bool is_maps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/maps") == 0) ||
+  return (local_strcmp(pathname, "/proc/self/maps") == 0) ||
          is_dynamic_proc_file(pathname, "/maps");
 }
 
+inline bool is_proc_status(const char* pathname) {
+  return (local_strcmp(pathname, "/proc/self/status") == 0) ||
+         is_dynamic_proc_file(pathname, "/status");
+}
+
 inline bool is_smaps(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/smaps") == 0) ||
+  return (local_strcmp(pathname, "/proc/self/smaps") == 0) ||
          is_dynamic_proc_file(pathname, "/smaps");
 }
 
 inline bool is_mounts(const char* pathname) {
-  return (strcmp(pathname, "/proc/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mounts") == 0) ||
+  return (local_strcmp(pathname, "/proc/mounts") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mounts") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mountstats") == 0) ||
+         (local_strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+         is_dynamic_proc_file(pathname, "/mountstats") ||
+         is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
-}
-
-inline size_t get_msghdr_len(const struct msghdr* msg) {
-  size_t total = 0;
-  if (msg && msg->msg_iov) {
-    for (size_t i = 0; i < (size_t)msg->msg_iovlen; ++i) {
-      total += msg->msg_iov[i].iov_len;
-    }
-  }
-  return total;
 }
 
 /**
@@ -163,7 +163,7 @@ inline size_t get_msghdr_len(const struct msghdr* msg) {
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
  */
-inline bool filterIPv4LanAccess(uint32_t ip4) {
+__attribute__((always_inline)) inline static bool filterIPv4LanAccess(uint32_t ip4) {
   // Unspecified address (0.0.0.0)
   if (ip4 == 0x00000000) {
     return true;
@@ -201,7 +201,7 @@ inline bool filterIPv4LanAccess(uint32_t ip4) {
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
  */
-inline bool filterIPv6LanAccess(uint8_t* ip6) {
+__attribute__((always_inline)) inline static bool filterIPv6LanAccess(uint8_t* ip6) {
   if (!ip6) {
     return false;
   }
@@ -270,99 +270,29 @@ inline bool is_lan_address(struct sockaddr* addr) {
   return false;
 }
 
-inline void get_socket_info(int sockfd,
-                            struct sockaddr* sockAddrStruct,
-                            char* protocol,
-                            int* port,
-                            char* ipAddr,
-                            char* family) {
-  if (sockAddrStruct == nullptr) {
-    return;
-  }
-  int sock_type = 0;
-  socklen_t optlen = sizeof(sock_type);
-
-  long ret = arm64_raw_syscall(__NR_getsockopt,
-                               sockfd, SOL_SOCKET,
-                               SO_TYPE,
-                               (long)&sock_type,
-                               (long)&optlen,
-                               0);
-
-  if (ret != 0) {
-    BIPAN_PANIC();
-  }
-
-  if (sock_type == SOCK_STREAM) {
-    write_to_char_buf(protocol, "TCP", 4);
-  } else if (sock_type == SOCK_DGRAM) {
-    write_to_char_buf(protocol, "UDP", 4);
-  } else {
-    write_to_char_buf(protocol, "UNKNOWN", 8);
-  }
-
-  if (sockAddrStruct->sa_family == AF_INET) {
-    struct sockaddr_in* ipv4 = (struct sockaddr_in*)sockAddrStruct;
-
-    *port = ntohs(ipv4->sin_port);
-    inet_ntop(AF_INET, &(ipv4->sin_addr), ipAddr, INET_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv4", 5);
-  } else if (sockAddrStruct->sa_family == AF_INET6) {
-    struct sockaddr_in6* ipv6 = (struct sockaddr_in6*)sockAddrStruct;
-
-    *port = ntohs(ipv6->sin6_port);
-    inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
-    write_to_char_buf(family, "IPv6", 5);
-  } else {
-    write_to_char_buf(family, "UNKNOWN", 8);
-  }
-}
-
-inline bool is_network_socket(const char* family) {
-  return (strcmp(family, "IPv4") == 0) ||
-         (strcmp(family, "IPv6") == 0);
-}
-
-__attribute__((always_inline)) static inline size_t my_strlen(const char* s) {
-  size_t len = 0;
-  while (s[len]) len++;
-  return len;
-}
-
-__attribute__((always_inline)) static inline void* my_memset(void* s, int c, size_t n) {
+__attribute__((always_inline)) static inline void* local_memset(void* s, int c, size_t n) {
   unsigned char* p = (unsigned char*)s;
   while (n--) *p++ = (unsigned char)c;
   return s;
 }
 
-__attribute__((always_inline)) static inline char* my_strncpy(char* dest, const char* src, size_t n) {
+__attribute__((always_inline)) static inline char* local_strncpy(char* dest, const char* src, size_t n) {
   size_t i;
   for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
   for (; i < n; i++) dest[i] = '\0';
   return dest;
 }
 
-__attribute__((always_inline)) static inline void my_reverse(char* str, int len) {
-  int i = 0, j = len - 1;
-  while (i < j) {
-    char t = str[i];
-    str[i] = str[j];
-    str[j] = t;
-    i++;
-    j--;
-  }
-}
-
-__attribute__((always_inline)) static inline void* my_memcpy(void* dest, const void* src, size_t n) {
+__attribute__((always_inline)) static inline void* local_memcpy(void* dest, const void* src, size_t n) {
   unsigned char* d = (unsigned char*)dest;
   const unsigned char* s = (const unsigned char*)src;
   while (n--) *d++ = *s++;
   return dest;
 }
 
-__attribute__((always_inline)) inline bool is_exact_dir(const char* path, const char* target_dir) {
+__attribute__((always_inline)) static inline bool is_exact_dir(const char* path, const char* target_dir) {
   size_t len = strlen(target_dir);
-  if (strncmp(path, target_dir, len) == 0) {
+  if (local_strncmp(path, target_dir, len) == 0) {
     // Return true if it ends exactly at the dir name, or has a trailing slash
     return path[len] == '\0' || (path[len] == '/' && path[len + 1] == '\0');
   }
@@ -372,12 +302,17 @@ __attribute__((always_inline)) inline bool is_exact_dir(const char* path, const 
 __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
+      starts_with(pathname, "/data/dalvik-cache") ||
       starts_with(pathname, "/data/app") ||
+      starts_with(pathname, "/system/framework") ||
+      starts_with(pathname, "/system_ext/framework") ||
+      starts_with(pathname, "/system_ext/bin/hwservicemanager") ||
+      starts_with(pathname, "/data/misc/apexdata/com.android.art") ||
       starts_with(pathname, "/data/user/0") ||
       starts_with(pathname, "/data/user_de/0/") ||
       starts_with(pathname, "/storage/emulated/0/Android/media") ||
       starts_with(pathname, "/storage/emulated/0/Android/data") ||
-      starts_with(pathname, "/data/misc/profiles") ||
+      // starts_with(pathname, "/data/misc/profiles") ||
       starts_with(pathname, "/data/misc/shared_relro") ||
       starts_with(pathname, "/product/app/webview") ||
       starts_with(pathname, "/apex/com.android") ||
@@ -389,6 +324,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   if (starts_with(pathname, "/dev/ashmem") ||
       starts_with(pathname, "/dev/urandom") ||
       starts_with(pathname, "/dev/random") ||
+      starts_with(pathname, "/dev/hwbinder") ||
       starts_with(pathname, "/dev/zero") ||
       starts_with(pathname, "/dev/null")) {
     return false;
@@ -396,19 +332,17 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
   // Ignore some /proc stats
   if (starts_with(pathname, "/proc/")) {
-    if (strstr(pathname, "/cmdline") ||
-        strstr(pathname, "/task") ||
-        strstr(pathname, "/cgroup") ||
-        strstr(pathname, "/oom") ||
-        strstr(pathname, "/comm") ||
-        strstr(pathname, "/stat")) {
+    if (local_strstr(pathname, "/cmdline") ||
+        local_strstr(pathname, "/oom") ||
+        local_strstr(pathname, "/comm") ||
+        local_strstr(pathname, "/stat")) {
       return false;
     }
   }
 
   // Ignore EXACT directory opens (directory scans)
   if (is_exact_dir(pathname, "/data") ||
-      is_exact_dir(pathname, "/data/user") ||
+      is_exact_dir(pathname, "/system/lib/") ||
       is_exact_dir(pathname, "/data/user") ||
       is_exact_dir(pathname, "/storage/emulated/0") ||
       is_exact_dir(pathname, "/system") ||
@@ -428,24 +362,32 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
 
 __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
-      strstr(pathname, "c7981ca8.0") != nullptr ||
+      local_strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu4")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu5")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu6")) ||
+      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu7")) ||
       // VPN tunnel
       starts_with(pathname, "/sys/class/net/tun") ||
       // Crash reports
       starts_with(pathname, "/data/anr") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
       // Root
-      strstr(pathname, "zygisk") != nullptr ||
-      strstr(pathname, "magisk") != nullptr ||
-      strstr(pathname, "resetprop") != nullptr ||
-      strstr(pathname, "supolicy") != nullptr ||
+      local_strstr(pathname, "zygisk") != nullptr ||
+      local_strstr(pathname, "magisk") != nullptr ||
+      local_strstr(pathname, "resetprop") != nullptr ||
+      local_strstr(pathname, "supolicy") != nullptr ||
+      starts_with(pathname, "/vendor/bin/install-recovery.sh") ||
+      starts_with(pathname, "/data/adb/modules") ||
+      local_strstr(pathname, "lineage") != nullptr ||
+      local_strstr(pathname, "Lineage") != nullptr ||
       starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
       starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
-      strstr(pathname, "Screenshots") != nullptr ||
-      strstr(pathname, "Camera") != nullptr ||
+      // local_strstr(pathname, "Screenshots") != nullptr ||
+      // local_strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
@@ -459,42 +401,38 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")) ||
-          (strcmp(pathname, "/proc/zoneinfo") == 0 ||
-           strcmp(pathname, "/proc/vmstat") == 0));
+          (local_strcmp(pathname, "/proc/zoneinfo") == 0 ||
+           local_strcmp(pathname, "/proc/vmstat") == 0));
 }
 
 __attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathname) {
   return (
-    strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
-    strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0
-  );
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
 }
 
-/**
- * TODO: cache most used ones in a pool
- */
 __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pathname) {
-  if (strstr(pathname, "build.prop") != nullptr) {
+  if (local_strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
   }
-  if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
+  if (local_strcmp(pathname, "/etc/hosts") == 0 || local_strcmp(pathname, "/system/etc/hosts") == 0) {
     return "127.0.0.1       localhost\n::1       localhost\n";
   }
-  if (strcmp(pathname, "/proc/version") == 0) {
+  if (local_strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
   }
 
-  if (strcmp(pathname, "/proc/cpuinfo") == 0) {
+  if (local_strcmp(pathname, "/proc/cpuinfo") == 0) {
     return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
            "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";  // Generic mid-range (Snapdragon 625-ish)
+           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";
   }
 
-  if (strcmp(pathname, "/proc/meminfo") == 0) {
+  if (local_strcmp(pathname, "/proc/meminfo") == 0) {
     return "MemTotal:        3901140 kB\n"
            "MemFree:          258600 kB\n"
            "MemAvailable:    1234768 kB\n"
@@ -508,9 +446,47 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
            "VmallocTotal:   263061440 kB\n"
            "CmaTotal:         159744 kB\n";
   }
-  if (strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
+  if (local_strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
     return "2\n";
   }
+  if (
+      starts_with(pathname, "/sys/devices/system/cpu/possible") ||
+      starts_with(pathname, "/sys/devices/system/cpu/online") ||
+      starts_with(pathname, "/sys/devices/system/cpu/present")) {
+    return "0-3\n";
+  }
+  if (starts_with(pathname, "/sys/devices/system/cpu/kernel_max")) {
+    return "4\n";
+  }
+  if (starts_with(pathname, "/sys/devices/system/cpu") &&
+      local_strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
+    if (local_strstr(pathname, "cpu0") || local_strstr(pathname, "cpu1")) {
+      return "1590000\n";
+    }
+    if (local_strstr(pathname, "cpu2") || local_strstr(pathname, "cpu3")) {
+      return "1900000\n";
+    }
+  }
+  if (starts_with(pathname, "/sys/devices/system/cpu/cpu")) {
+    if (local_strstr(pathname, "/topology/physical_package_id")) {
+      return "0\n";
+    } else if (local_strstr(pathname, "/topology/core_siblings_list")) {
+      return "0-3\n";
+    }
+  }
+
+  if (local_strcmp(pathname, "/proc/sys/kernel/version") == 0) {
+    return "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
+  }
+
+  if (local_strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) {
+    return "6.6.56-android16-11-g8a3e2b1c4d5f\n";
+  }
+
+  if (local_strcmp(pathname, "/proc/asound/version") == 0) {
+    return "Advanced Linux Sound Architecture Driver Version k6.6.56-android16-11-g8a3e2b1c4d5f.\n";
+  }
+
   return nullptr;
 }
 

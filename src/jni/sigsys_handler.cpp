@@ -15,6 +15,7 @@
 
 #include <atomic>
 
+#include "bipan_hash_table.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
@@ -30,6 +31,9 @@ struct kernel_sigaction {
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void scrub_socket(struct sockaddr* s);
+inline static bool shouldCache(const char* filename);
+
+static BipanHashTable bht;
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -56,21 +60,44 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
   in_sigsys_handler = true;
 
-#ifdef DEBUG
-  s_violation_count.fetch_add(1, std::memory_order_relaxed);
-  s_syscall_counts[info->si_syscall].fetch_add(1, std::memory_order_relaxed);
-#endif
-
-  long arg0 = ctx->uc_mcontext.regs[0];
-  long arg1 = ctx->uc_mcontext.regs[1];
-  long arg2 = ctx->uc_mcontext.regs[2];
-  long arg3 = ctx->uc_mcontext.regs[3];
-  long arg4 = ctx->uc_mcontext.regs[4];
-  long arg5 = ctx->uc_mcontext.regs[5];
+  long arg0 = (long)ctx->uc_mcontext.regs[0];
+  long arg1 = (long)ctx->uc_mcontext.regs[1];
+  long arg2 = (long)ctx->uc_mcontext.regs[2];
+  long arg3 = (long)ctx->uc_mcontext.regs[3];
+  long arg4 = (long)ctx->uc_mcontext.regs[4];
+  long arg5 = (long)ctx->uc_mcontext.regs[5];
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
-    ctx->uc_mcontext.regs[0] = -ENOSYS;
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_statx) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about statx existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_mincore) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about mincore existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_memfd_create) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about memfd_create existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_listen) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Spoofing listen...");
+    ctx->uc_mcontext.regs[0] = 0;
     in_sigsys_handler = false;
     return;
   }
@@ -78,38 +105,53 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_getsockname) {
     long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
-    if (r == 0 && arg1 != 0) {
-      struct sockaddr* s = (struct sockaddr*)arg1;
-      scrub_socket(s);
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(getsockname) scrubbed");
-    } else {
+    if (r != 0 || arg1 == 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
       BIPAN_PANIC();
     }
+
+    struct sockaddr* s = (struct sockaddr*)arg1;
+    scrub_socket(s);
+
     in_sigsys_handler = false;
-    ctx->uc_mcontext.regs[0] = r;
+    ctx->uc_mcontext.regs[0] = (__u64)r;
     return;
   }
 
   if (nr == __NR_socket) {
-    int domain = arg0;
-    if (domain == AF_NETLINK) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, " Blocked AF_NETLINK socket");
-      ctx->uc_mcontext.regs[0] = -EAFNOSUPPORT;
+    // 1st arg is the "domain" of the socket
+    if (arg0 == AF_NETLINK) {
+      // write_to_logcat_async(ANDROID_LOG_INFO, TAG, " Blocked AF_NETLINK socket");
+      ctx->uc_mcontext.regs[0] = (__u64)-EAFNOSUPPORT;
       in_sigsys_handler = false;
       return;
     }
 
     long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = ret;
+    ctx->uc_mcontext.regs[0] = (__u64)ret;
     in_sigsys_handler = false;
     return;
   }
 
-  // TODO: use atomic cas?
+  // app-side FD to be filled by Broker in relevant syscalls
+  int pre_fd = -1;
+  int spoofedFd = -1;
+
+  if (nr == __NR_openat) {
+    spoofedFd = bht.retrieve((const char*)arg1);
+    if (spoofedFd != -1) {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Hash table HIT: serving %s with fd %d", (const char*)arg1, spoofedFd);
+      // Reset position so app always reads from beginning
+      lseek(spoofedFd, 0, SEEK_SET);
+      ctx->uc_mcontext.regs[0] = (__u64)spoofedFd;
+      in_sigsys_handler = false;
+      return;
+    }
+  }
+
   lock_ipc();
 
-  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30]; // LR: link register
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
   ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
   ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
@@ -120,27 +162,93 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
+  ipc_mem->spoofedFd = spoofedFd;
+  ipc_mem->argv_count = 0;
+  ipc_mem->envp_count = 0;
+  ipc_mem->vm_iov_count = 0;
 
   // Zero-out string payloads
-  my_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
-  my_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
-  my_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+  local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
+  local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
+  local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+  local_memset(ipc_mem->argv_payload, 0, sizeof(ipc_mem->argv_payload));
+  local_memset(ipc_mem->envp_payload, 0, sizeof(ipc_mem->envp_payload));
+  local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
+  local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
 
   __sync_synchronize();
 
-  // app-side FD to be filled by Broker in relevant syscalls
-  int pre_fd = -1;
-
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8pten5k9K4Lx", MFD_CLOEXEC, 0, 0, 0, 0);
-    // openat takes up to 4 args, so use arg5 as slot for the pre-FD
-    ipc_mem->arg5 = pre_fd;
-    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat || nr == __NR_newfstatat || nr == __NR_statx) {
-    my_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+    spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+
+    ipc_mem->arg5 = pre_fd;  // leverage unused 5th register for pre_fd (the one the app will receive)
+    ipc_mem->spoofedFd = spoofedFd;
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_faccessat ||
+             nr == __NR_newfstatat ||
+             nr == __NR_statx ||
+             nr == __NR_inotify_add_watch ||
+             nr == __NR_readlinkat ||
+             nr == __NR_mknodat) {
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
-    my_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+    local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+
+    if (nr == __NR_execve) {
+      // Serialize argv into a separate buffer, joined by some delimiter
+      char** const argv = (char** const)arg1;
+      if (argv) {
+        size_t off = 0;
+        for (int i = 0; argv[i] != nullptr && i < 16; i++) {
+          size_t len = local_strnlen(argv[i], 128);
+          if (off + len + 1 >= sizeof(ipc_mem->argv_payload)) break;
+          local_memcpy(ipc_mem->argv_payload + off, argv[i], len);
+          off += len;
+          ipc_mem->argv_payload[off++] = '\0';  // delimiter between args
+        }
+        ipc_mem->argv_count = off;  // total bytes written, or track count separately
+      } else {
+        ipc_mem->argv_count = 1;
+        local_strncpy(ipc_mem->argv_payload, "argv array empty", 18);
+      }
+
+      // Serialize envp, but only capture entries of interest
+      char** const envp = (char** const)arg2;
+      if (envp) {
+        size_t off = 0;
+        for (int i = 0; envp[i] != nullptr && i < 64; i++) {
+          // Only keep vars worth seeing — keeps payload small
+          if (local_strncmp(envp[i], "LD_PRELOAD=", 11) != 0 &&
+              local_strncmp(envp[i], "LD_LIBRARY_PATH=", 16) != 0 &&
+              local_strncmp(envp[i], "PATH=", 5) != 0) {
+            continue;
+          }
+          size_t len = local_strnlen(envp[i], 256);
+          if (off + len + 1 >= sizeof(ipc_mem->envp_payload)) break;
+          local_memcpy(ipc_mem->envp_payload + off, envp[i], len);
+          off += len;
+          ipc_mem->envp_payload[off++] = '\0';
+        }
+        ipc_mem->envp_count = off;
+      } else {
+        ipc_mem->envp_count = 1;
+        local_strncpy(ipc_mem->envp_payload, "envp array empty", 18);
+      }
+    }
+  } else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
+    ipc_mem->arg0 = arg0;  // target pid
+
+    const struct iovec* remote_iov = (const struct iovec*)arg3;
+    unsigned long riovcnt = (unsigned long)arg4;
+
+    // Capture up to 4 remote iovec entries for inspection
+    for (unsigned long i = 0; i < riovcnt && i < 4; i++) {
+      ipc_mem->vm_iov_addr[i] = (uintptr_t)remote_iov[i].iov_base;
+      ipc_mem->vm_iov_len[i] = remote_iov[i].iov_len;
+    }
+    ipc_mem->vm_iov_count = (riovcnt < 4) ? riovcnt : 4;
   }
 
   // Serialize binary structures with their exact lengths
@@ -179,7 +287,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
      */
     if (sock_ptr == 0) {
       long temp_len = sizeof(temp_addr);
-      my_memset(&temp_addr, 0, sizeof(temp_addr));
+      local_memset(&temp_addr, 0, sizeof(temp_addr));
 
       // getpeername gives us the destination IP of a connected socket
       if (arm64_raw_syscall(__NR_getpeername, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
@@ -187,23 +295,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         sock_len = temp_len;
       }
     }
-  } else if (nr == __NR_listen) {
-    long sockfd = arg0;
-    // pre-flighting check
-    // listen doesn't give a sockaddr, so we must extract it from the FD
-    long temp_len = sizeof(temp_addr);
-    my_memset(&temp_addr, 0, sizeof(temp_addr));
-
-    if (arm64_raw_syscall(__NR_getsockname, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
-      sock_ptr = (long)&temp_addr;
-      sock_len = temp_len;
-    }
   }
 
   // getsockname populates the struct on return, no need to send it upfront
   if (sock_ptr != 0 && sock_len > 0) {
     size_t copy_len = (sock_len > 127) ? 127 : (size_t)sock_len;
-    my_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
+    local_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
   }
 
   // Wake Broker & Wait
@@ -229,7 +326,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
-      // Cleanup ghost FD
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
@@ -252,22 +348,66 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
   } else if (action == ACTION_USE_RET) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
-      // Cleanup if Broker gave -EACCES
+      // Cleanup if Broker rejected
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+      if (spoofedFd >= 0) {
+        arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+      }
     }
+
     result = ipc_mem->ret;
 
     // Deserialize outputs with their exact lengths
     if (nr == __NR_uname && result == 0) {
-      my_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
+      local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
+    }
+    if (nr == __NR_readlinkat && result > 0) {
+      char* app_buf = (char*)ipc_mem->arg2;
+      size_t app_bufsiz = (size_t)ipc_mem->arg3;
+      size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
+      local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
+      app_buf[copy_len] = '\0';
+    }
+    if (nr == __NR_openat) {
+      if (result == (long)pre_fd) {
+        // Broker accepted: copy pre_fd content into spoofedFd
+        char buf[4096];
+        ssize_t n;
+        lseek(pre_fd, 0, SEEK_SET);
+        while ((n = read(pre_fd, buf, sizeof(buf))) > 0) {
+          write(spoofedFd, buf, n);
+        }
+        lseek(spoofedFd, 0, SEEK_SET);
+
+        // Close pre_fd — app will never see it
+        arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+        pre_fd = -1;
+
+        // Cache spoofedFd by filename
+        char cachedFilename[256];
+        local_memset(cachedFilename, 0, sizeof(cachedFilename));
+        local_strncpy(cachedFilename, (const char*)arg1, 255);
+        if (shouldCache(cachedFilename)) {
+          if (bht.insert(cachedFilename, spoofedFd)) {
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s for future use", cachedFilename);
+            bht.logStats();
+          }
+        }
+
+        // Return spoofedFd to app, NOT pre_fd
+        result = spoofedFd;
+      } else {
+        // Broker denied — close both
+        if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+        if (spoofedFd >= 0) arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
+      }
     }
   }
 
   ipc_mem->status = IDLE;
-  // TODO: use atomic cas?
   unlock_ipc();
 
-  ctx->uc_mcontext.regs[0] = result;
+  ctx->uc_mcontext.regs[0] = (__u64)result;
   in_sigsys_handler = false;
 }
 
@@ -278,12 +418,22 @@ static void scrub_socket(struct sockaddr* s) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
 
     sin->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
+
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv4 (getsockname) scrubbed");
   } else if (s->sa_family == AF_INET6) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
     // Unique Local Address (ULA) like fd00::1
-    my_memset(&sin6->sin6_addr, 0, 16);
+    local_memset(&sin6->sin6_addr, 0, 16);
     sin6->sin6_addr.s6_addr[0] = 0xfd;
     sin6->sin6_addr.s6_addr[15] = 0x01;
+
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
   }
+}
+
+inline static bool shouldCache(const char* filename) {
+  return (
+      (shouldFakeFile(filename) != nullptr) ||
+      is_mounts(filename));
 }

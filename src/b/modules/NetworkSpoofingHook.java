@@ -1,4 +1,4 @@
-package com.omarmesqq.bipan.modules;
+package b.modules;
 
 import android.content.Context;
 import android.net.LinkAddress;
@@ -14,7 +14,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.Messenger;
 import android.util.Log;
-import com.omarmesqq.bipan.BaseHook;
+import b.BaseHook;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -23,7 +23,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
+import java.util.Set;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+
 import android.net.ConnectivityManager;
 
 /**
@@ -63,6 +67,12 @@ public class NetworkSpoofingHook implements BaseHook {
 
   public static volatile Object s_cmProxy = null;
 
+  private static final Set<String> BENIGN_CM_METHODS = new HashSet<>(Arrays.asList(
+      "getNetworkInfo",
+      "getNetworkInfoForUid",
+      "getActiveNetwork",
+      "isActiveNetworkMetered"));
+
   @Override
   public void install(Context context) throws Exception {
     selfPackageName = context.getPackageName();
@@ -95,7 +105,10 @@ public class NetworkSpoofingHook implements BaseHook {
     // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
-        Log.w(TAG, "connHandler got async method " + method.getName());
+        if (!BENIGN_CM_METHODS.contains(method.getName())) {
+          Log.w(TAG, "connHandler got async method: " + method.getName());
+        }
+
         for (int i = 0; i < args.length; i++) {
           if (args[i] instanceof Messenger) {
             final Messenger originalMessenger = (Messenger) args[i];
@@ -154,7 +167,9 @@ public class NetworkSpoofingHook implements BaseHook {
           return ni;
         }
       } else {
-        Log.w(TAG, "allowing connHandler synchronous method: " + method.getName());
+        if (!BENIGN_CM_METHODS.contains(method.getName())) {
+          Log.w(TAG, "Allowing connHandler synchronous method: " + method.getName());
+        }
       }
 
       return result;

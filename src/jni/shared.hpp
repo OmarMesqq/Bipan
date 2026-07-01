@@ -1,8 +1,9 @@
 #ifndef BIPAN_SHARED_H
 #define BIPAN_SHARED_H
 
-#include <string>
 #include <jni.h>
+
+#include <string>
 #include <unordered_set>
 
 #define TAG "Bipan"
@@ -11,22 +12,12 @@
 
 // Globals populated in entrypoint
 
-// Used in signal handler for checking if app is reading virtual filesystem
-extern char safe_proc_pid_path[64];
-// Used in hooks module to apply PC-relative seccomp in the JNI tripwires
+// Used in hooks module
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
-
-extern char package_name[256];
+extern char g_package_name[256];
 extern jclass g_bipanJavaClass;
 extern std::unordered_set<std::string> telephonySpoofingAllowlist;
-
-
-
-#ifdef DEBUG
-inline std::atomic<uint64_t> s_violation_count{0};
-inline std::atomic<uint64_t> s_syscall_counts[512]{};
-#endif
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,
@@ -54,7 +45,8 @@ typedef struct {
 
   uintptr_t caller_pc;
   uintptr_t caller_fp;
-  uintptr_t caller_lr;
+  uintptr_t stack_trace[MAX_STACK_TRACE];
+
   pid_t target_pid;
 
   int nr;  // syscall number
@@ -68,7 +60,20 @@ typedef struct {
   int action;
   long ret;  // return value provided by kernel
 
-  uintptr_t stack_trace[MAX_STACK_TRACE];
+  int appSockFd;
+  int spoofedFd;
+  char package_name[256];
+
+  // execve info
+  char argv_payload[1024];  // null-delimited list of argv strings
+  int argv_count;
+  char envp_payload[512];
+  int envp_count;
+
+  // process_vm_readv and process_vm_writev info
+  uintptr_t vm_iov_addr[4];
+  size_t vm_iov_len[4];
+  int vm_iov_count;
 } SharedIPC;
 
 /**

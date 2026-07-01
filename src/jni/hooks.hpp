@@ -2,7 +2,9 @@
 #define HOOKS_HPP
 
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <ifaddrs.h>
+#include <link.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
@@ -20,6 +22,12 @@ using zygisk::Api;
 struct PropCallbackCtx {
   void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
   void* user_cookie;
+};
+
+// type for spoofing dl_iterate_phdr
+struct FilteredCallback {
+  int (*real_cb)(struct dl_phdr_info*, size_t, void*);
+  void* real_data;
 };
 
 // sysprop overrides equivalent to `spoofBuildFields` ART fields
@@ -158,7 +166,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
 
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
-    {"ril.sw_ver", "g5300g-251108-251202-B-12876551"},
+    {"ril.sw_ver", ""},
     {"ril.sw_ver2", ""},
 
     {"nfc.initialized", "false"},
@@ -175,9 +183,9 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.verifiedbootstate", "green"},
     {"ro.com.google.clientidbase", "android-google"},
     {"ro.boot.selinux", "enforcing"},
-    {"ro.boot.warranty_bit", "0"},
-    {"init.svc.adb_root", "stopped"},
-    {"persist.sys.usb.config", "none"},
+    {"ro.boot.warranty_bit", ""},
+    {"init.svc.adb_root", ""},
+    {"persist.sys.usb.config", ""},
     {"init.svc.adbd", "stopped"},
 
     {"ro.boot.hardware", "zuma"},
@@ -193,6 +201,17 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"init.svc.usbd", "stopped"},
     {"init.svc.vaultkeeper", ""},
+    {"ro.hardware.chipname", ""},
+
+    {"init.svc.vendor.lineage_health", ""},
+    {"init.svc_debug_pid.vendor.lineage_health", ""},
+    {"ro.boottime.vendor.lineage_health", ""},
+    {"ro.lineage.build.version", ""},
+    {"ro.lineage.device", ""},
+    {"ro.lineage.display.version", ""},
+    {"ro.lineage.releasetype", ""},
+    {"ro.lineage.version", ""},
+    {"ro.lineagelegal.url", ""},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
@@ -263,6 +282,7 @@ static bool g_ifaddrs_cached = false;
 
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
 void my_freeifaddrs(struct ifaddrs* ifa);
+static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data);
 
 // ==========================================
 // Original function pointers
@@ -273,6 +293,7 @@ static void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 static void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
 static void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
+static int (*orig_dl_iterate_phdr)(int (*)(struct dl_phdr_info*, size_t, void*), void*) = nullptr;
 
 static ASensorManager* (*orig_ASensorManager_getInstance)();
 static ASensorManager* (*orig_ASensorManager_getInstanceForPackage)(const char*);
@@ -289,20 +310,100 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 // ==========================================
 // Linker hooks
 // ==========================================
+struct DumpContext {
+  const char* target_soname;
+};
+
+static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data) {
+  DumpContext* ctx = (DumpContext*)data;
+
+  if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
+    return 0;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] found: %s base=0x%lx", info->dlpi_name, (uintptr_t)info->dlpi_addr);
+
+  for (int i = 0; i < info->dlpi_phnum; i++) {
+    const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
+
+    if (phdr->p_type != PT_LOAD) {
+      // interested only in sections to be eagerly loaded by the linker
+      continue;
+    }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[phdr] flags=0x%x vaddr=0x%lx memsz=%zu filesz=%zu", phdr->p_flags, phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
+
+    uintptr_t start = info->dlpi_addr + phdr->p_vaddr;
+    size_t len = phdr->p_memsz;
+
+    char dumppath[128];
+    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", g_package_name, start);
+
+    int out_fd = open(dumppath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out_fd < 0) {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] failed to open %s: %s", dumppath, strerror(errno));
+      continue;
+    }
+
+    uint8_t buf[4096];
+    size_t remaining = len;
+    uintptr_t cur = start;
+    while (remaining > 0) {
+      size_t to_read = remaining < sizeof(buf) ? remaining : sizeof(buf);
+      memcpy(buf, (void*)cur, to_read);
+      write(out_fd, buf, to_read);
+      cur += to_read;
+      remaining -= to_read;
+    }
+    close(out_fd);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] wrote 0x%lx len=%zu -> %s", start, len, dumppath);
+  }
+  return 0;
+}
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (dlopen): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] dlopen(%s)", filename);
   }
-  return orig_dlopen(filename, flag);
+
+  // calling the original here probably already calls .init_array
+  void* result = orig_dlopen(filename, flag);
+  const char* soname = strrchr(filename, '/');
+  soname = soname ? soname + 1 : filename;
+
+  // if (
+  //     strstr(filename, "libholmes") ||
+  //     strstr(filename, "libreveny")) {
+  //   DumpContext ctx = {soname};
+  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
+  // }
+
+  return result;
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Hook (android_dlopen_ext): app is loading: %s", filename);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] android_dlopen_ext(%s)", filename);
   }
 
-  return orig_android_dlopen_ext(filename, flag, extinfo);
+  // calling the original here probably already calls .init_array
+  void* result = orig_android_dlopen_ext(filename, flag, extinfo);
+  // if (
+  //     strstr(filename, "libholmes") ||
+  //     strstr(filename, "libreveny")) {
+  //   const char* soname = strrchr(filename, '/');
+  //   soname = soname ? soname + 1 : filename;
+
+  //   DumpContext ctx = {soname};
+  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
+  // }
+
+  return result;
+}
+
+static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dl_iterate_phdr called!");
+  FilteredCallback ctx = {cb, data};
+  return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
 }
 
 // ==========================================
@@ -356,7 +457,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
 #define NATIVE_SENSORS_FUNCTIONS_COUNT 5
 
 ASensorManager* hook_ASensorManager_getInstance() {
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
   return nullptr;
 }
 
@@ -371,7 +472,7 @@ ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* manager,
   (void)ident;
   (void)cb;
   (void)data;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native createEventQueue");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native createEventQueue");
   return nullptr;
 }
 
@@ -380,14 +481,14 @@ int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** lis
   if (list != nullptr) {
     *list = nullptr;
   }
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getSensorList");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native getSensorList");
   return 0;
 }
 
 ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type) {
   (void)manager;
   (void)type;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors) Blocked Native getDefaultSensor");
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked Native getDefaultSensor");
   return nullptr;
 }
 
@@ -401,15 +502,16 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
     BIPAN_PANIC();
   }
 
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  // Call hookInstrumentation from Java
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
   if (hookMethod == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
   env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
   if (env->ExceptionCheck()) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentationNow threw an exception!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
   }
 
@@ -435,15 +537,16 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
     BIPAN_PANIC();
   }
 
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "hookInstrumentationNow", "()V");
+  // Call hookInstrumentation from Java
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
   if (hookMethod == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow fnPtr is null!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
   env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
   if (env->ExceptionCheck()) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentationNow threw an exception!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
   }
 
@@ -469,6 +572,7 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 
 // Legacy: __system_property_get
 static int hook_system_property_get(const char* name, char* value) {
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_get called!");
   if (name != nullptr) {
     auto it = g_prop_overrides.find(name);
     if (it != g_prop_overrides.end()) {
@@ -476,7 +580,7 @@ static int hook_system_property_get(const char* name, char* value) {
       value[91] = '\0';
       return (int)strlen(value);
     }
-    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
+    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         strncpy(value, it->second.c_str(), 91);
@@ -490,6 +594,7 @@ static int hook_system_property_get(const char* name, char* value) {
 
 // Modern: __system_property_read_callback
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) {
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] __system_property_read_callback called!");
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
@@ -583,7 +688,7 @@ int my_getifaddrs(struct ifaddrs** ifap) {
   return 0;
 }
 
-void registerNativeSensorsHooks() {
+void registerDobbyNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
   if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
 
@@ -631,11 +736,13 @@ void registerDobbyLinkerHooks() {
 
   void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
   void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+  void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
 
-  if (dlopen_addr && android_dlopen_ext_addr) {
+  if (dlopen_addr && android_dlopen_ext_addr && dl_iterate_phdr_addr) {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
+    int dl_iterate_phdrHookRes = DobbyHook(dl_iterate_phdr_addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
+    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0 && dl_iterate_phdrHookRes == 0) {
       linker_hooked = true;
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
@@ -643,7 +750,7 @@ void registerDobbyLinkerHooks() {
   }
 }
 
-void registerNativeSystemPropertiesHook() {
+void registerDobbyNativeSystemPropertiesHook() {
   void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
   void* addr_readcb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
   if (!addr_get || !addr_readcb) {
@@ -696,7 +803,7 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
       override_buf = it->second;
       effective = override_buf.c_str();
     }
-    if (telephonySpoofingAllowlist.find(package_name) == telephonySpoofingAllowlist.end()) {
+    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         override_buf = it->second;
@@ -713,6 +820,12 @@ void my_freeifaddrs(struct ifaddrs* ifa) {
     return;
   }
   orig_freeifaddrs(ifa);
+}
+
+static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data) {
+  FilteredCallback* ctx = (FilteredCallback*)data;
+  if (info->dlpi_addr == (ElfW(Addr))g_bipan_lib_start) return 0;
+  return ctx->real_cb(info, size, ctx->real_data);
 }
 
 #endif

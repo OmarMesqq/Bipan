@@ -33,10 +33,9 @@ extern "C" char __executable_start;  // Thanks, linker
 constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
 constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 // Variables shared across modules
-char safe_proc_pid_path[64] = {0};
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
-char package_name[256] = {0};
+char g_package_name[256] = {0};
 jclass g_bipanJavaClass = nullptr;
 // Broker
 SharedIPC* ipc_mem = nullptr;
@@ -49,6 +48,7 @@ struct LibBounds {
 };
 
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
+static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data);
 
 std::unordered_set<std::string> telephonySpoofingAllowlist = {
     "com.android.vending",
@@ -83,19 +83,14 @@ class Bipan : public zygisk::ModuleBase {
     }
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
-    snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
-    size_t i = 0;
-    while (raw_process_name[i] && i < 255) {
-      package_name[i] = raw_process_name[i];
-      i++;
-    }
-    package_name[i] = '\0';
-
+    strncpy(g_package_name, raw_process_name, 255);
+    
     g_broker_socket = api->connectCompanion();
     if (g_broker_socket < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: In-app Broker socket: %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -115,9 +110,16 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: Shared IPC mmap'ed at: %p", (void*)ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
+    ipc_mem->target_pid = getpid();
+    ipc_mem->appSockFd = g_broker_socket;
+    // TODO: protect the logger's `g_log_fd` too!
+
+    memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
+    strncpy(ipc_mem->package_name, g_package_name, 255);
 
     // Teleport the FD to the Root Companion
     send_fd(g_broker_socket, memfd);
@@ -135,15 +137,6 @@ class Bipan : public zygisk::ModuleBase {
     if (!isTargetApp) {
       return;
     }
-#ifdef DEBUG
-    registerDobbyLinkerHooks();
-    // allowing getifaddrs "leaks" your local IP even though it's fake
-    preCacheIfaddrs();
-    registerGetifaddrsHook();
-#endif
-    // Native (C/C++ setup)
-    registerNativeSystemPropertiesHook();
-    registerNativeSensorsHooks();
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -151,15 +144,26 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
 
-#ifdef DEBUG
     size_t lib_size = my_lib.end - my_lib.start;
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Library Bounds - Start: 0x%lx, End: 0x%lx, Size: %zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
-#endif
-    // Install process-wide SIGSYS handler for seccomp
-    registerSignalHandler();
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
-    // Java-layer setup
+    // char loadedSharedLibs[1024];
+    // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
+    // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
+
+    // Native (C/C++ setup)
+    registerDobbyLinkerHooks();
+    registerDobbyNativeSystemPropertiesHook();
+    registerDobbyNativeSensorsHooks();
+
+    // Unseal the VM
     initBipanJava();
+
+    // Install application-wide SIGSYS handler
+    registerSignalHandler();
+    // Setup tripwires for seccomp
     hookJniFunctions();
   }
 
@@ -169,6 +173,10 @@ class Bipan : public zygisk::ModuleBase {
   std::unordered_set<std::string> targetsSet;
   bool isTargetApp;
 
+  /**
+   * Calls `BipanJava`'s `install` method:
+   * Unseals the ART VM
+   */
   void initBipanJava() {
     // Map the .dex byte array into a Java DirectByteBuffer
     jobject byteBuffer = env->NewDirectByteBuffer(const_cast<unsigned char*>(classes_dex), classes_dex_len);
@@ -207,8 +215,8 @@ class Bipan : public zygisk::ModuleBase {
 
       g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
-      // install() BipanJava!
-      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "install", "()V");
+      // Call install from Java-side
+      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "i", "()V");
       if (installMethod == nullptr) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
         BIPAN_PANIC();
@@ -297,6 +305,12 @@ class Bipan : public zygisk::ModuleBase {
     env->DeleteLocalRef(newStr);
   }
 
+  /**
+   * 1. Spoofs `Build` fields
+   * 2. Hooks JNI sensors functions
+   * 3. Sets up the ART tripwires (`clampGrowthLimit`/`clearGrowthLimit`) for
+   * applying seccomp and loading BipanJava modules
+   */
   void hookJniFunctions() {
     jclass buildClass = env->FindClass("android/os/Build");
     if (buildClass == nullptr) {
@@ -381,6 +395,10 @@ class Bipan : public zygisk::ModuleBase {
   }
 };
 
+/**
+ * `dl_iterate_phdr` callback:
+ * Purpose: find Bipan's start and end in mappings
+ */
 static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
@@ -398,6 +416,19 @@ static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
     }
     return 1;  // Stop iteration
   }
+  return 0;
+}
+
+/**
+ * `dl_iterate_phdr` callback:
+ * Purpose: find all shared objects before app starts
+ */
+static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data) {
+  char entry[512];  // for each shared lib
+
+  snprintf(entry, sizeof(entry), "%s\n", info->dlpi_name);
+  strcat((char*)data, entry);
+
   return 0;
 }
 

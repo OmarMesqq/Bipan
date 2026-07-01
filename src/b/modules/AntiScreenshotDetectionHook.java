@@ -1,10 +1,10 @@
-package com.omarmesqq.bipan.modules;
+package b.modules;
 
 import android.content.Context;
 import android.os.IBinder;
 import android.util.Log;
 import android.view.WindowManager;
-import com.omarmesqq.bipan.BaseHook;
+import b.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;

@@ -17,7 +17,7 @@ Some examples are `SSAID` and `boot_count`. Bipan spoofs
 the former at each app launch<sup>[1]</sup> and
 always provides a fixed number of boot counts.
 
-- **Unlocking usage of apps**: apps, more frequently though, Crash Reporting SDKS, occasionally check whether the application was installed from an official App Store or if it was sideloaded. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps.
+- **Unlocking usage of apps**: apps, more frequently though, Crash Reporting SDKs, occasionally check whether the application was installed from an official App Store or if it was sideloaded. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps.
 Additionally, some apps, like banking and gaming ones, will flag or block you
 from using the app if you have Development Settings turned on your phone.
 Bipan reports `adb_enabled`, `development_settings_enabled`, and `wait_for_debugger` as false in all targeted apps.
@@ -34,11 +34,11 @@ if it deems the currently shown content as sensitive. Bipan bypasses
 these detection and blocking mechanisms, allowing you to screenshot and record
 whatever you want that's in **your** phone. *But please, exercise caution and good sense.*
 
-- **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN devices scanning/detection is defeated and your connection link properties always have a hardcoded fake local IP and trims VPN flags from it, as some apps complain about it.
+- **Privacy preserving networking**: Big Brother apps may have legitimate reasons to send discovery broadcasts to your network or inspect details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking, so LAN probing is either spoofed or blocked, your connection link properties always have a hardcoded fake local IP and VPN flags trimmed, as some apps complain about it.
 
-- **Some security measures**: Bipan blocks requests for the `listen` syscall, which allow your phone to act as server and accept inbound connections<sup>[2]</sup>. Direct binary execution via `execve`/`execveat` is strictly forbidden. Some apps use this for root checking, reading its own `logcat` or straight-up opening a shell!
+- **Some security measures**: Bipan blocks requests for the `listen` syscall, which allows your phone to act as server and accept inbound connections<sup>[2]</sup>. Direct binary execution via `execve`/`execveat` is strictly forbidden. Some apps use this for root checking, reading its own `logcat` or straight-up opening a shell!
 
-- **Root hiding**: I need to be extra careful here. Bipan *does* successfully spoof `su` binaries and tampered mounts common in Magisk, but recall root discovery has evolved significatly and some app developers will resort to the Play Integrity API which Bipan has absolutely no control over.
+- **Root hiding**: I need to be extra careful here. Bipan *does* successfully spoof `su` binaries and tampered mounts common in Magisk, but recall root discovery has evolved significantly and some app developers will resort to the Play Integrity API which Bipan has absolutely no control over.
 
 - **Protection of sensitive filesystem nodes**: potentially identifying and indicators of tampering like `/etc/hosts`, `cpuinfo`, `meminfo`, `build.prop`,
 user-added CAs are shielded by Bipan.
@@ -50,21 +50,13 @@ user-added CAs are shielded by Bipan.
 
 [2] This obviously breaks apps which may use this for good reasons such setting up a hotspot or a NAS-like server.
 
-To learn how Bipan does this refer to [INNARDS.md](./INNARDS.md)
-
-
-## Prerequisites
-- An Android device running the `aarch64`/`arm64-v8a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
-- Android SDK and NDK. The NDK should be at least `25.1.8937393`.
-- SDK and NDK binaries in your `PATH` as well common Unix CLI utils such as `xxd`
-
-## Building
-1. Clone this repo
-2. Run the `build_module.sh` script
-3. The module's flashable zip will be at the project's root with the name `bipan.zip`
+To learn how Bipan does this refer to [this blog post](https://i2dk.com/essays/todo)
 
 
 ## Usage
+### Prerequisites
+- An Android device running the `aarch64`/`arm64-v8a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
+
 At each app launch, Bipan is invoked by Zygisk and applies the patches to the app
 using info at the module's private folder: `/data/adb/modules/bipan/targets/`  
 To jail an app using Bipan, simply `touch` a file inside this folder with the package name of the targeted app:
@@ -81,6 +73,28 @@ touch /data/adb/modules/bipan/targets/some.app.to.sandbox
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
 any sort of modification to the app's memory.
+
+
+
+## Building
+### Prerequisites
+1. Android SDK, NDK and JDK tools/binaries  in your `PATH`
+  - SDK: Android 16/API level 36 (`android-36`)
+  - NDK >= `25.1.8937393`
+  - JDK: >= `21` (though it may work with 17 or 11)
+  - `ANDROID_HOME` and `NDK_HOME` set
+
+2. Ensure you also have common Unix CLI utils in `PATH`, in special, `xxd` and `zip`
+
+3. `r8`'s JAR file at root of repo:
+  - at least `9.3.7-dev`
+  - you can get it with `curl --get https://storage.googleapis.com/r8-releases/raw/9.3.7-dev/r8lib.jar -o r8lib.jar`
+
+
+4. Clone this repo
+5. Run the `build_module.sh` script
+6. The module's flashable zip will be at the project's root with the name `bipan.zip`
+
 
 ## Testing (does this work?)
 At the project's root you will find a folder named `Grunfeld`

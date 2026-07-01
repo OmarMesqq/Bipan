@@ -7,5 +7,5 @@ rm -rf src/jni/libs
 rm -rf src/jni/obj
 rm -f classes.dex
 rm -f bipan.zip
-
+rm -rf r8analysis
 rm -rf module/zygisk
