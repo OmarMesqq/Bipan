@@ -12,13 +12,10 @@
 
 // Globals populated in entrypoint
 
-// Used in signal handler for checking if app is reading virtual filesystem
-extern char safe_proc_pid_path[64];
 // Used in hooks module to apply PC-relative seccomp in the JNI tripwires
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
-
-extern char package_name[256];
+extern char g_package_name[256];
 extern jclass g_bipanJavaClass;
 extern std::unordered_set<std::string> telephonySpoofingAllowlist;
 

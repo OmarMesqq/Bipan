@@ -33,10 +33,9 @@ extern "C" char __executable_start;  // Thanks, linker
 constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
 constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 // Variables shared across modules
-char safe_proc_pid_path[64] = {0};
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
-char package_name[256] = {0};
+char g_package_name[256] = {0};
 jclass g_bipanJavaClass = nullptr;
 // Broker
 SharedIPC* ipc_mem = nullptr;
@@ -84,13 +83,7 @@ class Bipan : public zygisk::ModuleBase {
     }
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
-    snprintf(safe_proc_pid_path, sizeof(safe_proc_pid_path), "/proc/%d/", getpid());
-    size_t i = 0;
-    while (raw_process_name[i] && i < 255) {
-      package_name[i] = raw_process_name[i];
-      i++;
-    }
-    package_name[i] = '\0';
+    strncpy(g_package_name, raw_process_name, 255);
 
     g_broker_socket = api->connectCompanion();
     if (g_broker_socket < 0) {
@@ -125,7 +118,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->appSockFd = g_broker_socket;
 
     memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
-    strncpy(ipc_mem->package_name, package_name, 255);
+    strncpy(ipc_mem->package_name, g_package_name, 255);
 
     // Teleport the FD to the Root Companion
     send_fd(g_broker_socket, memfd);
