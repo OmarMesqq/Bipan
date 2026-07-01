@@ -12,7 +12,7 @@
 
 // Globals populated in entrypoint
 
-// Used in hooks module to apply PC-relative seccomp in the JNI tripwires
+// Used in hooks module
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 extern char g_package_name[256];
@@ -39,14 +39,14 @@ enum IpcAction {
 
 #define MAX_STACK_TRACE 60
 
-// Some fields here are unused
 typedef struct {
   volatile int lock;
   volatile int status;
 
   uintptr_t caller_pc;
   uintptr_t caller_fp;
-  uintptr_t caller_lr;
+  uintptr_t stack_trace[MAX_STACK_TRACE];
+
   pid_t target_pid;
 
   int nr;  // syscall number
@@ -59,8 +59,6 @@ typedef struct {
 
   int action;
   long ret;  // return value provided by kernel
-
-  uintptr_t stack_trace[MAX_STACK_TRACE];
 
   int appSockFd;
   int spoofedFd;

@@ -151,7 +151,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   lock_ipc();
 
-  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30]; // LR: link register
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
   ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
   ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);

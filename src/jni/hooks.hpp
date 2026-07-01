@@ -202,6 +202,16 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"init.svc.usbd", "stopped"},
     {"init.svc.vaultkeeper", ""},
     {"ro.hardware.chipname", ""},
+
+    {"init.svc.vendor.lineage_health", ""},
+    {"init.svc_debug_pid.vendor.lineage_health", ""},
+    {"ro.boottime.vendor.lineage_health", ""},
+    {"ro.lineage.build.version", ""},
+    {"ro.lineage.device", ""},
+    {"ro.lineage.display.version", ""},
+    {"ro.lineage.releasetype", ""},
+    {"ro.lineage.version", ""},
+    {"ro.lineagelegal.url", ""},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
