@@ -186,7 +186,7 @@ void dump_mem(void* addr, int bytes) {
 
 void dump_lib_info_with_auxv() {
   const unsigned long types[] = {
-      AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY, AT_EXECFN, AT_PHENT
+      AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY, AT_EXECFN, AT_PHENT, AT_SYSINFO_EHDR
 
   };
 
@@ -213,6 +213,10 @@ void dump_lib_info_with_auxv() {
       }
       case AT_ENTRY: {
         write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_ENTRY: %#lx", val);
+        break;
+      }
+      case AT_SYSINFO_EHDR: {
+        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_SYSINFO_EHDR: %#lx", val);
         break;
       }
       case AT_EXECFN: {

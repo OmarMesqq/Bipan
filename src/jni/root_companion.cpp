@@ -35,6 +35,9 @@ static void handle_fetch_targets(int sockfd);
  */
 static void companion_handler(int sock) {
   CompanionCommand cmd;
+  if (!initializeLogger()) {
+    return;
+  }
 
   // Get the command ID from the client
   if (read(sock, &cmd, sizeof(cmd)) <= 0) {

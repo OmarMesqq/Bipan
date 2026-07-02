@@ -60,7 +60,12 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void preAppSpecialize(AppSpecializeArgs* args) override {
+    initializeLogger();
     fetchTargetProcesses();
+
+    if (!initializeLogger()) {
+      BIPAN_PANIC();
+    }
 
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
@@ -101,7 +106,7 @@ class Bipan : public zygisk::ModuleBase {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
 
     strncpy(g_package_name, raw_process_name, 255);
-    
+
     g_broker_socket = api->connectCompanion();
     if (g_broker_socket < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");

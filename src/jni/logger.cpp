@@ -44,9 +44,6 @@ bool initializeLogger() {
   }
 
   g_log_fd = fd;
-  pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-  pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
-  write_to_logcat_async(ANDROID_LOG_WARN, "BipanLogger", "[*] Logger started for PID %d, TID %d with fd: %d\n", pid, tid, g_log_fd);
   return true;
 }
 
