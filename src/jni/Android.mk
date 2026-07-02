@@ -13,6 +13,7 @@ LOCAL_SRC_FILES := bipan.cpp \
 										bipan_hash_table.cpp \
 										broker.cpp \
 										filter.cpp \
+										logger.cpp \
 										root_companion.cpp \
 										sigsys_handler.cpp \
 										spoofer.cpp
