@@ -183,7 +183,7 @@ JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_tes
             AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY,
             AT_RANDOM, AT_HWCAP, AT_CLKTCK,
             AT_UID, AT_EUID, AT_GID, AT_EGID, AT_SECURE, AT_PLATFORM,
-            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF
+            AT_EXECFN, AT_EXECFD, AT_PHENT, AT_NOTELF, AT_SYSINFO_EHDR
     };
 
     for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
@@ -191,6 +191,7 @@ JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_tes
         unsigned long val = getauxval(type);
 
         switch (type) {
+            case AT_SYSINFO_EHDR:     snprintf(entry, sizeof(entry), "AT_SYSINFO_EHDR      = %#lx\n\n", val); break;
             case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR (address of Program Header Table)     = %#lx\n\n", val); break;
             case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM (amount of program headers in the executable's header table)    = %lu\n\n",  val); break;
             case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ (page size)   = %lu\n\n",  val); break;

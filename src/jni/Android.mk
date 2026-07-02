@@ -36,6 +36,7 @@ else
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
 		-Wno-unused-parameter
+# 		-fno-stack-protector -fPIC
 
 	LOCAL_LDFLAGS := -Wl,--gc-sections \
 		-Wl,--exclude-libs,ALL \

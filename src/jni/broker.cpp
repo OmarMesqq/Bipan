@@ -103,6 +103,9 @@ static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
+  if (!initializeLogger()) {
+    return;
+  }
   const char* last_dot = strrchr(ipc_mem->package_name, '.');
   const char* short_name = last_dot ? last_dot + 1 : ipc_mem->package_name;
 
