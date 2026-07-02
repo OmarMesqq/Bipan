@@ -140,10 +140,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_openat) {
     spoofedFd = bht.retrieve((const char*)arg1);
     if (spoofedFd != -1) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Hash table HIT: serving %s with fd %d", (const char*)arg1, spoofedFd);
-      // Reset position so app always reads from beginning
-      lseek(spoofedFd, 0, SEEK_SET);
-      ctx->uc_mcontext.regs[0] = (__u64)spoofedFd;
+      int app_fd = (int)arm64_raw_syscall(__NR_fcntl, spoofedFd, F_DUPFD_CLOEXEC, 0, 0, 0, 0);
+      if (app_fd == -1) {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Failed to dup cached fd %d (%s). Raw errno: %d", spoofedFd, (const char*)arg1, errno);
+      }
+
+      ctx->uc_mcontext.regs[0] = (__u64)app_fd;
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] openat HIT: serving %s(fd in table: %d) with duped fd %d", (const char*)arg1, spoofedFd, app_fd);
       in_sigsys_handler = false;
       return;
     }
@@ -151,7 +154,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   lock_ipc();
 
-  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30]; // LR: link register
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];  // LR: link register
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;
   ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];
   ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
@@ -163,6 +166,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
   ipc_mem->spoofedFd = spoofedFd;
+  ipc_mem->appLogcatFd = -1;
   ipc_mem->argv_count = 0;
   ipc_mem->envp_count = 0;
   ipc_mem->vm_iov_count = 0;
@@ -180,11 +184,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
-    spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, arg1, MFD_CLOEXEC, 0, 0, 0, 0);
+    spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, arg1, MFD_CLOEXEC, 0, 0, 0, 0);
 
-    ipc_mem->arg5 = pre_fd;  // leverage unused 5th register for pre_fd (the one the app will receive)
+    ipc_mem->arg5 = pre_fd;
     ipc_mem->spoofedFd = spoofedFd;
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat ||
              nr == __NR_newfstatat ||
@@ -193,6 +198,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
              nr == __NR_readlinkat ||
              nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+    if (nr == __NR_readlinkat) {
+      ipc_mem->appLogcatFd = getLogcatFd();
+    }
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
 
@@ -370,7 +378,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     if (nr == __NR_openat) {
       if (result == (long)pre_fd) {
-        // Broker accepted: copy pre_fd content into spoofedFd
         char buf[4096];
         ssize_t n;
         lseek(pre_fd, 0, SEEK_SET);
@@ -379,11 +386,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         }
         lseek(spoofedFd, 0, SEEK_SET);
 
-        // Close pre_fd — app will never see it
+        // pre_fd was only ever a transport buffer — always close it now
         arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
         pre_fd = -1;
 
-        // Cache spoofedFd by filename
         char cachedFilename[256];
         local_memset(cachedFilename, 0, sizeof(cachedFilename));
         local_strncpy(cachedFilename, (const char*)arg1, 255);
@@ -393,14 +399,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s(fd: %d) for future use", cachedFilename, spoofedFd);
             bht.logStats();
           }
+          // App never sees spoofedFd directly — always hand out a dup
+          int app_fd = (int)arm64_raw_syscall(__NR_fcntl, spoofedFd, F_DUPFD_CLOEXEC, 0, 0, 0, 0);
+          result = app_fd;
+        } else {
+          // Not cached: spoofedFd has no future use, so this open can just own it directly.
+          // App receiving spoofedFd here is fine since nothing else will ever reference it again.
+          result = spoofedFd;
         }
-
-        // Return spoofedFd to app, NOT pre_fd
-        result = spoofedFd;
-      } else {
-        // Broker denied — close both
-        if (pre_fd >= 0) arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
-        if (spoofedFd >= 0) arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
       }
     }
   }

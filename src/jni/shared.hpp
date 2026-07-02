@@ -62,6 +62,7 @@ typedef struct {
 
   int appSockFd;
   int spoofedFd;
+  int appLogcatFd;
   char package_name[256];
 
   // execve info
