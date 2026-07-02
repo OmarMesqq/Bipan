@@ -12,14 +12,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "logger.hpp"
 #include "shared.hpp"
 #include "utils.hpp"
 
 /**
- * The Broker calls this to "teleport" an FD to the Target.
+ * The app calls this to send an fd to the companion
  */
-inline void send_fd(int socket, int fd) {
+__attribute__((always_inline)) inline ssize_t send_fd(int socket, int fd) {
   struct msghdr msg = {};
   char buf[CMSG_SPACE(sizeof(int))] = {0};
   char dummy = '!';
@@ -36,15 +35,14 @@ inline void send_fd(int socket, int fd) {
   cmsg->cmsg_len = CMSG_LEN(sizeof(int));
   *((int*)CMSG_DATA(cmsg)) = fd;
 
-  if (sendmsg(socket, &msg, 0) < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "send_fd failed! Socket: %d | FD: %d | Err: %s", socket, fd, strerror(errno));
-  }
+  ssize_t ret = sendmsg(socket, &msg, 0);
+  return ret;
 }
 
 /**
- * The Target calls this in the SIGSYS handler to "catch" the FD.
+ * Called by the companion to capture the sockfd of its end of the socketpair
  */
-__attribute__((always_inline)) inline int recv_fd(int socket) {
+inline int recv_fd(int socket) {
   struct msghdr msg;
   local_memset(&msg, 0, sizeof(msg));
 
@@ -69,19 +67,19 @@ __attribute__((always_inline)) inline int recv_fd(int socket) {
     return -1;
   }
 
-  // The kernel has now placed a NEW FD into our table! Extract it.
+  // The kernel has now placed a new fd into our table: extract it
   return *((int*)CMSG_DATA(cmsg));
 }
 
 /**
- * Puts the thread to sleep IF the value at *addr equals 'expected'
+ * Puts the calling thread to sleep if `*addr` = `expected`
  */
 __attribute__((always_inline)) inline void futex_wait(volatile int* addr, int expected) {
   arm64_raw_syscall(__NR_futex, (long)addr, FUTEX_WAIT, expected, 0, 0, 0);
 }
 
 /**
- * Puts the thread to sleep IF the value at *addr equals 'expected'
+ * Puts the calling thread to sleep if `*addr` = `expected` with wake up timeout of `timeout_ms`
  */
 __attribute__((always_inline)) inline int futex_wait_timeout(volatile int* addr, int expected, long timeout_ms) {
   struct timespec ts;
@@ -99,7 +97,7 @@ __attribute__((always_inline)) inline int futex_wait_timeout(volatile int* addr,
 }
 
 /**
- * Wakes up exactly 1 thread that is sleeping on *addr
+ * Wakes up exactly 1 thread that is sleeping (waiting) on  `*addr`
  */
 __attribute__((always_inline)) inline void futex_wake(volatile int* addr) {
   arm64_raw_syscall(__NR_futex, (long)addr, FUTEX_WAKE, 1, 0, 0, 0);
@@ -107,19 +105,19 @@ __attribute__((always_inline)) inline void futex_wake(volatile int* addr) {
 
 static volatile int ipc_lock_state = 0;
 
-// Async-signal-safe lock
+// AS-safe lock
 inline void lock_ipc() {
-  // Writes 1 and returns the old value.
-  // If it returns 1, it was already locked, so we sleep on the futex.
+  // Atomically writes 1 and returns the old value
+  // if it returns 1, the IPC was already locked, so we sleep on the futex
   while (__sync_lock_test_and_set(&ipc_lock_state, 1)) {
     futex_wait(&ipc_lock_state, 1);
   }
 }
 
-// Async-signal-safe unlock
+// AS-safe unlock
 inline void unlock_ipc() {
   __sync_lock_release(&ipc_lock_state);  // sets back to 0 atomically
-  futex_wake(&ipc_lock_state);           // wakes up the next waiting thread
+  futex_wake(&ipc_lock_state);           // wake up the "next" waiting thread
 }
 
 #define IN_USE 0

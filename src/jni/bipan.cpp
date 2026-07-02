@@ -138,13 +138,16 @@ class Bipan : public zygisk::ModuleBase {
     memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
     strncpy(ipc_mem->package_name, g_package_name, 255);
 
-    // Teleport the FD to the Root Companion
-    send_fd(g_broker_socket, memfd);
+    // Send the Broker sock to the companion
+    if (send_fd(g_broker_socket, memfd) == -1) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] send_fd failed. sockfd: %d | fd: %d | errno: %s", g_broker_socket, memfd, strerror(errno));
+      BIPAN_PANIC();
+    }
 
     // Close our local FD handle
     close(memfd);
 
-    // Save the socket so sigsys_handler can recv_fd() openat results
+    // Save the our sockfd of the pair
     sv[1] = g_broker_socket;
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
