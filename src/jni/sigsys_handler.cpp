@@ -387,9 +387,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
         char cachedFilename[256];
         local_memset(cachedFilename, 0, sizeof(cachedFilename));
         local_strncpy(cachedFilename, (const char*)arg1, 255);
+
         if (shouldCache(cachedFilename)) {
           if (bht.insert(cachedFilename, spoofedFd)) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s for future use", cachedFilename);
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s(fd: %d) for future use", cachedFilename, spoofedFd);
             bht.logStats();
           }
         }
@@ -430,10 +431,4 @@ static void scrub_socket(struct sockaddr* s) {
 
     // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
   }
-}
-
-inline static bool shouldCache(const char* filename) {
-  return (
-      (shouldFakeFile(filename) != nullptr) ||
-      is_mounts(filename));
 }

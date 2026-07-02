@@ -490,4 +490,10 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   return nullptr;
 }
 
+__attribute__((always_inline)) inline static bool shouldCache(const char* filename) {
+  return (
+      (shouldFakeFile(filename) != nullptr) ||
+      is_mounts(filename));
+}
+
 #endif

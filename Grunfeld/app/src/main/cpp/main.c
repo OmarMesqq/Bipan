@@ -14,7 +14,6 @@
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
-#include "test_runner.h"
 #include <stdlib.h>
 #include <sys/types.h>
 #include <netdb.h>
@@ -29,6 +28,7 @@
 #include <sys/auxv.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#include <linux/limits.h>
 
 #include "socket_helper.h"
 
@@ -544,62 +544,58 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, 
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getprocselfmapsFd(JNIEnv *env, jobject thiz) {
-    const char* path = "/proc/self/maps";
-
-    long fd = arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)path, (long)O_RDONLY, 0, 0, 0);
-    if (fd == -1) {
-        return (*env)->NewStringUTF(env, "Failed to openat(/proc/self/maps)");
-    }
-
-    const char* selfFdPath = "/proc/self/fd";
-    char report[16384] = {0};
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEnv *env, jobject thiz, jobjectArray filenames) {
+    jsize len = (*env)->GetArrayLength(env, filenames);
+    char report[MAX_REPORT_SIZE] = {0};
+    char entry[512] = {0};
+    char errorBuffer[128] = {0};
+    long fd = -1;
     size_t used = 0;
-    report[0] = '\0';
+    char symlinkPath[PATH_MAX] = {0};
 
-    struct DIR* dir = opendir(selfFdPath);
-    if (!dir) {
-        return (*env)->NewStringUTF(env, "Failed to opendir(/proc/self/fd)");
+    for (int i = 0; i < len; i++) {
+        symlinkPath[0] = '\0';
+        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
+        if (jstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (cstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        fd = arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
+        if (fd == -1) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s)", cstr);
+            (*env)->ReleaseStringUTFChars(env, jstr, cstr);
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
+        char fdPath[64];
+        snprintf(fdPath, sizeof(fdPath), "/proc/self/fd/%ld", fd);
+
+        ssize_t readlinkLen = readlink(fdPath, symlinkPath, sizeof(symlinkPath) - 1);
+        if (readlinkLen < 0) {
+            snprintf(entry, sizeof(entry), "%s -> (not a symlink or error: %s)\n", cstr, strerror(errno));
+        } else {
+            // readlink doesn't NULL-terminate...do it ourselves
+            symlinkPath[readlinkLen] = '\0';
+            snprintf(entry, sizeof(entry), "%s -> %s\n", cstr, symlinkPath);
+        }
+
+        strcat(report, entry);
+
+        (*env)->ReleaseStringUTFChars(env, jstr, cstr);
+        (*env)->DeleteLocalRef(env, jstr);
+        arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
     }
 
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        // skip . and ..
-        if (entry->d_name[0] == '.') {
-            continue;
-        }
-
-        // Interested only in /proc/self/maps fd
-        int conversionRet = atoi(entry->d_name);
-        if (conversionRet != fd) {
-            continue;
-        }
-
-        // Build "/proc/self/fd/<entry>"
-        char linkpath[PATH_MAX];
-        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", selfFdPath, entry->d_name);
-        if (ret < 0 || (size_t)ret >= sizeof(linkpath)) {
-            continue;
-        }
-
-        // Read symlink target
-        char target[PATH_MAX];
-        ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
-        if (len < 0) {
-            continue;
-        }
-        target[len] = '\0';
-
-        int line = snprintf(report + used, sizeof(report) - used, "/proc/self/fd/%s -> %s\n", entry->d_name, target);
-        if (line < 0 || (size_t)line >= sizeof(report) - used) {
-            break;
-        }
-        used += (size_t)line;
-    }
-
-    closedir(dir);
-    close((int) fd);
     return (*env)->NewStringUTF(env, report);
 }
 
