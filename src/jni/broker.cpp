@@ -354,7 +354,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             if (ipc_mem->spoofedFd != -1) {
               spoofedFds.insert(ipc_mem->spoofedFd);
               preFds[ipc_mem->spoofedFd] = path_payload;
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached handler's spoofed fd(%d) and app's pre_fd(%d)", ipc_mem->spoofedFd, target_fd);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's spoofed fd(%d) and pre_fd(%d)", ipc_mem->spoofedFd, target_fd);
             } else {
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's pre_fd(%d)", target_fd);
             }

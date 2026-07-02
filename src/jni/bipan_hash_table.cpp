@@ -75,8 +75,8 @@ void BipanHashTable::logStats() {
     }
     filledSlots++;
   }
-  unsigned int loadFactor = filledSlots / this->tableSize;
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Occupied slots: %u | Load factor: %u", filledSlots, loadFactor);
+  // unsigned int loadFactor = filledSlots / this->tableSize;
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Occupied slots: %u | Max slots: %u", filledSlots, this->tableSize);
 }
 
 BipanHashTable::~BipanHashTable() {

@@ -47,7 +47,7 @@ fun NativeScreen() {
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
-    var procSelfMapsFdInfo by remember { mutableStateOf("/proc/self/maps FD not read yet") }
+    var someFileFdInfo by remember { mutableStateOf("testOpenFileAndReadLink not queried") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -169,10 +169,38 @@ fun NativeScreen() {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get /proc/self/maps FD and possible link", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfMapsFdInfo, "/proc/self/maps FD not read yet")
-                    Button(onClick = { procSelfMapsFdInfo = NativeLibWrapper.getprocselfmapsFd() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("open(/proc/self/fd) && readlink(maps)")
+                    Text(text = "Open some file and get its symlink", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(someFileFdInfo, "testOpenFileAndReadLink not queried")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                "/proc/self/maps",
+                                "/proc/self/smaps",
+                                "/proc/mounts",
+                                "/proc/self/mounts",
+                                "/proc/self/mountstats",
+                                "/proc/self/mountinfo",
+                                "/proc/self/status",
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                                "/proc/version",
+                                "/proc/cpuinfo",
+                                "/proc/meminfo",
+                                "/proc/sys/kernel/perf_event_paranoid",
+                                "/sys/devices/system/cpu/possible",
+                                "/sys/devices/system/cpu/online",
+                                "/sys/devices/system/cpu/present",
+                                "/sys/devices/system/cpu/kernel_max",
+                                "/proc/sys/kernel/version",
+                                "/proc/sys/kernel/osrelease",
+                                "/proc/asound/version",
+                                )
+                            someFileFdInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
+                       },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open(somefile) && readlink(somefile)")
                     }
                 }
 
