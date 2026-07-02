@@ -365,7 +365,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
     result = ipc_mem->ret;
 
-    // Deserialize outputs with their exact lengths
+    // Deserialize outputs
     if (nr == __NR_uname && result == 0) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }

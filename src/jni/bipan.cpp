@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -17,6 +18,7 @@
 #include "broker.hpp"
 #include "dobby.h"
 #include "hooks.hpp"
+#include "memory/mem_tools.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
@@ -36,21 +38,13 @@ constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
 char g_package_name[256] = {0};
-jclass g_bipanJavaClass = nullptr;
+jclass g_bipan_java_class = nullptr;
 // Broker
 SharedIPC* ipc_mem = nullptr;
 int sv[2] = {0};
 int g_broker_socket = -1;
 
-struct LibBounds {
-  uintptr_t start = 0;
-  uintptr_t end = 0;
-};
-
-static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
-static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data);
-
-std::unordered_set<std::string> telephonySpoofingAllowlist = {
+std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.android.vending",
     "com.google.android.gms",
     "com.whatsapp",
@@ -70,19 +64,42 @@ class Bipan : public zygisk::ModuleBase {
 
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "preAppSpecialize: process name is nil. Aborting.");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] preAppSpecialize: process name is nil. Aborting.");
       BIPAN_PANIC();
     }
     isTargetApp = isTarget(raw_process_name);
 
-    // Not a target: remove ourselves...
+    // Not a target: remove ourselves
     if (!isTargetApp) {
       env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
       return;
     }
 
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "preAppSpecialize: will apply sandbox for %s", raw_process_name);
+    // Get lib bounds in mappings for PC-relative seccomp
+    LibBounds my_lib;
+    dl_iterate_phdr(find_lib_bounds, &my_lib);
+    g_bipan_lib_start = my_lib.start;
+    g_bipan_lib_end = my_lib.end;
+    size_t lib_size = my_lib.end - my_lib.start;
+#ifdef DEBUG
+    dl_iterate_phdr(dump_lib_info_with_dlitphdr, nullptr);
+    dump_lib_info_with_auxv();
+
+    char threadName[16];
+    memset(threadName, 0, sizeof(threadName));
+    if (prctl(PR_GET_NAME, threadName) == -1) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't get lib's thread name. errno: %s", strerror(errno));
+    }
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib's thread name: %s", threadName == nullptr ? "nullptr!" : threadName);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+#endif
+    if (!scrub_elf_header()) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to scrub lib's headers. Aborting!");
+      BIPAN_PANIC();
+    }
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
+
     strncpy(g_package_name, raw_process_name, 255);
     
     g_broker_socket = api->connectCompanion();
@@ -90,7 +107,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: In-app Broker socket: %d", g_broker_socket);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] In-app Broker socket: %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -110,7 +127,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] preAppSpecialize: Shared IPC mmap'ed at: %p", (void*)ipc_mem);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Shared IPC mmap'ed at: %p", (void*)ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
@@ -138,21 +155,6 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    // Get lib bounds in mappings for PC-relative seccomp
-    LibBounds my_lib;
-    dl_iterate_phdr(find_lib_bounds, &my_lib);
-    g_bipan_lib_start = my_lib.start;
-    g_bipan_lib_end = my_lib.end;
-
-    size_t lib_size = my_lib.end - my_lib.start;
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
-
-    // char loadedSharedLibs[1024];
-    // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
-    // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
-
     // Native (C/C++ setup)
     registerDobbyLinkerHooks();
     registerDobbyNativeSystemPropertiesHook();
@@ -165,6 +167,14 @@ class Bipan : public zygisk::ModuleBase {
     registerSignalHandler();
     // Setup tripwires for seccomp
     hookJniFunctions();
+#ifdef DEBUG
+    // char loadedSharedLibs[1024];
+    // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
+    // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
+    dump_mem(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
+#endif
   }
 
  private:
@@ -213,7 +223,7 @@ class Bipan : public zygisk::ModuleBase {
     } else {
       jclass payloadClass = static_cast<jclass>(payloadClassObj);
 
-      g_bipanJavaClass = static_cast<jclass>(env->NewGlobalRef(payloadClass));
+      g_bipan_java_class = static_cast<jclass>(env->NewGlobalRef(payloadClass));
 
       // Call install from Java-side
       jmethodID installMethod = env->GetStaticMethodID(payloadClass, "i", "()V");
@@ -394,43 +404,6 @@ class Bipan : public zygisk::ModuleBase {
     orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
   }
 };
-
-/**
- * `dl_iterate_phdr` callback:
- * Purpose: find Bipan's start and end in mappings
- */
-static int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
-  auto* bounds = reinterpret_cast<LibBounds*>(data);
-
-  // Match our library base address with the loaded segment address
-  extern char __executable_start;
-  if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
-    bounds->start = info->dlpi_addr;
-
-    // Iterate through program headers to find the maximum memory span
-    for (int i = 0; i < info->dlpi_phnum; i++) {
-      uintptr_t seg_end = bounds->start + info->dlpi_phdr[i].p_vaddr + info->dlpi_phdr[i].p_memsz;
-      if (seg_end > bounds->end) {
-        bounds->end = seg_end;
-      }
-    }
-    return 1;  // Stop iteration
-  }
-  return 0;
-}
-
-/**
- * `dl_iterate_phdr` callback:
- * Purpose: find all shared objects before app starts
- */
-static int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data) {
-  char entry[512];  // for each shared lib
-
-  snprintf(entry, sizeof(entry), "%s\n", info->dlpi_name);
-  strcat((char*)data, entry);
-
-  return 0;
-}
 
 // Register the module class
 REGISTER_ZYGISK_MODULE(Bipan)
