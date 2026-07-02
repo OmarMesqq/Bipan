@@ -16,8 +16,8 @@
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
 extern char g_package_name[256];
-extern jclass g_bipanJavaClass;
-extern std::unordered_set<std::string> telephonySpoofingAllowlist;
+extern jclass g_bipan_java_class;
+extern std::unordered_set<std::string> g_telephony_spoofing_allowlist;
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,

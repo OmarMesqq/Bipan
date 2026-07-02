@@ -30,7 +30,6 @@ struct FilteredCallback {
   void* real_data;
 };
 
-// sysprop overrides equivalent to `spoofBuildFields` ART fields
 static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.board", "husky"},
     {"ro.product.brand", "google"},
@@ -310,55 +309,7 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 // ==========================================
 // Linker hooks
 // ==========================================
-struct DumpContext {
-  const char* target_soname;
-};
 
-static int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data) {
-  DumpContext* ctx = (DumpContext*)data;
-
-  if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
-    return 0;
-  }
-
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] found: %s base=0x%lx", info->dlpi_name, (uintptr_t)info->dlpi_addr);
-
-  for (int i = 0; i < info->dlpi_phnum; i++) {
-    const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
-
-    if (phdr->p_type != PT_LOAD) {
-      // interested only in sections to be eagerly loaded by the linker
-      continue;
-    }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[phdr] flags=0x%x vaddr=0x%lx memsz=%zu filesz=%zu", phdr->p_flags, phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
-
-    uintptr_t start = info->dlpi_addr + phdr->p_vaddr;
-    size_t len = phdr->p_memsz;
-
-    char dumppath[128];
-    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", g_package_name, start);
-
-    int out_fd = open(dumppath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (out_fd < 0) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] failed to open %s: %s", dumppath, strerror(errno));
-      continue;
-    }
-
-    uint8_t buf[4096];
-    size_t remaining = len;
-    uintptr_t cur = start;
-    while (remaining > 0) {
-      size_t to_read = remaining < sizeof(buf) ? remaining : sizeof(buf);
-      memcpy(buf, (void*)cur, to_read);
-      write(out_fd, buf, to_read);
-      cur += to_read;
-      remaining -= to_read;
-    }
-    close(out_fd);
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] wrote 0x%lx len=%zu -> %s", start, len, dumppath);
-  }
-  return 0;
-}
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
@@ -497,19 +448,19 @@ ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type)
 // ==========================================
 
 void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
-  if (g_bipanJavaClass == nullptr) {
+  if (g_bipan_java_class == nullptr) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: BipanJava class is null!");
     BIPAN_PANIC();
   }
 
   // Call hookInstrumentation from Java
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipan_java_class, "h", "()V");
   if (hookMethod == nullptr) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
-  env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
+  env->CallStaticVoidMethod(g_bipan_java_class, hookMethod);
   if (env->ExceptionCheck()) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
@@ -532,19 +483,19 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
 }
 
 void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
-  if (g_bipanJavaClass == nullptr) {
+  if (g_bipan_java_class == nullptr) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: BipanJava class is null!");
     BIPAN_PANIC();
   }
 
   // Call hookInstrumentation from Java
-  jmethodID hookMethod = env->GetStaticMethodID(g_bipanJavaClass, "h", "()V");
+  jmethodID hookMethod = env->GetStaticMethodID(g_bipan_java_class, "h", "()V");
   if (hookMethod == nullptr) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation fnPtr is null!");
     BIPAN_PANIC();
   }
 
-  env->CallStaticVoidMethod(g_bipanJavaClass, hookMethod);
+  env->CallStaticVoidMethod(g_bipan_java_class, hookMethod);
   if (env->ExceptionCheck()) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: hookInstrumentation threw an exception!");
     BIPAN_PANIC();
@@ -580,7 +531,7 @@ static int hook_system_property_get(const char* name, char* value) {
       value[91] = '\0';
       return (int)strlen(value);
     }
-    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
+    if (g_telephony_spoofing_allowlist.find(g_package_name) == g_telephony_spoofing_allowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         strncpy(value, it->second.c_str(), 91);
@@ -803,7 +754,7 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
       override_buf = it->second;
       effective = override_buf.c_str();
     }
-    if (telephonySpoofingAllowlist.find(g_package_name) == telephonySpoofingAllowlist.end()) {
+    if (g_telephony_spoofing_allowlist.find(g_package_name) == g_telephony_spoofing_allowlist.end()) {
       auto it = g_telephony_prop_overrides.find(name);
       if (it != g_telephony_prop_overrides.end()) {
         override_buf = it->second;

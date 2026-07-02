@@ -9,7 +9,8 @@ include $(PREBUILT_STATIC_LIBRARY)
 # Build Bipan
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
-LOCAL_SRC_FILES := bipan.cpp \
+LOCAL_SRC_FILES :=  memory/mem_tools.cpp \
+										bipan.cpp \
 										bipan_hash_table.cpp \
 										broker.cpp \
 										filter.cpp \
