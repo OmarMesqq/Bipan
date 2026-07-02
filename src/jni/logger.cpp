@@ -21,6 +21,63 @@ struct __attribute__((packed)) log_header {
 
 static int g_log_fd = -1;
 
+static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg);
+
+bool initializeLogger() {
+  if (g_log_fd != -1) {
+    return true;
+  }
+
+  int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
+  if (fd < 0) {
+    return false;
+  }
+
+  struct sockaddr_un addr;
+  local_memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  local_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+
+  if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
+    arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+    return false;
+  }
+
+  g_log_fd = fd;
+  pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+  write_to_logcat_async(ANDROID_LOG_WARN, "BipanLogger", "[*] Logger started for PID %d, TID %d with fd: %d\n", pid, tid, g_log_fd);
+  return true;
+}
+
+int getLogcatFd() {
+  return g_log_fd;
+}
+
+/**
+ * Writes a message to Android Logcat in an AS-safe way
+ *
+ * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
+ */
+void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
+  if (g_log_fd == -1) {
+    return;
+  }
+
+  char buffer[1024];
+
+  /**
+   * Welp, this is from libc. Probably not AS-safe :/
+   * Formats the string into our local buffer
+   */
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+
+  write_to_logcat_raw(prio, tag, buffer);
+}
+
 /**
  * Doing unbuffered I/O and socket creation/destruction for every log
  * is a bad idea.
@@ -28,22 +85,8 @@ static int g_log_fd = -1;
  * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
  */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
-  if (g_log_fd < 0) {
-    int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
-    if (fd < 0) {
-      return;
-    }
-
-    struct sockaddr_un addr;
-    local_memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    local_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
-
-    if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
-      arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
-      return;
-    }
-    g_log_fd = fd;  // Store for reuse
+  if (g_log_fd == -1) {
+    return;
   }
 
   struct timespec now;
@@ -74,24 +117,4 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
 
   // Atomic write to socket
   arm64_raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
-}
-
-/**
- * Writes a message to Android Logcat in an AS-safe way
- *
- * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
- */
-void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
-  char buffer[1024];  // Local stack buffer, no heap
-
-  /**
-   * Welp, this is from libc. Probably not AS-safe :/
-   * Formats the string into our local buffer
-   */
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(buffer, sizeof(buffer), fmt, args);
-  va_end(args);
-
-  write_to_logcat_raw(prio, tag, buffer);
 }

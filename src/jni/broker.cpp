@@ -128,7 +128,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::unordered_map<int, std::string> preFds;
 
   pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-  std::__thread_id tid = std::this_thread::get_id();
+  pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
 
   // Open target's pidfd

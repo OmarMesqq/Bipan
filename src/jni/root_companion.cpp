@@ -64,7 +64,7 @@ static void companion_handler(int sock) {
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
     pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-    std::__thread_id tid = std::this_thread::get_id();
+    pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker exited. Companion's PID: %d | TID: %d", tid, pid);
   }
 }
