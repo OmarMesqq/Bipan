@@ -87,7 +87,7 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
     size_t lib_size = my_lib.end - my_lib.start;
-#ifdef DEBUG
+#ifdef VERBOSE_LOGGING
     dl_iterate_phdr(dump_lib_info_with_dlitphdr, nullptr);
     dump_lib_info_with_auxv();
 
@@ -176,7 +176,7 @@ class Bipan : public zygisk::ModuleBase {
     registerSignalHandler();
     // Setup tripwires for seccomp
     hookJniFunctions();
-#ifdef DEBUG
+#ifdef VERBOSE_LOGGING
     // char loadedSharedLibs[1024];
     // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
     // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);

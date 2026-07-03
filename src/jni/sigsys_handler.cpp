@@ -15,7 +15,6 @@
 
 #include <atomic>
 
-#include "bipan_hash_table.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
@@ -32,8 +31,6 @@ struct kernel_sigaction {
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void scrub_socket(struct sockaddr* s);
 inline static bool shouldCache(const char* filename);
-
-static BipanHashTable bht;
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -142,22 +139,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // app-side FD to be filled by Broker in relevant syscalls
   int pre_fd = -1;
-  int spoofedFd = -1;
-
-  if (nr == __NR_openat) {
-    spoofedFd = bht.retrieve((const char*)arg1);
-    if (spoofedFd != -1) {
-      int app_fd = (int)arm64_raw_syscall(__NR_fcntl, spoofedFd, F_DUPFD_CLOEXEC, 0, 0, 0, 0);
-      if (app_fd == -1) {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Failed to dup cached fd %d (%s). Raw errno: %d", spoofedFd, (const char*)arg1, errno);
-      }
-
-      ctx->uc_mcontext.regs[0] = (__u64)app_fd;
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] openat HIT: serving %s(fd in table: %d) with duped fd %d", (const char*)arg1, spoofedFd, app_fd);
-      in_sigsys_handler = false;
-      return;
-    }
-  }
 
   lock_ipc();
 
@@ -172,7 +153,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
-  ipc_mem->spoofedFd = spoofedFd;
   ipc_mem->appLogcatFd = -1;
   ipc_mem->argv_count = 0;
   ipc_mem->envp_count = 0;
@@ -191,12 +171,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialize Strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, arg1, MFD_CLOEXEC, 0, 0, 0, 0);
-    spoofedFd = (int)arm64_raw_syscall(__NR_memfd_create, arg1, MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
 
     ipc_mem->arg5 = pre_fd;
-    ipc_mem->spoofedFd = spoofedFd;
-    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat ||
              nr == __NR_newfstatat ||
@@ -365,9 +342,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
       // Cleanup if Broker rejected
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
-      if (spoofedFd >= 0) {
-        arm64_raw_syscall(__NR_close, spoofedFd, 0, 0, 0, 0, 0);
-      }
     }
 
     result = ipc_mem->ret;
@@ -382,39 +356,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
       local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
       app_buf[copy_len] = '\0';
-    }
-    if (nr == __NR_openat) {
-      if (result == (long)pre_fd) {
-        char buf[4096];
-        ssize_t n;
-        lseek(pre_fd, 0, SEEK_SET);
-        while ((n = read(pre_fd, buf, sizeof(buf))) > 0) {
-          write(spoofedFd, buf, n);
-        }
-        lseek(spoofedFd, 0, SEEK_SET);
-
-        // pre_fd was only ever a transport buffer — always close it now
-        arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
-        pre_fd = -1;
-
-        char cachedFilename[256];
-        local_memset(cachedFilename, 0, sizeof(cachedFilename));
-        local_strncpy(cachedFilename, (const char*)arg1, 255);
-
-        if (shouldCache(cachedFilename)) {
-          if (bht.insert(cachedFilename, spoofedFd)) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Caching %s(fd: %d) for future use", cachedFilename, spoofedFd);
-            bht.logStats();
-          }
-          // App never sees spoofedFd directly — always hand out a dup
-          int app_fd = (int)arm64_raw_syscall(__NR_fcntl, spoofedFd, F_DUPFD_CLOEXEC, 0, 0, 0, 0);
-          result = app_fd;
-        } else {
-          // Not cached: spoofedFd has no future use, so this open can just own it directly.
-          // App receiving spoofedFd here is fine since nothing else will ever reference it again.
-          result = spoofedFd;
-        }
-      }
     }
   }
 

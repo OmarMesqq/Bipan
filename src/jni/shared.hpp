@@ -8,7 +8,9 @@
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
-// #define DEBUG
+// #define VERBOSE_LOGGING
+// #define EXPERIMENTAL
+#define BROKER_EXTENDED_LOGGING
 
 // Globals populated in entrypoint
 
@@ -61,7 +63,6 @@ typedef struct {
   long ret;  // return value provided by kernel
 
   int appSockFd;
-  int spoofedFd;
   int appLogcatFd;
   char package_name[256];
 
