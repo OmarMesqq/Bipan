@@ -95,8 +95,9 @@ class Bipan : public zygisk::ModuleBase {
     memset(threadName, 0, sizeof(threadName));
     if (prctl(PR_GET_NAME, threadName) == -1) {
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't get lib's thread name. errno: %s", strerror(errno));
+    } else {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib's thread name: %s", threadName);
     }
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib's thread name: %s", threadName == nullptr ? "nullptr!" : threadName);
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 #endif
     if (!scrub_elf_header()) {
