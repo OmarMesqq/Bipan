@@ -547,7 +547,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEnv *env, jobject thiz, jobjectArray filenames) {
     jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[MAX_REPORT_SIZE] = {0};
+    char report[20000] = {0};
     char entry[512] = {0};
     char errorBuffer[128] = {0};
     long fd = -1;
@@ -591,6 +591,108 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         }
 
         strcat(report, entry);
+
+        snprintf(entry, sizeof(entry), "======================================\n\n");
+        strcat(report, entry);
+        struct stat statbuf = {0};
+        // if path = "", operate on the file referred to by dirfd
+        // If path is a symbolic link, do not dereference it: instead return information about the link itself
+        int newfstatatFlags = AT_EMPTY_PATH  | AT_SYMLINK_NOFOLLOW;
+
+        long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, 0 , (long) cstr, (long) &statbuf, newfstatatFlags, 0, 0);
+
+        if (nwfstatRetOnPath != 0) {
+            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof (entry),"stat on %s (PATH) successful:\n", cstr);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "UID: %u\n", statbuf.st_uid);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "GID: %u\n", statbuf.st_gid);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Size: %ld bytes\n", (long)statbuf.st_size);
+            strcat(report, entry);
+
+            // Timestamps
+            char access_time_str[64];
+            char modify_time_str[64];
+            char change_time_str[64];
+            struct tm tm_info;
+
+            // 1. Format Access Time
+            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // 2. Format Modification Time
+            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // 3. Format Status Change Time
+            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // Log the human-readable versions with their nanoseconds appended
+            snprintf(entry, sizeof(entry), "Access time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Modification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Status Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
+            strcat(report, entry);
+        }
+        if (readlinkLen < 0) {
+            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n", symlinkPath);
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful:\n", symlinkPath);
+            strcat(report, entry);
+
+            snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "UID: %u\n", statbuf.st_uid);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "GID: %u\n", statbuf.st_gid);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Size: %ld bytes\n", (long)statbuf.st_size);
+            strcat(report, entry);
+
+            // Timestamps
+            char access_time_str[64];
+            char modify_time_str[64];
+            char change_time_str[64];
+            struct tm tm_info;
+
+            // 1. Format Access Time
+            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // 2. Format Modification Time
+            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // 3. Format Status Change Time
+            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+            // Log the human-readable versions with their nanoseconds appended
+            snprintf(entry, sizeof(entry), "Access time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Modification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "Status Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
+            strcat(report, entry);
+        }
+
+
+        snprintf(entry, sizeof(entry), "======================================\n\n");
+        strcat(report, entry);
+
 
         (*env)->ReleaseStringUTFChars(env, jstr, cstr);
         (*env)->DeleteLocalRef(env, jstr);
