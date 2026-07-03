@@ -106,37 +106,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   if (!initializeLogger()) {
     return;
   }
-  const char* last_dot = strrchr(ipc_mem->package_name, '.');
-  const char* short_name = last_dot ? last_dot + 1 : ipc_mem->package_name;
-
-  // If the last segment is generic/short (e.g. "unstable", "music", "app"),
-  // prefer the second-to-last segment for more identifying info
-  if (last_dot && local_strlen(short_name) <= 4) {
-    char buf[256];
-    strncpy(buf, ipc_mem->package_name, last_dot - ipc_mem->package_name);
-    buf[last_dot - ipc_mem->package_name] = '\0';
-    const char* second_last_dot = strrchr(buf, '.');
-    short_name = second_last_dot ? second_last_dot + 1 : buf;
-  }
-
-  // 16 bytes only: https://man7.org/linux/man-pages/man2/PR_SET_NAME.2const.html
-  char threadName[16];
-  snprintf(threadName, sizeof(threadName), "bb-%s", short_name);
-  prctl(PR_SET_NAME, threadName, 0, 0, 0);
+  prctl(PR_SET_NAME, "BipanBroker", 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
-  std::unordered_map<std::string, std::string> preFdsByIdentity;  // memfd identity -> original requested path
-  std::unordered_set<std::string> spoofedFdIdentities;
-
-  auto resolve_fd_identity = [](pid_t target_pid, int fd, char* out_identity, size_t out_size) -> bool {
-    char proc_fd_path[64];
-    snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", target_pid, fd);
-    ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, out_identity, out_size - 1);
-    if (len <= 0) return false;
-    out_identity[len] = '\0';
-    return true;
-  };
 
   pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
@@ -359,43 +332,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               close(fake_fd);
               break;
             }
-            std::string canonical_target = real_path;
-            {
-              char target_relative[600];
-              snprintf(target_relative, sizeof(target_relative), "/proc/%d/root%s", ipc_mem->target_pid, real_path);
-              char link_buf[512];
-              ssize_t link_len = readlinkat(AT_FDCWD, target_relative, link_buf, sizeof(link_buf) - 1);
-              if (link_len > 0) {
-                link_buf[link_len] = '\0';
-                canonical_target = link_buf;
-              }
-              // readlinkat failing (EINVAL: not a symlink, or ENOENT) just means
-              // real_path IS the canonical location — canonical_target already defaults to it.
-            }
-            // Resolve each fd's real kernel identity BEFORE caching by it.
-            // This identity string is unique per memfd_create() call and never gets reused,
-            // unlike the fd number, so it's safe to use as a permanent map key.
-            char pre_fd_identity[128];
-            bool have_pre_identity = resolve_fd_identity(ipc_mem->target_pid, target_fd, pre_fd_identity, sizeof(pre_fd_identity));
-            if (have_pre_identity) {
-              preFdsByIdentity[pre_fd_identity] = canonical_target;
-            } else {
-              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Failed to resolve identity for pre_fd(%d)", target_fd);
-            }
-
-            if (ipc_mem->spoofedFd != -1) {
-              char spoofed_identity[128];
-              bool have_spoofed_identity = resolve_fd_identity(ipc_mem->target_pid, ipc_mem->spoofedFd, spoofed_identity, sizeof(spoofed_identity));
-              if (have_spoofed_identity) {
-                spoofedFdIdentities.insert(spoofed_identity);
-                preFdsByIdentity[spoofed_identity] = canonical_target;
-                write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's spoofed fd(%d) and pre_fd(%d) -> %s", ipc_mem->spoofedFd, target_fd, canonical_target.c_str());
-              } else {
-                write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Failed to resolve identity for spoofedFd(%d)", ipc_mem->spoofedFd);
-              }
-            } else {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Cached app's pre_fd(%d)", target_fd);
-            }
 
             char buf[4096];
             ssize_t n;
@@ -413,14 +349,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             // Tell target to use the fd it already has
             ipc_mem->ret = target_fd;
             ipc_mem->action = ACTION_USE_RET;
-
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's preFd pool size: %zu", preFdsByIdentity.size());
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Broker's spoofedFd pool size: %zu", spoofedFdIdentities.size());
           }
-#ifdef DEBUG
+#ifdef BROKER_EXTENDED_LOGGING
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted openat(%s)", path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted openat(%s)", path_payload);
             }
           }
 #endif
@@ -457,10 +390,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
           }
-#ifdef DEBUG
+#ifdef BROKER_EXTENDED_LOGGING
           else {
             if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[D] Allowing untrusted %s(%s)", action_name, path_payload);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted %s(%s)", action_name, path_payload);
             }
           }
 #endif
@@ -740,34 +673,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           } else if (starts_with(resolved, pid_prefix)) {
             queried_fd = atoi(resolved + strlen(pid_prefix));
           }
-        }
-
-        if (queried_fd != -1) {
-          char current_identity[128];
-          if (resolve_fd_identity(ipc_mem->target_pid, queried_fd, current_identity, sizeof(current_identity))) {
-            auto it = preFdsByIdentity.find(current_identity);
-            if (it != preFdsByIdentity.end()) {
-              // Confirmed: this fd, right now, really is a memfd we cached — safe to answer from cache.
-              strncpy(out, it->second.c_str(), bufsiz - 1);
-              out[bufsiz - 1] = '\0';
-              ipc_mem->ret = (long)strlen(it->second.c_str());
-              ipc_mem->action = ACTION_USE_RET;
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] readlinkat: spoofed cached fd: %s -> %s", resolved, it->second.c_str());
-              break;
-            } else if (spoofedFdIdentities.count(current_identity)) {
-              // Truly internal fd with no legitimate path to reveal
-              strncpy(out, "/dev/null", bufsiz - 1);
-              out[bufsiz - 1] = '\0';
-              ipc_mem->ret = (long)strlen("/dev/null");
-              ipc_mem->action = ACTION_USE_RET;
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed Bipan fd: %s -> /dev/null", resolved);
-              break;
-            }
-            // current_identity didn't match anything we know about — this fd number has been
-            // reused by the app for something unrelated since we last cached it. Fall through
-            // to genuine resolution below instead of serving a stale answer.
-          }
-          // resolve_fd_identity failed (fd doesn't exist / already closed) — also fall through.
         }
 
         // Due to different mount namespaces, use the `root` symlink that privileged processes can open
