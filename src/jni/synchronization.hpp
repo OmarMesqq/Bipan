@@ -1,19 +1,11 @@
 #ifndef SYNCHRONIZATION_HPP
 #define SYNCHRONIZATION_HPP
 
-#include <errno.h>
 #include <linux/futex.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#include "shared.hpp"
-#include "utils.hpp"
 
 /**
  * The app calls this to send an fd to the companion
@@ -118,26 +110,6 @@ inline void lock_ipc() {
 inline void unlock_ipc() {
   __sync_lock_release(&ipc_lock_state);  // sets back to 0 atomically
   futex_wake(&ipc_lock_state);           // wake up the "next" waiting thread
-}
-
-#define IN_USE 0
-#define FREE_TO_GO 1
-
-static volatile int lock = FREE_TO_GO;
-inline void* atomic_compare(void* arg) {
-  volatile int* addr = &lock;
-  int expected = 0;
-  int desired = 1;
-  asm goto(
-      "cas %w0, %w1, [%2]\n\t"
-      "cbz %w0, %l[first]"
-      : "+r"(expected)
-      : "r"(desired), "r"(addr)
-      : "memory"
-      : first);
-  return NULL;
-first:
-  return NULL;
 }
 
 #endif
