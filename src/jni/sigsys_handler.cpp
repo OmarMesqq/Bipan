@@ -30,7 +30,6 @@ struct kernel_sigaction {
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void scrub_socket(struct sockaddr* s);
-inline static bool shouldCache(const char* filename);
 
 void registerSignalHandler() {
   struct kernel_sigaction sa_SYS = {};
@@ -137,9 +136,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  // app-side FD to be filled by Broker in relevant syscalls
-  int pre_fd = -1;
-
   lock_ipc();
 
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];  // LR: link register
@@ -153,23 +149,25 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
-  ipc_mem->appLogcatFd = -1;
-  ipc_mem->argv_count = 0;
-  ipc_mem->envp_count = 0;
+#ifdef DEBUG
   ipc_mem->vm_iov_count = 0;
+#endif
 
   // Zero-out string payloads
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
-  local_memset(ipc_mem->argv_payload, 0, sizeof(ipc_mem->argv_payload));
-  local_memset(ipc_mem->envp_payload, 0, sizeof(ipc_mem->envp_payload));
+#ifdef DEBUG
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
   local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
-
+#endif
   __sync_synchronize();
 
   // Serialize Strings
+
+  // app-side FD to be filled by Broker in relevant syscalls
+  int pre_fd = -1;
+
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
 
@@ -182,54 +180,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
              nr == __NR_readlinkat ||
              nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-    if (nr == __NR_readlinkat) {
-      ipc_mem->appLogcatFd = getLogcatFd();
-    }
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
-
-    if (nr == __NR_execve) {
-      // Serialize argv into a separate buffer, joined by some delimiter
-      char** const argv = (char** const)arg1;
-      if (argv) {
-        size_t off = 0;
-        for (int i = 0; argv[i] != nullptr && i < 16; i++) {
-          size_t len = local_strnlen(argv[i], 128);
-          if (off + len + 1 >= sizeof(ipc_mem->argv_payload)) break;
-          local_memcpy(ipc_mem->argv_payload + off, argv[i], len);
-          off += len;
-          ipc_mem->argv_payload[off++] = '\0';  // delimiter between args
-        }
-        ipc_mem->argv_count = off;  // total bytes written, or track count separately
-      } else {
-        ipc_mem->argv_count = 1;
-        local_strncpy(ipc_mem->argv_payload, "argv array empty", 18);
-      }
-
-      // Serialize envp, but only capture entries of interest
-      char** const envp = (char** const)arg2;
-      if (envp) {
-        size_t off = 0;
-        for (int i = 0; envp[i] != nullptr && i < 64; i++) {
-          // Only keep vars worth seeing — keeps payload small
-          if (local_strncmp(envp[i], "LD_PRELOAD=", 11) != 0 &&
-              local_strncmp(envp[i], "LD_LIBRARY_PATH=", 16) != 0 &&
-              local_strncmp(envp[i], "PATH=", 5) != 0) {
-            continue;
-          }
-          size_t len = local_strnlen(envp[i], 256);
-          if (off + len + 1 >= sizeof(ipc_mem->envp_payload)) break;
-          local_memcpy(ipc_mem->envp_payload + off, envp[i], len);
-          off += len;
-          ipc_mem->envp_payload[off++] = '\0';
-        }
-        ipc_mem->envp_count = off;
-      } else {
-        ipc_mem->envp_count = 1;
-        local_strncpy(ipc_mem->envp_payload, "envp array empty", 18);
-      }
-    }
-  } else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
+  }
+#ifdef DEBUG
+  else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
     ipc_mem->arg0 = arg0;  // target pid
 
     const struct iovec* remote_iov = (const struct iovec*)arg3;
@@ -242,6 +197,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
     ipc_mem->vm_iov_count = (riovcnt < 4) ? riovcnt : 4;
   }
+#endif
 
   // Serialize binary structures with their exact lengths
   long sock_ptr = 0;
@@ -321,7 +277,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
-    // fork family handling:
+    // fork/exec family handling:
     // clear reentrancy flag and IPC lock before the exec'ing
     if (nr == __NR_execve || nr == __NR_execveat) {
       in_sigsys_handler = false;
@@ -350,6 +306,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (nr == __NR_uname && result == 0) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
+#ifdef DEBUG
     if (nr == __NR_readlinkat && result > 0) {
       char* app_buf = (char*)ipc_mem->arg2;
       size_t app_bufsiz = (size_t)ipc_mem->arg3;
@@ -357,6 +314,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
       app_buf[copy_len] = '\0';
     }
+#endif
   }
 
   ipc_mem->status = IDLE;

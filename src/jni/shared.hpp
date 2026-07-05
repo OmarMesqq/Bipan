@@ -8,9 +8,10 @@
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
+// #define DEBUG
 // #define VERBOSE_LOGGING
 // #define EXPERIMENTAL
-#define BROKER_EXTENDED_LOGGING
+// #define BROKER_EXTENDED_LOGGING
 
 // Globals populated in entrypoint
 
@@ -62,20 +63,14 @@ typedef struct {
   int action;
   long ret;  // return value provided by kernel
 
-  int appSockFd;
-  int appLogcatFd;
   char package_name[256];
 
-  // execve info
-  char argv_payload[1024];  // null-delimited list of argv strings
-  int argv_count;
-  char envp_payload[512];
-  int envp_count;
-
+#ifdef DEBUG
   // process_vm_readv and process_vm_writev info
   uintptr_t vm_iov_addr[4];
   size_t vm_iov_len[4];
   int vm_iov_count;
+#endif
 } SharedIPC;
 
 /**

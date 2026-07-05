@@ -77,8 +77,6 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
-static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len);
-static inline bool is_discovery_probe(struct sockaddr* addr);
 std::string get_sockaddr_info(const struct sockaddr* sa);
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
@@ -231,31 +229,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_EXIT_PROCESS;
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
-          if (nr == __NR_execve && ipc_mem->argv_count > 0) {
-            char log_buf[1536] = {0};
-            size_t off = 0;
-            off += snprintf(log_buf + off, sizeof(log_buf) - off, "argv: [");
-            const char* p = ipc_mem->argv_payload;
-            const char* end = ipc_mem->argv_payload + ipc_mem->argv_count;
-            while (p < end && off < sizeof(log_buf) - 1) {
-              size_t len = strnlen(p, end - p);
-              off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", p);
-              p += len + 1;
-            }
-            off += snprintf(log_buf + off, sizeof(log_buf) - off, "]");
-
-            if (ipc_mem->envp_count > 0) {
-              off += snprintf(log_buf + off, sizeof(log_buf) - off, " envp: [");
-              const char* ep = ipc_mem->envp_payload;
-              const char* eend = ipc_mem->envp_payload + ipc_mem->envp_count;
-              while (ep < eend && off < sizeof(log_buf) - 1) {
-                size_t len = strnlen(ep, eend - ep);
-                off += snprintf(log_buf + off, sizeof(log_buf) - off, "\"%s\" ", ep);
-                ep += len + 1;
-              }
-              snprintf(log_buf + off, sizeof(log_buf) - off, "]");
-            }
-          }
         }
         break;
       }
@@ -272,16 +245,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
           if (shouldDenyAccess(path_payload)) {
-            if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
-            }
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
+            if (starts_with(path_payload, "/dev/__properties__")) {
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
+            }
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || is_proc_status(path_payload) || shouldFakeFile(path_payload)) {
+          } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
             // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -292,17 +266,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
             // Broker generates the fake file locally
             int fake_fd = -1;
-            if (is_maps(path_payload)) {
-              fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
-            } else if (is_smaps(path_payload)) {
-              fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
-            } else if (is_mounts(path_payload)) {
+            if (is_mounts(path_payload)) {
               fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
-            } else if (is_proc_status(path_payload)) {
-              fake_fd = clean_proc_status((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
@@ -385,7 +350,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (is_maps(path_payload) || is_smaps(path_payload) || is_mounts(path_payload) || is_proc_status(path_payload) || shouldFakeFile(path_payload)) {
+          } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
@@ -447,29 +412,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
-        bool is_discovery = false;
-
-        if (sock_payload->sa_family == AF_INET) {
-          uint16_t port = ntohs(((struct sockaddr_in*)sock_payload)->sin_port);
-          if (port == 5353 || port == 1900) is_discovery = true;
-        } else if (sock_payload->sa_family == AF_INET6) {
-          uint16_t port = ntohs(((struct sockaddr_in6*)sock_payload)->sin6_port);
-          if (port == 5353 || port == 1900) is_discovery = true;
-        }
-
-        if (is_lan_address(sock_payload) || is_discovery) {
-          char addr_str[64];
-          format_ip_addr(sock_payload, addr_str, sizeof(addr_str));
-
+        if (is_lan_address(sock_payload)) {
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
-
-          const char* type = is_discovery ? "discovery" : "LAN";
         }
         break;
       }
       case __NR_sendto: {
-        if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
+        if (is_lan_address(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
@@ -485,7 +435,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendmsg: {
-        if (is_lan_address(sock_payload) || is_discovery_probe(sock_payload)) {
+        if (is_lan_address(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
@@ -587,112 +537,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             !starts_with(filename, "/data/app") &&
             !starts_with(filename, "/storage/emulated/0/Android")) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
-        }
-        break;
-      }
-      case __NR_readlinkat: {
-        int dirfd = (int)ipc_mem->arg0;
-        const char* pathname = ipc_mem->string_payload[0] != '\0' ? ipc_mem->string_payload : nullptr;
-        size_t bufsiz = (size_t)ipc_mem->arg3;
-
-        int app_sock = ipc_mem->appSockFd;
-        int app_logcat_sock = ipc_mem->appLogcatFd;
-
-        char* out = (char*)ipc_mem->out_buffer;
-        if (bufsiz > sizeof(ipc_mem->out_buffer) - 1) {
-          bufsiz = sizeof(ipc_mem->out_buffer) - 1;
-        }
-
-        char path_self1[64], path_pid1[64];
-        snprintf(path_self1, sizeof(path_self1), "/proc/self/fd/%d", app_sock);
-        snprintf(path_pid1, sizeof(path_pid1), "/proc/%d/fd/%d", ipc_mem->target_pid, app_sock);
-        auto is_broker_comm_sock = [&](const char* p) {
-          return p && (strcmp(p, path_self1) == 0 || strcmp(p, path_pid1) == 0);
-        };
-
-        char path_self2[64], path_pid2[64];
-        snprintf(path_self2, sizeof(path_self2), "/proc/self/fd/%d", app_logcat_sock);
-        snprintf(path_pid2, sizeof(path_pid2), "/proc/%d/fd/%d", ipc_mem->target_pid, app_logcat_sock);
-        auto is_app_logSock = [&](const char* p) {
-          return p && (strcmp(p, path_self2) == 0 || strcmp(p, path_pid2) == 0);
-        };
-
-        // The path we'll actually readlink
-        char resolved[512];
-        if (dirfd == AT_FDCWD) {
-          if (pathname && strncmp(pathname, "/proc/self/", 11) == 0) {
-            // Rewrite /proc/self/ -> /proc/<target_pid>/
-            snprintf(resolved, sizeof(resolved), "/proc/%d/%s", ipc_mem->target_pid, pathname + 11);
-          } else {
-            snprintf(resolved, sizeof(resolved), "%s", pathname ? pathname : "");
-          }
-        } else {
-          // Resolve dirfd via /proc/<pid>/fd/<dirfd>, then append pathname
-          char proc_fd_path[512];
-          snprintf(proc_fd_path, sizeof(proc_fd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
-          char base_dir[512];
-          ssize_t len = readlinkat(AT_FDCWD, proc_fd_path, base_dir, sizeof(base_dir) - 1);
-          if (len == -1) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat: failed to resolve dirfd %d: %s", dirfd, strerror(errno));
-            // let app handle
-            ipc_mem->ret = len;
-            ipc_mem->action = ACTION_USE_RET;
-            break;
-          }
-          base_dir[len] = '\0';
-          snprintf(resolved, sizeof(resolved), "%s/%s", base_dir, pathname ? pathname : "");
-        }
-
-        // Spoof check: broker's own comm/log sockets — these are legitimately fd-number-stable
-        // for the lifetime of this connection, so checking by fd number here is still correct.
-        const bool isBrokerCommSock = is_broker_comm_sock(resolved);
-        const bool isAppLogSock = is_app_logSock(resolved);
-        if (isBrokerCommSock || isAppLogSock) {
-          strncpy(out, "/dev/null", bufsiz - 1);
-          out[bufsiz - 1] = '\0';
-          ipc_mem->ret = (long)strlen("/dev/null");
-          ipc_mem->action = ACTION_USE_RET;
-          if (isAppLogSock) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed app's g_log_fd: %d -> /dev/null", app_logcat_sock);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] readlinkat: spoofed app's g_broker_socket: %d -> /dev/null", app_sock);
-          }
-          break;
-        }
-
-        // Is `resolved` a /proc/.../fd/<N> query about one of the app's fds?
-        // If so, extract N and re-resolve its CURRENT real identity before trusting any cache.
-        int queried_fd = -1;
-        {
-          char self_prefix[32], pid_prefix[64];
-          snprintf(self_prefix, sizeof(self_prefix), "/proc/self/fd/");
-          snprintf(pid_prefix, sizeof(pid_prefix), "/proc/%d/fd/", ipc_mem->target_pid);
-
-          if (starts_with(resolved, self_prefix)) {
-            queried_fd = atoi(resolved + strlen(self_prefix));
-          } else if (starts_with(resolved, pid_prefix)) {
-            queried_fd = atoi(resolved + strlen(pid_prefix));
-          }
-        }
-
-        // Due to different mount namespaces, use the `root` symlink that privileged processes can open
-        char target_relative[600];
-        snprintf(target_relative, sizeof(target_relative), "/proc/%d/root%s", ipc_mem->target_pid, resolved);
-        ssize_t real_len = readlinkat(AT_FDCWD, target_relative, out, bufsiz - 1);
-        if (real_len == -1) {
-          ipc_mem->ret = -errno;
-          ipc_mem->action = ACTION_USE_RET;
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "readlinkat(%s) failed: %s", resolved, strerror(errno));
-          break;
-        }
-        out[real_len] = '\0';
-        ipc_mem->ret = real_len;
-        ipc_mem->action = ACTION_USE_RET;
-
-        char procPidFdPath[256];
-        snprintf(procPidFdPath, sizeof(procPidFdPath), "/proc/%d/fd", ipc_mem->target_pid);
-        if (!starts_with(resolved, "/proc/self/fd") && !starts_with(resolved, procPidFdPath)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] unprotected readlinkat: %s -> %s", resolved, out);
         }
         break;
       }
@@ -1029,44 +873,6 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
   }
   inside_remote_patcher = false;
-}
-
-static void format_ip_addr(struct sockaddr* addr, char* out_buf, size_t buf_len) {
-  if (addr->sa_family == AF_INET) {
-    struct sockaddr_in* sin = (struct sockaddr_in*)addr;
-    uint32_t ip = ntohl(sin->sin_addr.s_addr);
-    snprintf(out_buf, buf_len, "%d.%d.%d.%d:%d",
-             (ip >> 24) & 0xFF, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF,
-             ntohs(sin->sin_port));
-  } else if (addr->sa_family == AF_INET6) {
-    snprintf(out_buf, buf_len, "[IPv6 Address]");
-  } else {
-    snprintf(out_buf, buf_len, "non-IP");
-  }
-}
-
-/**
- * Returns `true` if an IPv4 or IPv6 socket
- * has either port 5353 or 1900
- *
- * TODO: necessary?
- */
-static inline bool is_discovery_probe(struct sockaddr* addr) {
-  if (!addr) return false;
-
-  // IPv4
-  if (addr->sa_family == AF_INET) {
-    uint16_t port = ntohs(((struct sockaddr_in*)addr)->sin_port);
-    return (port == 5353 || port == 1900);
-  }
-
-  // IPv6
-  if (addr->sa_family == AF_INET6) {
-    uint16_t port = ntohs(((struct sockaddr_in6*)addr)->sin6_port);
-    return (port == 5353 || port == 1900);
-  }
-
-  return false;
 }
 
 std::string get_sockaddr_info(const struct sockaddr* sa) {
