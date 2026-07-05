@@ -359,10 +359,6 @@ inline bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
       local_strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu4")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu5")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu6")) ||
-      (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu7")) ||
       // Crash reports
       starts_with(pathname, "/dev/__properties__") ||
       starts_with(pathname, "/data/anr") ||
@@ -400,6 +396,10 @@ inline bool shouldDenyAccess(const char* pathname) {
 
 inline bool shouldAllowDevProps(const char* pathname) {
   return (
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:custom_version_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:init_service_status_private_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||

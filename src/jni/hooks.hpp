@@ -183,7 +183,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.com.google.clientidbase", "android-google"},
     {"ro.boot.selinux", "enforcing"},
     {"ro.boot.warranty_bit", ""},
-    {"init.svc.adb_root", ""},
     {"persist.sys.usb.config", ""},
     {"init.svc.adbd", "stopped"},
 
@@ -199,7 +198,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"bluetooth.device.class_of_device", "90,2,4"},
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"init.svc.usbd", "stopped"},
-    {"init.svc.vaultkeeper", ""},
+
     {"ro.hardware.chipname", ""},
 
     {"init.svc.vendor.lineage_health", ""},
@@ -211,6 +210,11 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.lineage.releasetype", ""},
     {"ro.lineage.version", ""},
     {"ro.lineagelegal.url", ""},
+
+    // init_service_status_private_prop
+    {"init.svc.vaultkeeper", ""},
+    {"init.svc.vendor_flash_recovery", ""},
+    {"init.svc.adb_root", ""},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
@@ -308,7 +312,6 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 // ==========================================
 // Linker hooks
 // ==========================================
-
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {

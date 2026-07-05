@@ -104,7 +104,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   if (!initializeLogger()) {
     return;
   }
-  prctl(PR_SET_NAME, "BipanBroker", 0, 0, 0);
+  ipc_mem->package_name;
+  char threadName[16];
+  snprintf(threadName, sizeof(threadName), "bb-%s", ipc_mem->package_name);
+  prctl(PR_SET_NAME, threadName, 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
@@ -335,7 +338,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+          if (starts_with(path_payload, "/dev/__properties__")) {
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
+          }
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
@@ -345,9 +352,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
           if (shouldDenyAccess(path_payload)) {
-            if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] denied", action_name, path_payload);
-            }
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
