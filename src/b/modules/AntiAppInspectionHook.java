@@ -521,40 +521,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return false;
       }
 
-      case "setComponentEnabledSetting": {
-        if (args != null && args.length >= 3) {
-          Object componentName = args[0];
-          int newState = (int) args[1];
-          int flags = (int) args[2];
-
-          String stateStr;
-          switch (newState) {
-            case PackageManager.COMPONENT_ENABLED_STATE_DEFAULT:
-              stateStr = "DEFAULT";
-              break;
-            case PackageManager.COMPONENT_ENABLED_STATE_ENABLED:
-              stateStr = "ENABLED";
-              break;
-            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED:
-              stateStr = "DISABLED";
-              break;
-            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER:
-              stateStr = "DISABLED_USER";
-              break;
-            case PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED:
-              stateStr = "DISABLED_UNTIL_USED";
-              break;
-            default:
-              stateStr = String.valueOf(newState);
-          }
-
-          Log.d(TAG, "setComponentEnabledSetting: component=" + componentName
-              + " newState=" + stateStr
-              + " flags=" + flags);
-        }
-        return method.invoke(originalPM, args);
-      }
-
       case "queryIntentServices": {
         if (args != null && args.length > 0 && args[0] instanceof Intent) {
           Intent intent = (Intent) args[0];
@@ -586,37 +552,9 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         return method.invoke(originalPM, args);
       }
 
-      case "getPropertyAsUser": {
-        if (args != null && args.length > 0) {
-          String className;
-          if (args[2] == null) {
-            className = "null";
-          } else {
-            className = (String) args[2];
-          }
-          Log.d("TAG", "getPropertyAsUser: propertyName " + args[0] + " package: " + args[1] + " className: "
-              + className + " UID: " + args[3]);
-        }
-        return method.invoke(originalPM, args);
-      }
-
-      case "resolveContentProvider": {
-        if (args != null && args.length > 0 && args[0] instanceof String) {
-          Log.d("TAG", "resolveContentProvider: authority " + args[0] + " flags: " + args[1]);
-        }
-        return method.invoke(originalPM, args);
-      }
-
-      case "queryIntentContentProviders": {
-        if (args != null && args.length > 0) {
-          Log.d("TAG", "queryIntentContentProviders: intent " + dumpIntent((Intent) args[0]) + " flags: " + args[1]);
-        }
-        return method.invoke(originalPM, args);
-      }
-
       default: {
         Object result = method.invoke(originalPM, args);
-        Log.w(TAG, "Allowing PM method: " + method.getName());
+        // Log.w(TAG, "Allowing PM method: " + method.getName());
         return result;
       }
     }
