@@ -4,16 +4,11 @@
 #include <arpa/inet.h>
 #include <syscall.h>
 
-#include "shared.hpp"
-
 /**
  * Collection of AS-safe clones
  * of string manipulation libc functions.
- * Also features one of Bipan's multiple hearts:
- * the `raw_syscall` function for directly asking the kernel for
- * a resource.
  *
- * This is necessary a good chunk of Bipan is injected into the process
+ * This is necessary as a good chunk of Bipan is injected into the process
  * and seccomp needs a signal handler. Turns out there are tons of limitations
  * on what you can do inside one.
  *
@@ -83,7 +78,7 @@ __attribute__((always_inline)) inline bool starts_with(const char* str, const ch
   return local_strncmp(str, prefix, local_strlen(prefix)) == 0;
 }
 
-inline const char* local_strstr(const char* haystack, const char* needle) {
+__attribute__((always_inline)) inline const char* local_strstr(const char* haystack, const char* needle) {
   if (!*needle) return haystack;
   for (; *haystack; haystack++) {
     if (*haystack == *needle) {
@@ -98,7 +93,7 @@ inline const char* local_strstr(const char* haystack, const char* needle) {
   return nullptr;
 }
 
-inline const char* local_strchr(const char* s, int c) {
+__attribute__((always_inline)) inline const char* local_strchr(const char* s, int c) {
   while (*s) {
     if (*s == (char)c) return s;
     s++;
@@ -106,8 +101,28 @@ inline const char* local_strchr(const char* s, int c) {
   return nullptr;
 }
 
+__attribute__((always_inline)) static inline void* local_memset(void* s, int c, size_t n) {
+  unsigned char* p = (unsigned char*)s;
+  while (n--) *p++ = (unsigned char)c;
+  return s;
+}
+
+__attribute__((always_inline)) static inline char* local_strncpy(char* dest, const char* src, size_t n) {
+  size_t i;
+  for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
+  for (; i < n; i++) dest[i] = '\0';
+  return dest;
+}
+
+__attribute__((always_inline)) static inline void* local_memcpy(void* dest, const void* src, size_t n) {
+  unsigned char* d = (unsigned char*)dest;
+  const unsigned char* s = (const unsigned char*)src;
+  while (n--) *d++ = *s++;
+  return dest;
+}
+
 // Verifies if a segment of a string is purely numbers (a PID)
-__attribute__((always_inline)) inline bool is_pure_numeric(const char* str, size_t len) {
+inline bool is_pure_numeric(const char* str, size_t len) {
   if (len == 0) return false;
   for (size_t i = 0; i < len; i++) {
     if (str[i] < '0' || str[i] > '9') return false;
@@ -163,7 +178,7 @@ inline bool is_mounts(const char* pathname) {
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
  */
-__attribute__((always_inline)) inline static bool filterIPv4LanAccess(uint32_t ip4) {
+inline static bool filterIPv4LanAccess(uint32_t ip4) {
   // Unspecified address (0.0.0.0)
   if (ip4 == 0x00000000) {
     return true;
@@ -201,7 +216,7 @@ __attribute__((always_inline)) inline static bool filterIPv4LanAccess(uint32_t i
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
  */
-__attribute__((always_inline)) inline static bool filterIPv6LanAccess(uint8_t* ip6) {
+inline static bool filterIPv6LanAccess(uint8_t* ip6) {
   if (!ip6) {
     return false;
   }
@@ -270,28 +285,8 @@ inline bool is_lan_address(struct sockaddr* addr) {
   return false;
 }
 
-__attribute__((always_inline)) static inline void* local_memset(void* s, int c, size_t n) {
-  unsigned char* p = (unsigned char*)s;
-  while (n--) *p++ = (unsigned char)c;
-  return s;
-}
-
-__attribute__((always_inline)) static inline char* local_strncpy(char* dest, const char* src, size_t n) {
-  size_t i;
-  for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
-  for (; i < n; i++) dest[i] = '\0';
-  return dest;
-}
-
-__attribute__((always_inline)) static inline void* local_memcpy(void* dest, const void* src, size_t n) {
-  unsigned char* d = (unsigned char*)dest;
-  const unsigned char* s = (const unsigned char*)src;
-  while (n--) *d++ = *s++;
-  return dest;
-}
-
-__attribute__((always_inline)) static inline bool is_exact_dir(const char* path, const char* target_dir) {
-  size_t len = strlen(target_dir);
+static inline bool is_exact_dir(const char* path, const char* target_dir) {
+  size_t len = local_strlen(target_dir);
   if (local_strncmp(path, target_dir, len) == 0) {
     // Return true if it ends exactly at the dir name, or has a trailing slash
     return path[len] == '\0' || (path[len] == '/' && path[len + 1] == '\0');
@@ -299,7 +294,7 @@ __attribute__((always_inline)) static inline bool is_exact_dir(const char* path,
   return false;
 }
 
-__attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
+inline bool shouldLog(const char* pathname) {
   // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
       starts_with(pathname, "/data/dalvik-cache") ||
@@ -360,7 +355,7 @@ __attribute__((always_inline)) inline bool shouldLog(const char* pathname) {
   return true;
 }
 
-__attribute__((always_inline)) inline bool shouldSpoofExistence(const char* pathname) {
+inline bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
       local_strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
@@ -368,9 +363,8 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu5")) ||
       (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu6")) ||
       (starts_with(pathname, "/sys/devices/system/cpu/cpu") && local_strstr(pathname, "cpu7")) ||
-      // VPN tunnel
-      starts_with(pathname, "/sys/class/net/tun") ||
       // Crash reports
+      starts_with(pathname, "/dev/__properties__") ||
       starts_with(pathname, "/data/anr") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
       // Root
@@ -382,19 +376,18 @@ __attribute__((always_inline)) inline bool shouldSpoofExistence(const char* path
       starts_with(pathname, "/data/adb/modules") ||
       local_strstr(pathname, "lineage") != nullptr ||
       local_strstr(pathname, "Lineage") != nullptr ||
-      starts_with(pathname, "/system/bin") ||
+      // starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
-      starts_with(pathname, "/bin") ||
+      // starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
       // local_strstr(pathname, "Screenshots") != nullptr ||
       // local_strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));
 }
 
-__attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname) {
+inline bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
            starts_with(pathname, "/dev/tty") ||
-           starts_with(pathname, "/dev/__properties__") ||
            // CPU, temperature and platform info
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
@@ -405,15 +398,17 @@ __attribute__((always_inline)) inline bool shouldDenyAccess(const char* pathname
            local_strcmp(pathname, "/proc/vmstat") == 0));
 }
 
-__attribute__((always_inline)) inline bool shouldAllowDevProps(const char* pathname) {
+inline bool shouldAllowDevProps(const char* pathname) {
   return (
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") == 0 ||
+      local_strcmp(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
       local_strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
 }
 
-__attribute__((always_inline)) inline const char* shouldFakeFile(const char* pathname) {
+inline const char* shouldFakeFile(const char* pathname) {
   if (local_strstr(pathname, "build.prop") != nullptr) {
     return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
   }
@@ -422,57 +417,6 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   }
   if (local_strcmp(pathname, "/proc/version") == 0) {
     return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
-  }
-
-  if (local_strcmp(pathname, "/proc/cpuinfo") == 0) {
-    return "processor\t: 0\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "processor\t: 1\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "processor\t: 2\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "processor\t: 3\nBogoMIPS\t: 40.00\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics\nCPU implementer\t: 0x41\n"
-           "Hardware\t: Qualcomm Technologies, Inc MSM8953\n";
-  }
-
-  if (local_strcmp(pathname, "/proc/meminfo") == 0) {
-    return "MemTotal:        3901140 kB\n"
-           "MemFree:          258600 kB\n"
-           "MemAvailable:    1234768 kB\n"
-           "Buffers:            2048 kB\n"
-           "Cached:           894172 kB\n"
-           "SwapCached:            0 kB\n"
-           "Active:          1291692 kB\n"
-           "Inactive:         614884 kB\n"
-           "SwapTotal:             0 kB\n"
-           "SwapFree:              0 kB\n"
-           "VmallocTotal:   263061440 kB\n"
-           "CmaTotal:         159744 kB\n";
-  }
-  if (local_strcmp(pathname, "/proc/sys/kernel/perf_event_paranoid") == 0) {
-    return "2\n";
-  }
-  if (
-      starts_with(pathname, "/sys/devices/system/cpu/possible") ||
-      starts_with(pathname, "/sys/devices/system/cpu/online") ||
-      starts_with(pathname, "/sys/devices/system/cpu/present")) {
-    return "0-3\n";
-  }
-  if (starts_with(pathname, "/sys/devices/system/cpu/kernel_max")) {
-    return "4\n";
-  }
-  if (starts_with(pathname, "/sys/devices/system/cpu") &&
-      local_strstr(pathname, "/cpufreq/cpuinfo_max_freq")) {
-    if (local_strstr(pathname, "cpu0") || local_strstr(pathname, "cpu1")) {
-      return "1590000\n";
-    }
-    if (local_strstr(pathname, "cpu2") || local_strstr(pathname, "cpu3")) {
-      return "1900000\n";
-    }
-  }
-  if (starts_with(pathname, "/sys/devices/system/cpu/cpu")) {
-    if (local_strstr(pathname, "/topology/physical_package_id")) {
-      return "0\n";
-    } else if (local_strstr(pathname, "/topology/core_siblings_list")) {
-      return "0-3\n";
-    }
   }
 
   if (local_strcmp(pathname, "/proc/sys/kernel/version") == 0) {
@@ -488,12 +432,6 @@ __attribute__((always_inline)) inline const char* shouldFakeFile(const char* pat
   }
 
   return nullptr;
-}
-
-__attribute__((always_inline)) inline static bool shouldCache(const char* filename) {
-  return (
-      (shouldFakeFile(filename) != nullptr) ||
-      is_mounts(filename));
 }
 
 #endif
