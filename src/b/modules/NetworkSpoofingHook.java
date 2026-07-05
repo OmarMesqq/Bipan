@@ -106,7 +106,7 @@ public class NetworkSpoofingHook implements BaseHook {
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
         if (!BENIGN_CM_METHODS.contains(method.getName())) {
-          Log.w(TAG, "connHandler got async method: " + method.getName());
+          // Log.w(TAG, "connHandler got async method: " + method.getName());
         }
 
         for (int i = 0; i < args.length; i++) {
@@ -134,24 +134,22 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // synchronous returns
       if ("getNetworkCapabilities".equals(method.getName())) {
-        Log.i(TAG, "Neutered getNetworkCapabilities");
+        // Log.i(TAG, "Neutered getNetworkCapabilities");
         NetworkCapabilities nc = (NetworkCapabilities) result;
         applyVpnSpoof(nc);
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
-        Log.i(TAG, "Neutered getLinkProperties");
+        // Log.i(TAG, "Neutered getLinkProperties");
         spoofLinkProperties((LinkProperties) result);
       } else if ("getAllNetworks".equals(method.getName())) {
-        Log.i(TAG, "Neutered getAllNetworks");
+        // Log.i(TAG, "Neutered getAllNetworks");
         return new Network[0];
       } else if ("getAllNetworkInfo".equals(method.getName())) {
-        Log.i(TAG, "Neutered getAllNetworkInfo");
+        // Log.i(TAG, "Neutered getAllNetworkInfo");
         return new NetworkInfo[0];
       } else if ("getBoundNetworkForProcess".equals(method.getName())) {
-        Log.i(TAG, "Neutered getBoundNetworkForProcess");
+        // Log.i(TAG, "Neutered getBoundNetworkForProcess");
         return new NetworkInfo(0, 0, "DUMMY", "");
       } else if ("getActiveNetworkInfo".equals(method.getName())) {
-        // not logging cuz it's a hot path
-
         if (result != null) {
           NetworkInfo ni = (NetworkInfo) result;
           ni.setDetailedState(
@@ -168,7 +166,7 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       } else {
         if (!BENIGN_CM_METHODS.contains(method.getName())) {
-          Log.w(TAG, "Allowing connHandler synchronous method: " + method.getName());
+          // Log.w(TAG, "Allowing connHandler synchronous method: " + method.getName());
         }
       }
 

@@ -576,6 +576,32 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             (*env)->DeleteLocalRef(env, jstr);
             return (*env)->NewStringUTF(env, errorBuffer);
         }
+        // After the openat() call succeeds (fd != -1), before or after the readlink block:
+        char previewBuf[256] = {0};
+        long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
+        if (readRet > 0) {
+            previewBuf[readRet] = '\0';
+
+            // Find end of first line, then end of second line
+            char* firstNewline = strchr(previewBuf, '\n');
+            char* secondNewline = firstNewline ? strchr(firstNewline + 1, '\n') : NULL;
+
+            if (secondNewline) {
+                *(secondNewline + 1) = '\0';  // truncate after 2nd line
+            }
+            // else: fewer than 2 lines total, previewBuf already has everything read
+
+            snprintf(entry, sizeof(entry), "First 2 lines:\n%s\n", previewBuf);
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof(entry), "read() for preview failed or file empty. errno: %s\n", strerror(errno));
+            strcat(report, entry);
+        }
+
+        // Rewind so your later stat/other logic isn't affected by the read offset
+        // (not strictly needed since you don't read again after this in your snippet,
+        // but good practice if you add more read-based checks later)
+        arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
 
         // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
         char fdPath[64];
@@ -597,9 +623,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         struct stat statbuf = {0};
         // if path = "", operate on the file referred to by dirfd
         // If path is a symbolic link, do not dereference it: instead return information about the link itself
-        int newfstatatFlags = AT_EMPTY_PATH  | AT_SYMLINK_NOFOLLOW;
+        int newfstatatFlags = AT_SYMLINK_NOFOLLOW;
 
-        long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, 0 , (long) cstr, (long) &statbuf, newfstatatFlags, 0, 0);
+        long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, newfstatatFlags, 0, 0);
 
         if (nwfstatRetOnPath != 0) {
             snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
