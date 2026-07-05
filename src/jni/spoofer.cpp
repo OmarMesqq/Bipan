@@ -26,6 +26,9 @@ int uname_spoofer(struct utsname* buf) {
 }
 
 int create_spoofed_file(const char* fake_content) {
+  if (fake_content == nullptr) {
+    return -1;
+  }
   int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
@@ -180,10 +183,10 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
       if (buf[i] == '\n') {
         line[line_pos] = '\0';
 
-        bool is_dirty = local_strstr(line, "magisk") || local_strstr(line, "zygisk") ||
-                        local_strstr(line, "bipan") ||
-                        local_strstr(line, "core/mirror") ||
-                        (local_strstr(line, "/etc/security/cacerts") && local_strstr(line, "tmpfs"));
+        bool is_dirty = local_strstr(line, "magisk") ||
+                        local_strstr(line, "zygisk") ||
+                        local_strstr(line, "/system/etc/hosts") ||
+                        local_strstr(line, "/etc/security/cacerts");
 
         if (!is_dirty) {
           arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long)line_pos, 0, 0, 0);
@@ -237,9 +240,6 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
           output_len = local_strlen(output_line);
         } else if (starts_with(line, "NoNewPrivs:")) {
           output_line = "NoNewPrivs:\t0\n";
-          output_len = local_strlen(output_line);
-        } else if (starts_with(line, "Cpus_allowed_list:")) {
-          output_line = "Cpus_allowed_list:\t0-3\n";
           output_len = local_strlen(output_line);
         }
 
