@@ -1,18 +1,11 @@
 #include <android/dlext.h>
-#include <android/looper.h>
 #include <android/sensor.h>
-#include <dlfcn.h>
-#include <link.h>
-#include <signal.h>
 #include <stdint.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <string>
-#include <unordered_set>
-#include <vector>
 
 #include "bipan_java.h"
 #include "broker.hpp"
@@ -80,6 +73,7 @@ class Bipan : public zygisk::ModuleBase {
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
       return;
     }
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -104,7 +98,6 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to scrub lib's headers. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
 
     strncpy(g_package_name, raw_process_name, 255);
 
@@ -138,8 +131,6 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
-    ipc_mem->appSockFd = g_broker_socket;
-    ipc_mem->appLogcatFd = getLogcatFd();
 
     memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
     strncpy(ipc_mem->package_name, g_package_name, 255);
@@ -165,7 +156,7 @@ class Bipan : public zygisk::ModuleBase {
     }
 
     // Native (C/C++ setup)
-    registerDobbyLinkerHooks();
+    registerDobbyDlIteratePhdrHook();
     registerDobbyNativeSystemPropertiesHook();
     registerDobbyNativeSensorsHooks();
 
@@ -177,6 +168,7 @@ class Bipan : public zygisk::ModuleBase {
     // Setup tripwires for seccomp
     hookJniFunctions();
 #ifdef VERBOSE_LOGGING
+    registerDobbyLinkerHooks();
     // char loadedSharedLibs[1024];
     // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
     // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
