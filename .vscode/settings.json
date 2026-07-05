@@ -8,7 +8,8 @@
     "Grunfeld",
     "Bipan",
     "Broker",
-    "BipanJava"
+    "BipanJava",
+    "Bipan+Broker"
   ],
   "C_Cpp.errorSquiggles": "enabled",
 
