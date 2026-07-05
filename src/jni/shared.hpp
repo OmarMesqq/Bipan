@@ -88,13 +88,6 @@ typedef struct {
 extern SharedIPC* ipc_mem;
 
 /**
- * Socket pair for which allows the Broker
- * to pass and "transform" FDs in its address space to
- * valid ones in the main process.
- */
-extern int sv[2];
-
-/**
  * Android log priority values, in increasing order of priority.
  */
 typedef enum android_LogPriority {

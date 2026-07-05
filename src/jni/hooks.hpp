@@ -249,7 +249,6 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"ril.hw_ver2", ""},
     {"ril.halservice.registered.slot2", ""},
     {"ril.dds.call.ongoing1", ""},
-    //
     {"ril.halservice.registered.slot1", ""},
     {"ril.hasisim", ""},
     {"ril.hw_ver", ""},
@@ -321,13 +320,6 @@ static void* my_dlopen(const char* filename, int flag) {
   const char* soname = strrchr(filename, '/');
   soname = soname ? soname + 1 : filename;
 
-  // if (
-  //     strstr(filename, "libholmes") ||
-  //     strstr(filename, "libreveny")) {
-  //   DumpContext ctx = {soname};
-  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
-  // }
-
   return result;
 }
 
@@ -338,21 +330,12 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
 
   // calling the original here probably already calls .init_array
   void* result = orig_android_dlopen_ext(filename, flag, extinfo);
-  // if (
-  //     strstr(filename, "libholmes") ||
-  //     strstr(filename, "libreveny")) {
-  //   const char* soname = strrchr(filename, '/');
-  //   soname = soname ? soname + 1 : filename;
-
-  //   DumpContext ctx = {soname};
-  //   dl_iterate_phdr(dump_phdr_callback, &ctx);
-  // }
 
   return result;
 }
 
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dl_iterate_phdr called!");
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dl_iterate_phdr called!");
   FilteredCallback ctx = {cb, data};
   return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
 }
@@ -687,17 +670,28 @@ void registerDobbyLinkerHooks() {
 
   void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
   void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
-  void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
 
-  if (dlopen_addr && android_dlopen_ext_addr && dl_iterate_phdr_addr) {
+  if (dlopen_addr && android_dlopen_ext_addr) {
     int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
     int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-    int dl_iterate_phdrHookRes = DobbyHook(dl_iterate_phdr_addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
-    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0 && dl_iterate_phdrHookRes == 0) {
+    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
       linker_hooked = true;
     } else {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
     }
+  }
+}
+
+void registerDobbyDlIteratePhdrHook() {
+  void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
+  if (!dl_iterate_phdr_addr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve dl_iterate_phdr!");
+    BIPAN_PANIC();
+  }
+  int hookRet = DobbyHook(dl_iterate_phdr_addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
+  if (hookRet != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook dl_iterate_phdr!");
+    BIPAN_PANIC();
   }
 }
 
