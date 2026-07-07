@@ -492,23 +492,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
         break;
       }
-      case __NR_inotify_init1: {
-        int flags = (int)ipc_mem->arg0;
-        if (!flags) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with no flags, behave like 'inotify_init'");
-          break;
-        }
-
-        if (flags & (IN_NONBLOCK | IN_CLOEXEC)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking and close-on-exec");
-        } else if (flags & IN_NONBLOCK) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with nonblocking I/O");
-        } else if (flags & IN_CLOEXEC) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_init1) with close-on-exec on the new FD");
-        }
-
-        break;
-      }
       case __NR_inotify_rm_watch: {
         int wd = (int)ipc_mem->arg2;
         if (wd == SPOOFED_WD) {
@@ -517,7 +500,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           break;
         }
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (inotify_rm_watch)!");
         break;
       }
       case __NR_mq_notify: {
@@ -871,10 +853,10 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   close(mem_fd);
 
   if (written == sizeof(opcode)) {
-    patched_pcs.insert(target_addr);  // put in thread local cache (TODO: really?)
+    patched_pcs.insert(target_addr);  // TODO: patched_pcs should be thread_local
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote Patch failed: pwrite error on PID %d", target_pid);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote patch (pwrite) failed for PID %d (errno: %s)", target_pid, strerror(errno));
   }
   inside_remote_patcher = false;
 }
