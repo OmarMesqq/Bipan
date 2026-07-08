@@ -11,7 +11,7 @@
 #include "broker.hpp"
 #include "dobby.h"
 #include "hooks.hpp"
-#include "memory/mem_tools.hpp"
+#include "tools/mem.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
