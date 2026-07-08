@@ -3,7 +3,7 @@ LOCAL_PATH := $(call my-dir)
 # Include Dobby's compiled static lib in the project
 include $(CLEAR_VARS)
 LOCAL_MODULE := dobby_static
-LOCAL_SRC_FILES := libdobby.a
+LOCAL_SRC_FILES := deps/libdobby.a
 include $(PREBUILT_STATIC_LIBRARY)
 
 # Build Bipan

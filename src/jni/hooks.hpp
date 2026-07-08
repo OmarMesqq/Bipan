@@ -14,7 +14,7 @@
 #include "filter.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
-#include "zygisk.hpp"
+#include "deps/zygisk.hpp"
 
 using zygisk::Api;
 
