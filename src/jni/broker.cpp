@@ -104,7 +104,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   if (!initializeLogger()) {
     return;
   }
-  ipc_mem->package_name;
+  
   char threadName[16];
   snprintf(threadName, sizeof(threadName), "bb-%s", ipc_mem->package_name);
   prctl(PR_SET_NAME, threadName, 0, 0, 0);
