@@ -9,13 +9,13 @@
 
 #include "bipan_java.h"
 #include "broker.hpp"
-#include "dobby.h"
+#include "deps/dobby.h"
 #include "hooks.hpp"
 #include "tools/mem.hpp"
 #include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
-#include "zygisk.hpp"
+#include "deps/zygisk.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;

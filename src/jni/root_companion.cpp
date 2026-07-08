@@ -8,7 +8,7 @@
 #include "logger.hpp"
 #include "shared.hpp"
 #include "synchronization.hpp"
-#include "zygisk.hpp"
+#include "deps/zygisk.hpp"
 
 #define TAG "BipanRootCompanion"
 
