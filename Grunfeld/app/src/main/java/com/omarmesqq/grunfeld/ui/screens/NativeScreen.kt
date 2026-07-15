@@ -184,13 +184,6 @@ fun NativeScreen() {
                                 "/etc/hosts",
                                 "/system/etc/hosts",
                                 "/proc/version",
-                                "/proc/cpuinfo",
-                                "/proc/meminfo",
-                                "/proc/sys/kernel/perf_event_paranoid",
-                                "/sys/devices/system/cpu/possible",
-                                "/sys/devices/system/cpu/online",
-                                "/sys/devices/system/cpu/present",
-                                "/sys/devices/system/cpu/kernel_max",
                                 "/proc/sys/kernel/version",
                                 "/proc/sys/kernel/osrelease",
                                 "/proc/asound/version",
@@ -237,7 +230,7 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Inspect libc for hooks", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Inspect libraries for hooks", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
                     Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Study function prologues for hooks")

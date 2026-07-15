@@ -390,8 +390,7 @@ inline bool shouldDenyAccess(const char* pathname) {
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")) ||
-          (local_strcmp(pathname, "/proc/zoneinfo") == 0 ||
-           local_strcmp(pathname, "/proc/vmstat") == 0));
+           local_strcmp(pathname, "/proc/zoneinfo") == 0);
 }
 
 inline bool shouldAllowDevProps(const char* pathname) {

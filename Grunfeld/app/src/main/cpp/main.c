@@ -191,7 +191,7 @@ JNIEXPORT jstring JNICALL Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_tes
         unsigned long val = getauxval(type);
 
         switch (type) {
-            case AT_SYSINFO_EHDR:     snprintf(entry, sizeof(entry), "AT_SYSINFO_EHDR      = %#lx\n\n", val); break;
+            case AT_SYSINFO_EHDR:     snprintf(entry, sizeof(entry), "AT_SYSINFO_EHDR (vDSO address)      = %#lx\n\n", val); break;
             case AT_PHDR:     snprintf(entry, sizeof(entry), "AT_PHDR (address of Program Header Table)     = %#lx\n\n", val); break;
             case AT_PHNUM:    snprintf(entry, sizeof(entry), "AT_PHNUM (amount of program headers in the executable's header table)    = %lu\n\n",  val); break;
             case AT_PAGESZ:   snprintf(entry, sizeof(entry), "AT_PAGESZ (page size)   = %lu\n\n",  val); break;
@@ -576,7 +576,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             (*env)->DeleteLocalRef(env, jstr);
             return (*env)->NewStringUTF(env, errorBuffer);
         }
-        // After the openat() call succeeds (fd != -1), before or after the readlink block:
+        snprintf(entry, sizeof(entry), "======================================\n\n");
+        strcat(report, entry);
+
         char previewBuf[256] = {0};
         long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
         if (readRet > 0) {
@@ -598,9 +600,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             strcat(report, entry);
         }
 
-        // Rewind so your later stat/other logic isn't affected by the read offset
-        // (not strictly needed since you don't read again after this in your snippet,
-        // but good practice if you add more read-based checks later)
+        // rewind
         arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
 
         // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
@@ -609,17 +609,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
 
         ssize_t readlinkLen = readlink(fdPath, symlinkPath, sizeof(symlinkPath) - 1);
         if (readlinkLen < 0) {
-            snprintf(entry, sizeof(entry), "%s -> (not a symlink or error: %s)\n", cstr, strerror(errno));
+            snprintf(entry, sizeof(entry), "%s -> (not a symlink or error: %s)\n\n", cstr, strerror(errno));
         } else {
             // readlink doesn't NULL-terminate...do it ourselves
             symlinkPath[readlinkLen] = '\0';
-            snprintf(entry, sizeof(entry), "%s -> %s\n", cstr, symlinkPath);
+            snprintf(entry, sizeof(entry), "%s -> %s\n\n", cstr, symlinkPath);
         }
 
         strcat(report, entry);
 
-        snprintf(entry, sizeof(entry), "======================================\n\n");
-        strcat(report, entry);
         struct stat statbuf = {0};
         // if path = "", operate on the file referred to by dirfd
         // If path is a symbolic link, do not dereference it: instead return information about the link itself
@@ -628,10 +626,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, newfstatatFlags, 0, 0);
 
         if (nwfstatRetOnPath != 0) {
-            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
+            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof (entry),"stat on %s (PATH) successful:\n", cstr);
+            snprintf(entry, sizeof (entry),"stat on %s (PATH) successful:\n\n", cstr);
             strcat(report, entry);
             snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
             strcat(report, entry);
@@ -639,7 +637,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             strcat(report, entry);
             snprintf(entry, sizeof(entry), "GID: %u\n", statbuf.st_gid);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
+            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
             strcat(report, entry);
             snprintf(entry, sizeof(entry), "Size: %ld bytes\n", (long)statbuf.st_size);
             strcat(report, entry);
@@ -671,10 +669,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             strcat(report, entry);
         }
         if (readlinkLen < 0) {
-            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n", symlinkPath);
+            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n\n", symlinkPath);
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful:\n", symlinkPath);
+            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful:\n\n", symlinkPath);
             strcat(report, entry);
 
             snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
