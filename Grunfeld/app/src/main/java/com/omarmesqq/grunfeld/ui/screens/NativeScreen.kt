@@ -47,7 +47,7 @@ fun NativeScreen() {
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
-    var someFileFdInfo by remember { mutableStateOf("testOpenFileAndReadLink not queried") }
+    var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -169,8 +169,8 @@ fun NativeScreen() {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Open some file and get its symlink", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(someFileFdInfo, "testOpenFileAndReadLink not queried")
+                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
                     Button(
                         onClick = {
                             val filenames = arrayOf(
@@ -181,19 +181,19 @@ fun NativeScreen() {
                                 "/proc/self/mountstats",
                                 "/proc/self/mountinfo",
                                 "/proc/self/status",
-                                "/etc/hosts",
-                                "/system/etc/hosts",
                                 "/proc/version",
                                 "/proc/sys/kernel/version",
                                 "/proc/sys/kernel/osrelease",
                                 "/proc/asound/version",
+                                "/etc/hosts",
+                                "/system/etc/hosts",
                                 )
-                            someFileFdInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
+                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
                        },
                         modifier = Modifier.fillMaxWidth()
 
                     ) {
-                        Text("open(somefile) && readlink(somefile)")
+                        Text("readlinkat(file) && newfstat(file)")
                     }
                 }
 
@@ -206,10 +206,10 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get socket FDs and their links", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
                     Button(onClick = { procSelFdInfo = NativeLibWrapper.getallsocketfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Dump socket FDs and their symlinks")
+                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
                     }
                 }
 
@@ -225,7 +225,15 @@ fun NativeScreen() {
                     Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
                     Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("open(/proc/self/task)")
+                        Text("read /proc/self/task")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Processes' status ", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/status")
                     }
                 }
 
@@ -234,14 +242,6 @@ fun NativeScreen() {
                     ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
                     Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Study function prologues for hooks")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Debugger attached?", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
-                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/status")
                     }
                 }
 
