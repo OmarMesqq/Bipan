@@ -598,6 +598,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (nanosleep)!");
         break;
       }
+      case __NR_ptrace: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] (ptrace)!");
+        break;
+      }
       default: {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected syscall: %d. Returning ENOSYS.", nr);
         ipc_mem->ret = -ENOSYS;
