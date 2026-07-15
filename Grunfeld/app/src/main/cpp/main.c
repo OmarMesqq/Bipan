@@ -529,9 +529,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, 
         }
         target[len] = '\0';
 
-        if (!starts_with(target, "socket")) {
-            continue;
-        }
+        // if (!starts_with(target, "socket")) {
+        //     continue;
+        // }
 
         int line = snprintf(report + used, sizeof(report) - used, "%s -> %s\n", entry->d_name, target);
         if (line < 0 || (size_t)line >= sizeof(report) - used) {
@@ -576,29 +576,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             (*env)->DeleteLocalRef(env, jstr);
             return (*env)->NewStringUTF(env, errorBuffer);
         }
-        snprintf(entry, sizeof(entry), "======================================\n\n");
-        strcat(report, entry);
 
-        char previewBuf[256] = {0};
-        long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
-        if (readRet > 0) {
-            previewBuf[readRet] = '\0';
-
-            // Find end of first line, then end of second line
-            char* firstNewline = strchr(previewBuf, '\n');
-            char* secondNewline = firstNewline ? strchr(firstNewline + 1, '\n') : NULL;
-
-            if (secondNewline) {
-                *(secondNewline + 1) = '\0';  // truncate after 2nd line
-            }
-            // else: fewer than 2 lines total, previewBuf already has everything read
-
-            snprintf(entry, sizeof(entry), "First 2 lines:\n%s\n", previewBuf);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "read() for preview failed or file empty. errno: %s\n", strerror(errno));
-            strcat(report, entry);
-        }
 
         // rewind
         arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
@@ -613,10 +591,33 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         } else {
             // readlink doesn't NULL-terminate...do it ourselves
             symlinkPath[readlinkLen] = '\0';
-            snprintf(entry, sizeof(entry), "%s -> %s\n\n", cstr, symlinkPath);
+            snprintf(entry, sizeof(entry), "%s -> %s\n", cstr, symlinkPath);
         }
-
         strcat(report, entry);
+
+        snprintf(entry, sizeof(entry), "======================================\n\n");
+        strcat(report, entry);
+
+//        char previewBuf[256] = {0};
+//        long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
+//        if (readRet > 0) {
+//            previewBuf[readRet] = '\0';
+//
+//            // Find end of first line, then end of second line
+//            char* firstNewline = strchr(previewBuf, '\n');
+//            char* secondNewline = firstNewline ? strchr(firstNewline + 1, '\n') : NULL;
+//
+//            if (secondNewline) {
+//                *(secondNewline + 1) = '\0';  // truncate after 2nd line
+//            }
+//            // else: fewer than 2 lines total, previewBuf already has everything read
+//
+//            snprintf(entry, sizeof(entry), "First 2 lines:\n%s\n", previewBuf);
+//            strcat(report, entry);
+//        } else {
+//            snprintf(entry, sizeof(entry), "read() for preview failed or file empty. errno: %s\n", strerror(errno));
+//            strcat(report, entry);
+//        }
 
         struct stat statbuf = {0};
         // if path = "", operate on the file referred to by dirfd
@@ -631,15 +632,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         } else {
             snprintf(entry, sizeof (entry),"stat on %s (PATH) successful:\n\n", cstr);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "UID: %u\n", statbuf.st_uid);
+            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "GID: %u\n", statbuf.st_gid);
+            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
+            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Size: %ld bytes\n", (long)statbuf.st_size);
+            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
             strcat(report, entry);
 
             // Timestamps
@@ -661,11 +662,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
             // Log the human-readable versions with their nanoseconds appended
-            snprintf(entry, sizeof(entry), "Access time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Modification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Status Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
             strcat(report, entry);
         }
         if (readlinkLen < 0) {
@@ -675,15 +676,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             snprintf(entry, sizeof (entry),"stat on %s (LINK) successful:\n\n", symlinkPath);
             strcat(report, entry);
 
-            snprintf(entry, sizeof(entry), "Hard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "UID: %u\n", statbuf.st_uid);
+            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "GID: %u\n", statbuf.st_gid);
+            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "st_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
+            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Size: %ld bytes\n", (long)statbuf.st_size);
+            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
             strcat(report, entry);
 
             // Timestamps
@@ -705,16 +706,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
 
             // Log the human-readable versions with their nanoseconds appended
-            snprintf(entry, sizeof(entry), "Access time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Modification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "Status Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
+            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
             strcat(report, entry);
         }
 
 
-        snprintf(entry, sizeof(entry), "======================================\n\n");
+        snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
 
 
