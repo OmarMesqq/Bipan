@@ -251,17 +251,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_openat: {
         if (!is_trusted) {
-          if (shouldAllowDevProps(path_payload)) {
-            break;
-          }
           if (shouldDenyAccess(path_payload)) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
           } else if (shouldSpoofExistence(path_payload)) {
-            if (starts_with(path_payload, "/dev/__properties__")) {
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
-            }
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
@@ -348,19 +342,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         if (shouldSpoofExistence(path_payload)) {
-          if (starts_with(path_payload, "/dev/__properties__")) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
-          }
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
         }
         if (!is_trusted) {
-          if (shouldAllowDevProps(path_payload)) {
-            break;
-          }
           if (shouldDenyAccess(path_payload)) {
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;

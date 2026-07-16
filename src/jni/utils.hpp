@@ -360,7 +360,6 @@ inline bool shouldSpoofExistence(const char* pathname) {
       local_strstr(pathname, "c7981ca8.0") != nullptr ||
       starts_with(pathname, "/data/misc/user/0/cacerts-") ||
       // Crash reports
-      starts_with(pathname, "/dev/__properties__") ||
       starts_with(pathname, "/data/anr") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
       // Root
@@ -390,21 +389,7 @@ inline bool shouldDenyAccess(const char* pathname) {
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")) ||
-           local_strcmp(pathname, "/proc/zoneinfo") == 0);
-}
-
-inline bool shouldAllowDevProps(const char* pathname) {
-  return (
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:userdebug_or_eng_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:custom_version_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:init_service_status_private_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:build_bootimage_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:telephony_status_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:radio_control_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:vendor_persist_camera_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:timezone_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:binder_cache_telephony_server_prop:s0") == 0 ||
-      local_strcmp(pathname, "/dev/__properties__/u:object_r:hwservicemanager_prop:s0") == 0);
+          local_strcmp(pathname, "/proc/zoneinfo") == 0);
 }
 
 inline const char* shouldFakeFile(const char* pathname) {
