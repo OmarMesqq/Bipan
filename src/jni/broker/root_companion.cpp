@@ -73,10 +73,8 @@ static void companion_handler(int sock) {
   }
 }
 
-extern "C" {
-__attribute__((visibility("default")))
+// Register the root companion function
 REGISTER_ZYGISK_COMPANION(companion_handler)
-}
 
 static void handle_fetch_targets(int sockfd) {
   DIR* dir = opendir(TARGETS_DIR);

@@ -426,7 +426,4 @@ __attribute__((always_inline)) static inline ssize_t send_fd(int socket, int fd)
 }
 
 // Register the module class
-extern "C" {
-__attribute__((visibility("default")))
 REGISTER_ZYGISK_MODULE(Bipan)
-}
