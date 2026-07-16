@@ -43,7 +43,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
 
       // Load syscall number into accumulator
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-#ifdef EXPERIMENTAL
+#ifdef TRAP_MMAP_MPROTECT
       // Evaluate mmap
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 5),
       // Load lower 32 bits of arg2 (prot) into accumulator
@@ -120,25 +120,23 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mq_notify, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-#ifdef EXPERIMENTAL
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syslog, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat2, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettimeofday, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_getres, 0, 1),
@@ -146,9 +144,13 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_nanosleep, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mremap, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
       // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_prctl, 0, 1),
       // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),

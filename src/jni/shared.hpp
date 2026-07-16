@@ -8,10 +8,10 @@
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
-// #define DEBUG
-// #define VERBOSE_LOGGING
-// #define EXPERIMENTAL
-// #define BROKER_EXTENDED_LOGGING
+#define VERBOSE_LOGGING
+#define TRAP_MMAP_MPROTECT
+#define TRAP_EXPERIMENTAL_SYSCALLS
+#define BROKER_EXTENDED_LOGGING
 
 // Globals populated in entrypoint
 
@@ -66,7 +66,7 @@ typedef struct {
 
   char package_name[256];
 
-#ifdef DEBUG
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
   // process_vm_readv and process_vm_writev info
   uintptr_t vm_iov_addr[4];
   size_t vm_iov_len[4];
