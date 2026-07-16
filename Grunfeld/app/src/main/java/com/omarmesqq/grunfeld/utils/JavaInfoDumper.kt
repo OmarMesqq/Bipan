@@ -907,6 +907,11 @@ fun dumpDevProperties(): String {
         row("ro.serialno",         prop("ro.serialno"))
     }
 
+    section("bootloader_prop") {
+        row("ro.boot.ap_serial",         prop("ro.boot.ap_serial"))
+        row("ro.boot.em.did",         prop("ro.boot.em.did"))
+    }
+
 
     return sb.toString()
 }
