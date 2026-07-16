@@ -1,0 +1,22 @@
+#ifndef IPC_COMMUNICATION_HPP
+#define IPC_COMMUNICATION_HPP
+
+enum CompanionCommand {
+  CMD_FETCH_TARGETS = 1,
+  CMD_START_BROKER = 2
+};
+
+enum BrokerStatus {
+  IDLE = 0,
+  REQUEST_SYSCALL = 1,
+  BROKER_ANSWERED = 2
+};
+
+enum IpcAction {
+  ACTION_EXECUTE_NATIVE = 1,
+  ACTION_USE_RET = 2,
+  ACTION_RECV_FD = 3,
+  ACTION_EXIT_PROCESS = 4
+};
+
+#endif

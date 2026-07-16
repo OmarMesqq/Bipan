@@ -4,15 +4,19 @@
 #include <sys/mman.h>
 #include <sys/utsname.h>
 #include <syscall.h>
-#include <unistd.h>
 
 #include <string>
 
 #include "logger/logger.hpp"
-#include "shared.hpp"
+#include "utils.hpp"
+
+#define TAG "BipanSpoofer"
 
 int uname_spoofer(struct utsname* buf) {
-  if (!buf) return -1;
+  if (!buf) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "uname_spoofer: received null utsname buf!");
+    return -1;
+  }
 
   memset(buf, 0, sizeof(struct utsname));
   strncpy(buf->sysname, "Linux", 64);
@@ -35,7 +39,7 @@ int create_spoofed_file(const char* fake_content) {
     return fd;
   }
 
-  size_t len = local_strlen(fake_content);
+  size_t len = strlen(fake_content);
   arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
   arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
 
@@ -65,22 +69,22 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     l[len] = '\0';
 
     // TODO: Important to allow
-    bool is_vital = local_strstr(l, "[stack]") ||
-                    local_strstr(l, "[vdso]") ||
-                    local_strstr(l, "[vvar]") ||
-                    local_strstr(l, "[vectors]") ||
-                    local_strstr(l, "/system/bin/linker");
+    bool is_vital = strstr(l, "[stack]") ||
+                    strstr(l, "[vdso]") ||
+                    strstr(l, "[vvar]") ||
+                    strstr(l, "[vectors]") ||
+                    strstr(l, "/system/bin/linker");
 
     if (is_vital) {
       arm64_raw_syscall(__NR_write, fake_fd, (long)l, (long)len, 0, 0, 0);
       return;
     }
 
-    bool is_dirty = local_strstr(l, "magisk") || local_strstr(l, "zygisk") ||
-                    local_strstr(l, "bipan") ||
-                    (local_strstr(l, "/memfd:jit") && (local_strstr(l, "r-xp") || local_strstr(l, "r--p"))) ||
-                    (local_strstr(l, "rw-s") && local_strstr(l, "/dev/zero (deleted)")) ||
-                    ((local_strstr(l, "r-xp") && (local_strstr(l, "[anon:") || !local_strchr(l, '/'))));
+    bool is_dirty = strstr(l, "magisk") || strstr(l, "zygisk") ||
+                    strstr(l, "bipan") ||
+                    (strstr(l, "/memfd:jit") && (strstr(l, "r-xp") || strstr(l, "r--p"))) ||
+                    (strstr(l, "rw-s") && strstr(l, "/dev/zero (deleted)")) ||
+                    ((strstr(l, "r-xp") && (strstr(l, "[anon:") || !strchr(l, '/'))));
 
     if (!is_dirty) {
       arm64_raw_syscall(__NR_write, fake_fd, (long)l, (long)len, 0, 0, 0);
@@ -135,13 +139,13 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
         line[line_pos] = '\0';
 
         // Smaps headers start with hex address (0-9, a-f)
-        bool is_header = ((line[0] >= '0' && line[0] <= '9') || (line[0] >= 'a' && line[0] <= 'f')) && local_strchr(line, '-');
+        bool is_header = ((line[0] >= '0' && line[0] <= '9') || (line[0] >= 'a' && line[0] <= 'f')) && strchr(line, '-');
 
         if (is_header) {
-          skip_current_region = local_strstr(line, "magisk") || local_strstr(line, "zygisk") ||
-                                local_strstr(line, "bipan") || local_strstr(line, "/memfd:jit") ||
-                                (local_strstr(line, "rw-s") && local_strstr(line, "/dev/zero (deleted)")) ||
-                                (local_strstr(line, "r-xp") && (local_strstr(line, "[anon:") || !local_strchr(line, '/')));
+          skip_current_region = strstr(line, "magisk") || strstr(line, "zygisk") ||
+                                strstr(line, "bipan") || strstr(line, "/memfd:jit") ||
+                                (strstr(line, "rw-s") && strstr(line, "/dev/zero (deleted)")) ||
+                                (strstr(line, "r-xp") && (strstr(line, "[anon:") || !strchr(line, '/')));
         }
 
         if (!skip_current_region) {
@@ -183,10 +187,10 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
       if (buf[i] == '\n') {
         line[line_pos] = '\0';
 
-        bool is_dirty = local_strstr(line, "magisk") ||
-                        local_strstr(line, "zygisk") ||
-                        local_strstr(line, "/system/etc/hosts") ||
-                        local_strstr(line, "/etc/security/cacerts");
+        bool is_dirty = strstr(line, "magisk") ||
+                        strstr(line, "zygisk") ||
+                        strstr(line, "/system/etc/hosts") ||
+                        strstr(line, "/etc/security/cacerts");
 
         if (!is_dirty) {
           arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long)line_pos, 0, 0, 0);
@@ -237,10 +241,10 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
         // Check and replace target keys
         if (starts_with(line, "TracerPid:")) {
           output_line = "TracerPid:\t0\n";
-          output_len = local_strlen(output_line);
+          output_len = strlen(output_line);
         } else if (starts_with(line, "NoNewPrivs:")) {
           output_line = "NoNewPrivs:\t0\n";
-          output_len = local_strlen(output_line);
+          output_len = strlen(output_line);
         }
 
         // Write the line to the anonymous file descriptor
@@ -260,13 +264,13 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
 
     if (starts_with(line, "TracerPid:")) {
       output_line = "TracerPid:\t0\n";
-      output_len = local_strlen(output_line);
+      output_len = strlen(output_line);
     } else if (starts_with(line, "NoNewPrivs:")) {
       output_line = "NoNewPrivs:\t0\n";
-      output_len = local_strlen(output_line);
+      output_len = strlen(output_line);
     } else if (starts_with(line, "Cpus_allowed_list:")) {
       output_line = "Cpus_allowed_list:\t0-3\n";
-      output_len = local_strlen(output_line);
+      output_len = strlen(output_line);
     }
 
     arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);

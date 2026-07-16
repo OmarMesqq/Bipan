@@ -1,14 +1,15 @@
 #include <dirent.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <sys/syscall.h> 
 
 #include <string>
 
 #include "broker.hpp"
 #include "deps/zygisk.hpp"
 #include "logger/logger.hpp"
-#include "shared.hpp"
-#include "synchronization.hpp"
+#include "utils.hpp"
+#include "ipc_communication.hpp"
 
 #define TAG "BipanRootCompanion"
 
@@ -105,11 +106,11 @@ static void handle_fetch_targets(int sockfd) {
  */
 static inline int recv_fd(int socket) {
   struct msghdr msg;
-  local_memset(&msg, 0, sizeof(msg));
+  memset(&msg, 0, sizeof(msg));
 
   struct cmsghdr* cmsg;
   char buf[CMSG_SPACE(sizeof(int))];
-  local_memset(buf, 0, sizeof(buf));
+  memset(buf, 0, sizeof(buf));
 
   char dummy[1];
   struct iovec io = {.iov_base = dummy, .iov_len = sizeof(dummy)};
