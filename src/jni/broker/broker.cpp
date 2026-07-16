@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "logger.hpp"
+#include "logger/logger.hpp"
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"

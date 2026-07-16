@@ -23,7 +23,6 @@ using zygisk::ServerSpecializeArgs;
 
 #define BIPAN_JAVA_PACKAGE_NAME "b.J"
 
-
 static inline ssize_t send_fd(int socket, int fd);
 
 // Variables "owned" exclusively by the entrypoint (this module)
@@ -427,5 +426,7 @@ __attribute__((always_inline)) static inline ssize_t send_fd(int socket, int fd)
 }
 
 // Register the module class
-extern "C" __attribute__((visibility("default")))
+extern "C" {
+__attribute__((visibility("default")))
 REGISTER_ZYGISK_MODULE(Bipan)
+}

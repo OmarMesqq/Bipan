@@ -15,9 +15,8 @@
 
 #include <atomic>
 
-#include "logger.hpp"
+#include "logger/logger.hpp"
 #include "shared.hpp"
-#include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "in-app/ipc_lock.hpp"
 #include "utils.hpp"

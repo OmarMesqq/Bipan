@@ -6,7 +6,7 @@
 
 #include "broker.hpp"
 #include "deps/zygisk.hpp"
-#include "logger.hpp"
+#include "logger/logger.hpp"
 #include "shared.hpp"
 #include "synchronization.hpp"
 
@@ -73,10 +73,12 @@ static void companion_handler(int sock) {
   }
 }
 
-extern "C" __attribute__((visibility("default")))
+extern "C" {
+__attribute__((visibility("default")))
 REGISTER_ZYGISK_COMPANION(companion_handler)
+}
 
-    static void handle_fetch_targets(int sockfd) {
+static void handle_fetch_targets(int sockfd) {
   DIR* dir = opendir(TARGETS_DIR);
   if (!dir) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "handle_fetch_targets: failed to read targets dir (%s)!", TARGETS_DIR);

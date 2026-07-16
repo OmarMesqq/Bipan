@@ -7,7 +7,7 @@
 #include <sys/random.h>
 #include <unistd.h>
 
-#include "logger.hpp"
+#include "logger/logger.hpp"
 
 /**
  * `dl_iterate_phdr` callback:
