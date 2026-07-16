@@ -371,10 +371,10 @@ inline bool shouldSpoofExistence(const char* pathname) {
       starts_with(pathname, "/data/adb/modules") ||
       local_strstr(pathname, "lineage") != nullptr ||
       local_strstr(pathname, "Lineage") != nullptr ||
-      // starts_with(pathname, "/system/bin") ||
       starts_with(pathname, "/system/xbin") ||
-      // starts_with(pathname, "/bin") ||
       starts_with(pathname, "/product/bin") ||
+      // starts_with(pathname, "/system/bin") ||
+      // starts_with(pathname, "/bin") ||
       // local_strstr(pathname, "Screenshots") != nullptr ||
       // local_strstr(pathname, "Camera") != nullptr ||
       starts_with(pathname, "/debug_ramdisk")));

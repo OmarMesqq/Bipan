@@ -104,11 +104,15 @@ int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* da
   const char* type;
   int p_type;
 
+  if (strstr(info->dlpi_name, "memfd")) {
+      write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
+    }
+
   for (size_t j = 0; j < info->dlpi_phnum; j++) {
     if (!strstr(info->dlpi_name, "memfd")) {
       continue;
     }
-    write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
+    
     p_type = info->dlpi_phdr[j].p_type;
     type = (p_type == PT_LOAD) ? "PT_LOAD" : (p_type == PT_DYNAMIC)    ? "PT_DYNAMIC"
                                          : (p_type == PT_INTERP)       ? "PT_INTERP"
