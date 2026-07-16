@@ -452,10 +452,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
+        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
         break;
       }
       case __NR_mprotect: {
+        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
         break;
       }
@@ -504,6 +506,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_getdents64: {
+        if (is_trusted) break;
         int fd = (int)ipc_mem->arg0;
         struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
         size_t count = (size_t)ipc_mem->arg2;
@@ -520,6 +523,44 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             !starts_with(filename, "/data/app") &&
             !starts_with(filename, "/storage/emulated/0/Android")) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
+        }
+        break;
+      }
+      case __NR_readlinkat: {
+        if (is_trusted) break;
+        int dirfd = (int)ipc_mem->arg0;
+        const char* path = ipc_mem->string_payload;
+
+        if (dirfd > 0) {
+          char proc_dirfd_path[512] = {0};
+          snprintf(proc_dirfd_path, sizeof(proc_dirfd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
+
+          char resolved_link_path[512] = {0};
+          ssize_t len = readlink(proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
+          if (len == -1) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            break;
+          }
+          resolved_link_path[len] = '\0';
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd): %s -> %s", proc_dirfd_path, resolved_link_path);
+        } else if (dirfd == AT_FDCWD) {
+          char resolved_link_path[512] = {0};
+          ssize_t len = readlinkat(dirfd, path, resolved_link_path, sizeof(resolved_link_path));
+          if (len == -1) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            break;
+          }
+          resolved_link_path[len] = '\0';
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
+        } else {
+          char resolved_link_path[512] = {0};
+          ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path));
+          if (len == -1) {
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            break;
+          }
+          resolved_link_path[len] = '\0';
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with abs path): %s -> %s", path, resolved_link_path);
         }
         break;
       }
@@ -644,6 +685,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(clone3): Child TID: %llu | Thread name: %s | Exit signal: %llu", cl_args->child_tid, childThName, cl_args->exit_signal);
         free(childThName);
+        break;
+      }
+      case __NR_mremap: {
+        if (is_trusted) break;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
+        break;
+      }
+      case __NR_mincore: {
+        if (is_trusted) break;
+        void* addr = (void*)ipc_mem->arg0;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p!", addr);
         break;
       }
       default: {

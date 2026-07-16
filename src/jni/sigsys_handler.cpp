@@ -84,13 +84,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  if (nr == __NR_mincore) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about mincore existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
   if (nr == __NR_memfd_create) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about memfd_create existing...");
     ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
@@ -149,7 +142,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
-#ifdef DEBUG
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
   ipc_mem->vm_iov_count = 0;
 #endif
 
@@ -158,7 +151,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
   local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
-#ifdef DEBUG
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
   local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
 #endif
@@ -187,7 +180,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   } else if (nr == __NR_pipe2) {
     local_memcpy(ipc_mem->pipefd_payload, (int*) arg0, 2);
   }
-#ifdef DEBUG
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
   else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
     ipc_mem->arg0 = arg0;  // target pid
 
@@ -310,14 +303,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (nr == __NR_uname && result == 0) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
-#ifdef DEBUG
-    if (nr == __NR_readlinkat && result > 0) {
-      char* app_buf = (char*)ipc_mem->arg2;
-      size_t app_bufsiz = (size_t)ipc_mem->arg3;
-      size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
-      local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
-      app_buf[copy_len] = '\0';
-    }
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
+    // if (nr == __NR_readlinkat && result > 0) {
+    //   char* app_buf = (char*)ipc_mem->arg2;
+    //   size_t app_bufsiz = (size_t)ipc_mem->arg3;
+    //   size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
+    //   local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
+    //   app_buf[copy_len] = '\0';
+    // }
 #endif
   }
 
