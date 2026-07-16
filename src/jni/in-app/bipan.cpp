@@ -12,10 +12,11 @@
 #include "deps/dobby.h"
 #include "deps/zygisk.hpp"
 #include "hooks.hpp"
-#include "shared.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
 #include "tools/mem.hpp"
+#include "compile_time_flags.hpp"
+#include "ipc_communication.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;

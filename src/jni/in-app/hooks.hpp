@@ -1,20 +1,20 @@
 #ifndef HOOKS_HPP
 #define HOOKS_HPP
 
-#include <arpa/inet.h>
 #include <dlfcn.h>
 #include <ifaddrs.h>
 #include <link.h>
-#include <netinet/in.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/syscall.h>
 
 #include <unordered_map>
 
 #include "deps/zygisk.hpp"
 #include "filter.hpp"
 #include "logger/logger.hpp"
-#include "shared.hpp"
+#include "utils.hpp"
+#include "in-app/globals.hpp"
 
 using zygisk::Api;
 
@@ -294,7 +294,7 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"ro.ril.def_network_after_check_tdscdma", ""},
     {"gsm.sim.state", "READY"},
     {"gsm.sim.operator.alpha", "Vivo"},
-    {"gsm.sim.eventList", ""}, // TODO
+    {"gsm.sim.eventList", ""},  // TODO
     {"gsm.current.phone-type", "1"},
     {"gsm.network.type", "LTE"},
     {"gsm.operator.alpha", "Vivo"},

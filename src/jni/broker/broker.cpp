@@ -3,7 +3,6 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <elf.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
@@ -14,8 +13,6 @@
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/inotify.h>
@@ -28,22 +25,20 @@
 #include <sys/utsname.h>
 #include <syscall.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <atomic>
-#include <fstream>
 #include <map>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "logger/logger.hpp"
-#include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 #include "policies.hpp"
+#include "compile_time_flags.hpp"
+#include "ipc_communication.hpp"
 
 #define TAG "BipanBroker"
 
@@ -367,12 +362,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_rt_sigaction: {
-        if (ipc_mem->arg0 == SIGSYS) {
+        long signal = ipc_mem->arg0;
+        
+        if (signal == SIGSYS) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
           log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
         }
+        if (signal == SIGSEGV && !is_trusted) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] App installed segmentation fault handler");
+        }
+
         break;
       }
       case __NR_bind: {

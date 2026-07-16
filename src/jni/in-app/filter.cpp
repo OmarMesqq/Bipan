@@ -2,16 +2,17 @@
 
 #include <linux/filter.h>
 #include <linux/seccomp.h>
-#include <stddef.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
-#include <syscall.h>
 #include <unistd.h>
+#include <sys/syscall.h> 
 
 #include <cerrno>
 
 #include "logger/logger.hpp"
-#include "shared.hpp"
+#include "compile_time_flags.hpp"
+#include "utils.hpp"
+#include "globals.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // 1. Break 64-bit bounds into 32-bit chunks
@@ -148,16 +149,16 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_prctl, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_prctl, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 #endif
 
       // Networking
@@ -191,17 +192,17 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
 
   // Promise the kernel we won't ask for elevated privileges
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] applySeccomp: prctl failed (errno: %s)", strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] prctl(PR_SET_NO_NEW_PRIVS) failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
 
   /**
    * Apply seccomp across all threads - `SECCOMP_FILTER_FLAG_TSYNC` -
-   * using a our filter: `SECCOMP_SET_MODE_FILTER`
+   * using our filter: `SECCOMP_SET_MODE_FILTER`
    */
   long seccompApplyRet = syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &prog);
   if (seccompApplyRet == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] applySeccomp: failed to apply seccomp (errno: %s)", strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to apply seccomp (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
 }

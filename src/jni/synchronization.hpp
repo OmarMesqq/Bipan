@@ -2,7 +2,9 @@
 #define SYNCHRONIZATION_HPP
 
 #include <linux/futex.h>
-#include <unistd.h>
+#include <sys/syscall.h>
+#include <time.h>
+#include <utils.hpp> // TODO: didnt want to include this...
 
 /**
  * Puts the calling thread to sleep if `*addr` = `expected`

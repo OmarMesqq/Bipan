@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "logger/logger.hpp"
+#include "in-app/globals.hpp"
 
 /**
  * `dl_iterate_phdr` callback:
@@ -17,7 +18,7 @@ int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
   // Match our library base address with the loaded segment address
-  extern char __executable_start;
+  extern char __executable_start; // TODO: use global in-app elf start
   if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
     bounds->start = info->dlpi_addr;
 
@@ -147,6 +148,7 @@ bool scrub_elf_header() {
   // system's page size
   size_t page_size = sysconf(_SC_PAGESIZE);
   // align our base address to beginning of a page
+  // TODO: should be independent of in-app
   uintptr_t page_start = g_bipan_lib_start & ~(page_size - 1);
 
   if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1) {

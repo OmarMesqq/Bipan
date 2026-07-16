@@ -1,25 +1,14 @@
 #include "sigsys_handler.hpp"
 
-#include <arpa/inet.h>
-#include <dlfcn.h>
-#include <fcntl.h>
 #include <linux/memfd.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <sys/prctl.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
 #include <sys/utsname.h>
-#include <syscall.h>
-#include <unistd.h>
 
-#include <atomic>
-
-#include "logger/logger.hpp"
-#include "shared.hpp"
-#include "synchronization.hpp"
 #include "in-app/ipc_lock.hpp"
+#include "logger/logger.hpp"
 #include "utils.hpp"
+#include "compile_time_flags.hpp"
+#include "ipc_communication.hpp"
+#include "globals.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -178,7 +167,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   } else if (nr == __NR_pipe2) {
-    local_memcpy(ipc_mem->pipefd_payload, (int*) arg0, 2);
+    local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);
   }
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {

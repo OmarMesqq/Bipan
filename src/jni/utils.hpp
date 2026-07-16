@@ -20,6 +20,7 @@
 #pragma clang diagnostic ignored "-Wregister"
 
 /**
+ * TODO: this should be somewhere else, shouldn't it?
  * Executes a raw system call on ARM64
  */
 __attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
