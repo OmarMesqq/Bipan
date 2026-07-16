@@ -20,7 +20,7 @@ java -cp r8lib.jar \
   $(find javac_out -name '*.class' | tr '\n' ' ')
 
 # Convert the ART bytecode into an array of bytes C++ can call
-xxd -i classes.dex > src/jni/bipan_java.h
+xxd -i classes.dex > src/jni/in-app/bipan_java.h
 
 # Build the module's .so file
 BUILD_MODE="release"

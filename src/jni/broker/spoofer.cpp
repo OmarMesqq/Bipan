@@ -8,7 +8,7 @@
 
 #include <string>
 
-#include "logger.hpp"
+#include "logger/logger.hpp"
 #include "shared.hpp"
 
 int uname_spoofer(struct utsname* buf) {

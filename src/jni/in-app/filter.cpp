@@ -10,7 +10,7 @@
 
 #include <cerrno>
 
-#include "logger.hpp"
+#include "logger/logger.hpp"
 #include "shared.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
