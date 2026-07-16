@@ -2,13 +2,13 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/syscall.h> 
+#include <arpa/inet.h>
 
 #include <string>
 
 #include "broker.hpp"
 #include "deps/zygisk.hpp"
 #include "logger/logger.hpp"
-#include "utils.hpp"
 #include "ipc_communication.hpp"
 
 #define TAG "BipanRootCompanion"
@@ -68,8 +68,8 @@ static void companion_handler(int sock) {
 
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
-    pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-    pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+    pid_t pid = getpid();
+    pid_t tid = gettid();
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker exited. Companion's PID: %d | TID: %d", tid, pid);
   }
 }
@@ -102,7 +102,8 @@ static void handle_fetch_targets(int sockfd) {
 }
 
 /**
- * Called by the companion to capture the sockfd of its end of the socketpair
+ * "Captures" the sockfd of its end in the socketpair
+ * crated by in-app Bipan
  */
 static inline int recv_fd(int socket) {
   struct msghdr msg;
@@ -120,7 +121,9 @@ static inline int recv_fd(int socket) {
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  if (arm64_raw_syscall(__NR_recvmsg, socket, (long)&msg, 0, 0, 0, 0) <= 0) {
+  
+  if (recvmsg(socket, &msg, 0) <= 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] recvmsg failed! errno: %s", strerror(errno));
     return -1;
   }
 
