@@ -5,16 +5,17 @@
 #include <string>
 
 #include "broker.hpp"
+#include "deps/zygisk.hpp"
 #include "logger.hpp"
 #include "shared.hpp"
 #include "synchronization.hpp"
-#include "deps/zygisk.hpp"
 
 #define TAG "BipanRootCompanion"
 
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
 static void handle_fetch_targets(int sockfd);
+static inline int recv_fd(int socket);
 
 /**
  * Our root companion's request handler function. This function runs in
@@ -72,9 +73,10 @@ static void companion_handler(int sock) {
   }
 }
 
+extern "C" __attribute__((visibility("default")))
 REGISTER_ZYGISK_COMPANION(companion_handler)
 
-static void handle_fetch_targets(int sockfd) {
+    static void handle_fetch_targets(int sockfd) {
   DIR* dir = opendir(TARGETS_DIR);
   if (!dir) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "handle_fetch_targets: failed to read targets dir (%s)!", TARGETS_DIR);
@@ -96,4 +98,36 @@ static void handle_fetch_targets(int sockfd) {
 
   uint32_t done = 0;  // means we are finished
   write(sockfd, &done, sizeof(done));
+}
+
+/**
+ * Called by the companion to capture the sockfd of its end of the socketpair
+ */
+static inline int recv_fd(int socket) {
+  struct msghdr msg;
+  local_memset(&msg, 0, sizeof(msg));
+
+  struct cmsghdr* cmsg;
+  char buf[CMSG_SPACE(sizeof(int))];
+  local_memset(buf, 0, sizeof(buf));
+
+  char dummy[1];
+  struct iovec io = {.iov_base = dummy, .iov_len = sizeof(dummy)};
+
+  msg.msg_iov = &io;
+  msg.msg_iovlen = 1;
+  msg.msg_control = buf;
+  msg.msg_controllen = sizeof(buf);
+
+  if (arm64_raw_syscall(__NR_recvmsg, socket, (long)&msg, 0, 0, 0, 0) <= 0) {
+    return -1;
+  }
+
+  cmsg = CMSG_FIRSTHDR(&msg);
+  if (!cmsg || cmsg->cmsg_type != SCM_RIGHTS) {
+    return -1;
+  }
+
+  // The kernel has now placed a new fd into our table: extract it
+  return *((int*)CMSG_DATA(cmsg));
 }
