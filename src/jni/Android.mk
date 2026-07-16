@@ -6,61 +6,12 @@ LOCAL_MODULE := dobby_static
 LOCAL_SRC_FILES := deps/libdobby.a
 include $(PREBUILT_STATIC_LIBRARY)
 
-
-# Logger
-include $(CLEAR_VARS)
-LOCAL_MODULE    := bipan-logger
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/logger/*.cpp))
-LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
-		-ffunction-sections -fdata-sections \
-		-Wconversion -Wsign-conversion \
-		-Wdouble-promotion -Winline \
-		-fno-exceptions -fno-rtti \
-		-fvisibility=hidden -fvisibility-inlines-hidden \
-		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter \
-# 		-Rpass=inline -Rpass-missed=inline
-include $(BUILD_STATIC_LIBRARY)
-
-# Tools module
-include $(CLEAR_VARS)
-LOCAL_MODULE    := bipan-tools
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/tools/*.cpp))
-LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
-		-ffunction-sections -fdata-sections \
-		-Wconversion -Wsign-conversion \
-		-Wdouble-promotion -Winline \
-		-fno-exceptions -fno-rtti \
-		-fvisibility=hidden -fvisibility-inlines-hidden \
-		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter \
-# 		-Rpass=inline -Rpass-missed=inline
-include $(BUILD_STATIC_LIBRARY)
-
-# In-app static lib (injected code)
-include $(CLEAR_VARS)
-LOCAL_MODULE    := bipan-inapp
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/in-app/*.cpp))
-LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
-		-ffunction-sections -fdata-sections \
-		-Wconversion -Wsign-conversion \
-		-Wdouble-promotion -Winline \
-		-fno-exceptions -fno-rtti \
-		-fvisibility=hidden -fvisibility-inlines-hidden \
-		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter \
-# 		-Rpass=inline -Rpass-missed=inline
-
-# Statically link injected portion to Dobby
-LOCAL_STATIC_LIBRARIES := dobby_static
-include $(BUILD_STATIC_LIBRARY)
-
-
-# Broker process static lib
-include $(CLEAR_VARS)
-LOCAL_MODULE    := bipan-broker
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/broker/*.cpp))
-LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
+ifeq ($(BIPAN_DEBUG), 1)
+	BIPAN_CPPFLAGS := -O0 -g -Wall -Wextra -fno-exceptions -fno-rtti
+	BIPAN_LDFLAGS := 
+$(info Building DEBUG variant...)
+else
+	BIPAN_CPPFLAGS := -O3 -Wall -Wextra \
 		-ffunction-sections -fdata-sections \
 		-Wconversion -Wsign-conversion \
 		-Wdouble-promotion -Winline \
@@ -69,8 +20,47 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-fomit-frame-pointer -flto \
 		-Wno-unused-parameter \
 		-Rpass=inline -Rpass-missed=inline
+# 		-fno-stack-protector -fPIC
+
+	BIPAN_LDFLAGS := -Wl,--gc-sections \
+								 	 -Wl,--exclude-libs,ALL \
+								 	 -Wl,--icf=all \
+								 	 -Wl,-u,zygisk_module_entry \
+                 	 -Wl,-u,zygisk_companion_entry \
+                 	 -Wl,--version-script=$(LOCAL_PATH)/bipan_export.map \
+								 	 -flto
+$(info Building RELEASE variant...)
+endif
+
+
+# Logger
+include $(CLEAR_VARS)
+LOCAL_MODULE    := bipan-logger
+LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/logger/*.cpp))
+LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
 include $(BUILD_STATIC_LIBRARY)
 
+# Tools module
+include $(CLEAR_VARS)
+LOCAL_MODULE    := bipan-tools
+LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/tools/*.cpp))
+LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
+include $(BUILD_STATIC_LIBRARY)
+
+# In-app static lib (injected code)
+include $(CLEAR_VARS)
+LOCAL_MODULE    := bipan-inapp
+LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/in-app/*.cpp))
+LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
+LOCAL_STATIC_LIBRARIES := dobby_static # link injected portion to Dobby
+include $(BUILD_STATIC_LIBRARY)
+
+# Broker process static lib
+include $(CLEAR_VARS)
+LOCAL_MODULE    := bipan-broker
+LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/broker/*.cpp))
+LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
+include $(BUILD_STATIC_LIBRARY)
 
 # Build final Bipan shared library
 include $(CLEAR_VARS)
@@ -90,12 +80,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
 																bipan-inapp \
 																bipan-broker
 
-LOCAL_LDFLAGS := -Wl,--gc-sections \
-								 -Wl,--exclude-libs,ALL \
-								 -Wl,--icf=all \
-								 -Wl,-u,zygisk_module_entry \
-                 -Wl,-u,zygisk_companion_entry \
-                 -Wl,--version-script=$(LOCAL_PATH)/bipan_export.map \
-								 -flto
+LOCAL_LDFLAGS := $(BIPAN_LDFLAGS)
 
 include $(BUILD_SHARED_LIBRARY)
