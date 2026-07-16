@@ -6,12 +6,12 @@
 #include <cstdint>
 #include <cstring>
 
-inline static bool is_ipv4_lan_addr(uint32_t ip4);
-inline static bool is_ipv6_lan_addr(uint8_t* ip6);
-inline static bool is_exact_dir(const char* path, const char* target_dir);
-inline static bool starts_with(const char* str, const char* prefix);
-inline static bool is_pure_numeric(const char* str, size_t len);
-inline static bool is_dynamic_proc_file(const char* pathname, const char* suffix);
+static inline bool is_ipv4_lan_addr(uint32_t ip4);
+static inline bool is_ipv6_lan_addr(uint8_t* ip6);
+static inline bool is_exact_dir(const char* path, const char* target_dir);
+static inline bool starts_with(const char* str, const char* prefix);
+static inline bool is_pure_numeric(const char* str, size_t len);
+static inline bool is_dynamic_proc_file(const char* pathname, const char* suffix);
 
 /**
  * Returns `true` if `sa_family` of given socket struct `addr`
@@ -183,7 +183,7 @@ bool is_mounts(const char* pathname) {
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise
  */
-inline static bool is_ipv4_lan_addr(uint32_t ip4) {
+static inline bool is_ipv4_lan_addr(uint32_t ip4) {
   // Unspecified address (0.0.0.0)
   if (ip4 == 0x00000000) {
     return true;
@@ -221,7 +221,7 @@ inline static bool is_ipv4_lan_addr(uint32_t ip4) {
  * pointed by `ip6` is in any of
  * the IPv6 LAN ranges. `false` otherwise
  */
-inline static bool is_ipv6_lan_addr(uint8_t* ip6) {
+static inline bool is_ipv6_lan_addr(uint8_t* ip6) {
   if (!ip6) {
     return false;
   }
@@ -274,7 +274,7 @@ inline static bool is_ipv6_lan_addr(uint8_t* ip6) {
   return false;
 }
 
-inline static bool is_exact_dir(const char* path, const char* target_dir) {
+static inline bool is_exact_dir(const char* path, const char* target_dir) {
   size_t len = strlen(target_dir);
   if (strncmp(path, target_dir, len) == 0) {
     // Return true if it ends exactly at the dir name, or has a trailing slash
@@ -283,12 +283,12 @@ inline static bool is_exact_dir(const char* path, const char* target_dir) {
   return false;
 }
 
-inline static bool starts_with(const char* str, const char* prefix) {
+static inline bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
 // Verifies if a segment of a string is purely numbers (a PID)
-inline static bool is_pure_numeric(const char* str, size_t len) {
+static inline bool is_pure_numeric(const char* str, size_t len) {
   if (len == 0) {
     return false;
   }
@@ -301,7 +301,7 @@ inline static bool is_pure_numeric(const char* str, size_t len) {
 }
 
 // Validates any /proc/<PID>/target_file layout
-inline static bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
+static inline bool is_dynamic_proc_file(const char* pathname, const char* suffix) {
   // 1. Must start with "/proc/"
   if (strncmp(pathname, "/proc/", 6) != 0) {
     return false;

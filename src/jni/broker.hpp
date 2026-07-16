@@ -1,7 +1,7 @@
 #ifndef BROKER_HPP
 #define BROKER_HPP
 
-#include "shared_ipc.hpp"
+#include "ipc_communication.hpp"
 
 void startBroker(int sock, SharedIPC* ipc_mem);
 

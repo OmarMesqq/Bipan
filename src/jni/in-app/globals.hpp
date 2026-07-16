@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <unordered_set>
 
-#include "shared_ipc.hpp"
+#include "ipc_communication.hpp"
 
 #define TAG "Bipan"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
