@@ -43,7 +43,7 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
-#include "utils.hpp"
+#include "policies.hpp"
 
 #define TAG "BipanBroker"
 
@@ -385,7 +385,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           // Allow 0.0.0.0 and loopback (127.0.0.0/8)
           if (ip4 != 0x00000000 || ((ip4 & 0xFF000000) != 0x7F000000)) {
-            if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+            if (isLanAddress(sock_payload) || port == 5353 || port == 1900) {
               should_block = true;
             }
           }
@@ -394,7 +394,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           uint16_t port = ntohs(sin6->sin6_port);
           uint8_t* ip6 = sin6->sin6_addr.s6_addr;
 
-          if (is_lan_address(sock_payload) || port == 5353 || port == 1900) {
+          if (isLanAddress(sock_payload) || port == 5353 || port == 1900) {
             should_block = true;
           }
         }
@@ -413,14 +413,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
-        if (is_lan_address(sock_payload)) {
+        if (isLanAddress(sock_payload)) {
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
         }
         break;
       }
       case __NR_sendto: {
-        if (is_lan_address(sock_payload)) {
+        if (isLanAddress(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg2;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
@@ -436,7 +436,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_sendmsg: {
-        if (is_lan_address(sock_payload)) {
+        if (isLanAddress(sock_payload)) {
           int ghost_len = (int)ipc_mem->arg3;
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;

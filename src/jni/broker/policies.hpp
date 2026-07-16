@@ -1,0 +1,14 @@
+#ifndef POLICIES_HPP
+#define POLICIES_HPP
+
+bool isLanAddress(struct sockaddr* addr);
+bool shouldLog(const char* pathname);
+bool shouldSpoofExistence(const char* pathname);
+bool shouldDenyAccess(const char* pathname);
+const char* shouldFakeFile(const char* pathname);
+bool is_maps(const char* pathname);
+bool is_proc_status(const char* pathname);
+bool is_smaps(const char* pathname);
+bool is_mounts(const char* pathname);
+
+#endif
