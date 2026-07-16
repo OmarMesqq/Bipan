@@ -2,9 +2,9 @@
 set -euxo pipefail
 
 rm -rf javac_out
-rm -f src/jni/bipan_java.h
-rm -rf src/jni/libs
-rm -rf src/jni/obj
+rm -f src/jni/in-app/bipan_java.h
+rm -rf src/libs
+rm -rf src/obj
 rm -f classes.dex
 rm -f bipan.zip
 rm -rf r8analysis
