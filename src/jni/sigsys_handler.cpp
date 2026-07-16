@@ -19,6 +19,7 @@
 #include "shared.hpp"
 #include "spoofer.hpp"
 #include "synchronization.hpp"
+#include "in-app/ipc_lock.hpp"
 #include "utils.hpp"
 
 struct kernel_sigaction {

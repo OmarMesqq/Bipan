@@ -23,6 +23,9 @@ using zygisk::ServerSpecializeArgs;
 
 #define BIPAN_JAVA_PACKAGE_NAME "b.J"
 
+
+static inline ssize_t send_fd(int socket, int fd);
+
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
 constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
@@ -399,5 +402,30 @@ class Bipan : public zygisk::ModuleBase {
   }
 };
 
+/**
+ * The app calls this to send an fd to the companion
+ */
+__attribute__((always_inline)) static inline ssize_t send_fd(int socket, int fd) {
+  struct msghdr msg = {};
+  char buf[CMSG_SPACE(sizeof(int))] = {0};
+  char dummy = '!';
+  struct iovec io = {.iov_base = &dummy, .iov_len = 1};
+
+  msg.msg_iov = &io;
+  msg.msg_iovlen = 1;
+  msg.msg_control = buf;
+  msg.msg_controllen = sizeof(buf);
+
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+  *((int*)CMSG_DATA(cmsg)) = fd;
+
+  ssize_t ret = sendmsg(socket, &msg, 0);
+  return ret;
+}
+
 // Register the module class
+extern "C" __attribute__((visibility("default")))
 REGISTER_ZYGISK_MODULE(Bipan)
