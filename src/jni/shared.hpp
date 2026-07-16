@@ -57,6 +57,7 @@ typedef struct {
 
   // Payloads to cross the process boundary
   char string_payload[256];     // Paths (/sbin/su, etc)
+  int pipefd_payload[2];        // pipe2 1st arg
   uint8_t struct_payload[128];  // sockaddrs
   uint8_t out_buffer[512];      // Returned data (uname, readlinkat)
 

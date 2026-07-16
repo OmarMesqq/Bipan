@@ -157,6 +157,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+  local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
 #ifdef DEBUG
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
   local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
@@ -174,6 +175,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat ||
+             nr == __NR_faccessat2 ||
              nr == __NR_newfstatat ||
              nr == __NR_statx ||
              nr == __NR_inotify_add_watch ||
@@ -182,6 +184,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve || nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+  } else if (nr == __NR_pipe2) {
+    local_memcpy(ipc_mem->pipefd_payload, (int*) arg0, 2);
   }
 #ifdef DEBUG
   else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
