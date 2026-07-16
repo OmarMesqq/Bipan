@@ -8,7 +8,9 @@
 #include <linux/filter.h>
 #include <linux/memfd.h>
 #include <linux/netlink.h>
+#include <linux/sched.h>
 #include <netinet/in.h>
+#include <sched.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -19,6 +21,7 @@
 #include <sys/inotify.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/ptrace.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
@@ -80,6 +83,10 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 std::string get_sockaddr_info(const struct sockaddr* sa);
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
+static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
+static char* get_ptrace_op_name(int op);
+
+static thread_local bool inside_remote_patcher = false;
 
 /**
  * `BipanBroker` runs as thread of root companion, as such,
@@ -104,7 +111,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   if (!initializeLogger()) {
     return;
   }
-  
+
   char threadName[16];
   snprintf(threadName, sizeof(threadName), "bb-%s", ipc_mem->package_name);
   prctl(PR_SET_NAME, threadName, 0, 0, 0);
@@ -329,12 +336,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat:
-      case __NR_newfstatat: {
+      case __NR_newfstatat:
+      case __NR_faccessat2: {
         const char* action_name;
         if (nr == __NR_faccessat) {
           action_name = "faccessat";
         } else if (nr == __NR_newfstatat) {
           action_name = "newfstatat";
+        } else if (nr == __NR_faccessat2) {
+          action_name = "faccessat2";
         }
 
         if (shouldSpoofExistence(path_payload)) {
@@ -599,7 +609,54 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_ptrace: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] (ptrace)!");
+        int op = (int)ipc_mem->arg0;
+        pid_t pid = (pid_t)ipc_mem->arg2;
+
+        char* opName = get_ptrace_op_name(op);
+        if (!opName) {
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(ptrace): op: %s | PID: %d", opName, pid);
+        free(opName);
+        break;
+      }
+      case __NR_syslog: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (syslog)!");
+        break;
+      }
+      case __NR_pipe2: {
+        int* pipefd = (int*)ipc_mem->pipefd_payload;
+        int flags = ipc_mem->arg1;
+
+        std::string flagsAnalysis = "";
+        flagsAnalysis.reserve(100);
+        if (flags & O_NONBLOCK) flagsAnalysis += "O_NONBLOCK";
+        if (flags & O_CLOEXEC) flagsAnalysis += "Close-on-exec";
+
+        if (!pipefd) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): Flags: %s", flagsAnalysis.c_str());
+        } else {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): pipefd[0]: %d | pipefd[1]: %d | Flags: %s", pipefd[0], pipefd[1], flagsAnalysis.c_str());
+        }
+
+        break;
+      }
+      case __NR_clone: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (clone)!");
+        break;
+      }
+      case __NR_clone3: {
+        struct clone_args* cl_args = (struct clone_args*)ipc_mem->struct_payload;
+        size_t size = ipc_mem->arg1;
+
+        char* childThName = get_thread_name(ipc_mem->target_pid, cl_args->child_tid);
+        if (!childThName) {
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(clone3): Child TID: %llu | Thread name: %s | Exit signal: %llu", cl_args->child_tid, childThName, cl_args->exit_signal);
+        free(childThName);
         break;
       }
       default: {
@@ -808,7 +865,6 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   return "[Unknown]";
 }
 
-static thread_local bool inside_remote_patcher = false;
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
   if (inside_remote_patcher) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Thread reentrancy in remote patcher!");
@@ -912,4 +968,130 @@ static inline bool client_is_dead(int epfd, int pidfd) {
  */
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
   return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
+}
+
+static char* get_thread_name(pid_t parentPid, __aligned_u64 tid) {
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/task/%llu/comm", parentPid, tid);
+
+  FILE* f = fopen(path, "r");
+  if (!f) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to open /proc/parentPid/task/TID/comm");
+    return nullptr;
+  }
+
+  char* name = (char*)calloc(16, sizeof(char));
+  if (!name) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to calloc!");
+    return nullptr;
+  }
+
+  fgets(name, sizeof(name), f);
+  fclose(f);
+  return name;
+}
+
+static char* get_ptrace_op_name(int op) {
+  const char* name;
+  switch (op) {
+    case PTRACE_TRACEME:
+      name = "PTRACE_TRACEME";
+      break;
+    case PTRACE_PEEKTEXT:
+      name = "PTRACE_PEEKTEXT";
+      break;
+    case PTRACE_PEEKDATA:
+      name = "PTRACE_PEEKDATA";
+      break;
+    case PTRACE_PEEKUSER:
+      name = "PTRACE_PEEKUSER";
+      break;
+    case PTRACE_POKETEXT:
+      name = "PTRACE_POKETEXT";
+      break;
+    case PTRACE_POKEDATA:
+      name = "PTRACE_POKEDATA";
+      break;
+    case PTRACE_POKEUSER:
+      name = "PTRACE_POKEUSER";
+      break;
+    case PTRACE_GETREGSET:
+      name = "PTRACE_GETREGSET";
+      break;
+    case PTRACE_SETREGSET:
+      name = "PTRACE_SETREGSET";
+      break;
+    case PTRACE_GETSIGINFO:
+      name = "PTRACE_GETSIGINFO";
+      break;
+    case PTRACE_SETSIGINFO:
+      name = "PTRACE_SETSIGINFO";
+      break;
+    case PTRACE_PEEKSIGINFO:
+      name = "PTRACE_PEEKSIGINFO";
+      break;
+    case PTRACE_GETSIGMASK:
+      name = "PTRACE_GETSIGMASK";
+      break;
+    case PTRACE_SETSIGMASK:
+      name = "PTRACE_SETSIGMASK";
+      break;
+    case PTRACE_SETOPTIONS:
+      name = "PTRACE_SETOPTIONS";
+      break;
+    case PTRACE_GETEVENTMSG:
+      name = "PTRACE_GETEVENTMSG";
+      break;
+    case PTRACE_CONT:
+      name = "PTRACE_CONT";
+      break;
+    case PTRACE_SYSCALL:
+      name = "PTRACE_SYSCALL";
+      break;
+    case PTRACE_SINGLESTEP:
+      name = "PTRACE_SINGLESTEP";
+      break;
+    case PTRACE_SYSEMU:
+      name = "PTRACE_SYSEMU";
+      break;
+    case PTRACE_SYSEMU_SINGLESTEP:
+      name = "PTRACE_SYSEMU_SINGLESTEP";
+      break;
+    case PTRACE_LISTEN:
+      name = "PTRACE_LISTEN";
+      break;
+    case PTRACE_KILL:
+      name = "PTRACE_KILL";
+      break;
+    case PTRACE_INTERRUPT:
+      name = "PTRACE_INTERRUPT";
+      break;
+    case PTRACE_ATTACH:
+      name = "PTRACE_ATTACH";
+      break;
+    case PTRACE_SEIZE:
+      name = "PTRACE_SEIZE";
+      break;
+    case PTRACE_SECCOMP_GET_FILTER:
+      name = "PTRACE_SECCOMP_GET_FILTER";
+      break;
+    case PTRACE_DETACH:
+      name = "PTRACE_DETACH";
+      break;
+    case PTRACE_GET_SYSCALL_INFO:
+      name = "PTRACE_GET_SYSCALL_INFO";
+      break;
+    default:
+      name = "Unknown...";
+      break;
+  }
+
+  size_t len = strlen(name) + 1;
+  char* result = (char*)calloc(len, sizeof(char));
+  if (result == NULL) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_ptrace_op_name: Failed to calloc!");
+    return NULL;
+  }
+  memcpy(result, name, len);
+  return result;
 }
