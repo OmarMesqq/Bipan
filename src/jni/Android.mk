@@ -18,7 +18,8 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter
+		-Wno-unused-parameter \
+# 		-Rpass=inline -Rpass-missed=inline
 include $(BUILD_STATIC_LIBRARY)
 
 # Tools module
@@ -32,7 +33,8 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter
+		-Wno-unused-parameter \
+# 		-Rpass=inline -Rpass-missed=inline
 include $(BUILD_STATIC_LIBRARY)
 
 # In-app static lib (injected code)
@@ -46,7 +48,8 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter
+		-Wno-unused-parameter \
+# 		-Rpass=inline -Rpass-missed=inline
 
 # Statically link injected portion to Dobby
 LOCAL_STATIC_LIBRARIES := dobby_static
@@ -64,7 +67,8 @@ LOCAL_CPPFLAGS := -O3 -Wall -Wextra \
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter
+		-Wno-unused-parameter \
+		-Rpass=inline -Rpass-missed=inline
 include $(BUILD_STATIC_LIBRARY)
 
 
