@@ -27,6 +27,7 @@ import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
+import android.os.Process;
 
 @Composable
 fun NativeScreen() {
@@ -53,6 +54,8 @@ fun NativeScreen() {
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
+
+    val pid = Process.myPid()
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -174,13 +177,21 @@ fun NativeScreen() {
                     Button(
                         onClick = {
                             val filenames = arrayOf(
-                                "/proc/self/maps",
-                                "/proc/self/smaps",
-                                "/proc/mounts",
+                                // "/proc/self/maps",
+                                // "/proc/self/smaps",
+                                // "/proc/self/status",
                                 "/proc/self/mounts",
                                 "/proc/self/mountstats",
                                 "/proc/self/mountinfo",
-                                "/proc/self/status",
+
+                                "/proc/$pid/mounts",
+                                "/proc/$pid/mountstats",
+                                "/proc/$pid/mountinfo",
+                                // "/proc/$pid/maps",
+                                // "/proc/self/smaps",
+                                // "/proc/self/status",
+
+                                "/proc/mounts",
                                 "/proc/version",
                                 "/proc/sys/kernel/version",
                                 "/proc/sys/kernel/osrelease",

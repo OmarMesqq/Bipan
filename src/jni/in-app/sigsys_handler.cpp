@@ -144,7 +144,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialization of strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
 
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
@@ -288,13 +288,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
-    // if (nr == __NR_readlinkat && result > 0) {
-    //   char* app_buf = (char*)ipc_mem->arg2;
-    //   size_t app_bufsiz = (size_t)ipc_mem->arg3;
-    //   size_t copy_len = strnlen((char*)ipc_mem->out_buffer, app_bufsiz - 1);
-    //   local_memcpy(app_buf, ipc_mem->out_buffer, copy_len);
-    //   app_buf[copy_len] = '\0';
-    // }
+    if (nr == __NR_readlinkat && result > 0) {
+      char* buf = (char*)ipc_mem->arg2;
+      size_t bufsiz = (size_t)ipc_mem->arg3;
+      size_t copy_len = local_strnlen((char*)ipc_mem->out_buffer, bufsiz - 1);
+      local_memcpy(buf, ipc_mem->out_buffer, copy_len);
+      // buf[copy_len] = '\0';
+    }
 #endif
   }
 

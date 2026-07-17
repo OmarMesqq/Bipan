@@ -1,12 +1,17 @@
 #include "policies.hpp"
 
 #include <arpa/inet.h>
+#include <linux/limits.h>
 #include <sys/socket.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 #include "common_utils.hpp"
+#include "logger/logger.hpp"
+
+#define TAG "BipanPolicies"
 
 static inline bool is_ipv4_lan_addr(uint32_t ip4);
 static inline bool is_ipv6_lan_addr(uint8_t* ip6);
@@ -43,7 +48,7 @@ bool shouldLog(const char* pathname) {
       starts_with(pathname, "/data/user_de/0/") ||
       starts_with(pathname, "/storage/emulated/0/Android/media") ||
       starts_with(pathname, "/storage/emulated/0/Android/data") ||
-      // starts_with(pathname, "/data/misc/profiles") ||
+      starts_with(pathname, "/data/misc/profiles/") ||
       starts_with(pathname, "/data/misc/shared_relro") ||
       starts_with(pathname, "/product/app/webview") ||
       starts_with(pathname, "/apex/com.android") ||
@@ -124,8 +129,7 @@ bool shouldDenyAccess(const char* pathname) {
            starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
-           starts_with(pathname, "/sys/module")) ||
-          strcmp(pathname, "/proc/zoneinfo") == 0);
+           starts_with(pathname, "/sys/module")));
 }
 
 const char* shouldFakeFile(const char* pathname) {
@@ -177,6 +181,44 @@ bool is_mounts(const char* pathname) {
          is_dynamic_proc_file(pathname, "/mountstats") ||
          is_dynamic_proc_file(pathname, "/mountinfo") ||
          is_dynamic_proc_file(pathname, "/mounts");
+}
+
+char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
+  char* fixed = (char*)calloc(PATH_MAX, sizeof(char));
+  if (!fixed) {
+    // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "!!!!! Failed to allocate mem");
+    return nullptr;
+  }
+
+  if (
+      strstr(resolvedPath, "mountstats") ||
+      strstr(resolvedPath, "version") ||
+      strstr(resolvedPath, "osrelease")) {
+    strcpy(fixed, "ENOENT");
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "hosts")) {
+    strcpy(fixed, "/system/etc/hosts");
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "mountinfo")) {
+    char proc_pid_mountinfo[PATH_MAX] = {0};
+    snprintf(proc_pid_mountinfo, sizeof(proc_pid_mountinfo), "/proc/%d/mountinfo", pid);
+    strcpy(fixed, proc_pid_mountinfo);
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "mounts")) {
+    char proc_pid_mounts[PATH_MAX] = {0};
+    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/mounts", pid);
+    strcpy(fixed, proc_pid_mounts);
+    return fixed;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Got unexpected path when correcting symlink: %s", resolvedPath);
+  return nullptr;
 }
 
 /**

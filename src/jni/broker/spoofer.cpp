@@ -220,7 +220,7 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"QST42iyo0wWX", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
     close(real_fd);
