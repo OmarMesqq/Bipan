@@ -196,6 +196,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           culprit_lib = frame_lib;
           offset = frame_offset;
           is_trusted = false;
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
           break;
         }
 
@@ -495,6 +496,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mq_notify: {
+        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
         break;
       }
@@ -633,6 +635,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_clock_gettime: {
+        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
         break;
       }
@@ -643,7 +646,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_epoll_ctl: {
         int fd = (int)ipc_mem->arg2;
-        // TODO: logic for our FD
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] epoll_ctl on fd %d", fd);
         break;
       }
@@ -946,9 +948,8 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   // We subtract 4 to target the actual 'svc #0' instruction.
   uintptr_t target_addr = caller_pc - 4;
 
-  // anti reentrancy if already patched
   if (patched_pcs.count(target_addr)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Reentrancy in remote patcher: PC already patched!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Reentrancy in remote patcher: PC already patched!");
     inside_remote_patcher = false;
     return;
   }
@@ -983,7 +984,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   close(mem_fd);
 
   if (written == sizeof(opcode)) {
-    patched_pcs.insert(target_addr);  // TODO: patched_pcs should be thread_local
+    patched_pcs.insert(target_addr);
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Remote Patch succeeded: PC %p now returns %d.", (void*)target_addr, return_value);
   } else {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Remote patch (pwrite) failed for PID %d (errno: %s)", target_pid, strerror(errno));
@@ -1152,7 +1153,7 @@ static char* get_ptrace_op_name(int op) {
       name = "PTRACE_GET_SYSCALL_INFO";
       break;
     default:
-      name = "Unknown...";
+      name = "Unknown ptrace operation!!";
       break;
   }
 
