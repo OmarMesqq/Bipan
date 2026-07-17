@@ -52,7 +52,6 @@
 
 
 static inline void early_init_sysprop_tests(void);
-static inline void early_init_stat_tests(void);
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
@@ -61,14 +60,84 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
 static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 static inline void dump (void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
-static inline unsigned char starts_with(const char* str, const char* prefix);
+static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_sysprop_tests();
-    early_init_stat_tests();
-
     LOGI("Early init: __attribute__((constructor))");
 }
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanCommonVfsFiles(JNIEnv *env, jobject thiz) {
+    char report[8192] = {0};
+    char entry[512] = {0};
+    pid_t pid = getpid();
+    char proc_pid_path[PATH_MAX] = {0};
+    snprintf(proc_pid_path, sizeof(proc_pid_path), "/proc/%d/ns/mnt", pid);
+
+    #define PATHS 4
+    const char* paths[PATHS] = {
+            "/proc/self/ns/mnt",
+            proc_pid_path,
+            "/proc/self/exe",
+            "/proc/self/stat",
+    };
+
+    for (size_t i = 0; i < PATHS; i++) {
+        const char* curr = paths[i];
+
+        FILE* currFp = fopen(curr, "r");
+        if (!currFp) {
+            snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", curr, strerror(errno));
+            strcat(report, entry);
+            continue;
+        }
+
+        snprintf(entry, sizeof(entry), "File: %s\n", curr);
+        strcat(report, entry);
+
+        char buf[4096];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), currFp)) > 0) {
+            if (strstr(curr, "exe")) {
+                for (size_t j = 0; j < strlen(buf); j++) {
+                    snprintf(entry, sizeof(entry), "0x%02x ", buf[j]);
+                    strcat(report, entry);
+                }
+            } else {
+                snprintf(entry, sizeof(entry), "%s", buf);
+                strcat(report, entry);
+            }
+        }
+
+        snprintf(entry, sizeof(entry), "\n=====================");
+        strcat(report, entry);
+    }
+
+    snprintf(entry, sizeof(entry), "\nSome envvars:\n");
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "PATH: %s\n", getenv("PATH"));
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "USER: %s\n", getenv("USER"));
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "LOGNAME: %s\n", getenv("LOGNAME"));
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "HOSTNAME: %s\n", getenv("HOSTNAME"));
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "PWD: %s\n", getenv("PWD"));
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "LD_PRELOAD: %s\n", getenv("LD_PRELOAD"));
+    strcat(report, entry);
+
+    return (*env)->NewStringUTF(env, report);
+}
+
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
@@ -578,9 +647,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         }
 
 
-        // rewind
-        arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
-
         // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
         char fdPath[64];
         snprintf(fdPath, sizeof(fdPath), "/proc/self/fd/%ld", fd);
@@ -596,123 +662,28 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         strcat(report, entry);
 
 
-//        char previewBuf[256] = {0};
-//        long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
-//        if (readRet > 0) {
-//            previewBuf[readRet] = '\0';
-//
-//            // Find end of first line, then end of second line
-//            char* firstNewline = strchr(previewBuf, '\n');
-//            char* secondNewline = firstNewline ? strchr(firstNewline + 1, '\n') : NULL;
-//
-//            if (secondNewline) {
-//                *(secondNewline + 1) = '\0';  // truncate after 2nd line
-//            }
-//            // else: fewer than 2 lines total, previewBuf already has everything read
-//
-//            snprintf(entry, sizeof(entry), "First 2 lines:\n%s\n", previewBuf);
-//            strcat(report, entry);
-//        } else {
-//            snprintf(entry, sizeof(entry), "read() for preview failed or file empty. errno: %s\n", strerror(errno));
-//            strcat(report, entry);
-//        }
-
         struct stat statbuf = {0};
         // if path = "", operate on the file referred to by dirfd
         // If path is a symbolic link, do not dereference it: instead return information about the link itself
-        int newfstatatFlags = AT_SYMLINK_NOFOLLOW;
+        int flags = AT_SYMLINK_NOFOLLOW;
 
-        long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, newfstatatFlags, 0, 0);
+        long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, flags, 0, 0);
 
-        if (nwfstatRetOnPath != 0) {
-            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
+        if (ret != 0) {
+            snprintf(entry, sizeof(entry), "stat on %s (PATH) failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
             strcat(report, entry);
         } else {
             snprintf(entry, sizeof (entry),"stat on %s (PATH) successful.\n", cstr);
             strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
-//            strcat(report, entry);
-//
-//            // Timestamps
-//            char access_time_str[64];
-//            char modify_time_str[64];
-//            char change_time_str[64];
-//            struct tm tm_info;
-//
-//            // 1. Format Access Time
-//            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
-//            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // 2. Format Modification Time
-//            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
-//            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // 3. Format Status Change Time
-//            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
-//            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // Log the human-readable versions with their nanoseconds appended
-//            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
-//            strcat(report, entry);
         }
         if (readlinkLen < 0) {
-            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n", symlinkPath);
+            snprintf(entry, sizeof(entry), "stat on %s (LINK) failed!\n", symlinkPath);
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful\n", symlinkPath);
+            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful.\n", symlinkPath);
             strcat(report, entry);
-
-//            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
-//            strcat(report, entry);
-//
-//            // Timestamps
-//            char access_time_str[64];
-//            char modify_time_str[64];
-//            char change_time_str[64];
-//            struct tm tm_info;
-//
-//            // 1. Format Access Time
-//            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
-//            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // 2. Format Modification Time
-//            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
-//            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // 3. Format Status Change Time
-//            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
-//            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-//
-//            // Log the human-readable versions with their nanoseconds appended
-//            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
-//            strcat(report, entry);
-//            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
-//            strcat(report, entry);
         }
-
-
+        
         snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
 
@@ -720,6 +691,48 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         (*env)->ReleaseStringUTFChars(env, jstr, cstr);
         (*env)->DeleteLocalRef(env, jstr);
         arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+    }
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
+    jsize len = (*env)->GetArrayLength(env, filenames);
+    char report[20000] = {0};
+    char entry[PATH_MAX] = {0};
+    char errorBuffer[128] = {0};
+    
+    for (int i = 0; i < len; i++) {
+        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
+        if (jstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (cstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        struct stat statbuf = {0};
+        // if path is a symbolic link, do not dereference it: instead return information about the link itself
+        int flags = AT_SYMLINK_NOFOLLOW;
+
+        long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, flags, 0, 0);
+        if (ret != 0) {
+            snprintf(entry, sizeof(entry), "newfstatat(%s) failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
+            continue;
+        }
+
+        snprintf(entry, sizeof (entry),"newfstatat(%s) successful.\n", cstr);
+        strcat(report, entry);
+        char intermediateReport[8192] = {0};
+        dump_newfstat_info(cstr, intermediateReport, &statbuf);
+        strcat(report, intermediateReport);
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -1171,6 +1184,81 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv
 }
 
 
+static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf) {
+    char entry[PATH_MAX] = {0};
+
+    snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf->st_gid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf->st_rdev);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
+    strcat(report, entry);
+
+    // Timestamps
+    char access_time_str[64];
+    char modify_time_str[64];
+    char change_time_str[64];
+    struct tm tm_info;
+
+    // 1. Format Access Time
+    localtime_r(&statbuf->st_atim.tv_sec, &tm_info);
+    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 2. Format Modification Time
+    localtime_r(&statbuf->st_mtim.tv_sec, &tm_info);
+    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 3. Format Status Change Time
+    localtime_r(&statbuf->st_ctim.tv_sec, &tm_info);
+    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // Log the human-readable versions with their nanoseconds appended
+    snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf->st_atim.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf->st_mtim.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf->st_ctim.tv_nsec);
+    strcat(report, entry);
+
+    const char* file_type = "Unknown";
+    if (S_ISREG(statbuf->st_mode))  file_type = "Regular File";
+    else if (S_ISDIR(statbuf->st_mode))  file_type = "Directory";
+    else if (S_ISLNK(statbuf->st_mode))  file_type = "Symbolic Link";
+    else if (S_ISCHR(statbuf->st_mode))  file_type = "Character Device";
+    else if (S_ISBLK(statbuf->st_mode))  file_type = "Block Device";
+    else if (S_ISFIFO(statbuf->st_mode)) file_type = "FIFO/Pipe";
+    else if (S_ISSOCK(statbuf->st_mode)) file_type = "Socket";
+
+    snprintf(entry, sizeof(entry),"\tFile Type: %s\n", file_type);
+    strcat(report, entry);
+
+    // Special Flags (SUID, SGID, Sticky Bit)
+    snprintf(entry, sizeof(entry),"\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
+         (statbuf->st_mode & S_ISUID) ? 1 : 0,
+         (statbuf->st_mode & S_ISGID) ? 1 : 0,
+         (statbuf->st_mode & S_ISVTX) ? 1 : 0);
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry),"\tPermissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)\n\n",
+         (statbuf->st_mode & S_IRUSR) ? 'r' : '-',
+         (statbuf->st_mode & S_IWUSR) ? 'w' : '-',
+         (statbuf->st_mode & S_IXUSR) ? 'x' : '-',
+
+         (statbuf->st_mode & S_IRGRP) ? 'r' : '-',
+         (statbuf->st_mode & S_IWGRP) ? 'w' : '-',
+         (statbuf->st_mode & S_IXGRP) ? 'x' : '-',
+
+         (statbuf->st_mode & S_IROTH) ? 'r' : '-',
+         (statbuf->st_mode & S_IWOTH) ? 'w' : '-',
+         (statbuf->st_mode & S_IXOTH) ? 'x' : '-');
+    strcat(report, entry);
+}
+
+
 static const char* proto_to_str(int proto) {
     switch (proto) {
         case TCP: return "TCP";
@@ -1252,158 +1340,6 @@ static inline void early_init_sysprop_tests(void) {
     LOGI("[LEGACY] FINGERPRINT: %s", fp);
 }
 
-static inline void early_init_stat_tests(void) {
-    const char* hosts1 = "/etc/hosts";
-    const char* hosts2 = "/system/etc/hosts";
-    const char* perfEventParanoid = "/proc/sys/kernel/perf_event_paranoid";
-    long ret = 0; // result of syscall
-
-
-    // ----------------- start faccessat block ----------------------
-
-    int faccessatMode1 = F_OK; // tests existence of file
-    int faccessatMode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
-    int faccessatMode3 = R_OK; // exists and has read
-
-    int faccessatFlags1 = AT_EACCESS; // performs access using effective UID and GID
-    int faccessatFlags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
-    int faccessatFlags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
-
-
-    // should fail: requested permissions not satisfied
-    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode2, faccessatFlags1, 0, 0);
-    if (ret == 0) {
-        LOGI("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
-    } else {
-        LOGE("faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
-    }
-
-    // should return zero: perms granted
-    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode3, faccessatFlags1, 0, 0);
-    if (ret == 0) {
-        LOGI("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
-    } else {
-        LOGE("faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
-    }
-
-    // should return zero: mode is F_OK and file exists requested permissions granted
-    ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) hosts1, faccessatMode1, faccessatFlags1, 0, 0);
-    if (ret == 0) {
-        LOGI("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL", hosts1);
-    } else {
-        LOGE("faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
-    }
-
-    // ----------------- end faccessat block ----------------------
-
-    // ----------------- start newfstatat block ----------------------
-
-
-    struct stat statbuf = {0};
-    // if path = "", operate on the file referred to by dirfd
-    // If path is a symbolic link, do not dereference it: instead return information about the link itself
-    int newfstatatFlags = AT_EMPTY_PATH  | AT_SYMLINK_NOFOLLOW;
-
-    ret = arm64_raw_syscall(__NR_newfstatat, 0 , (long) hosts1, (long) &statbuf, newfstatatFlags, 0, 0);
-    if (ret == 0) {
-        LOGI("newfstatat(%s) - flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
-        LOGI("--- struct stat Dump ---");
-        LOGI("st_dev (Device ID):     %lu", (unsigned long)statbuf.st_dev);
-        LOGI("st_ino (inode number):     %lu", (unsigned long)statbuf.st_ino);
-        LOGI("Hard link count:   %lu", (unsigned long)statbuf.st_nlink);
-        LOGI("UID:     %u", statbuf.st_uid);
-        LOGI("GID:     %u", statbuf.st_gid);
-        LOGI("st_rdev (Device ID for special files i.e under /dev):    %lu", (unsigned long)statbuf.st_rdev);
-        LOGI("Size:    %ld bytes", (long)statbuf.st_size);
-        LOGI("I/O Block Size (preferred size for doing I/O): %d bytes", statbuf.st_blksize);
-        LOGI("Allocated Physical Blocks:  %ld (512B blocks)", statbuf.st_blocks);
-
-        // Timestamps
-        char access_time_str[64];
-        char modify_time_str[64];
-        char change_time_str[64];
-        struct tm tm_info;
-
-        // 1. Format Access Time
-        localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
-        strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-        // 2. Format Modification Time
-        localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
-        strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-        // 3. Format Status Change Time
-        localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
-        strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-        // Log the human-readable versions with their nanoseconds appended
-        LOGI("Access time:         %s.%09ld", access_time_str, statbuf.st_atim.tv_nsec);
-        LOGI("Modification time:   %s.%09ld", modify_time_str, statbuf.st_mtim.tv_nsec);
-        LOGI("Status Change Time (last time file metadata changed):  %s.%09ld", change_time_str, statbuf.st_ctim.tv_nsec);
-
-        // st_mode: file type + permission/special flags
-        // LOGI("st_mode:    0o%o (Octal)", statbuf.st_mode);
-        const char* file_type = "Unknown";
-        if (S_ISREG(statbuf.st_mode))  file_type = "Regular File";
-        else if (S_ISDIR(statbuf.st_mode))  file_type = "Directory";
-        else if (S_ISLNK(statbuf.st_mode))  file_type = "Symbolic Link";
-        else if (S_ISCHR(statbuf.st_mode))  file_type = "Character Device";
-        else if (S_ISBLK(statbuf.st_mode))  file_type = "Block Device";
-        else if (S_ISFIFO(statbuf.st_mode)) file_type = "FIFO/Pipe";
-        else if (S_ISSOCK(statbuf.st_mode)) file_type = "Socket";
-
-        LOGI("  -> File Type: %s", file_type);
-
-        // 2. Extract Special Flags (SUID, SGID, Sticky Bit)
-        LOGI("  -> Special Flags: SUID=%d, SGID=%d, Sticky=%d",
-             (statbuf.st_mode & S_ISUID) ? 1 : 0,
-             (statbuf.st_mode & S_ISGID) ? 1 : 0,
-             (statbuf.st_mode & S_ISVTX) ? 1 : 0);
-
-        // 3. Extract Permissions (Owner, Group, Other)
-        LOGI("  -> Permissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)",
-             (statbuf.st_mode & S_IRUSR) ? 'r' : '-',
-             (statbuf.st_mode & S_IWUSR) ? 'w' : '-',
-             (statbuf.st_mode & S_IXUSR) ? 'x' : '-',
-
-             (statbuf.st_mode & S_IRGRP) ? 'r' : '-',
-             (statbuf.st_mode & S_IWGRP) ? 'w' : '-',
-             (statbuf.st_mode & S_IXGRP) ? 'x' : '-',
-
-             (statbuf.st_mode & S_IROTH) ? 'r' : '-',
-             (statbuf.st_mode & S_IWOTH) ? 'w' : '-',
-             (statbuf.st_mode & S_IXOTH) ? 'x' : '-');
-    } else {
-        LOGE("newfstatat(%s) - flags: flags: AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
-    }
-
-    // ----------------- end newfstatat block ----------------------
-
-    // ----------------- start statx block ----------------------
-
-    struct statx statxbuf = {0};
-    int statxFlags = AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW;
-    int statxMode = STATX_BASIC_STATS | STATX_BTIME;
-
-    /**
-     * int statx(
-     *          int dirfd,
-     *          const char *_Nullable restrict path,
-     *          int flags,
-     *          unsigned int mask,
-     *          struct statx *restrict statxbuf
-     * )
-     */
-    ret = arm64_raw_syscall(__NR_statx, 0 , (long) hosts1, (long) statxFlags, statxMode, (long) &statxbuf, 0);
-    if (ret == 0) {
-        LOGI("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL", hosts1);
-    } else {
-        LOGE("statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s", hosts1, RAW_SYSCALL_TO_ERRNO(ret));
-    }
-
-    // ----------------- end statx block ----------------------
-
-}
 
 static inline void dump(void *p, int n, char *report) {
     char entry[64];
@@ -1461,9 +1397,7 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     return 0;
 }
 
-static inline unsigned char starts_with(const char* str, const char* prefix) {
-    return strncmp(str, prefix, strlen(prefix)) == 0;
-}
+
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
