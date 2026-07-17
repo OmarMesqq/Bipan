@@ -592,7 +592,6 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 // Legacy: __system_property_get
 static int hook_system_property_get(const char* name, char* value) {
   if (name != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "__system_property_get called. name: %s", name);
     auto it = g_prop_overrides.find(name);
     if (it != g_prop_overrides.end()) {
       strncpy(value, it->second.c_str(), 91);

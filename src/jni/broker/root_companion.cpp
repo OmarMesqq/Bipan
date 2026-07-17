@@ -12,7 +12,6 @@
 #include "logger/logger.hpp"
 
 #define TAG "BipanRootCompanion"
-
 #define TARGETS_DIR "/data/adb/modules/bipan/targets"
 
 static void handle_fetch_targets(int sockfd);

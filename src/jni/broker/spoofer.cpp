@@ -29,6 +29,13 @@ int uname_spoofer(struct utsname* buf) {
   return 0;
 }
 
+/**
+ * Calls to `memfd_create` in the functions below could, and imo, should use the bionic
+ * wrapper, but NDK says it was introduced only on API 30, so I kept the raw syscall
+ * calls for backwards-compatibility so Bipan works on most phones.
+ * Hopefully your kernel will be recent enough so that the syscall exists.
+ */
+
 int create_spoofed_file(const char* fake_content) {
   if (fake_content == nullptr) {
     return -1;
