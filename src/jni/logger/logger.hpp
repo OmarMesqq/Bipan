@@ -4,6 +4,7 @@
 #include <fcntl.h>
 
 /**
+ * Copy-pasted from AOSP source code:
  * Android log priority values, in increasing order of priority.
  */
 typedef enum android_LogPriority {

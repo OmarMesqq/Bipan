@@ -24,21 +24,20 @@
 #include <sys/sysmacros.h>
 #include <sys/utsname.h>
 #include <syscall.h>
-#include <time.h>
 
-#include <atomic>
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "logger/logger.hpp"
-#include "spoofer.hpp"
-#include "synchronization.hpp"
-#include "policies.hpp"
+#include "common_utils.hpp"
 #include "compile_time_flags.hpp"
 #include "ipc_communication.hpp"
+#include "logger/logger.hpp"
+#include "policies.hpp"
+#include "spoofer.hpp"
+#include "synchronization.hpp"
 
 #define TAG "BipanBroker"
 
@@ -114,8 +113,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
 
-  pid_t pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
-  pid_t tid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+  pid_t pid = getpid();
+  pid_t tid = gettid();
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
 
   // Open target's pidfd
@@ -363,7 +362,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_rt_sigaction: {
         long signal = ipc_mem->arg0;
-        
+
         if (signal == SIGSYS) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
@@ -393,7 +392,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         } else if (sock_payload->sa_family == AF_INET6) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
-          uint8_t* ip6 = sin6->sin6_addr.s6_addr;
 
           if (isLanAddress(sock_payload) || port == 5353 || port == 1900) {
             should_block = true;
@@ -656,7 +654,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_pipe2: {
         int* pipefd = (int*)ipc_mem->pipefd_payload;
-        int flags = ipc_mem->arg1;
+        int flags = (int)ipc_mem->arg1;
 
         std::string flagsAnalysis = "";
         flagsAnalysis.reserve(100);
@@ -677,7 +675,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_clone3: {
         struct clone_args* cl_args = (struct clone_args*)ipc_mem->struct_payload;
-        size_t size = ipc_mem->arg1;
 
         char* childThName = get_thread_name(ipc_mem->target_pid, cl_args->child_tid);
         if (!childThName) {

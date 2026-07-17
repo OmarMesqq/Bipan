@@ -4,13 +4,20 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/un.h>
+#include <syscall.h>
 #include <time.h>
 
 #include <cstdio>
 
+#include "common_utils.hpp"
 #include "utils.hpp"
 
 #define LOGCAT_SOCKET_PATH "/dev/socket/logdw"
+
+/**
+ * Credits to the amazing AOSP team:
+ * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
+ */
 
 // Force the compiler to remove padding
 struct __attribute__((packed)) log_header {
@@ -53,9 +60,7 @@ int getLogcatFd() {
 }
 
 /**
- * Writes a message to Android Logcat in an AS-safe way
- *
- * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
+ * Writes a message to Android's `logcat` in an AS-safe way
  */
 void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...) {
   if (g_log_fd == -1) {

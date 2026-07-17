@@ -1,14 +1,15 @@
 #include "sigsys_handler.hpp"
 
+#include <arpa/inet.h>
 #include <linux/memfd.h>
 #include <sys/utsname.h>
 
+#include "compile_time_flags.hpp"
+#include "globals.hpp"
 #include "in-app/ipc_lock.hpp"
+#include "ipc_communication.hpp"
 #include "logger/logger.hpp"
 #include "utils.hpp"
-#include "compile_time_flags.hpp"
-#include "ipc_communication.hpp"
-#include "globals.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);

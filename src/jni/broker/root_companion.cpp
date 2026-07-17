@@ -1,15 +1,15 @@
+#include <arpa/inet.h>
 #include <dirent.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <unistd.h>
-#include <sys/syscall.h> 
-#include <arpa/inet.h>
 
 #include <string>
 
 #include "broker.hpp"
 #include "deps/zygisk.hpp"
-#include "logger/logger.hpp"
 #include "ipc_communication.hpp"
+#include "logger/logger.hpp"
 
 #define TAG "BipanRootCompanion"
 
@@ -121,7 +121,6 @@ static inline int recv_fd(int socket) {
   msg.msg_control = buf;
   msg.msg_controllen = sizeof(buf);
 
-  
   if (recvmsg(socket, &msg, 0) <= 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] recvmsg failed! errno: %s", strerror(errno));
     return -1;

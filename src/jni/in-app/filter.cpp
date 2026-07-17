@@ -4,15 +4,16 @@
 #include <linux/seccomp.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <unistd.h>
-#include <sys/syscall.h> 
 
 #include <cerrno>
 
-#include "logger/logger.hpp"
+#include "common_utils.hpp"
 #include "compile_time_flags.hpp"
-#include "utils.hpp"
 #include "globals.hpp"
+#include "logger/logger.hpp"
+#include "utils.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // 1. Break 64-bit bounds into 32-bit chunks

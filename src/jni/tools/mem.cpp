@@ -7,8 +7,8 @@
 #include <sys/random.h>
 #include <unistd.h>
 
-#include "logger/logger.hpp"
 #include "in-app/globals.hpp"
+#include "logger/logger.hpp"
 
 /**
  * `dl_iterate_phdr` callback:
@@ -18,7 +18,7 @@ int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
   // Match our library base address with the loaded segment address
-  extern char __executable_start; // TODO: use global in-app elf start
+  extern char __executable_start;  // TODO: use global in-app elf start
   if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
     bounds->start = info->dlpi_addr;
 
@@ -106,14 +106,14 @@ int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* da
   int p_type;
 
   if (strstr(info->dlpi_name, "memfd")) {
-      write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
-    }
+    write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
+  }
 
   for (size_t j = 0; j < info->dlpi_phnum; j++) {
     if (!strstr(info->dlpi_name, "memfd")) {
       continue;
     }
-    
+
     p_type = info->dlpi_phdr[j].p_type;
     type = (p_type == PT_LOAD) ? "PT_LOAD" : (p_type == PT_DYNAMIC)    ? "PT_DYNAMIC"
                                          : (p_type == PT_INTERP)       ? "PT_INTERP"

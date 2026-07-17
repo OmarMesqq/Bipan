@@ -4,7 +4,8 @@
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <time.h>
-#include <utils.hpp> // TODO: didnt want to include this...
+
+#include "common_utils.hpp"
 
 /**
  * Puts the calling thread to sleep if `*addr` = `expected`
@@ -15,8 +16,10 @@ __attribute__((always_inline)) inline void futex_wait(volatile int* addr, int ex
 
 /**
  * Puts the calling thread to sleep if `*addr` = `expected` with wake up timeout of `timeout_ms`
+ * WARNING: inlining not guaranteed.
+ * This should only be called by the Broker process
  */
-__attribute__((always_inline)) inline int futex_wait_timeout(volatile int* addr, int expected, long timeout_ms) {
+inline int futex_wait_timeout(volatile int* addr, int expected, long timeout_ms) {
   struct timespec ts;
   ts.tv_sec = timeout_ms / 1000;
   ts.tv_nsec = (timeout_ms % 1000) * 1000000L;
