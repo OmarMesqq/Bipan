@@ -20,7 +20,6 @@ else
 		-fomit-frame-pointer -flto \
 		-Wno-unused-parameter \
 		-Rpass=inline -Rpass-missed=inline
-# 		-fno-stack-protector -fPIC
 
 	BIPAN_LDFLAGS := -Wl,--gc-sections \
 								 	 -Wl,--exclude-libs,ALL \
@@ -28,6 +27,7 @@ else
 								 	 -Wl,-u,zygisk_module_entry \
                  	 -Wl,-u,zygisk_companion_entry \
                  	 -Wl,--version-script=$(LOCAL_PATH)/bipan_export.map \
+									 -Wl,--build-id=none \
 								 	 -flto
 $(info Building RELEASE variant...)
 endif
