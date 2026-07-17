@@ -222,6 +222,23 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
 }
 
 /**
+ * Some kernel versions return `-EPERM` for stat-like syscalls on
+ * some paths we spoof, so this function is necessary to
+ * ensure a consistent environment.
+ */
+bool shouldDenyStat(const char* path) {
+  if (!path) return false;
+
+  return (
+    (strcmp(path, "/proc/version") == 0) ||
+    (strcmp(path, "/proc/sys/kernel/version") == 0) ||
+    (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
+    (strcmp(path, "/proc/asound/version") == 0)
+  );
+}
+
+
+/**
  * Returns `true` if IP address
  * `ip4` is in any of
  * the IPv4 LAN ranges. `false` otherwise

@@ -13,5 +13,6 @@ bool is_proc_status(const char* pathname);
 bool is_smaps(const char* pathname);
 bool is_mounts(const char* pathname);
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid);
+bool shouldDenyStat(const char* path);
 
 #endif
