@@ -96,10 +96,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
   private static final Set<String> FEATURE_ADD_LIST = new HashSet<>(Arrays.asList(
       "android.software.verified_boot",
-      "android.software.device_id_attestation",
-      "android.hardware.hardware_keystore",
-      "android.hardware.keystore.app_attest_key"
-    ));
+      "android.software.device_id_attestation"));
+
+  private static final Set<String> ALLOW_LIST = new HashSet<>(
+      Arrays.asList("com.aurora.store"));
 
   public static volatile Object s_pmProxy = null;
   public static volatile Field s_mPMField = null;
@@ -110,6 +110,9 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
+    if (ALLOW_LIST.contains(this.selfPackageName)) {
+      return;
+    }
 
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
