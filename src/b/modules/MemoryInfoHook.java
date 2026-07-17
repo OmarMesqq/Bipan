@@ -4,7 +4,6 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.util.Log;
 import b.BaseHook;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -99,10 +98,11 @@ public class MemoryInfoHook implements BaseHook, InvocationHandler {
 
     try {
       return method.invoke(originalIActivityManager, args);
-    } catch (InvocationTargetException e) {      
+    } catch (InvocationTargetException e) {
       throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
-      Log.e(TAG, "AM passthrough failed for: " + method.getName() + "Cause: " + e.getCause().toString() + " Message: " + e.getMessage() , e);
+      Log.e(TAG, "AM passthrough failed for: " + method.getName() + "Cause: " + e.getCause().toString() + " Message: "
+          + e.getMessage(), e);
       Log.e(TAG, "Fatally aborting with an Error...");
       throw new OutOfMemoryError();
     }

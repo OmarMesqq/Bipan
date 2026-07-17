@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import android.app.Instrumentation;
@@ -23,7 +22,6 @@ import android.app.Activity;
  */
 public class J {
   private static final String TAG = "BipanJava";
-
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
 
   // Spare GMS and Play Store from most hooks
@@ -158,12 +156,11 @@ public class J {
     try {
       unseal();
     } catch (Exception e) {
-      throw new OutOfMemoryError(TAG + "install exception: " + e.getMessage());
+      throw new OutOfMemoryError(TAG + "install exception: " + e.getCause().toString());
     }
   }
 
   private static void loadModules(Context context) throws Exception {
-    spoofOsVersion();
     String packageName = context.getPackageName();
     List<BaseHook> modules = new ArrayList<>();
 
@@ -179,7 +176,8 @@ public class J {
        */
       if (isIsolatedProcess()) {
         modules.add(new AntiAppInspectionHook());
-        modules.add(new MemoryInfoHook());
+        modules.add(new SystemPropertiesHook());
+        modules.add(new DexLoaderMonitorHook());
       } else {
         // ---------------------------------------------
         /**
@@ -193,11 +191,12 @@ public class J {
         modules.add(new AntiAppInspectionHook());
         modules.add(new NetworkSpoofingHook());
         // ---------------------------------------------
+        modules.add(new DexLoaderMonitorHook());
         modules.add(new SettingsHook());
+        modules.add(new SystemPropertiesHook());
         modules.add(new AntiNetworkDiscoveryHook());
         modules.add(new TelephonyManagerHook());
         modules.add(new AntiScreenshotDetectionHook());
-        modules.add(new MemoryInfoHook());
       }
     }
 
@@ -237,31 +236,12 @@ public class J {
             (Object) new Class[] { String[].class });
         setHiddenApiExemptions.invoke(
             vmRuntime, new Object[] { new String[] { "L" } });
-        // Log.i(TAG, "ART VM unsealed (Modern approach)");
+        Log.i(TAG, "ART VM unsealed (Modern approach)");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
         throw e2;
       }
     }
-  }
-
-  /**
-   * TODO: guess this could be part of SettingsHook
-   * 
-   * Ref:
-   * https://cs.android.com/android/platform/superproject/+/android-latest-release:libcore/ojluni/src/main/java/java/lang/System.java;l=1799?q=java.lang.System&ss=android%2Fplatform%2Fsuperproject
-   */
-  private static void spoofOsVersion() throws Exception {
-    // System.java overrides setProperty to ignore "protected" props
-    Class<?> systemClass = Class.forName("java.lang.System");
-    Field unchangeablePropsField = systemClass.getDeclaredField("unchangeableProps");
-
-    // `unchangeableProps` is a static field in current AOSP, so we can just put()
-    unchangeablePropsField.setAccessible(true);
-    Properties unchangeableProps = (Properties) unchangeablePropsField.get(null);
-
-    // Bypasses PropertiesWithNonOverrideableDefaults "protections"
-    unchangeableProps.put("os.version", "6.6.56-android16-11-g8a3e2b1c4d5f");
   }
 
   private static boolean isIsolatedProcess() {
@@ -278,7 +258,7 @@ public class J {
 
       return isolated;
     } catch (Exception e) {
-      Log.e(TAG, "isIsolatedProcess e:", e);
+      Log.e(TAG, "isIsolatedProcess exception!", e);
       return false;
     }
   }
