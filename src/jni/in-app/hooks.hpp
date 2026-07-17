@@ -10,11 +10,12 @@
 
 #include <unordered_map>
 
+#include "common_utils.hpp"
 #include "deps/zygisk.hpp"
 #include "filter.hpp"
+#include "in-app/globals.hpp"
 #include "logger/logger.hpp"
 #include "utils.hpp"
-#include "in-app/globals.hpp"
 
 using zygisk::Api;
 

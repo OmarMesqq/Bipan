@@ -9,14 +9,15 @@
 
 #include "bipan_java.h"
 #include "broker.hpp"
+#include "common_utils.hpp"
+#include "compile_time_flags.hpp"
 #include "deps/dobby.h"
 #include "deps/zygisk.hpp"
 #include "hooks.hpp"
+#include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
 #include "tools/mem.hpp"
-#include "compile_time_flags.hpp"
-#include "ipc_communication.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -28,8 +29,6 @@ static inline ssize_t send_fd(int socket, int fd);
 
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
-constexpr int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
-constexpr int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
 // Variables shared across modules
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
@@ -380,9 +379,12 @@ class Bipan : public zygisk::ModuleBase {
     }
 
     // Java Layer Sensors hooking
+    const int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
     JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
         {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
     api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
+
+    const int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
     JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
         {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
         {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},

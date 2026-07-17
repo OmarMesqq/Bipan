@@ -1,9 +1,6 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
-#include <arpa/inet.h>
-#include <syscall.h>
-
 /**
  * Collection of AS-safe clones
  * of string manipulation libc functions.
@@ -15,34 +12,6 @@
  * Please read:
  * https://www.man7.org/linux/man-pages/man7/signal-safety.7.html
  */
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wregister"
-
-/**
- * TODO: this should be somewhere else, shouldn't it?
- * Executes a raw system call on ARM64
- */
-__attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
-  register long x8 __asm__("x8") = sysno;
-  register long x0 __asm__("x0") = a0;
-  register long x1 __asm__("x1") = a1;
-  register long x2 __asm__("x2") = a2;
-  register long x3 __asm__("x3") = a3;
-  register long x4 __asm__("x4") = a4;
-  register long x5 __asm__("x5") = a5;
-
-  __asm__ volatile(
-      "svc #0\n"
-      : "+r"(x0)                                              // Output: x0 will contain the return value
-      : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)  // Inputs
-      : "memory", "cc"                                        // Clobbers: memory and condition codes might change
-  );
-
-  return x0;
-}
-
-#pragma clang diagnostic pop
 
 __attribute__((always_inline)) inline size_t local_strlen(const char* s) {
   size_t len = 0;
@@ -73,10 +42,6 @@ __attribute__((always_inline)) inline int local_strcmp(const char* a, const char
     i++;
   }
   return (unsigned char)a[i] - (unsigned char)b[i];
-}
-
-__attribute__((always_inline)) inline bool starts_with(const char* str, const char* prefix) {
-  return local_strncmp(str, prefix, local_strlen(prefix)) == 0;
 }
 
 __attribute__((always_inline)) inline const char* local_strstr(const char* haystack, const char* needle) {
@@ -121,6 +86,5 @@ __attribute__((always_inline)) static inline void* local_memcpy(void* dest, cons
   while (n--) *d++ = *s++;
   return dest;
 }
-
 
 #endif

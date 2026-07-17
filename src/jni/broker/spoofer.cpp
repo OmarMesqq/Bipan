@@ -7,8 +7,8 @@
 
 #include <string>
 
+#include "common_utils.hpp"
 #include "logger/logger.hpp"
-#include "utils.hpp"
 
 #define TAG "BipanSpoofer"
 
@@ -33,6 +33,7 @@ int create_spoofed_file(const char* fake_content) {
   if (fake_content == nullptr) {
     return -1;
   }
+
   int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
@@ -40,14 +41,14 @@ int create_spoofed_file(const char* fake_content) {
   }
 
   size_t len = strlen(fake_content);
-  arm64_raw_syscall(__NR_write, fd, (long)fake_content, (long)len, 0, 0, 0);
-  arm64_raw_syscall(__NR_lseek, fd, 0, SEEK_SET, 0, 0, 0);
+  write(fd, fake_content, len);
+  lseek(fd, 0, SEEK_SET);
 
   return fd;
 }
 
 int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
-  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  int real_fd = openat(dirfd, pathname, flags, mode);
   if (real_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: openat real dir failed!");
     return -1;
@@ -56,7 +57,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: memfd_create failed");
-    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    close(real_fd);
     return -1;
   }
 
@@ -76,7 +77,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
                     strstr(l, "/system/bin/linker");
 
     if (is_vital) {
-      arm64_raw_syscall(__NR_write, fake_fd, (long)l, (long)len, 0, 0, 0);
+      write(fake_fd, l, len);
       return;
     }
 
@@ -87,11 +88,11 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
                     ((strstr(l, "r-xp") && (strstr(l, "[anon:") || !strchr(l, '/'))));
 
     if (!is_dirty) {
-      arm64_raw_syscall(__NR_write, fake_fd, (long)l, (long)len, 0, 0, 0);
+      write(fake_fd, l, len);
     }
   };
 
-  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
       if (buf[i] == '\n') {
@@ -106,13 +107,13 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     process_and_write_line(line, line_pos);
   }
 
-  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
-  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  close(real_fd);
+  lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }
 
 int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
-  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  int real_fd = openat(dirfd, pathname, flags, mode);
   if (real_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: openat real dir failed!");
     return -1;
@@ -121,7 +122,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: memfd_create failed");
-    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    close(real_fd);
     return -1;
   }
 
@@ -131,7 +132,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   unsigned long line_pos = 0;
   bool skip_current_region = false;
 
-  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
 
@@ -149,20 +150,20 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
         }
 
         if (!skip_current_region) {
-          arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long)line_pos, 0, 0, 0);
+          write(fake_fd, line, line_pos);
         }
         line_pos = 0;
       }
     }
   }
 
-  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
-  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  close(real_fd);
+  lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }
 
 int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
-  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  int real_fd = openat(dirfd, pathname, flags, mode);
   if (real_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
     return -1;
@@ -171,7 +172,7 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
-    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    close(real_fd);
     return -1;
   }
 
@@ -180,7 +181,7 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   long bytes_read;
   unsigned long line_pos = 0;
 
-  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
 
@@ -193,20 +194,20 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
                         strstr(line, "/etc/security/cacerts");
 
         if (!is_dirty) {
-          arm64_raw_syscall(__NR_write, fake_fd, (long)line, (long)line_pos, 0, 0, 0);
+          write(fake_fd, line, line_pos);
         }
         line_pos = 0;
       }
     }
   }
 
-  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
-  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  close(real_fd);
+  lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }
 
 int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
-  long real_fd = arm64_raw_syscall(__NR_openat, dirfd, (long)pathname, flags, mode, 0, 0);
+  int real_fd = openat(dirfd, pathname, flags, mode);
   if (real_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: openat real dir failed!");
     return -1;
@@ -215,7 +216,7 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
-    arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
+    close(real_fd);
     return -1;
   }
 
@@ -224,7 +225,7 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
   long bytes_read;
   size_t line_pos = 0;
 
-  while ((bytes_read = arm64_raw_syscall(__NR_read, real_fd, (long)buf, sizeof(buf), 0, 0, 0)) > 0) {
+  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
       // Avoid buffer overflow in the line accumulation buffer
       if (line_pos < sizeof(line) - 1) {
@@ -248,8 +249,7 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
         }
 
         // Write the line to the anonymous file descriptor
-        arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
-
+        write(fake_fd, output_line, output_len);
         // Reset line position counter for the next line
         line_pos = 0;
       }
@@ -273,10 +273,10 @@ int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
       output_len = strlen(output_line);
     }
 
-    arm64_raw_syscall(__NR_write, fake_fd, (long)output_line, output_len, 0, 0, 0);
+    write(fake_fd, output_line, output_len);
   }
 
-  arm64_raw_syscall(__NR_close, real_fd, 0, 0, 0, 0, 0);
-  arm64_raw_syscall(__NR_lseek, fake_fd, 0, SEEK_SET, 0, 0, 0);
+  close(real_fd);
+  lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }

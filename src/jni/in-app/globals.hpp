@@ -1,4 +1,3 @@
-
 #ifndef IN_APP_GLOBALS_HPP
 #define IN_APP_GLOBALS_HPP
 

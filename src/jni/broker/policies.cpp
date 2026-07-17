@@ -6,10 +6,11 @@
 #include <cstdint>
 #include <cstring>
 
+#include "common_utils.hpp"
+
 static inline bool is_ipv4_lan_addr(uint32_t ip4);
 static inline bool is_ipv6_lan_addr(uint8_t* ip6);
 static inline bool is_exact_dir(const char* path, const char* target_dir);
-static inline bool starts_with(const char* str, const char* prefix);
 static inline bool is_pure_numeric(const char* str, size_t len);
 static inline bool is_dynamic_proc_file(const char* pathname, const char* suffix);
 
@@ -281,10 +282,6 @@ static inline bool is_exact_dir(const char* path, const char* target_dir) {
     return path[len] == '\0' || (path[len] == '/' && path[len + 1] == '\0');
   }
   return false;
-}
-
-static inline bool starts_with(const char* str, const char* prefix) {
-  return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
 // Verifies if a segment of a string is purely numbers (a PID)
