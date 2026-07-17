@@ -51,6 +51,8 @@ fun NativeScreen() {
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
     var moreVfsInfo by remember { mutableStateOf("Additional VFS files not probed yet") }
     var statFilesInfo by remember { mutableStateOf("Files not stated") }
+    var statFilesInfo1 by remember { mutableStateOf("Files not stated") }
+    var statFilesInfo2 by remember { mutableStateOf("Files not stated") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -130,7 +132,7 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "stat family tests", style = MaterialTheme.typography.titleMedium)
+                    Text(text = "newfstat", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(statFilesInfo, "Files not stated")
                     Button(
                         onClick = {
@@ -143,7 +145,43 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
 
                     ) {
-                        Text("stat some files")
+                        Text("newfstat(some files)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "faccessat", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(statFilesInfo1, "Files not stated")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                            )
+                            statFilesInfo1 = NativeLibWrapper.testFaccessat(filenames)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("faccessat(some files)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "statx", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(statFilesInfo2, "Files not stated")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                            )
+                            statFilesInfo2 = NativeLibWrapper.testStatx(filenames)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("statx(some files)")
                     }
                 }
 
