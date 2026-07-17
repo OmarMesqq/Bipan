@@ -208,7 +208,7 @@ fun NativeScreen() {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallsocketfds() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
                         Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
                     }
                 }
