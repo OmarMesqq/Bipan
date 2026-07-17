@@ -4,12 +4,12 @@
 #include <linux/memfd.h>
 #include <sys/utsname.h>
 
+#include "as_safe_string.hpp"
 #include "compile_time_flags.hpp"
 #include "globals.hpp"
 #include "in-app/ipc_lock.hpp"
 #include "ipc_communication.hpp"
 #include "logger/logger.hpp"
-#include "as_safe_string.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -69,13 +69,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_statx) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about statx existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
-  if (nr == __NR_memfd_create) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about memfd_create existing...");
     ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
     in_sigsys_handler = false;
     return;
@@ -147,7 +140,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 #endif
   __sync_synchronize();
 
-  int pre_fd = -1; // app-side fd to be filled by Broker open-like syscalls
+  int pre_fd = -1;  // app-side fd to be filled by Broker open-like syscalls
 
   // Serialization of strings
   if (nr == __NR_openat) {
@@ -163,7 +156,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
              nr == __NR_readlinkat ||
              nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_execve || nr == __NR_execveat) {
+  } else if (nr == __NR_execve ||
+             nr == __NR_execveat ||
+             nr == __NR_memfd_create) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   } else if (nr == __NR_pipe2) {
     local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);
