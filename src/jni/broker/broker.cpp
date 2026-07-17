@@ -111,7 +111,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, threadName, 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
-  thread_local std::unordered_set<uintptr_t> patched_pcs;
+  std::unordered_set<uintptr_t> patched_pcs;
 
   pid_t pid = getpid();
   pid_t tid = gettid();
