@@ -49,6 +49,8 @@ fun NativeScreen() {
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
+    var moreVfsInfo by remember { mutableStateOf("Additional VFS files not probed yet") }
+    var statFilesInfo by remember { mutableStateOf("Files not stated") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -70,6 +72,172 @@ fun NativeScreen() {
                 text = "Native info",
                 style = MaterialTheme.typography.headlineMedium
             )
+
+            SectionHeader("ANTI-TAMPER")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                // "/proc/self/maps",
+                                // "/proc/self/smaps",
+                                // "/proc/self/status",
+                                "/proc/self/mounts",
+                                "/proc/self/mountstats",
+                                "/proc/self/mountinfo",
+
+                                "/proc/$pid/mounts",
+                                "/proc/$pid/mountstats",
+                                "/proc/$pid/mountinfo",
+                                // "/proc/$pid/maps",
+                                // "/proc/self/smaps",
+                                // "/proc/self/status",
+
+                                "/proc/mounts",
+                                "/proc/version",
+                                "/proc/sys/kernel/version",
+                                "/proc/sys/kernel/osrelease",
+                                "/proc/asound/version",
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                            )
+                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("readlinkat(file) && newfstat(file)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Open some VFS files", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(moreVfsInfo, "Additional VFS files not probed yet")
+                    Button(
+                        onClick = {
+                            moreVfsInfo = NativeLibWrapper.scanCommonVfsFiles()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open common /proc nodes")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "stat family tests", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(statFilesInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                            )
+                            statFilesInfo = NativeLibWrapper.testNewfstatat(filenames)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("stat some files")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
+                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dl_iterate_phdrTest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("dl_iterate_phdr()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Read program's auxiliary vector", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfAuxvInfo, "/proc/self/auxv not read yet")
+                    Button(onClick = { procSelfAuxvInfo = NativeLibWrapper.testProcSelfAuxv() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("parse /proc/self/auxv")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
+                    Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/task")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Processes' status ", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
+                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("read /proc/self/status")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Inspect libraries for hooks", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
+                    Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Study function prologues for hooks")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fork()/exec()")
+                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
+                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Create a child process and inspect its result")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                    Button(
+                        onClick = {
+                            val installed = NativeLibWrapper.installSigsysHandler()
+                            if (!installed) {
+                                signalHandlerStatus = "Failed to install handler"
+                                return@Button
+                            }
+                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
+                            signalHandlerStatus = if (actionCaptured) "Installed and captured!" else "Installed, but failed to capture trigger"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("sigaction SIGSYS")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                    Button(
+                        onClick = {
+                            val success = NativeLibWrapper.blockSigSys()
+                            sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("sigprocmask SIGSYS")
+                    }
+                }
+            }
 
             SectionHeader("BUILD AND SETTINGS INFO")
             Card(
@@ -166,139 +334,6 @@ fun NativeScreen() {
                 }
             }
 
-            SectionHeader("ANTI-TAMPER")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                // "/proc/self/maps",
-                                // "/proc/self/smaps",
-                                // "/proc/self/status",
-                                "/proc/self/mounts",
-                                "/proc/self/mountstats",
-                                "/proc/self/mountinfo",
-
-                                "/proc/$pid/mounts",
-                                "/proc/$pid/mountstats",
-                                "/proc/$pid/mountinfo",
-                                // "/proc/$pid/maps",
-                                // "/proc/self/smaps",
-                                // "/proc/self/status",
-
-                                "/proc/mounts",
-                                "/proc/version",
-                                "/proc/sys/kernel/version",
-                                "/proc/sys/kernel/osrelease",
-                                "/proc/asound/version",
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                                )
-                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
-                       },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("readlinkat(file) && newfstat(file)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
-                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dl_iterate_phdrTest() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("dl_iterate_phdr()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Read program's auxiliary vector", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfAuxvInfo, "/proc/self/auxv not read yet")
-                    Button(onClick = { procSelfAuxvInfo = NativeLibWrapper.testProcSelfAuxv() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("parse /proc/self/auxv")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
-                    Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/task")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Processes' status ", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
-                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/status")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Inspect libraries for hooks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
-                    Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Study function prologues for hooks")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("fork()/exec()")
-                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
-                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Create a child process and inspect its result")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                    Button(
-                        onClick = {
-                            val installed = NativeLibWrapper.installSigsysHandler()
-                            if (!installed) {
-                                signalHandlerStatus = "Failed to install handler"
-                                return@Button
-                            }
-                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
-                            signalHandlerStatus = if (actionCaptured) "Installed and captured!" else "Installed, but failed to capture trigger"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("sigaction SIGSYS")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                    Button(
-                        onClick = {
-                            val success = NativeLibWrapper.blockSigSys()
-                            sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("sigprocmask SIGSYS")
-                    }
-                }
-            }
         }
     }
 }
