@@ -224,12 +224,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     switch (nr) {
       case __NR_execve:
       case __NR_execveat: {
-        if (!is_trusted) {
-          const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_EXIT_PROCESS;
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
-        }
+        if (is_trusted) break;
+        const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
+        ipc_mem->ret = 0;
+        ipc_mem->action = ACTION_EXIT_PROCESS;
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
         break;
       }
       case __NR_uname: {
@@ -337,23 +336,23 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           break;
         }
-        if (!is_trusted) {
-          if (shouldDenyAccess(path_payload)) {
-            ipc_mem->ret = -EACCES;
-            ipc_mem->action = ACTION_USE_RET;
-          } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
-            ipc_mem->ret = 0;
-            ipc_mem->action = ACTION_USE_RET;
-          }
-#ifdef DEBUG_LOGGING
-          else {
-            if (shouldLog(path_payload)) {
-              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted %s(%s)", action_name, path_payload);
-            }
-          }
-#endif
+        if (is_trusted) break;
+
+        if (shouldDenyAccess(path_payload) || shouldDenyStat(path_payload)) {
+          ipc_mem->ret = -EACCES;
+          ipc_mem->action = ACTION_USE_RET;
+        } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
         }
+#ifdef DEBUG_LOGGING
+        else {
+          if (shouldLog(path_payload)) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted %s(%s)", action_name, path_payload);
+          }
+        }
+#endif
         break;
       }
       case __NR_rt_sigaction: {
