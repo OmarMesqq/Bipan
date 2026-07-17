@@ -79,6 +79,7 @@ static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
 static char* get_ptrace_op_name(int op);
+static char* extract_real_path_from_memfd(const char* memfdPath);
 
 static thread_local bool inside_remote_patcher = false;
 
@@ -196,7 +197,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           culprit_lib = frame_lib;
           offset = frame_offset;
           is_trusted = false;
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
+          // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
           break;
         }
 
@@ -525,6 +526,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (is_trusted) break;
         int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
+        ipc_mem->action = ACTION_USE_RET;
 
         if (dirfd > 0) {
           char proc_dirfd_path[PATH_MAX] = {0};
@@ -534,9 +536,41 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ssize_t len = readlink(proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (dirfd). errno: %s", proc_dirfd_path, strerror(errno));
+            // Bubble up to app
+            ipc_mem->ret = len;
             break;
           }
           resolved_link_path[len] = '\0';
+
+          if (strstr(resolved_link_path, "/memfd:")) {
+            char* actualPath = extract_real_path_from_memfd(resolved_link_path);
+            if (!actualPath) {
+              // Spoof existence if heap allocation fails
+              ipc_mem->ret = -ENOENT;
+            }
+            char* fixedSymlink = fixMemfdSymlink(resolved_link_path, ipc_mem->target_pid);
+            if (!fixedSymlink) {
+              ipc_mem->ret = -ENOENT;
+              free(actualPath);
+              break;
+            }
+
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            if (strcmp(fixedSymlink, "ENOENT") == 0) {
+              ipc_mem->ret = -ENOENT;
+              free(actualPath);
+              free(fixedSymlink);
+              break;
+            }
+
+            memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
+            ipc_mem->ret = (long)strlen(fixedSymlink);
+
+            free(fixedSymlink);
+            free(actualPath);
+            break;
+          }
+
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd): %s -> %s", proc_dirfd_path, resolved_link_path);
         } else if (dirfd == AT_FDCWD) {
           size_t pathLength = strlen(path);
@@ -544,20 +578,21 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           char c = -1;
           int i = 0;
-          
+
           while ((c = path[pathLength - 1]) != '/') {
             reversedDirfdStr[i++] = c;
             pathLength--;
           }
 
           char dirfdStr[6] = {0};
-          ssize_t idx = strlen(reversedDirfdStr) - 1;
+          // has to be unsigned so loop below works!
+          ssize_t idx = (ssize_t)strlen(reversedDirfdStr) - 1;
           int j = 0;
           while (idx >= 0) {
             dirfdStr[j++] = reversedDirfdStr[idx--];
           }
           int extractedDirfd = atoi(dirfdStr);
-          
+
           char proc_dirfd_path[PATH_MAX] = {0};
           snprintf(proc_dirfd_path, sizeof(proc_dirfd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, extractedDirfd);
 
@@ -565,15 +600,47 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ssize_t len = readlinkat(dirfd, proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", path, strerror(errno));
+            // Bubble up to app
+            ipc_mem->ret = len;
             break;
           }
           resolved_link_path[len] = '\0';
+          if (strstr(resolved_link_path, "/memfd:")) {
+            char* actualPath = extract_real_path_from_memfd(resolved_link_path);
+            if (!actualPath) {
+              // Spoof existence if heap allocation fails
+              ipc_mem->ret = -ENOENT;
+            }
+            char* fixedSymlink = fixMemfdSymlink(resolved_link_path, ipc_mem->target_pid);
+            if (!fixedSymlink) {
+              ipc_mem->ret = -ENOENT;
+              free(actualPath);
+              break;
+            }
+
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            if (strcmp(fixedSymlink, "ENOENT") == 0) {
+              ipc_mem->ret = -ENOENT;
+              free(actualPath);
+              free(fixedSymlink);
+              break;
+            }
+
+            memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
+            ipc_mem->ret = (long)strlen(fixedSymlink);
+
+            free(fixedSymlink);
+            free(actualPath);
+            break;
+          }
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
         } else {
           char resolved_link_path[PATH_MAX] = {0};
           ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (abs path). errno: %s", path, strerror(errno));
+            // Bubble up to app
+            ipc_mem->ret = len;
             break;
           }
           resolved_link_path[len] = '\0';
@@ -715,9 +782,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_memfd_create: {
-        const char* name = (const char*) ipc_mem->string_payload;
-        unsigned int flags = (unsigned int) ipc_mem->arg1;
-        
+        const char* name = (const char*)ipc_mem->string_payload;
+        unsigned int flags = (unsigned int)ipc_mem->arg1;
+
         std::string flagsAnalysis = "";
         flagsAnalysis.reserve(100);
         if (flags & MFD_ALLOW_SEALING) flagsAnalysis += "Allow sealing operations | ";
@@ -1165,4 +1232,20 @@ static char* get_ptrace_op_name(int op) {
   }
   memcpy(result, name, len);
   return result;
+}
+
+static char* extract_real_path_from_memfd(const char* memfdPath) {
+  char* extractedPath = (char*)calloc(PATH_MAX, sizeof(char));
+  if (!extractedPath) {
+    return nullptr;
+  }
+
+  // start of the real path in the memfd symlink
+  char* p = (char*)&memfdPath[7];
+  size_t i = 0;
+  while (*p != ' ') {
+    extractedPath[i++] = *p;
+    p++;
+  }
+  return extractedPath;
 }
