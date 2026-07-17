@@ -9,7 +9,7 @@
 #include "in-app/ipc_lock.hpp"
 #include "ipc_communication.hpp"
 #include "logger/logger.hpp"
-#include "utils.hpp"
+#include "as_safe_string.hpp"
 
 struct kernel_sigaction {
   void (*sa_handler)(int, siginfo_t*, void*);
@@ -147,11 +147,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 #endif
   __sync_synchronize();
 
-  // Serialize Strings
+  int pre_fd = -1; // app-side fd to be filled by Broker open-like syscalls
 
-  // app-side FD to be filled by Broker in relevant syscalls
-  int pre_fd = -1;
-
+  // Serialization of strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"", MFD_CLOEXEC, 0, 0, 0, 0);
 
@@ -186,7 +184,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 #endif
 
-  // Serialize binary structures with their exact lengths
+  // Serialization of structs
   long sock_ptr = 0;
   long sock_len = 0;
   struct sockaddr_storage temp_addr;  // Used for the Pre-Flight check
@@ -238,10 +236,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     local_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
   }
 
-  // Wake Broker & Wait
+  // Wake Broker
   ipc_mem->status = REQUEST_SYSCALL;
   futex_wake(&ipc_mem->status);
-
+  // Spinlock
   while (ipc_mem->status != BROKER_ANSWERED) {
     futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
   }
@@ -249,6 +247,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long result = 0;
   int action = ipc_mem->action;
 
+  // Route action based on Broker policy decision
   if (action == ACTION_EXIT_PROCESS) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);

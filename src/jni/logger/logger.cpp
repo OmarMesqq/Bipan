@@ -10,13 +10,13 @@
 #include <cstdio>
 
 #include "common_utils.hpp"
-#include "utils.hpp"
+#include "as_safe_string.hpp"
 
 #define LOGCAT_SOCKET_PATH "/dev/socket/logdw"
 
 /**
  * Credits to the amazing AOSP team:
- * Credits to https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
+ * https://cs.android.com/android/platform/superproject/+/android-latest-release:bionic/libc/async_safe/async_safe_log.cpp
  */
 
 // Force the compiler to remove padding

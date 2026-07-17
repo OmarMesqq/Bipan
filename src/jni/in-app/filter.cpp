@@ -13,7 +13,7 @@
 #include "compile_time_flags.hpp"
 #include "globals.hpp"
 #include "logger/logger.hpp"
-#include "utils.hpp"
+#include "as_safe_string.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // 1. Break 64-bit bounds into 32-bit chunks
