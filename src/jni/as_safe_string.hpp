@@ -1,5 +1,7 @@
-#ifndef UTILS_HPP
-#define UTILS_HPP
+#ifndef AS_SAFE_STRING_HPP
+#define AS_SAFE_STRING_HPP
+
+#include <cstddef>
 
 /**
  * Collection of AS-safe clones

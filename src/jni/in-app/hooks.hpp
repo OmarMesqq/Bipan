@@ -15,7 +15,7 @@
 #include "filter.hpp"
 #include "in-app/globals.hpp"
 #include "logger/logger.hpp"
-#include "utils.hpp"
+#include "as_safe_string.hpp"
 
 using zygisk::Api;
 
