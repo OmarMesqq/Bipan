@@ -173,6 +173,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     uintptr_t offset = 0;
     uintptr_t malicious_pc = ipc_mem->caller_pc;
     std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bottommost lib in stack: %s", culprit_lib.c_str());
     bool is_trusted = is_trusted_library(culprit_lib);
 
     // If the program counter is "trusted" - like libc - check its ancestors
@@ -537,7 +538,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           char resolved_link_path[512] = {0};
           ssize_t len = readlink(proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
           if (len == -1) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (dirfd). errno: %s", proc_dirfd_path, strerror(errno));
             break;
           }
           resolved_link_path[len] = '\0';
@@ -546,7 +547,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           char resolved_link_path[512] = {0};
           ssize_t len = readlinkat(dirfd, path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", path, strerror(errno));
             break;
           }
           resolved_link_path[len] = '\0';
@@ -555,7 +556,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           char resolved_link_path[512] = {0};
           ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
-            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path in readlinkat. errno: %s", strerror(errno));
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (abs path). errno: %s", path, strerror(errno));
             break;
           }
           resolved_link_path[len] = '\0';
@@ -811,7 +812,7 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/maps", pid);
 
-  // 'e' is O_CLOEXEC - essential to prevent FD leakage into child processes
+  // 'e' is O_CLOEXEC for `fopen`
   FILE* f = fopen(path, "re");
   if (!f) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %s)", path, strerror(errno));
@@ -881,17 +882,22 @@ static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
 static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps) {
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
-      if (out_offset) *out_offset = (pc - m.start) + m.offset;
+      if (out_offset) {
+        *out_offset = (pc - m.start) + m.offset;
+      }
       return m.path;
     }
   }
 
   // Cache MISS: something was loaded -> refresh maps and try again
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Maps cache MISS!");
   refresh_maps(pid, current_maps);
 
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
-      if (out_offset) *out_offset = (pc - m.start) + m.offset;
+      if (out_offset) {
+        *out_offset = (pc - m.start) + m.offset;
+      }
       return m.path;
     }
   }
