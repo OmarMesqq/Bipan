@@ -17,7 +17,7 @@ object NativeLibWrapper {
     external fun blockSigSys(): Boolean
     external fun queryProcStatus():String
     external fun getifaddrs():String
-    external fun getallsocketfds():String
+    external fun getallfds():String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun inspectHooks(): String
     external fun dl_iterate_phdrTest(): String

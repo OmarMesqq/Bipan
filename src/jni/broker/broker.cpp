@@ -74,7 +74,7 @@ static void log_violation(const char* action, const std::string& culprit, uintpt
 static inline bool is_trusted_library(const std::string& lib_path);
 static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
-std::string get_sockaddr_info(const struct sockaddr* sa);
+static std::string get_sockaddr_info(const struct sockaddr* sa);
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
@@ -111,7 +111,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, threadName, 0, 0, 0);
 
   std::vector<MapEntry> current_maps;
-  std::unordered_set<uintptr_t> patched_pcs;
+  thread_local std::unordered_set<uintptr_t> patched_pcs;
 
   pid_t pid = getpid();
   pid_t tid = gettid();
@@ -133,12 +133,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     return;
   }
 
-  /**
-   * TODO:
-   * Does this create something in /proc/<PID>/fd(info)?
-   * 'anon_inode:[eventfd]'
-   * 'anon_inode:[eventpoll]'
-   */
   struct epoll_event ev{};
   ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
   ev.data.fd = sock;
@@ -173,7 +167,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     uintptr_t offset = 0;
     uintptr_t malicious_pc = ipc_mem->caller_pc;
     std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bottommost lib in stack: %s", culprit_lib.c_str());
     bool is_trusted = is_trusted_library(culprit_lib);
 
     // If the program counter is "trusted" - like libc - check its ancestors
@@ -314,7 +307,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = target_fd;
             ipc_mem->action = ACTION_USE_RET;
           }
-#ifdef BROKER_EXTENDED_LOGGING
+#ifdef DEBUG_LOGGING
           else {
             if (shouldLog(path_payload)) {
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted openat(%s)", path_payload);
@@ -351,7 +344,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
           }
-#ifdef BROKER_EXTENDED_LOGGING
+#ifdef DEBUG_LOGGING
           else {
             if (shouldLog(path_payload)) {
               write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted %s(%s)", action_name, path_payload);
@@ -532,10 +525,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         const char* path = ipc_mem->string_payload;
 
         if (dirfd > 0) {
-          char proc_dirfd_path[512] = {0};
+          char proc_dirfd_path[PATH_MAX] = {0};
           snprintf(proc_dirfd_path, sizeof(proc_dirfd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, dirfd);
 
-          char resolved_link_path[512] = {0};
+          char resolved_link_path[PATH_MAX] = {0};
           ssize_t len = readlink(proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (dirfd). errno: %s", proc_dirfd_path, strerror(errno));
@@ -544,8 +537,30 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           resolved_link_path[len] = '\0';
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd): %s -> %s", proc_dirfd_path, resolved_link_path);
         } else if (dirfd == AT_FDCWD) {
-          char resolved_link_path[512] = {0};
-          ssize_t len = readlinkat(dirfd, path, resolved_link_path, sizeof(resolved_link_path));
+          size_t pathLength = strlen(path);
+          char reversedDirfdStr[6] = {0};
+
+          char c = -1;
+          int i = 0;
+          
+          while ((c = path[pathLength - 1]) != '/') {
+            reversedDirfdStr[i++] = c;
+            pathLength--;
+          }
+
+          char dirfdStr[6] = {0};
+          ssize_t idx = strlen(reversedDirfdStr) - 1;
+          int j = 0;
+          while (idx >= 0) {
+            dirfdStr[j++] = reversedDirfdStr[idx--];
+          }
+          int extractedDirfd = atoi(dirfdStr);
+          
+          char proc_dirfd_path[PATH_MAX] = {0};
+          snprintf(proc_dirfd_path, sizeof(proc_dirfd_path), "/proc/%d/fd/%d", ipc_mem->target_pid, extractedDirfd);
+
+          char resolved_link_path[PATH_MAX] = {0};
+          ssize_t len = readlinkat(dirfd, proc_dirfd_path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", path, strerror(errno));
             break;
@@ -553,7 +568,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           resolved_link_path[len] = '\0';
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
         } else {
-          char resolved_link_path[512] = {0};
+          char resolved_link_path[PATH_MAX] = {0};
           ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path));
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (abs path). errno: %s", path, strerror(errno));
@@ -903,7 +918,6 @@ static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset
   }
 
   // Cache MISS: something was loaded -> refresh maps and try again
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Maps cache MISS!");
   refresh_maps(pid, current_maps);
 
   for (const auto& m : current_maps) {
@@ -977,7 +991,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   inside_remote_patcher = false;
 }
 
-std::string get_sockaddr_info(const struct sockaddr* sa) {
+static std::string get_sockaddr_info(const struct sockaddr* sa) {
   if (sa == nullptr) return "NULL Address";
 
   char addr_str[INET6_ADDRSTRLEN];

@@ -499,7 +499,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectHooks(JNIEnv *env, job
  * TODO: xref with fdinfo?
  */
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallsocketfds(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";
     char report[16384] = {0};
     size_t used = 0;
@@ -587,7 +587,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
 
         ssize_t readlinkLen = readlink(fdPath, symlinkPath, sizeof(symlinkPath) - 1);
         if (readlinkLen < 0) {
-            snprintf(entry, sizeof(entry), "%s -> (not a symlink or error: %s)\n\n", cstr, strerror(errno));
+            snprintf(entry, sizeof(entry), "%s -> (not a symlink or error: %s)\n", cstr, strerror(errno));
         } else {
             // readlink doesn't NULL-terminate...do it ourselves
             symlinkPath[readlinkLen] = '\0';
@@ -595,8 +595,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         }
         strcat(report, entry);
 
-        snprintf(entry, sizeof(entry), "======================================\n\n");
-        strcat(report, entry);
 
 //        char previewBuf[256] = {0};
 //        long readRet = arm64_raw_syscall(__NR_read, fd, (long)previewBuf, sizeof(previewBuf) - 1, 0, 0, 0);
@@ -627,91 +625,91 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         long nwfstatRetOnPath = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, newfstatatFlags, 0, 0);
 
         if (nwfstatRetOnPath != 0) {
-            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
+            snprintf(entry, sizeof(entry), "stat on PATH %s failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(nwfstatRetOnPath));
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof (entry),"stat on %s (PATH) successful:\n\n", cstr);
+            snprintf(entry, sizeof (entry),"stat on %s (PATH) successful.\n", cstr);
             strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
-            strcat(report, entry);
-
-            // Timestamps
-            char access_time_str[64];
-            char modify_time_str[64];
-            char change_time_str[64];
-            struct tm tm_info;
-
-            // 1. Format Access Time
-            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
-            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // 2. Format Modification Time
-            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
-            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // 3. Format Status Change Time
-            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
-            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // Log the human-readable versions with their nanoseconds appended
-            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
-            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
+//            strcat(report, entry);
+//
+//            // Timestamps
+//            char access_time_str[64];
+//            char modify_time_str[64];
+//            char change_time_str[64];
+//            struct tm tm_info;
+//
+//            // 1. Format Access Time
+//            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+//            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // 2. Format Modification Time
+//            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+//            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // 3. Format Status Change Time
+//            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+//            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // Log the human-readable versions with their nanoseconds appended
+//            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf.st_ctim.tv_nsec);
+//            strcat(report, entry);
         }
         if (readlinkLen < 0) {
-            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n\n", symlinkPath);
+            snprintf(entry, sizeof(entry), "stat on LINK %s failed!\n", symlinkPath);
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful:\n\n", symlinkPath);
+            snprintf(entry, sizeof (entry),"stat on %s (LINK) successful\n", symlinkPath);
             strcat(report, entry);
 
-            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
-            strcat(report, entry);
-
-            // Timestamps
-            char access_time_str[64];
-            char modify_time_str[64];
-            char change_time_str[64];
-            struct tm tm_info;
-
-            // 1. Format Access Time
-            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
-            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // 2. Format Modification Time
-            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
-            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // 3. Format Status Change Time
-            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
-            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-            // Log the human-readable versions with their nanoseconds appended
-            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
-            strcat(report, entry);
-            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
-            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf.st_nlink);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf.st_uid);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf.st_gid);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf.st_rdev);strcat(report, entry);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf.st_size);
+//            strcat(report, entry);
+//
+//            // Timestamps
+//            char access_time_str[64];
+//            char modify_time_str[64];
+//            char change_time_str[64];
+//            struct tm tm_info;
+//
+//            // 1. Format Access Time
+//            localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+//            strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // 2. Format Modification Time
+//            localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+//            strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // 3. Format Status Change Time
+//            localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+//            strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+//
+//            // Log the human-readable versions with their nanoseconds appended
+//            snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+//            strcat(report, entry);
+//            snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
+//            strcat(report, entry);
         }
 
 

@@ -83,7 +83,7 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
 
-#ifdef VERBOSE_LOGGING
+#ifdef DEBUG_LOGGING
     dl_iterate_phdr(dump_lib_info_with_dlitphdr, nullptr);
     dump_lib_info_with_auxv();
     size_t lib_size = my_lib.end - my_lib.start;
@@ -162,7 +162,7 @@ class Bipan : public zygisk::ModuleBase {
     // Setup tripwires for seccomp
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
-#ifdef VERBOSE_LOGGING
+#ifdef IN_APP_EXPERIMENTS
     registerDobbyLinkerHooks();
     // char loadedSharedLibs[1024];
     // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
