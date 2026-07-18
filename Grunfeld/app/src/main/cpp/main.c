@@ -42,7 +42,6 @@
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
-#define LOCAL_SOCKET "/data/data/com.omarmesqq.grunfeld/ipc_socket"
 
 /**
  * func-like macro to convert negative error values provided by the kernel to raw syscalls
@@ -65,6 +64,51 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
 __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_sysprop_tests();
     LOGI("Early init: __attribute__((constructor))");
+}
+
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
+    char report[20000] = {0};
+    char entry[PATH_MAX + 100] = {0};
+
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) {
+        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/maps (errno: %s)\n", strerror(errno));
+        strcat(report, entry);
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    char buf[PATH_MAX];
+    while (fgets(buf, sizeof(buf), fp) != NULL) {
+        char start[11] = {0};
+        char end[11] = {0};
+        char perms[5] = {0};
+        char offset[9] = {0};
+        char devMajor[3] = {0};
+        char devMinor[3] = {0};
+        size_t libInode = 0;
+        char libName[PATH_MAX] = {0};
+
+        int ret = sscanf(buf,
+                         "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
+                         start, end, perms, offset, devMajor, devMinor, &libInode, libName);
+        if (ret != 8) {
+            if (strstr(libName, "memfd")) {
+                snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
+                strcat(report, entry);
+                return (*env)->NewStringUTF(env, report);
+            }
+            // ignore problematic lines
+        }
+        if (strstr(libName, "memfd")) {
+            snprintf(entry, sizeof(entry), "%s", buf);
+            strcat(report, entry);
+        }
+    }
+
+    fclose(fp);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -802,7 +846,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
     return (*env)->NewStringUTF(env, report);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobject thiz, jobjectArray filenames) {
     jsize len = (*env)->GetArrayLength(env, filenames);
@@ -1302,6 +1345,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf) {
     char entry[PATH_MAX] = {0};
 
+    snprintf(entry, sizeof(entry), "\tDevice: %lu\n", (unsigned long)statbuf->st_dev);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
+    strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
     strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
@@ -1372,7 +1419,6 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
          (statbuf->st_mode & S_IXOTH) ? 'x' : '-');
     strcat(report, entry);
 }
-
 
 static const char* proto_to_str(int proto) {
     switch (proto) {
@@ -1455,7 +1501,6 @@ static inline void early_init_sysprop_tests(void) {
     LOGI("[LEGACY] FINGERPRINT: %s", fp);
 }
 
-
 static inline void dump(void *p, int n, char *report) {
     char entry[64];
     unsigned char *p1 = p;
@@ -1511,8 +1556,6 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     }
     return 0;
 }
-
-
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"

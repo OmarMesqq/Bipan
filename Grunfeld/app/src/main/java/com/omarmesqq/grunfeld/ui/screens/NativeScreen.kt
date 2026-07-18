@@ -58,6 +58,7 @@ fun NativeScreen() {
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
+    var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
 
     val pid = Process.myPid()
 
@@ -80,6 +81,20 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study /proc/self/maps", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfMapsInfo, "/proc/self/maps not studied yet")
+                    Button(
+                        onClick = {
+                            procSelfMapsInfo = NativeLibWrapper.scanProcSelfMaps()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open(/proc/self/maps)")
+                    }
+                }
+
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
