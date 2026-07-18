@@ -70,8 +70,7 @@ bool shouldLog(const char* pathname) {
   if (starts_with(pathname, "/proc/")) {
     if (strstr(pathname, "/cmdline") ||
         strstr(pathname, "/oom") ||
-        strstr(pathname, "/comm") ||
-        strstr(pathname, "/stat")) {
+        strstr(pathname, "/comm")) {
       return false;
     }
   }
@@ -230,13 +229,11 @@ bool shouldDenyStat(const char* path) {
   if (!path) return false;
 
   return (
-    (strcmp(path, "/proc/version") == 0) ||
-    (strcmp(path, "/proc/sys/kernel/version") == 0) ||
-    (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
-    (strcmp(path, "/proc/asound/version") == 0)
-  );
+      (strcmp(path, "/proc/version") == 0) ||
+      (strcmp(path, "/proc/sys/kernel/version") == 0) ||
+      (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
+      (strcmp(path, "/proc/asound/version") == 0));
 }
-
 
 /**
  * Returns `true` if IP address

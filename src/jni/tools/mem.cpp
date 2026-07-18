@@ -49,9 +49,9 @@ int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data) 
 
 /**
  * `dl_iterate_phdr` callback:
- * Finds info on shared objects worthy studying
+ * Finds info on a shared object of a name passed in `data` (`DumpContext`)
  */
-int dump_phdr_callback(struct dl_phdr_info* info, size_t size, void* data) {
+int searchSonameInfo(struct dl_phdr_info* info, size_t size, void* data) {
   DumpContext* ctx = (DumpContext*)data;
 
   if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
