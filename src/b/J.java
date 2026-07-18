@@ -66,7 +66,7 @@ public class J {
             }
             loadModules(ctx);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " [!] [1] Instrumentation.onCreate failure: " + e.getMessage());
+            throw new OutOfMemoryError(TAG + " [!] [1] Instrumentation.onCreate failure: " + e.getCause().toString());
           }
 
           try {
@@ -74,7 +74,7 @@ public class J {
                 .getMethod("onCreate", Bundle.class)
                 .invoke(realInstr, args);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + "[!] [2] Instrumentation.onCreate failure: " + e.getMessage());
+            throw new OutOfMemoryError(TAG + "[!] [2] Instrumentation.onCreate failure: " + e.getCause().toString());
           }
         }
 
@@ -86,7 +86,7 @@ public class J {
               NetworkSpoofingHook.patchConnectivityManager(app);
             } catch (Exception e) {
               throw new OutOfMemoryError(
-                  TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getMessage());
+                  TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getCause().toString());
             }
           }
           try {
@@ -95,7 +95,7 @@ public class J {
                 .invoke(realInstr, app);
           } catch (Exception e) {
             throw new OutOfMemoryError(
-                TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getMessage());
+                TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getCause().toString());
           }
         }
 
@@ -107,7 +107,7 @@ public class J {
               AntiAppInspectionHook.patchPackageManager(activity.getPackageManager());
             } catch (Exception e) {
               throw new OutOfMemoryError(
-                  TAG + "[!] [1] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
+                  TAG + "[!] [1] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
             }
           }
 
@@ -117,7 +117,7 @@ public class J {
               NetworkSpoofingHook.patchConnectivityManager(activity);
             } catch (Exception e) {
               throw new OutOfMemoryError(
-                  TAG + "[!] [2] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
+                  TAG + "[!] [2] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
             }
           }
 
@@ -129,7 +129,7 @@ public class J {
                 .invoke(realInstr, activity, icicle);
           } catch (Exception e) {
             throw new OutOfMemoryError(
-                TAG + "[!] [3] Instrumentation.callActivityOnCreate exception: " + e.getMessage());
+                TAG + "[!] [3] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
             // super.callActivityOnCreate(activity, icicle);
           }
         }
