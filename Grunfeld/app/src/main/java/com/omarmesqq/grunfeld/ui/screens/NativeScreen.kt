@@ -49,10 +49,9 @@ fun NativeScreen() {
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
-    var moreVfsInfo by remember { mutableStateOf("Additional VFS files not probed yet") }
-    var statFilesInfo by remember { mutableStateOf("Files not stated") }
-    var statFilesInfo1 by remember { mutableStateOf("Files not stated") }
-    var statFilesInfo2 by remember { mutableStateOf("Files not stated") }
+    var newfstatatInfo by remember { mutableStateOf("Files not stated") }
+    var faccessatInfo by remember { mutableStateOf("Files not stated") }
+    var statxInfo by remember { mutableStateOf("Files not stated") }
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -61,6 +60,12 @@ fun NativeScreen() {
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
 
     val pid = Process.myPid()
+    val statAndAccessNodes = arrayOf(
+        "/etc",
+        "/etc/hosts",
+        "/system/etc",
+        "/system/etc/hosts",
+        )
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -75,6 +80,61 @@ fun NativeScreen() {
                 text = "Native info",
                 style = MaterialTheme.typography.headlineMedium
             )
+
+            SectionHeader("ACCESS FAMILY")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("faccessat")
+                    ReportTextWithCopy(faccessatInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            faccessatInfo = NativeLibWrapper.testFaccessat(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("faccessat()")
+                    }
+                }
+
+            }
+
+            SectionHeader("STAT FAMILY")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("newfstat")
+                    ReportTextWithCopy(newfstatatInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            newfstatatInfo = NativeLibWrapper.testNewfstatat(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("newfstat()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("statx")
+                    ReportTextWithCopy(statxInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            statxInfo = NativeLibWrapper.testStatx(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("statx()")
+                    }
+                }
+            }
 
             SectionHeader("ANTI-TAMPER")
             Card(
@@ -133,77 +193,10 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
 
                     ) {
-                        Text("readlinkat(file) && newfstat(file)")
+                        Text("readlink of some VFS nodes")
                     }
                 }
 
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Open some VFS files", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(moreVfsInfo, "Additional VFS files not probed yet")
-                    Button(
-                        onClick = {
-                            moreVfsInfo = NativeLibWrapper.scanCommonVfsFiles()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("open common /proc nodes")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "newfstat", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(statFilesInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                            )
-                            statFilesInfo = NativeLibWrapper.testNewfstatat(filenames)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("newfstat(some files)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "faccessat", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(statFilesInfo1, "Files not stated")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                            )
-                            statFilesInfo1 = NativeLibWrapper.testFaccessat(filenames)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("faccessat(some files)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "statx", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(statFilesInfo2, "Files not stated")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                            )
-                            statFilesInfo2 = NativeLibWrapper.testStatx(filenames)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("statx(some files)")
-                    }
-                }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
