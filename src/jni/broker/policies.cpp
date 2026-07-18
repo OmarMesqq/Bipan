@@ -98,38 +98,84 @@ bool shouldLog(const char* pathname) {
 bool shouldSpoofExistence(const char* pathname) {
   return ((  // CAs
       strstr(pathname, "c7981ca8.0") != nullptr ||
-      starts_with(pathname, "/data/misc/user/0/cacerts-") ||
-      // Crash reports
-      starts_with(pathname, "/data/anr") ||
+      starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
-      // Root
-      strstr(pathname, "zygisk") != nullptr ||
-      strstr(pathname, "magisk") != nullptr ||
-      strstr(pathname, "resetprop") != nullptr ||
-      strstr(pathname, "supolicy") != nullptr ||
-      starts_with(pathname, "/vendor/bin/install-recovery.sh") ||
-      starts_with(pathname, "/data/adb/modules") ||
-      starts_with(pathname, "/data/adb/magisk") ||
       strstr(pathname, "lineage") != nullptr ||
-      strstr(pathname, "Lineage") != nullptr ||
-      starts_with(pathname, "/system/xbin") ||
-      starts_with(pathname, "/product/bin") ||
-      // starts_with(pathname, "/system/bin") ||
-      // starts_with(pathname, "/bin") ||
-      // strstr(pathname, "Screenshots") != nullptr ||
-      // strstr(pathname, "Camera") != nullptr ||
-      starts_with(pathname, "/debug_ramdisk")));
+      strstr(pathname, "Lineage") != nullptr));
+}
+
+bool shouldReportEmptyDir(const char* pathname) {
+  return ((
+      // CAs
+      starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      // Crash reports
+      starts_with(pathname, "/data/anr")));
+}
+
+SuNodeHandlerResponse handleSuRelatedNode(const char* pathname) {
+  if (!pathname) return OK;
+
+  if (starts_with(pathname, "/cache") &&
+      strstr(pathname, "magisk")) {
+    return DENY;
+  }
+
+  if (starts_with(pathname, "/data/adb/modules")) {
+    return DENY;
+  }
+
+  if (starts_with(pathname, "/vendor/bin/install-recovery.sh")) {
+    return DENY;
+  }
+
+  if (starts_with(pathname, "/data") &&
+      strstr(pathname, "magisk")) {
+    return DENY;
+  }
+
+  if (starts_with(pathname, "/system/lib") &&
+      strstr(pathname, "zygisk")) {
+    return SPOOF;
+  }
+
+  if (starts_with(pathname, "/system/xbin")) {
+    return SPOOF;
+  }
+
+  if (starts_with(pathname, "/product/bin")) {
+    return SPOOF;
+  }
+
+  if (starts_with(pathname, "/debug_ramdisk")) {
+    return SPOOF;
+  }
+
+  return OK;
 }
 
 bool shouldDenyAccess(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
            starts_with(pathname, "/dev/tty") ||
-           // CPU, temperature and platform info
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
            starts_with(pathname, "/sys/module")));
+}
+
+/**
+ * Some kernel versions return `-EPERM` for stat-like syscalls on
+ * some paths we spoof, so this function is necessary to
+ * ensure a consistent environment.
+ */
+bool shouldDenyStat(const char* path) {
+  if (!path) return false;
+
+  return (
+      (strcmp(path, "/proc/version") == 0) ||
+      (strcmp(path, "/proc/sys/kernel/version") == 0) ||
+      (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
+      (strcmp(path, "/proc/asound/version") == 0));
 }
 
 const char* shouldFakeFile(const char* pathname) {
@@ -226,21 +272,6 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
 
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Got unexpected path when correcting symlink: %s", resolvedPath);
   return nullptr;
-}
-
-/**
- * Some kernel versions return `-EPERM` for stat-like syscalls on
- * some paths we spoof, so this function is necessary to
- * ensure a consistent environment.
- */
-bool shouldDenyStat(const char* path) {
-  if (!path) return false;
-
-  return (
-      (strcmp(path, "/proc/version") == 0) ||
-      (strcmp(path, "/proc/sys/kernel/version") == 0) ||
-      (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
-      (strcmp(path, "/proc/asound/version") == 0));
 }
 
 /**
