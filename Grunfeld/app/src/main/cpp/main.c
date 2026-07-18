@@ -180,7 +180,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
             dump_fstat_info(cstr, intermediateReport, &statbuf);
             strcat(report, intermediateReport);
         } else {
-            snprintf(entry, sizeof(entry), "fstat(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            snprintf(entry, sizeof(entry), "fstat(%s) (fd: %d) FAILED: %s\n\n", cstr, fd, RAW_SYSCALL_TO_ERRNO(ret));
             strcat(report, entry);
         }
         snprintf(entry, sizeof(entry), "======================================\n");

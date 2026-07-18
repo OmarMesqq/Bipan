@@ -106,7 +106,7 @@ int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* da
   int p_type;
 
   if (strstr(info->dlpi_name, "memfd")) {
-    write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "%s has %d segments:", info->dlpi_name, info->dlpi_phnum);
   }
 
   for (size_t j = 0; j < info->dlpi_phnum; j++) {
@@ -126,15 +126,15 @@ int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* da
                                          : (p_type == PT_GNU_RELRO)    ? "PT_GNU_RELRO"
                                                                        : nullptr;
 
-    write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ", j,
+    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ", j,
                           (void*)(info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
                           (uintmax_t)info->dlpi_phdr[j].p_memsz,
                           (uintmax_t)info->dlpi_phdr[j].p_flags);
 
     if (type != nullptr) {
-      write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "%s\n", type);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "%s\n", type);
     } else {
-      write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "[other (%#x)]\n", p_type);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "[other (%#x)]\n", p_type);
     }
   }
   return 0;

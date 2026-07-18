@@ -92,6 +92,7 @@ fun NativeScreen() {
         "/system/lib64/libzygisk.so",
 
         "/product/bin",
+        " /system/bin/app_process64"
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
