@@ -216,6 +216,13 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     return fixed;
   }
 
+  if (strstr(resolvedPath, "maps")) {
+    char proc_pid_mounts[PATH_MAX] = {0};
+    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/maps", pid);
+    strcpy(fixed, proc_pid_mounts);
+    return fixed;
+  }
+
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Got unexpected path when correcting symlink: %s", resolvedPath);
   return nullptr;
 }
