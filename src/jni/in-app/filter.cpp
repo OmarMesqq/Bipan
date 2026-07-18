@@ -9,11 +9,11 @@
 
 #include <cerrno>
 
+#include "as_safe_string.hpp"
 #include "common_utils.hpp"
 #include "compile_time_flags.hpp"
 #include "globals.hpp"
 #include "logger/logger.hpp"
-#include "as_safe_string.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
   // 1. Break 64-bit bounds into 32-bit chunks
@@ -134,7 +134,7 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      
+
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettimeofday, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_getres, 0, 1),
@@ -147,20 +147,20 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_prctl, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone3, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_prctl, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+  // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
+  // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 #endif
 
       // Networking

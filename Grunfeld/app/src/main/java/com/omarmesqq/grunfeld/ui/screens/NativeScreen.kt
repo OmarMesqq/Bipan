@@ -86,19 +86,24 @@ fun NativeScreen() {
                     Button(
                         onClick = {
                             val filenames = arrayOf(
-                                // "/proc/self/maps",
-                                // "/proc/self/smaps",
-                                // "/proc/self/status",
-                                "/proc/self/mounts",
-                                "/proc/self/mountstats",
-                                "/proc/self/mountinfo",
+                                "/proc/self/maps",
+                                "/proc/$pid/maps",
 
+                                "/proc/self/smaps",
+                                "/proc/$pid/smaps",
+
+                                "/proc/self/status",
+                                "/proc/$pid/status",
+
+                                "/proc/self/mounts",
                                 "/proc/$pid/mounts",
+
+                                "/proc/self/mountstats",
                                 "/proc/$pid/mountstats",
+
+                                "/proc/self/mountinfo",
                                 "/proc/$pid/mountinfo",
-                                // "/proc/$pid/maps",
-                                // "/proc/self/smaps",
-                                // "/proc/self/status",
+
 
                                 "/proc/mounts",
                                 "/proc/version",
