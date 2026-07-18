@@ -322,42 +322,83 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat:
-      case __NR_newfstatat:
-      case __NR_faccessat2: {  // TODO: beware files to spoof!
+      case __NR_faccessat2: {
+        if (is_trusted) break;
+
         const char* action_name;
         if (nr == __NR_faccessat) {
           action_name = "faccessat";
-        } else if (nr == __NR_newfstatat) {
-          action_name = "newfstatat";
         } else if (nr == __NR_faccessat2) {
           action_name = "faccessat2";
         }
 
-        if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s)] spoofed", action_name, path_payload);
-          ipc_mem->ret = -ENOENT;
-          ipc_mem->action = ACTION_USE_RET;
+        int dirfd = ipc_mem->arg0;
+        const char* path = ipc_mem->string_payload;
+        int mode = ipc_mem->arg2;
+        int flags = ipc_mem->arg3;
+
+        ipc_mem->action = ACTION_USE_RET;
+        if (shouldDenyAccess(path) || handleSuRelatedNode(path) == DENY) {
+          ipc_mem->ret = -EPERM;
           break;
         }
-        if (is_trusted) break;
+        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
+          ipc_mem->ret = -ENOENT;
+          break;
+        }
 
-        if (shouldDenyAccess(path_payload) || shouldDenyStat(path_payload)) {
-          ipc_mem->ret = -EACCES;
-          ipc_mem->action = ACTION_USE_RET;
-        } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[%s(%s)] executing natively...", action_name, path_payload);
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
-        }
-#ifdef DEBUG_LOGGING
-        else {
-          if (shouldLog(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Allowing untrusted %s(%s)", action_name, path_payload);
-          }
-        }
-#endif
+        ipc_mem->action = ACTION_EXECUTE_NATIVE;
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[%s(%s)] allowed", action_name, path);
         break;
       }
+
+      case __NR_fstat: {
+        if (is_trusted) break;
+
+        int fd = (int)ipc_mem->arg0;
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(fstat) fd: %d", fd);
+        break;
+      }
+      case __NR_statfs: {
+        if (is_trusted) break;
+
+        const char* path = ipc_mem->string_payload;
+        
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(statfs) path: %s", path);
+        break;
+      }
+      case __NR_fstatfs: {
+        if (is_trusted) break;
+
+        int fd = (int)ipc_mem->arg0;
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(fstatfs) fd: %d", fd);
+        break;
+      }
+
+      case __NR_newfstatat: {
+        if (is_trusted) break;
+
+        int fd = (int)ipc_mem->arg0;
+        const char* path = ipc_mem->string_payload;
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(newfstatat) fd: %d | path: %s", fd, path);
+        break;
+      }
+
+      case __NR_statx: {
+        if (is_trusted) break;
+
+        int fd = (int)ipc_mem->arg0;
+        const char* path = ipc_mem->string_payload;
+        int flags = (int)ipc_mem->arg2;
+        unsigned int mask = (unsigned int)ipc_mem->arg3;
+        
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(statx) fd: %d | path: %s | flags: %d | mask: %u", fd, path, flags, mask);
+        break;
+      }
+
       case __NR_rt_sigaction: {
         long signal = ipc_mem->arg0;
 

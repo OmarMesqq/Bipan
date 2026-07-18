@@ -76,6 +76,8 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // System info
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syslog, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Binary execution
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
@@ -83,58 +85,58 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execveat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      // Filesystem
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // `access` family
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat2, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      // `stat` family
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fstat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statfs, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fstatfs, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_statx, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+
+      // Filesystem
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_openat, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents64, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-      // Anti-anti tamper
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-      // Memory whatnots
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-      // Filesystem observing
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_inotify_add_watch, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_inotify_rm_watch, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+      // Signal handling
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),    
+      
       // Pipe creation
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mknodat, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_pipe2, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+      // Misc
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_userfaultfd, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mq_notify, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syslog, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
+      // Anti-tamper: infamous ptrace
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat2, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
+      // Timing attacks
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettimeofday, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_getres, 0, 1),
@@ -142,11 +144,16 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_nanosleep, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
+      // Memory whatnots
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_memfd_create, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mremap, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      
   // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
   // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
   // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),

@@ -67,13 +67,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  if (nr == __NR_statx) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about statx existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Spoofing listen...");
     ctx->uc_mcontext.regs[0] = 0;
@@ -133,8 +126,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
-  local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
+  local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
   local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
 #endif
@@ -145,14 +138,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Serialization of strings
   if (nr == __NR_openat) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
-
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat ||
-             nr == __NR_faccessat2 ||
-             nr == __NR_newfstatat ||
-             nr == __NR_statx ||
-             nr == __NR_inotify_add_watch ||
+  } else if (nr == __NR_faccessat) {
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_statfs) {
+    local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
+  } 
+  else if (nr == __NR_newfstatat || nr == __NR_statx) {
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  } else if (nr == __NR_inotify_add_watch ||
              nr == __NR_readlinkat ||
              nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
@@ -287,15 +282,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (nr == __NR_uname && result == 0) {
       local_memcpy((void*)arg0, ipc_mem->out_buffer, sizeof(struct utsname));
     }
-#ifdef TRAP_EXPERIMENTAL_SYSCALLS
     if (nr == __NR_readlinkat && result > 0) {
       char* buf = (char*)ipc_mem->arg2;
       size_t bufsiz = (size_t)ipc_mem->arg3;
       size_t copy_len = local_strnlen((char*)ipc_mem->out_buffer, bufsiz - 1);
       local_memcpy(buf, ipc_mem->out_buffer, copy_len);
-      // buf[copy_len] = '\0';
     }
-#endif
   }
 
   ipc_mem->status = IDLE;
