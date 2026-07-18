@@ -177,7 +177,6 @@ public class J {
       if (isIsolatedProcess()) {
         modules.add(new AntiAppInspectionHook());
         modules.add(new SystemPropertiesHook());
-        modules.add(new DexLoaderMonitorHook());
       } else {
         // ---------------------------------------------
         /**
@@ -191,7 +190,6 @@ public class J {
         modules.add(new AntiAppInspectionHook());
         modules.add(new NetworkSpoofingHook());
         // ---------------------------------------------
-        modules.add(new DexLoaderMonitorHook());
         modules.add(new SettingsHook());
         modules.add(new SystemPropertiesHook());
         modules.add(new AntiNetworkDiscoveryHook());

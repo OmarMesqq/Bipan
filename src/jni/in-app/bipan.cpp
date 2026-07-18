@@ -87,7 +87,7 @@ class Bipan : public zygisk::ModuleBase {
     dl_iterate_phdr(dump_lib_info_with_dlitphdr, nullptr);
     // dump_lib_info_with_auxv();
     size_t lib_size = my_lib.end - my_lib.start;
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 #endif
     if (!scrub_elf_header()) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to scrub lib's headers. Aborting!");
@@ -101,7 +101,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] In-app Broker socket: %d", g_broker_socket);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] In-app Broker socket: %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -121,7 +121,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Shared IPC mmap'ed at: %p", (void*)ipc_mem);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] Shared IPC mmap'ed at: %p", (void*)ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
@@ -169,7 +169,7 @@ class Bipan : public zygisk::ModuleBase {
     // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
     // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
     // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
-    dump_mem(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
+    // dump_mem(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 #endif
   }
 

@@ -153,19 +153,22 @@ SuNodeHandlerResponse handleSuRelatedNode(const char* pathname) {
   return OK;
 }
 
-bool shouldDenyAccess(const char* pathname) {
+bool shouldDenyOpen(const char* pathname) {
   return ((starts_with(pathname, "/dev/socket") ||
            starts_with(pathname, "/dev/tty") ||
            starts_with(pathname, "/sys/class/thermal") ||
            starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
-           starts_with(pathname, "/sys/module") ||
-           (strcmp(pathname, "/proc/version") == 0) ||
-           (strcmp(pathname, "/proc/sys/kernel/version") == 0) ||
-           (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) ||
-           (strcmp(pathname, "/proc/asound/version") == 0)
-          ));
+           starts_with(pathname, "/sys/module")));
+}
+
+bool shouldDenyStat(const char* pathname) {
+  return (
+      (strcmp(pathname, "/proc/version") == 0) ||
+      (strcmp(pathname, "/proc/sys/kernel/version") == 0) ||
+      (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) ||
+      (strcmp(pathname, "/proc/asound/version") == 0));
 }
 
 const char* shouldFakeFile(const char* pathname) {
