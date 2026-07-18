@@ -248,7 +248,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
             ipc_mem->ret = -ENOENT;
             ipc_mem->action = ACTION_USE_RET;
-          } else if (is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+          } else if (is_maps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
             // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
             char real_path[256];
             if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -261,6 +261,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             int fake_fd = -1;
             if (is_mounts(path_payload)) {
               fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
+            } else if (is_maps(path_payload)) {
+              fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat VFS:(%s)] spoofed", path_payload);
             } else {
               fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
@@ -569,7 +572,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             free(actualPath);
             break;
           }
-
+          memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
+          ipc_mem->ret = (long)strlen(resolved_link_path);
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd): %s -> %s", proc_dirfd_path, resolved_link_path);
         } else if (dirfd == AT_FDCWD) {
           size_t pathLength = strlen(path);
@@ -632,6 +636,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             free(actualPath);
             break;
           }
+
+          memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
+          ipc_mem->ret = (long)strlen(resolved_link_path);
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
         } else {
           char resolved_link_path[PATH_MAX] = {0};

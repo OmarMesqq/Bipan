@@ -109,6 +109,7 @@ bool shouldSpoofExistence(const char* pathname) {
       strstr(pathname, "supolicy") != nullptr ||
       starts_with(pathname, "/vendor/bin/install-recovery.sh") ||
       starts_with(pathname, "/data/adb/modules") ||
+      starts_with(pathname, "/data/adb/magisk") ||
       strstr(pathname, "lineage") != nullptr ||
       strstr(pathname, "Lineage") != nullptr ||
       starts_with(pathname, "/system/xbin") ||

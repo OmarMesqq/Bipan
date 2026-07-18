@@ -76,23 +76,8 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   auto process_and_write_line = [&](char* l, unsigned long len) {
     l[len] = '\0';
 
-    // TODO: Important to allow
-    bool is_vital = strstr(l, "[stack]") ||
-                    strstr(l, "[vdso]") ||
-                    strstr(l, "[vvar]") ||
-                    strstr(l, "[vectors]") ||
-                    strstr(l, "/system/bin/linker");
-
-    if (is_vital) {
-      write(fake_fd, l, len);
-      return;
-    }
-
-    bool is_dirty = strstr(l, "magisk") || strstr(l, "zygisk") ||
-                    strstr(l, "bipan") ||
-                    (strstr(l, "/memfd:jit") && (strstr(l, "r-xp") || strstr(l, "r--p"))) ||
-                    (strstr(l, "rw-s") && strstr(l, "/dev/zero (deleted)")) ||
-                    ((strstr(l, "r-xp") && (strstr(l, "[anon:") || !strchr(l, '/'))));
+    bool is_dirty = strstr(l, "/memfd:jit-cache (deleted)") ||
+                    strstr(l, "7EFE8wVJq686");
 
     if (!is_dirty) {
       write(fake_fd, l, len);
@@ -195,10 +180,14 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
       if (buf[i] == '\n') {
         line[line_pos] = '\0';
 
-        bool is_dirty = strstr(line, "magisk") ||
+        bool is_dirty = strstr(line, "/product/bin") ||
+                        strstr(line, "debug_ramdisk") ||
+                        strstr(line, "mdnsd") ||
+                        strstr(line, "magisk") ||
                         strstr(line, "zygisk") ||
                         strstr(line, "/system/etc/hosts") ||
-                        strstr(line, "/etc/security/cacerts");
+                        strstr(line, "/etc/security/cacerts") ||
+                        strstr(line, "/system/lib");
 
         if (!is_dirty) {
           write(fake_fd, line, line_pos);
