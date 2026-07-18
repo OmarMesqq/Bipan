@@ -66,6 +66,162 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("Early init: __attribute__((constructor))");
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
+    jsize len = (*env)->GetArrayLength(env, filenames);
+    char report[20000] = {0};
+    char entry[PATH_MAX] = {0};
+    char errorBuffer[128] = {0};
+
+    for (int i = 0; i < len; i++) {
+        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
+        if (jstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (cstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        long ret = 0;
+
+        int mode1 = F_OK; // tests existence of file
+        int mode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
+        int mode3 = R_OK; // exists and has read
+
+        int flags1 = AT_EACCESS; // performs access using effective UID and GID
+        int flags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
+        int flags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
+
+
+        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode2, flags1, 0, 0);
+        if (ret == 0) {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL\n", cstr);
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
+        }
+
+        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode3, flags1, 0, 0);
+        if (ret == 0) {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
+        }
+
+        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode1, flags1, 0, 0);
+        if (ret == 0) {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+        } else {
+            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
+        }
+
+    }
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
+    jsize len = (*env)->GetArrayLength(env, filenames);
+    char report[20000] = {0};
+    char entry[PATH_MAX] = {0};
+    char errorBuffer[128] = {0};
+
+    for (int i = 0; i < len; i++) {
+        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
+        if (jstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (cstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        struct stat statbuf = {0};
+        // if path is a symbolic link, do not dereference it: instead return information about the link itself
+        int flags = AT_SYMLINK_NOFOLLOW;
+
+        long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, flags, 0, 0);
+        if (ret != 0) {
+            snprintf(entry, sizeof(entry), "newfstatat(%s) failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
+            continue;
+        }
+
+        snprintf(entry, sizeof (entry),"newfstatat(%s) successful.\n", cstr);
+        strcat(report, entry);
+        char intermediateReport[8192] = {0};
+        dump_newfstat_info(cstr, intermediateReport, &statbuf);
+        strcat(report, intermediateReport);
+    }
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobject thiz, jobjectArray filenames) {
+    jsize len = (*env)->GetArrayLength(env, filenames);
+    char report[20000] = {0};
+    char entry[PATH_MAX] = {0};
+    char errorBuffer[128] = {0};
+
+    for (int i = 0; i < len; i++) {
+        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
+        if (jstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (cstr == NULL) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
+            (*env)->DeleteLocalRef(env, jstr);
+            return (*env)->NewStringUTF(env, errorBuffer);
+        }
+
+        long ret = 0;
+
+        struct statx statxbuf = {0};
+        int flags = AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW;
+        int mode = STATX_BASIC_STATS | STATX_BTIME;
+
+        /**
+         * int statx(
+         *          int dirfd,
+         *          const char *_Nullable restrict path,
+         *          int flags,
+         *          unsigned int mask,
+         *          struct statx *restrict statxbuf
+         * )
+         */
+        ret = arm64_raw_syscall(__NR_statx, 0 , (long) cstr, (long) flags, mode, (long) &statxbuf, 0);
+
+        if (ret == 0) {
+            snprintf(entry, sizeof(entry), "statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL\n\n", cstr);
+        } else {
+            snprintf(entry, sizeof(entry), "statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+        }
+        strcat(report, entry);
+
+    }
+
+    return (*env)->NewStringUTF(env, report);
+}
+
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
@@ -110,78 +266,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
     fclose(fp);
     return (*env)->NewStringUTF(env, report);
 }
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanCommonVfsFiles(JNIEnv *env, jobject thiz) {
-    char report[8192] = {0};
-    char entry[512] = {0};
-    pid_t pid = getpid();
-    char proc_pid_path[PATH_MAX] = {0};
-    snprintf(proc_pid_path, sizeof(proc_pid_path), "/proc/%d/ns/mnt", pid);
-
-    #define PATHS 4
-    const char* paths[PATHS] = {
-            "/proc/self/ns/mnt",
-            proc_pid_path,
-            "/proc/self/exe",
-            "/proc/self/stat",
-    };
-
-    for (size_t i = 0; i < PATHS; i++) {
-        const char* curr = paths[i];
-
-        FILE* currFp = fopen(curr, "r");
-        if (!currFp) {
-            snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", curr, strerror(errno));
-            strcat(report, entry);
-            continue;
-        }
-
-        snprintf(entry, sizeof(entry), "File: %s\n", curr);
-        strcat(report, entry);
-
-        char buf[4096];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), currFp)) > 0) {
-            if (strstr(curr, "exe")) {
-                for (size_t j = 0; j < strlen(buf); j++) {
-                    snprintf(entry, sizeof(entry), "0x%02x ", buf[j]);
-                    strcat(report, entry);
-                }
-            } else {
-                snprintf(entry, sizeof(entry), "%s", buf);
-                strcat(report, entry);
-            }
-        }
-
-        snprintf(entry, sizeof(entry), "\n=====================");
-        strcat(report, entry);
-    }
-
-    snprintf(entry, sizeof(entry), "\nSome envvars:\n");
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "PATH: %s\n", getenv("PATH"));
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "USER: %s\n", getenv("USER"));
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "LOGNAME: %s\n", getenv("LOGNAME"));
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "HOSTNAME: %s\n", getenv("HOSTNAME"));
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "PWD: %s\n", getenv("PWD"));
-    strcat(report, entry);
-
-    snprintf(entry, sizeof(entry), "LD_PRELOAD: %s\n", getenv("LD_PRELOAD"));
-    strcat(report, entry);
-
-    return (*env)->NewStringUTF(env, report);
-}
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
@@ -735,162 +819,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
         (*env)->ReleaseStringUTFChars(env, jstr, cstr);
         (*env)->DeleteLocalRef(env, jstr);
         arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
-    }
-
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-    
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        struct stat statbuf = {0};
-        // if path is a symbolic link, do not dereference it: instead return information about the link itself
-        int flags = AT_SYMLINK_NOFOLLOW;
-
-        long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, flags, 0, 0);
-        if (ret != 0) {
-            snprintf(entry, sizeof(entry), "newfstatat(%s) failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-            continue;
-        }
-
-        snprintf(entry, sizeof (entry),"newfstatat(%s) successful.\n", cstr);
-        strcat(report, entry);
-        char intermediateReport[8192] = {0};
-        dump_newfstat_info(cstr, intermediateReport, &statbuf);
-        strcat(report, intermediateReport);
-    }
-
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        long ret = 0;
-
-        int mode1 = F_OK; // tests existence of file
-        int mode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
-        int mode3 = R_OK; // exists and has read
-
-        int flags1 = AT_EACCESS; // performs access using effective UID and GID
-        int flags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
-        int flags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
-
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode2, flags1, 0, 0);
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL\n", cstr);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode3, flags1, 0, 0);
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode1, flags1, 0, 0);
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-
-    }
-
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobject thiz, jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        long ret = 0;
-
-        struct statx statxbuf = {0};
-        int flags = AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW;
-        int mode = STATX_BASIC_STATS | STATX_BTIME;
-
-        /**
-         * int statx(
-         *          int dirfd,
-         *          const char *_Nullable restrict path,
-         *          int flags,
-         *          unsigned int mask,
-         *          struct statx *restrict statxbuf
-         * )
-         */
-        ret = arm64_raw_syscall(__NR_statx, 0 , (long) cstr, (long) flags, mode, (long) &statxbuf, 0);
-
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL\n\n", cstr);
-        } else {
-            snprintf(entry, sizeof(entry), "statx(%s) - mode: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-        }
-        strcat(report, entry);
-
     }
 
     return (*env)->NewStringUTF(env, report);
