@@ -49,9 +49,15 @@ fun NativeScreen() {
     var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
-    var newfstatatInfo by remember { mutableStateOf("Files not stated") }
+
     var faccessatInfo by remember { mutableStateOf("Files not stated") }
+
+    var fstatInfo by remember { mutableStateOf("Files not stated") }
+    var statfsInfo by remember { mutableStateOf("Files not stated") }
+    var fstatfsInfo by remember { mutableStateOf("Files not stated") }
+    var newfstatatInfo by remember { mutableStateOf("Files not stated") }
     var statxInfo by remember { mutableStateOf("Files not stated") }
+
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
@@ -60,6 +66,15 @@ fun NativeScreen() {
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
 
     val pid = Process.myPid()
+
+    /**
+     * /data/misc/user/0/cacerts-added
+     * /data/anr
+     * *build.prop
+     * /system/lib*
+     * /system/bin/mdnsd
+     * /etc/system/security
+     */
     val statAndAccessNodes = arrayOf(
         "/etc",
         "/etc/hosts",
@@ -99,7 +114,6 @@ fun NativeScreen() {
                         Text("faccessat()")
                     }
                 }
-
             }
 
             SectionHeader("STAT FAMILY")
@@ -108,7 +122,48 @@ fun NativeScreen() {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("newfstat")
+                    CodeTitle("fstat")
+                    ReportTextWithCopy(fstatInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            fstatInfo = NativeLibWrapper.testFstat(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("fstat()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("statfs")
+                    ReportTextWithCopy(statfsInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            statfsInfo = NativeLibWrapper.testStatfs(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("statfs()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fstatfs")
+                    ReportTextWithCopy(fstatfsInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            fstatfsInfo = NativeLibWrapper.testFstatfs(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("fstatfs()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("newfstatat")
                     ReportTextWithCopy(newfstatatInfo, "Files not stated")
                     Button(
                         onClick = {
@@ -117,7 +172,7 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
 
                     ) {
-                        Text("newfstat()")
+                        Text("newfstatat()")
                     }
                 }
 
