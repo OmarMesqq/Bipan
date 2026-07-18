@@ -320,7 +320,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_faccessat:
       case __NR_newfstatat:
-      case __NR_faccessat2: {
+      case __NR_faccessat2: {  // TODO: beware files to spoof!
         const char* action_name;
         if (nr == __NR_faccessat) {
           action_name = "faccessat";
@@ -473,7 +473,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (mask & IN_MOVE_SELF) maskAnalysis += " File was moved |";
         if (mask & IN_MOVED_FROM) maskAnalysis += " Generated for the directory containing the old filename when a file is renamed |";
         if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
-        if (mask & IN_OPEN) maskAnalysis += " File or directory was opened |";
+        if (mask & IN_OPEN) maskAnalysis += " File or directory was opened";
 
         if (strstr(path, "Screenshots")) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_add_watch): Neutered for path: %s", path);
@@ -777,7 +777,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_mincore: {
         if (is_trusted) break;
         void* addr = (void*)ipc_mem->arg0;
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p!", addr);
+        size_t length = (size_t)ipc_mem->arg1;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
         break;
       }
       case __NR_memfd_create: {

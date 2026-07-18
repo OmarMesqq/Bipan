@@ -15,6 +15,7 @@ struct DumpContext {
 int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data);
 int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data);
 void dump_mem(void* addr, int bytes);
+int searchSonameInfo(struct dl_phdr_info* info, size_t size, void* data);
 int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* data);
 void dump_lib_info_with_auxv();
 bool scrub_elf_header();
