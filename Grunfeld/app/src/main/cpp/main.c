@@ -61,6 +61,10 @@ static void prop_cb(void* cookie, const char* name, const char* value, uint32_t 
 static inline void dump (void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
+static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
+static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf);
+static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf);
+static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     early_init_sysprop_tests();
@@ -171,11 +175,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
 
         if (ret == 0) {
             snprintf(entry, sizeof(entry), "fstat(%s) SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+            char intermediateReport[8192] = {0};
+            dump_fstat_info(cstr, intermediateReport, &statbuf);
+            strcat(report, intermediateReport);
         } else {
             snprintf(entry, sizeof(entry), "fstat(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
         }
+        snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
-
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -213,11 +222,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfs(JNIEnv *env, jobje
 
         if (ret == 0) {
             snprintf(entry, sizeof(entry), "statfs(%s) SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+            char intermediateReport[8192] = {0};
+            dump_statfs_info(cstr, intermediateReport, &statfsbuf);
+            strcat(report, intermediateReport);
         } else {
             snprintf(entry, sizeof(entry), "statfs(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
         }
+        snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
-
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -262,11 +276,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstatfs(JNIEnv *env, jobj
 
         if (ret == 0) {
             snprintf(entry, sizeof(entry), "fstatfs(%s) SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+            char intermediateReport[8192] = {0};
+            dump_fstatfs_info(cstr, intermediateReport, &statfsbuf);
+            strcat(report, intermediateReport);
         } else {
             snprintf(entry, sizeof(entry), "fstatfs(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
         }
+        snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
-
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -346,12 +365,17 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobjec
         ret = arm64_raw_syscall(__NR_statx, 0 , (long) cstr, (long) flags, mask, (long) &statxbuf, 0);
 
         if (ret == 0) {
-            snprintf(entry, sizeof(entry), "statx(%s) - mask: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL\n\n", cstr);
+            snprintf(entry, sizeof(entry), "statx(%s) - mask: STATX_ALL - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> SUCCESSFUL\n\n", cstr);
+            strcat(report, entry);
+            char intermediateReport[8192] = {0};
+            dump_statx_info(cstr, intermediateReport, &statxbuf);
+            strcat(report, intermediateReport);
         } else {
-            snprintf(entry, sizeof(entry), "statx(%s) - mask: STATX_BASIC_STATS | STATX_BTIME - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            snprintf(entry, sizeof(entry), "statx(%s) - mask: STATX_ALL - flags: AT_EMPTY_PATH | AT_NO_AUTOMOUNT | AT_SYMLINK_NOFOLLOW -> FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
+            strcat(report, entry);
         }
+        snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
-
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -1482,6 +1506,240 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
          (statbuf->st_mode & S_IXOTH) ? 'x' : '-');
     strcat(report, entry);
 }
+
+static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf) {
+    char entry[PATH_MAX] = {0};
+
+    snprintf(entry, sizeof(entry), "\tDevice: %lu\n", (unsigned long)statbuf->st_dev);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf->st_gid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf->st_rdev);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tBlock size: %ld\n", (long)statbuf->st_blksize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tBlocks allocated: %ld\n", (long)statbuf->st_blocks);
+    strcat(report, entry);
+
+    // Timestamps
+    char access_time_str[64];
+    char modify_time_str[64];
+    char change_time_str[64];
+    struct tm tm_info;
+
+    // 1. Format Access Time
+    localtime_r(&statbuf->st_atim.tv_sec, &tm_info);
+    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 2. Format Modification Time
+    localtime_r(&statbuf->st_mtim.tv_sec, &tm_info);
+    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 3. Format Status Change Time
+    localtime_r(&statbuf->st_ctim.tv_sec, &tm_info);
+    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf->st_atim.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf->st_mtim.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf->st_ctim.tv_nsec);
+    strcat(report, entry);
+
+    const char* file_type = "Unknown";
+    if (S_ISREG(statbuf->st_mode))  file_type = "Regular File";
+    else if (S_ISDIR(statbuf->st_mode))  file_type = "Directory";
+    else if (S_ISLNK(statbuf->st_mode))  file_type = "Symbolic Link";
+    else if (S_ISCHR(statbuf->st_mode))  file_type = "Character Device";
+    else if (S_ISBLK(statbuf->st_mode))  file_type = "Block Device";
+    else if (S_ISFIFO(statbuf->st_mode)) file_type = "FIFO/Pipe";
+    else if (S_ISSOCK(statbuf->st_mode)) file_type = "Socket";
+
+    snprintf(entry, sizeof(entry), "\tFile Type: %s\n", file_type);
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
+             (statbuf->st_mode & S_ISUID) ? 1 : 0,
+             (statbuf->st_mode & S_ISGID) ? 1 : 0,
+             (statbuf->st_mode & S_ISVTX) ? 1 : 0);
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "\tPermissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)\n\n",
+             (statbuf->st_mode & S_IRUSR) ? 'r' : '-',
+             (statbuf->st_mode & S_IWUSR) ? 'w' : '-',
+             (statbuf->st_mode & S_IXUSR) ? 'x' : '-',
+
+             (statbuf->st_mode & S_IRGRP) ? 'r' : '-',
+             (statbuf->st_mode & S_IWGRP) ? 'w' : '-',
+             (statbuf->st_mode & S_IXGRP) ? 'x' : '-',
+
+             (statbuf->st_mode & S_IROTH) ? 'r' : '-',
+             (statbuf->st_mode & S_IWOTH) ? 'w' : '-',
+             (statbuf->st_mode & S_IXOTH) ? 'x' : '-');
+    strcat(report, entry);
+}
+
+static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf) {
+    char entry[PATH_MAX] = {0};
+
+    snprintf(entry, sizeof(entry), "\tFilesystem type: 0x%lx\n", (unsigned long)statfsbuf->f_type);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tOptimal transfer block size: %ld\n", (long)statfsbuf->f_bsize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tTotal data blocks: %llu\n", (unsigned long long)statfsbuf->f_blocks);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree blocks: %llu\n", (unsigned long long)statfsbuf->f_bfree);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree blocks available to unprivileged user: %llu\n", (unsigned long long)statfsbuf->f_bavail);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tTotal file nodes: %llu\n", (unsigned long long)statfsbuf->f_files);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree file nodes: %llu\n", (unsigned long long)statfsbuf->f_ffree);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFilesystem ID: %d %d\n", statfsbuf->f_fsid.__val[0], statfsbuf->f_fsid.__val[1]);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tMaximum filename length: %ld\n", (long)statfsbuf->f_namelen);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFragment size: %ld\n", (long)statfsbuf->f_frsize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tMount flags: 0x%lx\n\n", (unsigned long)statfsbuf->f_flags);
+    strcat(report, entry);
+}
+
+static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf) {
+    char entry[PATH_MAX] = {0};
+
+    snprintf(entry, sizeof(entry), "\tFilesystem type: 0x%lx\n", (unsigned long)statfsbuf->f_type);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tOptimal transfer block size: %ld\n", (long)statfsbuf->f_bsize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tTotal data blocks: %llu\n", (unsigned long long)statfsbuf->f_blocks);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree blocks: %llu\n", (unsigned long long)statfsbuf->f_bfree);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree blocks available to unprivileged user: %llu\n", (unsigned long long)statfsbuf->f_bavail);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tTotal file nodes: %llu\n", (unsigned long long)statfsbuf->f_files);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFree file nodes: %llu\n", (unsigned long long)statfsbuf->f_ffree);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFilesystem ID: %d %d\n", statfsbuf->f_fsid.__val[0], statfsbuf->f_fsid.__val[1]);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tMaximum filename length: %ld\n", (long)statfsbuf->f_namelen);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tFragment size: %ld\n", (long)statfsbuf->f_frsize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tMount flags: 0x%lx\n\n", (unsigned long)statfsbuf->f_flags);
+    strcat(report, entry);
+}
+
+static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf) {
+    char entry[PATH_MAX] = {0};
+
+    snprintf(entry, sizeof(entry), "\tMask of valid fields: 0x%x\n", statxbuf->stx_mask);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tBlock size: %u\n", statxbuf->stx_blksize);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tExtra attributes: 0x%llx\n", (unsigned long long)statxbuf->stx_attributes);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tHard link count: %u\n", statxbuf->stx_nlink);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tUID: %u\n", statxbuf->stx_uid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tGID: %u\n", statxbuf->stx_gid);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tMode: 0%o\n", statxbuf->stx_mode);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tInode: %llu\n", (unsigned long long)statxbuf->stx_ino);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tSize: %llu bytes\n", (unsigned long long)statxbuf->stx_size);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tBlocks allocated: %llu\n", (unsigned long long)statxbuf->stx_blocks);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tAttributes mask: 0x%llx\n", (unsigned long long)statxbuf->stx_attributes_mask);
+    strcat(report, entry);
+
+    // Timestamps
+    char access_time_str[64];
+    char btime_str[64];
+    char change_time_str[64];
+    char modify_time_str[64];
+    struct tm tm_info;
+
+    // 1. Format Access Time
+    localtime_r((time_t*)&statxbuf->stx_atime.tv_sec, &tm_info);
+    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 2. Format Birth/Creation Time
+    localtime_r((time_t*)&statxbuf->stx_btime.tv_sec, &tm_info);
+    strftime(btime_str, sizeof(btime_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 3. Format Status Change Time
+    localtime_r((time_t*)&statxbuf->stx_ctime.tv_sec, &tm_info);
+    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    // 4. Format Modification Time
+    localtime_r((time_t*)&statxbuf->stx_mtime.tv_sec, &tm_info);
+    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+    snprintf(entry, sizeof(entry), "\tAccess time: %s.%09u\n", access_time_str, statxbuf->stx_atime.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tBirth time: %s.%09u\n", btime_str, statxbuf->stx_btime.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09u\n", change_time_str, statxbuf->stx_ctime.tv_nsec);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tModification time: %s.%09u\n\n", modify_time_str, statxbuf->stx_mtime.tv_nsec);
+    strcat(report, entry);
+
+    const char* file_type = "Unknown";
+    if (S_ISREG(statxbuf->stx_mode))  file_type = "Regular File";
+    else if (S_ISDIR(statxbuf->stx_mode))  file_type = "Directory";
+    else if (S_ISLNK(statxbuf->stx_mode))  file_type = "Symbolic Link";
+    else if (S_ISCHR(statxbuf->stx_mode))  file_type = "Character Device";
+    else if (S_ISBLK(statxbuf->stx_mode))  file_type = "Block Device";
+    else if (S_ISFIFO(statxbuf->stx_mode)) file_type = "FIFO/Pipe";
+    else if (S_ISSOCK(statxbuf->stx_mode)) file_type = "Socket";
+
+    snprintf(entry, sizeof(entry), "\tFile Type: %s\n", file_type);
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
+             (statxbuf->stx_mode & S_ISUID) ? 1 : 0,
+             (statxbuf->stx_mode & S_ISGID) ? 1 : 0,
+             (statxbuf->stx_mode & S_ISVTX) ? 1 : 0);
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "\tPermissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)\n\n",
+             (statxbuf->stx_mode & S_IRUSR) ? 'r' : '-',
+             (statxbuf->stx_mode & S_IWUSR) ? 'w' : '-',
+             (statxbuf->stx_mode & S_IXUSR) ? 'x' : '-',
+
+             (statxbuf->stx_mode & S_IRGRP) ? 'r' : '-',
+             (statxbuf->stx_mode & S_IWGRP) ? 'w' : '-',
+             (statxbuf->stx_mode & S_IXGRP) ? 'x' : '-',
+
+             (statxbuf->stx_mode & S_IROTH) ? 'r' : '-',
+             (statxbuf->stx_mode & S_IWOTH) ? 'w' : '-',
+             (statxbuf->stx_mode & S_IXOTH) ? 'x' : '-');
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "\tRdev (special file): major=%u minor=%u\n",
+             statxbuf->stx_rdev_major, statxbuf->stx_rdev_minor);
+    strcat(report, entry);
+    snprintf(entry, sizeof(entry), "\tDev (containing filesystem): major=%u minor=%u\n",
+             statxbuf->stx_dev_major, statxbuf->stx_dev_minor);
+    strcat(report, entry);
+}
+
+
 
 static const char* proto_to_str(int proto) {
     switch (proto) {

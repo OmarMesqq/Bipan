@@ -71,15 +71,27 @@ fun NativeScreen() {
      * /data/misc/user/0/cacerts-added
      * /data/anr
      * *build.prop
-     * /system/lib*
-     * /system/bin/mdnsd
-     * /etc/system/security
      */
     val statAndAccessNodes = arrayOf(
         "/etc",
         "/etc/hosts",
+
         "/system/etc",
         "/system/etc/hosts",
+
+        "/system/bin",
+        "/system/bin/mdnsd",
+
+        "/system/etc/security",
+        "/system/etc/security/cacerts",
+
+        "/system/lib",
+        "/system/lib/libzygisk.so",
+
+        "/system/lib64",
+        "/system/lib64/libzygisk.so",
+
+        "/product/bin",
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
