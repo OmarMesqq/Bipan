@@ -160,22 +160,12 @@ bool shouldDenyAccess(const char* pathname) {
            starts_with(pathname, "/sys/class/power_supply") ||
            starts_with(pathname, "/sys/devices/platform") ||
            starts_with(pathname, "/sys/bus/platform") ||
-           starts_with(pathname, "/sys/module")));
-}
-
-/**
- * Some kernel versions return `-EPERM` for stat-like syscalls on
- * some paths we spoof, so this function is necessary to
- * ensure a consistent environment.
- */
-bool shouldDenyStat(const char* path) {
-  if (!path) return false;
-
-  return (
-      (strcmp(path, "/proc/version") == 0) ||
-      (strcmp(path, "/proc/sys/kernel/version") == 0) ||
-      (strcmp(path, "/proc/sys/kernel/osrelease") == 0) ||
-      (strcmp(path, "/proc/asound/version") == 0));
+           starts_with(pathname, "/sys/module") ||
+           (strcmp(pathname, "/proc/version") == 0) ||
+           (strcmp(pathname, "/proc/sys/kernel/version") == 0) ||
+           (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) ||
+           (strcmp(pathname, "/proc/asound/version") == 0)
+          ));
 }
 
 const char* shouldFakeFile(const char* pathname) {

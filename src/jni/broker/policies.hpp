@@ -14,7 +14,6 @@ bool shouldLog(const char* pathname);
 bool shouldSpoofExistence(const char* pathname);
 bool shouldReportEmptyDir(const char* pathname);
 SuNodeHandlerResponse handleSuRelatedNode(const char* pathname);
-bool shouldDenyStat(const char* path);
 bool shouldDenyAccess(const char* pathname);
 const char* shouldFakeFile(const char* pathname);
 bool is_maps(const char* pathname);

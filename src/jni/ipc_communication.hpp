@@ -43,7 +43,6 @@ typedef struct {
 
   // Payloads to cross the process boundary
   char string_payload[256];     // Paths (/sbin/su, etc)
-  int pipefd_payload[2];        // pipe2 1st arg
   uint8_t struct_payload[128];  // sockaddrs
   uint8_t out_buffer[PATH_MAX];      // Returned data (uname, readlinkat)
 
@@ -53,6 +52,7 @@ typedef struct {
   char package_name[256];
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
+  int pipefd_payload[2];        // pipe2 1st arg
   // process_vm_readv and process_vm_writev info
   uintptr_t vm_iov_addr[4];
   size_t vm_iov_len[4];
