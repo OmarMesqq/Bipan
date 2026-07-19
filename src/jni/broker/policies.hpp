@@ -2,6 +2,7 @@
 #define POLICIES_HPP
 
 #include <string>
+#include <sys/stat.h>
 
 typedef enum {
   OK,
@@ -22,5 +23,6 @@ bool is_proc_status(const char* pathname);
 bool is_smaps(const char* pathname);
 bool is_mounts(const char* pathname);
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid);
+struct stat* fixHostsFileStat(const char* pathname, int flags);
 
 #endif
