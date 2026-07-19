@@ -1,6 +1,8 @@
 package b;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
 import android.util.Log;
 import b.modules.*;
 import java.lang.reflect.Field;
@@ -24,13 +26,23 @@ public class J {
   private static final String TAG = "BipanJava";
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
 
+  // ConnectivtyManager hook variables
+  public static volatile Object scmp = null; // s_cmProxy
+
+  // Package Manager hook variables
+  public static volatile Field smpm = null; // s_mPMField
+  public static volatile Object spmp = null; // s_pmProxy
+  public static volatile Field smuf = null; // s_mUseField
+  public static volatile Field smcf = null; // s_mCacheField
+  public static volatile Field smdf = null; // s_mDisabledField
+
   // Spare GMS and Play Store from most hooks
   private static final Set<String> GLOBAL_ALLOW_LIST = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms"));
 
   /**
-   * hookInstrumentation:
+   * `hookInstrumentation`:
    * Triggered at either clampGrowthLimit or clearGrowthLimit.
    * Blocks the start of the app's main thread
    * and **Java** code for module loading and singleton swapping
@@ -62,11 +74,11 @@ public class J {
             Context ctx = (Context) Class.forName("android.app.ActivityThread").getMethod("currentApplication")
                 .invoke(null);
             if (ctx == null) {
-              throw new OutOfMemoryError(TAG + "[!] Context still null during Instrumentation.onCreate!");
+              throw new OutOfMemoryError(TAG + " [!] Context still null during Instrumentation.onCreate!");
             }
             loadModules(ctx);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " [!] [1] Instrumentation.onCreate failure: " + e.getCause().toString());
+            throw new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause().toString());
           }
 
           try {
@@ -74,50 +86,47 @@ public class J {
                 .getMethod("onCreate", Bundle.class)
                 .invoke(realInstr, args);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + "[!] [2] Instrumentation.onCreate failure: " + e.getCause().toString());
+            throw new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause().toString());
           }
         }
 
         @Override
         public void callApplicationOnCreate(Application app) {
           // Hijack Application's ConnectivityManager
-          if (NetworkSpoofingHook.s_cmProxy != null) {
+          if (scmp != null) {
             try {
-              NetworkSpoofingHook.patchConnectivityManager(app);
+              patchConnectivityManager(app);
             } catch (Exception e) {
-              throw new OutOfMemoryError(
-                  TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getCause().toString());
+              throw new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause().toString());
             }
           }
+
           try {
             realInstr.getClass()
                 .getMethod("callApplicationOnCreate", Application.class)
                 .invoke(realInstr, app);
           } catch (Exception e) {
-            throw new OutOfMemoryError(
-                TAG + "[!] Instrumentation.callApplicationOnCreate exception: " + e.getCause().toString());
+            throw new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause().toString());
           }
         }
 
         @Override
         public void callActivityOnCreate(Activity activity, Bundle icicle) {
           // Hijack Activity's PackageManager
-          if (AntiAppInspectionHook.s_mPMField != null && AntiAppInspectionHook.s_pmProxy != null) {
+          if (smpm != null && spmp != null) {
             try {
-              AntiAppInspectionHook.patchPackageManager(activity.getPackageManager());
+              patchPackageManager(activity.getPackageManager());
             } catch (Exception e) {
-              throw new OutOfMemoryError(
-                  TAG + "[!] [1] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
+              throw new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause().toString());
             }
           }
 
           // Hijack Activity's ConnectivityManager
-          if (NetworkSpoofingHook.s_cmProxy != null) {
+          if (scmp != null) {
             try {
-              NetworkSpoofingHook.patchConnectivityManager(activity);
+              patchConnectivityManager(activity);
             } catch (Exception e) {
-              throw new OutOfMemoryError(
-                  TAG + "[!] [2] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
+              throw new OutOfMemoryError(TAG + "callActivityOnCreate e: " + e.getCause().toString());
             }
           }
 
@@ -128,9 +137,7 @@ public class J {
                     Bundle.class)
                 .invoke(realInstr, activity, icicle);
           } catch (Exception e) {
-            throw new OutOfMemoryError(
-                TAG + "[!] [3] Instrumentation.callActivityOnCreate exception: " + e.getCause().toString());
-            // super.callActivityOnCreate(activity, icicle);
+            throw new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause().toString());
           }
         }
       };
@@ -169,7 +176,7 @@ public class J {
     } else {
       /**
        * Isolated processes (Services to be more precise) are quite restricted
-       * and can't touch most system APIs, so just install modules for things it
+       * and can't touch most system APIs, so just install modules for things they
        * CAN touch
        * 
        * https://developer.android.com/guide/topics/manifest/service-element#isolated
@@ -178,18 +185,8 @@ public class J {
         modules.add(new AntiAppInspectionHook());
         modules.add(new SystemPropertiesHook());
       } else {
-        // ---------------------------------------------
-        /**
-         * These two should be the first to load,
-         * as they expose public methods that block
-         * the app's main thread (for PM and CM hooking
-         * both Application and Activity-wise)
-         * 
-         * TODO: refactor to undo this tight coupling
-         */
         modules.add(new AntiAppInspectionHook());
         modules.add(new NetworkSpoofingHook());
-        // ---------------------------------------------
         modules.add(new SettingsHook());
         modules.add(new SystemPropertiesHook());
         modules.add(new AntiNetworkDiscoveryHook());
@@ -202,6 +199,42 @@ public class J {
       module.install(context);
     }
     Log.i(TAG, "All modules loaded successfully :)");
+  }
+
+  public static void patchConnectivityManager(Context context) {
+    if (scmp == null) {
+      return;
+    }
+    try {
+      ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+      Class<?> cmClass = ConnectivityManager.class;
+      Class<?> iConnClz = Class.forName("android.net.IConnectivityManager");
+      for (Field f : cmClass.getDeclaredFields()) {
+        if (iConnClz.isAssignableFrom(f.getType())) {
+          f.setAccessible(true);
+          f.set(cm, scmp);
+        }
+      }
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to patch CM", e);
+      throw new OutOfMemoryError();
+    }
+  }
+
+  public static void patchPackageManager(PackageManager pm) throws Exception {
+    if (pm == null || spmp == null || smpm == null) {
+      throw new Exception(TAG + "'PackageManager', 's_pmProxy', and/or 's_mPMField' are null");
+    }
+    smpm.set(pm, spmp);
+    if (smuf != null) {
+      smuf.setBoolean(pm, false);
+    }
+    if (smcf != null && smdf != null) {
+      Object pic = smcf.get(pm);
+      if (pic != null) {
+        smdf.setBoolean(pic, true);
+      }
+    }
   }
 
   private static void unseal() throws Exception {

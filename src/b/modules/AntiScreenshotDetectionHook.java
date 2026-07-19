@@ -12,17 +12,14 @@ import java.util.Map;
 import java.lang.reflect.InvocationHandler;
 
 /**
- * Prevents app from detecting and/or blocking when you take screenshot.
+ * Prevents target app from detecting and/or blocking when you take screenshot
+ * or starts a screen recording.
  * Two approaches are used here:
  * 
  * - Stripping `FLAG_SECURE` from Activities
- * - Neutering `registerScreenCaptureObserver` introduced in modern Android APIs
+ * - Neutering `registerScreenCaptureObserver` (screenshot) and
+ * `registerScreenRecordingCallback` (screen recording)
  * 
- * The native C++ implementation which `ENOENT`s paths with the word
- * `Screenshot`
- * is also important for "smarter" apps which attempt to detect a new .png in
- * these folders.
- * Perhaps these rely ultimately on `inotify`, but for now this suffices.
  */
 public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanAntiScreenshotDetectionHook";

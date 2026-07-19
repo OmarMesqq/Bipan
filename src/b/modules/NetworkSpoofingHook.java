@@ -27,8 +27,7 @@ import java.util.Set;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-
-import android.net.ConnectivityManager;
+import b.J;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
@@ -64,8 +63,6 @@ public class NetworkSpoofingHook implements BaseHook {
   private static Object wifiProxy;
 
   private static String selfPackageName;
-
-  public static volatile Object s_cmProxy = null;
 
   private static final Set<String> BENIGN_CM_METHODS = new HashSet<>(Arrays.asList(
       "getNetworkInfo",
@@ -182,7 +179,7 @@ public class NetworkSpoofingHook implements BaseHook {
             : method.invoke(realBinder, args));
 
     cache.put("connectivity", proxyBinder);
-    s_cmProxy = cmProxy;
+    J.scmp = cmProxy;
   }
 
   private void setupWifiSpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
@@ -213,26 +210,6 @@ public class NetworkSpoofingHook implements BaseHook {
             : method.invoke(realBinder, args));
 
     cache.put("wifi", proxyBinder);
-  }
-
-  public static void patchConnectivityManager(Context context) {
-    if (s_cmProxy == null) {
-      return;
-    }
-    try {
-      ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-      Class<?> cmClass = ConnectivityManager.class;
-      Class<?> iConnClz = Class.forName("android.net.IConnectivityManager");
-      for (Field f : cmClass.getDeclaredFields()) {
-        if (iConnClz.isAssignableFrom(f.getType())) {
-          f.setAccessible(true);
-          f.set(cm, s_cmProxy);
-        }
-      }
-    } catch (Exception e) {
-      Log.e(TAG, "Failed to patch CM", e);
-      throw new OutOfMemoryError();
-    }
   }
 
   private void patchAsyncMessage(Message msg) {
