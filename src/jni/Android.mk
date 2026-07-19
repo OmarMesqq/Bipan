@@ -28,6 +28,13 @@ else
                  	 -Wl,-u,zygisk_companion_entry \
                  	 -Wl,--version-script=$(LOCAL_PATH)/bipan_export.map \
 									 -Wl,--build-id=none \
+									 -Wl,--no-eh-frame-hdr \
+									 -Wl,--no-dynamic-linker \
+									 -Wl,-z,nognustack \
+									 -Wl,-z,relro -Wl,-z,now \
+									 -Wl,--print-gc-sections \
+									 -Wl,--print-icf-sections \
+									 -Wl,--cref \
 								 	 -flto
 $(info Building RELEASE variant...)
 endif

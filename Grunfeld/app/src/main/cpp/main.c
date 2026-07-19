@@ -958,7 +958,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
     char report[20000] = {0};
     char entry[512] = {0};
     char errorBuffer[128] = {0};
-    long fd = -1;
+    int fd = -1;
     size_t used = 0;
     char symlinkPath[PATH_MAX] = {0};
 
@@ -977,7 +977,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
             return (*env)->NewStringUTF(env, errorBuffer);
         }
 
-        fd = arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
+        fd = (int) arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
         if (fd == -1) {
             snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s)", cstr);
             (*env)->ReleaseStringUTFChars(env, jstr, cstr);
@@ -988,7 +988,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
 
         // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
         char fdPath[64];
-        snprintf(fdPath, sizeof(fdPath), "/proc/self/fd/%ld", fd);
+        snprintf(fdPath, sizeof(fdPath), "/proc/self/fd/%d", fd);
 
         ssize_t readlinkLen = readlink(fdPath, symlinkPath, sizeof(symlinkPath) - 1);
         if (readlinkLen < 0) {
@@ -1488,14 +1488,14 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
     strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
     strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf->st_gid);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf->st_rdev);
-    strcat(report, entry);
+//    snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
+//    strcat(report, entry);
+//    snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
+//    strcat(report, entry);
+//    snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf->st_gid);
+//    strcat(report, entry);
+//    snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf->st_rdev);
+//    strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
     strcat(report, entry);
 
@@ -1538,11 +1538,11 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
     strcat(report, entry);
 
     // Special Flags (SUID, SGID, Sticky Bit)
-    snprintf(entry, sizeof(entry),"\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
-         (statbuf->st_mode & S_ISUID) ? 1 : 0,
-         (statbuf->st_mode & S_ISGID) ? 1 : 0,
-         (statbuf->st_mode & S_ISVTX) ? 1 : 0);
-    strcat(report, entry);
+//    snprintf(entry, sizeof(entry),"\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
+//         (statbuf->st_mode & S_ISUID) ? 1 : 0,
+//         (statbuf->st_mode & S_ISGID) ? 1 : 0,
+//         (statbuf->st_mode & S_ISVTX) ? 1 : 0);
+//    strcat(report, entry);
 
     snprintf(entry, sizeof(entry),"\tPermissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)\n\n",
          (statbuf->st_mode & S_IRUSR) ? 'r' : '-',

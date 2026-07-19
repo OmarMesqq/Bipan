@@ -333,6 +333,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
@@ -370,12 +371,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
           free(proc_pid_fd_path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] denied", resolved_link_path);
           ipc_mem->ret = -EPERM;
           break;
         }
 
         if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF) {
           free(proc_pid_fd_path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -425,11 +428,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyOpen(path) || handleSuRelatedNode(path) == DENY) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
         if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
           ipc_mem->ret = -ENOENT;
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] spoofed", path);
           break;
         }
 
@@ -459,12 +464,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
         if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] denied", resolved_link_path);
           free(proc_pid_fd_path);
           ipc_mem->ret = -EPERM;
           break;
         }
         if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF) {
           free(proc_pid_fd_path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -485,6 +492,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
@@ -497,11 +505,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (is_hosts_file(path)) {
           struct stat* fixedStatBuf = fixHostsFileStat(path, flags);
           if (!fixedStatBuf) {
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat] failed to fix hosts!");
             ipc_mem->ret = -1;
             break;
           }
           memcpy(ipc_mem->out_buffer, fixedStatBuf, sizeof(struct stat));
           free(fixedStatBuf);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat] fixed hosts file.");
           ipc_mem->ret = 0;
           break;
         }
@@ -521,6 +531,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
@@ -819,11 +830,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               break;
             }
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) spoofed: original link: %s | true path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
             if (strcmp(fixedSymlink, "ENOENT") == 0) {
               free(actualPath);
               free(fixedSymlink);
-              free(actualPath);
               free(proc_pid_fd_path);
               ipc_mem->ret = -ENOENT;
               break;
