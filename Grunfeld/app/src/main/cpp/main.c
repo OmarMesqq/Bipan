@@ -71,6 +71,58 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("Early init: __attribute__((constructor))");
 }
 
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountNodes(JNIEnv *env, jobject thiz) {
+    char report[50000] = {0};
+    char entry[PATH_MAX] = {0};
+    char errorBuffer[128] = {0};
+
+#define PATHS 2
+    const char* paths[PATHS] = {
+            "/proc/self/mountinfo",
+            "/proc/mounts"
+    };
+
+    size_t reportLen = 0;
+
+    for (int i = 0; i < PATHS; i++) {
+        // Header so the UI can tell the two sources apart
+        int headerLen = snprintf(entry, sizeof(entry), "\n==== %s ====\n", paths[i]);
+        if (headerLen > 0 && reportLen + (size_t)headerLen < sizeof(report)) {
+            memcpy(report + reportLen, entry, (size_t)headerLen);
+            reportLen += (size_t)headerLen;
+        }
+
+        FILE *fp = fopen(paths[i], "r");
+        if (!fp) {
+            strerror_r(errno, errorBuffer, sizeof(errorBuffer));
+            int errLen = snprintf(entry, sizeof(entry), "[error opening %s: %s]\n", paths[i], errorBuffer);
+            if (errLen > 0 && reportLen + (size_t)errLen < sizeof(report)) {
+                memcpy(report + reportLen, entry, (size_t)errLen);
+                reportLen += (size_t)errLen;
+            }
+            continue;
+        }
+
+        while (fgets(entry, sizeof(entry), fp) != NULL) {
+            size_t lineLen = strlen(entry);
+            if (reportLen + lineLen >= sizeof(report) - 1) {
+                // Not enough room left in report; stop reading this file
+                break;
+            }
+            memcpy(report + reportLen, entry, lineLen);
+            reportLen += lineLen;
+        }
+
+        fclose(fp);
+    }
+
+    report[reportLen] = '\0';
+
+    return (*env)->NewStringUTF(env, report);
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
     jsize len = (*env)->GetArrayLength(env, filenames);
