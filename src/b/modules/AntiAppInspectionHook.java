@@ -18,6 +18,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.FeatureInfo;
 import java.util.ArrayList;
 import java.util.List;
+import b.J;
 
 /**
  * Single IPackageManager proxy:
@@ -100,12 +101,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
   private static final Set<String> ALLOW_LIST = new HashSet<>(
       Arrays.asList("com.aurora.store"));
-
-  public static volatile Object s_pmProxy = null;
-  public static volatile Field s_mPMField = null;
-  private static volatile Field s_mUseField = null;
-  private static volatile Field s_mCacheField = null;
-  private static volatile Field s_mDisabledField = null;
 
   @Override
   public void install(Context context) throws Exception {
@@ -265,15 +260,15 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     try {
       Class<?> apmClass2 = Class.forName("android.app.ApplicationPackageManager");
       Class<?> picClass2 = Class.forName("android.app.PropertyInvalidatedCache");
-      s_pmProxy = pmProxy;
-      s_mPMField = apmClass2.getDeclaredField("mPM");
-      s_mPMField.setAccessible(true);
-      s_mUseField = apmClass2.getDeclaredField("mUseSystemFeaturesCache");
-      s_mUseField.setAccessible(true);
-      s_mCacheField = apmClass2.getDeclaredField("mHasSystemFeatureCache");
-      s_mCacheField.setAccessible(true);
-      s_mDisabledField = picClass2.getDeclaredField("mDisabled");
-      s_mDisabledField.setAccessible(true);
+      J.spmp = pmProxy;
+      J.smpm = apmClass2.getDeclaredField("mPM");
+      J.smpm.setAccessible(true);
+      J.smuf = apmClass2.getDeclaredField("mUseSystemFeaturesCache");
+      J.smuf.setAccessible(true);
+      J.smcf = apmClass2.getDeclaredField("mHasSystemFeatureCache");
+      J.smcf.setAccessible(true);
+      J.smdf = picClass2.getDeclaredField("mDisabled");
+      J.smdf.setAccessible(true);
     } catch (Exception e) {
       Log.e(TAG, "Failed to store static PM fields: " + e.getMessage());
     }
@@ -285,22 +280,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       sPMField.set(null, pmProxy);
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
-    }
-  }
-
-  public static void patchPackageManager(PackageManager pm) throws Exception {
-    if (pm == null || s_pmProxy == null || s_mPMField == null) {
-      throw new Exception(TAG + "'pm', 's_pmProxy', and/or 's_mPMField' are null");
-    }
-    s_mPMField.set(pm, s_pmProxy);
-    if (s_mUseField != null) {
-      s_mUseField.setBoolean(pm, false);
-    }
-    if (s_mCacheField != null && s_mDisabledField != null) {
-      Object pic = s_mCacheField.get(pm);
-      if (pic != null) {
-        s_mDisabledField.setBoolean(pic, true);
-      }
     }
   }
 
