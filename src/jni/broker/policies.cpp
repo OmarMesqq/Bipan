@@ -267,6 +267,70 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   return nullptr;
 }
 
+struct stat* fixHostsFileStat(const char* pathname, int flags) {
+  if (!pathname) return nullptr;
+
+  if (strcmp(pathname, "/etc/hosts") == 0) {
+    struct stat statbufHosts;
+    int ret = fstatat(0, pathname, &statbufHosts, flags);
+    if (ret == -1) {
+      return nullptr;
+    }
+
+    struct stat statbufEtc;
+    ret = fstatat(0, "/etc", &statbufEtc, flags);
+    if (ret == -1) {
+      return nullptr;
+    }
+
+    statbufHosts.st_size = 46;
+    statbufHosts.st_dev = statbufEtc.st_dev;
+    statbufHosts.st_ino = statbufEtc.st_ino;
+    statbufHosts.st_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+    statbufHosts.st_atim = statbufEtc.st_atim;
+    statbufHosts.st_mtim = statbufEtc.st_mtim;
+    statbufHosts.st_ctim = statbufEtc.st_ctim;
+
+    struct stat* fixed = (struct stat*) calloc(sizeof(struct stat), 1);
+    if (!fixed) {
+      return nullptr;
+    }
+    memcpy(fixed, &statbufHosts, sizeof(struct stat));
+    return fixed;
+  }
+
+  if (strcmp(pathname, "/system/etc/hosts") == 0) {
+    struct stat statbufHosts;
+    int ret = fstatat(0, pathname, &statbufHosts, flags);
+    if (ret == -1) {
+      return nullptr;
+    }
+
+    struct stat statbufSystemEtc;
+    ret = fstatat(0, "/system/etc", &statbufSystemEtc, flags);
+    if (ret == -1) {
+      return nullptr;
+    }
+
+    statbufHosts.st_size = 46;
+    statbufHosts.st_dev = statbufSystemEtc.st_dev;
+    statbufHosts.st_ino = statbufSystemEtc.st_ino;
+    statbufHosts.st_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+    statbufHosts.st_atim = statbufSystemEtc.st_atim;
+    statbufHosts.st_mtim = statbufSystemEtc.st_mtim;
+    statbufHosts.st_ctim = statbufSystemEtc.st_ctim;
+
+    struct stat* fixed = (struct stat*) calloc(sizeof(struct stat), 1);
+    if (!fixed) {
+      return nullptr;
+    }
+    memcpy(fixed, &statbufHosts, sizeof(struct stat));
+    return fixed;
+  }
+
+  return nullptr;
+}
+
 /**
  * Returns `true` if IP address
  * `ip4` is in any of

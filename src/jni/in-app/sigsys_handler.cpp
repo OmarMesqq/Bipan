@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <linux/memfd.h>
+#include <sys/stat.h>
 #include <sys/utsname.h>
 
 #include "as_safe_string.hpp"
@@ -144,8 +145,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_statfs) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
-  } 
-  else if (nr == __NR_newfstatat || nr == __NR_statx) {
+  } else if (nr == __NR_newfstatat || nr == __NR_statx) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_inotify_add_watch ||
              nr == __NR_readlinkat ||
@@ -287,6 +287,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       size_t bufsiz = (size_t)ipc_mem->arg3;
       size_t copy_len = local_strnlen((char*)ipc_mem->out_buffer, bufsiz - 1);
       local_memcpy(buf, ipc_mem->out_buffer, copy_len);
+    }
+    if (nr == __NR_newfstatat && result == 0) {
+      struct stat* buf = (struct stat*)ipc_mem->arg2;
+      local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
   }
 
