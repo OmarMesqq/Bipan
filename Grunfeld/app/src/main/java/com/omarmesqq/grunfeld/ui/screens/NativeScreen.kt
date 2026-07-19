@@ -64,6 +64,7 @@ fun NativeScreen() {
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
+    var procMountPoints by remember { mutableStateOf("mounts not studied yet") }
 
     val pid = Process.myPid()
 
@@ -209,6 +210,20 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study mount points", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procMountPoints, "mounts not studied yet")
+                    Button(
+                        onClick = {
+                            procMountPoints = NativeLibWrapper.scanMountNodes()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("scan mount points")
+                    }
+                }
+
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "Study /proc/self/maps", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(procSelfMapsInfo, "/proc/self/maps not studied yet")

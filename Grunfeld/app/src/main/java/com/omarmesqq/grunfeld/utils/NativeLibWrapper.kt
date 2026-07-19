@@ -25,6 +25,7 @@ object NativeLibWrapper {
     external fun testProcSelfTask(): String
     external fun testForkExec(progname: String): String
     external fun scanProcSelfMaps(): String
+    external fun scanMountNodes(): String
     external fun testFaccessat(filenames: Array<String>): String
     external fun testFstat(filenames: Array<String>): String
     external fun testStatfs(filenames: Array<String>): String

@@ -380,6 +380,39 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
 
+        if (strstr(resolved_link_path, "/memfd:")) {
+          char* actualPath = extract_real_path_from_memfd(resolved_link_path);
+          if (!actualPath) {
+            free(proc_pid_fd_path);
+            ipc_mem->ret = -ENOENT;
+            break;
+          }
+          char* fixedSymlink = fixMemfdSymlink(resolved_link_path, ipc_mem->target_pid);
+          if (!fixedSymlink) {
+            free(actualPath);
+            free(proc_pid_fd_path);
+            ipc_mem->ret = -ENOENT;
+            break;
+          }
+
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(fstat) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+          if (strcmp(fixedSymlink, "ENOENT") == 0) {
+            ipc_mem->ret = -ENOENT;
+            free(actualPath);
+            free(fixedSymlink);
+            free(proc_pid_fd_path);
+            break;
+          }
+
+          memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
+          ipc_mem->ret = 0;
+
+          free(fixedSymlink);
+          free(actualPath);
+          free(proc_pid_fd_path);
+          break;
+        }
+
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%s) (fd: %d) allowed", resolved_link_path, fd);
         free(proc_pid_fd_path);
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
@@ -448,7 +481,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         int fd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
-        int flags = (int) ipc_mem->arg3;
+        int flags = (int)ipc_mem->arg3;
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
@@ -1439,7 +1472,6 @@ static char* assemble_proc_pid_fd(pid_t pid, int fd) {
 
 static inline bool is_hosts_file(const char* pathname) {
   return (
-    (strcmp(pathname, "/etc/hosts") == 0) ||
-    (strcmp(pathname, "/system/etc/hosts") == 0)
-  );
+      (strcmp(pathname, "/etc/hosts") == 0) ||
+      (strcmp(pathname, "/system/etc/hosts") == 0));
 }
