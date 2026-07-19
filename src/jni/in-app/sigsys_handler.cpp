@@ -152,8 +152,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
              nr == __NR_mknodat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve ||
-             nr == __NR_execveat ||
-             nr == __NR_memfd_create) {
+             nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   } else if (nr == __NR_pipe2) {
     local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);

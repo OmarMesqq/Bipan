@@ -1058,19 +1058,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
         break;
       }
-      case __NR_memfd_create: {
-        const char* name = (const char*)ipc_mem->string_payload;
-        unsigned int flags = (unsigned int)ipc_mem->arg1;
-
-        std::string flagsAnalysis = "";
-        flagsAnalysis.reserve(100);
-        if (flags & MFD_ALLOW_SEALING) flagsAnalysis += "Allow sealing operations | ";
-        if (flags & MFD_CLOEXEC) flagsAnalysis += "Close-on-exec | ";
-        if (flags & MFD_HUGETLB) flagsAnalysis += "File will be created using huge pages";
-
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(memfd_create) name: %s | flags: %s", name, flagsAnalysis.c_str());
-        break;
-      }
       default: {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected syscall: %d. Returning ENOSYS.", nr);
         ipc_mem->ret = -ENOSYS;
