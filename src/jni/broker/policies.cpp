@@ -225,7 +225,6 @@ bool is_mounts(const char* pathname) {
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   char* fixed = (char*)calloc(PATH_MAX, sizeof(char));
   if (!fixed) {
-    // write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "!!!!! Failed to allocate mem");
     return nullptr;
   }
 
@@ -256,9 +255,23 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     return fixed;
   }
 
+  if (strstr(resolvedPath, "smaps")) {
+    char proc_pid_mounts[PATH_MAX] = {0};
+    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/smaps", pid);
+    strcpy(fixed, proc_pid_mounts);
+    return fixed;
+  }
+
   if (strstr(resolvedPath, "maps")) {
     char proc_pid_mounts[PATH_MAX] = {0};
     snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/maps", pid);
+    strcpy(fixed, proc_pid_mounts);
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "status")) {
+    char proc_pid_mounts[PATH_MAX] = {0};
+    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/status", pid);
     strcpy(fixed, proc_pid_mounts);
     return fixed;
   }
@@ -296,7 +309,7 @@ struct stat* fixHostsFileStat(const char* pathname, int flags) {
     statbufHosts.st_mtim = statbufEtc.st_mtim;
     statbufHosts.st_ctim = statbufEtc.st_ctim;
 
-    struct stat* fixed = (struct stat*) calloc(sizeof(struct stat), 1);
+    struct stat* fixed = (struct stat*)calloc(sizeof(struct stat), 1);
     if (!fixed) {
       return nullptr;
     }
@@ -325,7 +338,7 @@ struct stat* fixHostsFileStat(const char* pathname, int flags) {
     statbufHosts.st_mtim = statbufSystemEtc.st_mtim;
     statbufHosts.st_ctim = statbufSystemEtc.st_ctim;
 
-    struct stat* fixed = (struct stat*) calloc(sizeof(struct stat), 1);
+    struct stat* fixed = (struct stat*)calloc(sizeof(struct stat), 1);
     if (!fixed) {
       return nullptr;
     }

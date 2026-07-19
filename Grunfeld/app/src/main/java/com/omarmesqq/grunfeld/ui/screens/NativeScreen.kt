@@ -80,20 +80,20 @@ fun NativeScreen() {
         "/system/etc",
         "/system/etc/hosts",
 
-        "/system/bin",
-        "/system/bin/mdnsd",
+//        "/system/bin",
+//        "/system/bin/mdnsd",
+//
+//        "/system/etc/security",
+//        "/system/etc/security/cacerts",
+//
+//        "/system/lib",
+//        "/system/lib/libzygisk.so",
+//
+//        "/system/lib64",
+//        "/system/lib64/libzygisk.so",
 
-        "/system/etc/security",
-        "/system/etc/security/cacerts",
-
-        "/system/lib",
-        "/system/lib/libzygisk.so",
-
-        "/system/lib64",
-        "/system/lib64/libzygisk.so",
-
-        "/product/bin",
-        " /system/bin/app_process64"
+//        "/product/bin",
+//        "/system/bin/app_process64"
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -150,33 +150,6 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("statfs")
-                    ReportTextWithCopy(statfsInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            statfsInfo = NativeLibWrapper.testStatfs(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("statfs()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("fstatfs")
-                    ReportTextWithCopy(fstatfsInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            fstatfsInfo = NativeLibWrapper.testFstatfs(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("fstatfs()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CodeTitle("newfstatat")
                     ReportTextWithCopy(newfstatatInfo, "Files not stated")
                     Button(
@@ -201,6 +174,33 @@ fun NativeScreen() {
 
                     ) {
                         Text("statx()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("statfs")
+                    ReportTextWithCopy(statfsInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            statfsInfo = NativeLibWrapper.testStatfs(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("statfs()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fstatfs")
+                    ReportTextWithCopy(fstatfsInfo, "Files not stated")
+                    Button(
+                        onClick = {
+                            fstatfsInfo = NativeLibWrapper.testFstatfs(statAndAccessNodes)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("fstatfs()")
                     }
                 }
             }
@@ -258,16 +258,16 @@ fun NativeScreen() {
 
                                 "/proc/self/mountstats",
                                 "/proc/$pid/mountstats",
-
-                                "/proc/self/mountinfo",
-                                "/proc/$pid/mountinfo",
-
-
-                                "/proc/mounts",
-                                "/proc/version",
-                                "/proc/sys/kernel/version",
-                                "/proc/sys/kernel/osrelease",
-                                "/proc/asound/version",
+//
+//                                "/proc/self/mountinfo",
+//                                "/proc/$pid/mountinfo",
+//
+//
+//                                "/proc/mounts",
+//                                "/proc/version",
+//                                "/proc/sys/kernel/version",
+//                                "/proc/sys/kernel/osrelease",
+//                                "/proc/asound/version",
                                 "/etc/hosts",
                                 "/system/etc/hosts",
                             )

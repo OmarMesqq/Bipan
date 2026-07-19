@@ -135,10 +135,8 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
         bool is_header = ((line[0] >= '0' && line[0] <= '9') || (line[0] >= 'a' && line[0] <= 'f')) && strchr(line, '-');
 
         if (is_header) {
-          skip_current_region = strstr(line, "magisk") || strstr(line, "zygisk") ||
-                                strstr(line, "bipan") || strstr(line, "/memfd:jit") ||
-                                (strstr(line, "rw-s") && strstr(line, "/dev/zero (deleted)")) ||
-                                (strstr(line, "r-xp") && (strstr(line, "[anon:") || !strchr(line, '/')));
+          skip_current_region = strstr(line, "/memfd:jit-cache (deleted)") ||
+                                strstr(line, "7EFE8wVJq686");
         }
 
         if (!skip_current_region) {
