@@ -82,6 +82,7 @@ static char* get_ptrace_op_name(int op);
 static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
 static inline bool is_hosts_file(const char* pathname);
+static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
 
 static thread_local bool inside_remote_patcher = false;
 
@@ -368,7 +369,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         char resolved_link_path[PATH_MAX] = {0};
         ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
         if (len == -1) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", proc_pid_fd_path, strerror(errno));
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in fstat. errno: %s", proc_pid_fd_path, strerror(errno));
           free(proc_pid_fd_path);
           // Bubble up to app
           ipc_mem->ret = len;
@@ -486,7 +487,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         char resolved_link_path[PATH_MAX] = {0};
         ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
         if (len == -1) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", proc_pid_fd_path, strerror(errno));
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in fstatfs. errno: %s", proc_pid_fd_path, strerror(errno));
           free(proc_pid_fd_path);
           // Bubble up to app
           ipc_mem->ret = len;
@@ -827,8 +828,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);
         } else if (dirfd == AT_FDCWD) {
+          if (!looks_like_proc_fd(path, ipc_mem->target_pid)) {
+            ipc_mem->action = ACTION_EXECUTE_NATIVE;
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) with apparently not fd path(%s). Letting through...", path);
+            break;
+          }
+
           size_t pathLength = strlen(path);
           char reversedDirfdStr[6] = {0};
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] readlinkat (AT_FDCWD): path: %s | pathLength: %zu", path, pathLength);
 
           char c = -1;
           int i = 0;
@@ -1533,4 +1541,17 @@ static inline bool is_hosts_file(const char* pathname) {
   return (
       (strcmp(pathname, "/etc/hosts") == 0) ||
       (strcmp(pathname, "/system/etc/hosts") == 0));
+}
+
+static inline bool looks_like_proc_fd(const char* pathname, pid_t pid) {
+  char proc_pid[PATH_MAX] = {0};
+  snprintf(proc_pid, PATH_MAX, "/proc/%d", pid);
+
+  if (
+      (starts_with(pathname, "/proc/self") ||
+       starts_with(pathname, proc_pid)) &&
+      strstr(pathname, "/fd/")) {
+    return true;
+  }
+  return false;
 }
