@@ -366,7 +366,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         char resolved_link_path[PATH_MAX] = {0};
-        ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path));
+        ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
         if (len == -1) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", proc_pid_fd_path, strerror(errno));
           free(proc_pid_fd_path);
@@ -374,6 +374,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = len;
           break;
         }
+        resolved_link_path[len] = '\0';
 
         if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
           free(proc_pid_fd_path);
@@ -483,7 +484,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         char resolved_link_path[PATH_MAX] = {0};
-        ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path));
+        ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
         if (len == -1) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", proc_pid_fd_path, strerror(errno));
           free(proc_pid_fd_path);
@@ -491,6 +492,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = len;
           break;
         }
+        resolved_link_path[len] = '\0';
+
         if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] denied", resolved_link_path);
           free(proc_pid_fd_path);
@@ -744,12 +747,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -1;
           break;
         }
-        char filename[512];
-        if (readlinkat(0, proc_pid_fd_path, filename, sizeof(filename)) == -1) {
+        char filename[512] = {0};
+        ssize_t flen = readlinkat(0, proc_pid_fd_path, filename, sizeof(filename) - 1);
+        if (flen == -1) {
           write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
           free(proc_pid_fd_path);
           break;
         }
+        filename[flen] = '\0';
+
         if (
             !starts_with(filename, "/data/data") &&
             !starts_with(filename, "/data/app") &&
@@ -848,7 +854,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
 
           char resolved_link_path[PATH_MAX] = {0};
-          ssize_t len = readlinkat(dirfd, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path));
+          ssize_t len = readlinkat(dirfd, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
           if (len == -1) {
             free(proc_pid_fd_path);
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (AT_FDCWD). errno: %s", path, strerror(errno));
@@ -857,6 +863,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
           resolved_link_path[len] = '\0';
+
           if (strstr(resolved_link_path, "/memfd:")) {
             char* actualPath = extract_real_path_from_memfd(resolved_link_path);
             if (!actualPath) {
@@ -897,7 +904,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = (long)strlen(resolved_link_path);
         } else {
           char resolved_link_path[PATH_MAX] = {0};
-          ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path));
+          ssize_t len = readlinkat(0, path, resolved_link_path, sizeof(resolved_link_path) - 1);
           if (len == -1) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in readlinkat (abs path). errno: %s", path, strerror(errno));
             // Bubble up to app
@@ -1505,7 +1512,7 @@ static char* extract_real_path_from_memfd(const char* memfdPath) {
   // start of the real path in the memfd symlink
   char* p = (char*)&memfdPath[7];
   size_t i = 0;
-  while (*p != ' ') {
+  while (*p != ' ' && *p != '\0' && i < PATH_MAX - 1) {
     extractedPath[i++] = *p;
     p++;
   }
