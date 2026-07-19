@@ -244,15 +244,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_openat: {
         if (is_trusted) break;
 
-        if (shouldDenyOpen(path_payload)) {
+        if (shouldDenyOpen(path_payload) || handleSuRelatedNode(path_payload) == DENY) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
-        } else if (shouldSpoofExistence(path_payload)) {
+        } else if (shouldSpoofExistence(path_payload) || handleSuRelatedNode(path_payload) == SPOOF || shouldReportEmptyDir(path_payload)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
-        } else if (is_maps(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
+        } else if (is_maps(path_payload) || is_smaps(path_payload) || is_proc_status(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
           char real_path[256];
           if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -267,6 +267,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
           } else if (is_maps(path_payload)) {
             fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
+          } else if (is_smaps(path_payload)) {
+            fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
+          } else if (is_proc_status(path_payload)) {
+            fake_fd = clean_proc_status((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
           } else {
             fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
           }
@@ -337,7 +341,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
+        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -376,7 +381,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
 
-        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF) {
+        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF || shouldReportEmptyDir(path_payload)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
@@ -388,6 +393,21 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (!actualPath) {
             free(proc_pid_fd_path);
             ipc_mem->ret = -ENOENT;
+            break;
+          }
+          if (is_hosts_file(actualPath)) {
+            struct stat* fixedStatBuf = fixHostsFileStat(actualPath, 0);
+            if (!fixedStatBuf) {
+              free(actualPath);
+              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat] failed to fix hosts!");
+              ipc_mem->ret = -1;
+              break;
+            }
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat] fixed hosts file.");
+            memcpy(ipc_mem->out_buffer, fixedStatBuf, sizeof(struct stat));
+            free(fixedStatBuf);
+            free(actualPath);
+            ipc_mem->ret = 0;
             break;
           }
           char* fixedSymlink = fixMemfdSymlink(resolved_link_path, ipc_mem->target_pid);
@@ -432,7 +452,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
+        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
           ipc_mem->ret = -ENOENT;
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] spoofed", path);
           break;
@@ -469,7 +489,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF) {
+        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF || shouldReportEmptyDir(path_payload)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
@@ -496,7 +516,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
+        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -535,7 +556,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF) {
+        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
         }

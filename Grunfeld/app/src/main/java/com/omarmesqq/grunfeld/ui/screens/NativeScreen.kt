@@ -258,16 +258,16 @@ fun NativeScreen() {
 
                                 "/proc/self/mountstats",
                                 "/proc/$pid/mountstats",
-//
-//                                "/proc/self/mountinfo",
-//                                "/proc/$pid/mountinfo",
-//
-//
-//                                "/proc/mounts",
-//                                "/proc/version",
-//                                "/proc/sys/kernel/version",
-//                                "/proc/sys/kernel/osrelease",
-//                                "/proc/asound/version",
+
+                                "/proc/self/mountinfo",
+                                "/proc/$pid/mountinfo",
+
+
+                                "/proc/mounts",
+                                "/proc/version",
+                                "/proc/sys/kernel/version",
+                                "/proc/sys/kernel/osrelease",
+                                "/proc/asound/version",
                                 "/etc/hosts",
                                 "/system/etc/hosts",
                             )

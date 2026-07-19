@@ -292,6 +292,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct stat* buf = (struct stat*)ipc_mem->arg2;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
+    if (nr == __NR_fstat && result == 0) {
+      struct stat* buf = (struct stat*)ipc_mem->arg1;
+      local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
+    }
   }
 
   ipc_mem->status = IDLE;
