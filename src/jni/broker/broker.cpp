@@ -172,7 +172,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
     bool is_trusted = is_trusted_library(culprit_lib);
 
-    // If the program counter is "trusted" - like libc - check its ancestors
+    // Stack unwinding
     if (is_trusted) {
       char mem_path[64];
       snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
@@ -318,13 +318,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
         }
 #ifdef DEBUG_LOGGING
-        else {
-          if (shouldLog(path_payload)) {
-            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Allowing untrusted openat(%s)", path_payload);
-          }
+        if (shouldLog(path_payload)) {
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Allowing untrusted openat(%s)", path_payload);
         }
 #endif
-
         break;
       }
       case __NR_faccessat: {
@@ -348,7 +345,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
+#ifdef DEBUG_LOGGING
+        if (shouldLog(path)) {
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
+        }
+#endif
         break;
       }
 
@@ -435,8 +436,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           free(proc_pid_fd_path);
           break;
         }
-
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%s) (fd: %d) allowed", resolved_link_path, fd);
+#ifdef DEBUG_LOGGING
+        if (shouldLog(resolved_link_path)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%s) (fd: %d) allowed", resolved_link_path, fd);
+        }
+#endif
         free(proc_pid_fd_path);
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
         break;
@@ -459,7 +463,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statfs(%s) allowed", path);
+#ifdef DEBUG_LOGGING
+        if (shouldLog(path)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statfs(%s) allowed", path);
+        }
+#endif
         break;
       }
       case __NR_fstatfs: {
@@ -495,8 +503,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -ENOENT;
           break;
         }
-
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstatfs(%s) (fd: %d) allowed", resolved_link_path, fd);
+#ifdef DEBUG_LOGGING
+        if (shouldLog(resolved_link_path)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstatfs(%s) (fd: %d) allowed", resolved_link_path, fd);
+        }
+#endif
         free(proc_pid_fd_path);
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
@@ -538,7 +549,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
+
+#ifdef DEBUG_LOGGING
+        if (shouldLog(path)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
+        }
+#endif
         break;
       }
 
@@ -563,7 +579,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statx(%s) (fd: %d) allowed: flags: %d | mask: %u", path, fd, flags, mask);
+#ifdef DEBUG_LOGGING
+        if (shouldLog(path)) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statx(%s) (fd: %d) allowed: flags: %d | mask: %u", path, fd, flags, mask);
+        }
+#endif
         break;
       }
 
@@ -577,7 +597,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         if (signal == SIGSEGV && !is_trusted) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] App installed segmentation fault handler");
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed segmentation fault handler");
         }
 
         break;

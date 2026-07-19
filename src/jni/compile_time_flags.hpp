@@ -2,7 +2,7 @@
 #define COMPILE_TIME_FLAGS_HPP
 
 // Enables debug logging for injected code and Broker
-#define DEBUG_LOGGING
+// #define DEBUG_LOGGING
 
 // ==========================================
 // Seccomp flags
