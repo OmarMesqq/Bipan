@@ -224,6 +224,7 @@ bool is_mounts(const char* pathname) {
          is_dynamic_proc_file(pathname, "/mounts");
 }
 
+// HEAP ALLOCATION
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   char* fixed = (char*)calloc(PATH_MAX, sizeof(char));
   if (!fixed) {
@@ -287,6 +288,7 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   return nullptr;
 }
 
+// HEAP ALLOCATION
 struct stat* fixHostsFileStat(const char* pathname, int flags) {
   if (!pathname) return nullptr;
 

@@ -402,6 +402,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             struct stat* fixedStatBuf = fixHostsFileStat(actualPath, 0);
             if (!fixedStatBuf) {
               free(actualPath);
+              free(proc_pid_fd_path);
               write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat] failed to fix hosts!");
               ipc_mem->ret = -1;
               break;
@@ -410,6 +411,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             memcpy(ipc_mem->out_buffer, fixedStatBuf, sizeof(struct stat));
             free(fixedStatBuf);
             free(actualPath);
+            free(proc_pid_fd_path);
             ipc_mem->ret = 0;
             break;
           }
@@ -1362,19 +1364,20 @@ static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
   return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
 }
 
+// HEAP ALLOCATION:
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid) {
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/task/%llu/comm", parentPid, tid);
 
   FILE* f = fopen(path, "r");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to open /proc/parentPid/task/TID/comm");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to open /proc/<parent-pid>/task/<tid>/comm");
     return nullptr;
   }
 
   char* name = (char*)calloc(16, sizeof(char));
   if (!name) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to calloc!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to allocate memory!");
     return nullptr;
   }
 
@@ -1383,6 +1386,7 @@ static char* get_thread_name(pid_t parentPid, __aligned_u64 tid) {
   return name;
 }
 
+// HEAP ALLOCATION:
 static char* get_ptrace_op_name(int op) {
   const char* name;
   switch (op) {
@@ -1481,13 +1485,14 @@ static char* get_ptrace_op_name(int op) {
   size_t len = strlen(name) + 1;
   char* result = (char*)calloc(len, sizeof(char));
   if (!result) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_ptrace_op_name: Failed to calloc!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_ptrace_op_name: Failed to allocate memory!");
     return nullptr;
   }
   memcpy(result, name, len);
   return result;
 }
 
+// HEAP ALLOCATION:
 static char* extract_real_path_from_memfd(const char* memfdPath) {
   char* extractedPath = (char*)calloc(PATH_MAX, sizeof(char));
   if (!extractedPath) {
@@ -1504,6 +1509,7 @@ static char* extract_real_path_from_memfd(const char* memfdPath) {
   return extractedPath;
 }
 
+// HEAP ALLOCATION:
 static char* assemble_proc_pid_fd(pid_t pid, int fd) {
   char* proc_pid_fd_path = (char*)calloc(PATH_MAX, sizeof(char));
   if (!proc_pid_fd_path) {
