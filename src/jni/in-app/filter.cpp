@@ -16,34 +16,34 @@
 #include "logger/logger.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
-  // 1. Break 64-bit bounds into 32-bit chunks
+  // Break 64-bit bounds into 32-bit chunks
   uint32_t start_hi = (uint32_t)(lib_start >> 32);
   uint32_t start_lo = (uint32_t)(lib_start & 0xFFFFFFFF);
   uint32_t end_lo = (uint32_t)(lib_end & 0xFFFFFFFF);
 
   // ASSUMPTION: The library does not cross a 4GB boundary (start_hi == end_hi)
   if ((lib_start >> 32) != (lib_end >> 32)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Library crosses 4GB boundary, PC-relative seccomp will probably fail!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Library crosses 4GB boundary, PC-relative seccomp will probably fail!");
     BIPAN_PANIC();
   }
 
   struct sock_filter trapFilter[] = {
-      // Load HIGH 32 bits of Instruction Pointer (Little Endian: offset + 4)
+      // Load high 32 bits of PC (Little Endian: offset + 4)
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer) + 4),
-      // If High 32 bits DO NOT match, jump forward 4 instructions to normal syscall checks
+      // If high 32 bits do not match, jump forward 4 instructions to normal syscall checks
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, start_hi, 0, 4),
 
-      // Load LOW 32 bits of Instruction Pointer
+      // Load low 32 bits of PC
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, instruction_pointer)),
-      // If Low 32 bits < start_lo, jump forward 2 instructions to normal syscall checks
+      // If low 32 bits < start_lo, jump forward 2 instructions to normal syscall checks
       BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, start_lo, 0, 2),
-      // If Low 32 bits >= end_lo, jump forward 1 instruction to normal syscall checks
+      // If low 32 bits >= end_lo, jump forward 1 instruction to normal syscall checks
       BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, end_lo, 1, 0),
 
-      // If we survive the jumps, the IP is inside our library! Bypass allowed.
+      // If no jumps happened, the PC is inside Bipan: allow it
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
-      // Load syscall number into accumulator
+      // Load syscall number (nr) into accumulator
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 #ifdef TRAP_MMAP_MPROTECT
       // Evaluate mmap
