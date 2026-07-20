@@ -154,10 +154,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   } else if (nr == __NR_execve ||
              nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
-  } else if (nr == __NR_pipe2) {
-    local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);
   }
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
+  else if (nr == __NR_pipe2) {
+    local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);
+  }
+
   else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
     ipc_mem->arg0 = arg0;  // target pid
 
