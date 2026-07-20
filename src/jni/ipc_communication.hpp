@@ -49,8 +49,6 @@ typedef struct {
   int action;
   long ret;  // return value provided by kernel
 
-  char package_name[256];
-
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   // pipe2 1st arg
   int pipefd_payload[2];
