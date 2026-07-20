@@ -183,10 +183,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open /proc/%d/mem!", ipc_mem->target_pid);
         return;
       }
+
       uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
       uintptr_t current_fp = ipc_mem->caller_fp;
 
-      for (int i = 0; i < MAX_STACK_TRACE; i++) {
+      size_t unwindCount;
+      for (unwindCount = 0; unwindCount < MAX_STACK_TRACE; unwindCount++) {
         if (current_pc == 0) break;
 
         // strip arm64 PAC bits
@@ -200,7 +202,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           culprit_lib = frame_lib;
           offset = frame_offset;
           is_trusted = false;
-          // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
           break;
         }
 
@@ -209,15 +210,24 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (
             !safe_read(mem_fd, current_fp, &next_fp) ||
             !safe_read(mem_fd, current_fp + 8, &next_lr)) {
+#ifdef BROKER_DEBUG_LOGGING
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[E] Unwinding exhausted (couldn't read next frame ptrs) after %d unwindings", unwindCount);
+#endif
           break;
         }
 
         current_fp = next_fp;
         current_pc = next_lr;
         if (!current_fp || (current_fp & 0x7)) {
+#ifdef BROKER_DEBUG_LOGGING
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[E] Unwinding exhausted (no more frame ptrs) after %d unwindings", unwindCount);
+#endif
           break;
         }
       }
+#ifdef BROKER_DEBUG_LOGGING
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Found malicious lib (%s) triggering NR %d at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), nr, offset, malicious_pc, unwindCount);
+#endif
       close(mem_fd);
     }
 
@@ -227,8 +237,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     switch (nr) {
       case __NR_execve:
       case __NR_execveat: {
-        if (is_trusted) break;
-
         const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
         ipc_mem->ret = 0;
         ipc_mem->action = ACTION_EXIT_PROCESS;
@@ -243,8 +251,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_openat: {
-        if (is_trusted) break;
-
         if (shouldDenyOpen(path_payload) || handleSuRelatedNode(path_payload) == DENY) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
           ipc_mem->ret = -EACCES;
@@ -321,7 +327,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           break;
         }
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path_payload)) {
           write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Allowing untrusted openat(%s)", path_payload);
         }
@@ -329,8 +335,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat: {
-        if (is_trusted) break;
-
         int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
         int mode = (int)ipc_mem->arg2;
@@ -349,7 +353,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
         }
@@ -357,8 +361,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_fstat: {
-        if (is_trusted) break;
-
         int fd = (int)ipc_mem->arg0;
 
         ipc_mem->action = ACTION_USE_RET;
@@ -440,7 +442,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           free(proc_pid_fd_path);
           break;
         }
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(resolved_link_path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%s) (fd: %d) allowed", resolved_link_path, fd);
         }
@@ -450,8 +452,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_statfs: {
-        if (is_trusted) break;
-
         const char* path = ipc_mem->string_payload;
 
         ipc_mem->action = ACTION_USE_RET;
@@ -467,7 +467,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statfs(%s) allowed", path);
         }
@@ -475,8 +475,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_fstatfs: {
-        if (is_trusted) break;
-
         int fd = (int)ipc_mem->arg0;
 
         ipc_mem->action = ACTION_USE_RET;
@@ -509,7 +507,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -ENOENT;
           break;
         }
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(resolved_link_path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstatfs(%s) (fd: %d) allowed", resolved_link_path, fd);
         }
@@ -520,8 +518,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_newfstatat: {
-        if (is_trusted) break;
-
         int fd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
         int flags = (int)ipc_mem->arg3;
@@ -555,7 +551,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
         }
@@ -563,8 +559,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_statx: {
-        if (is_trusted) break;
-
         int fd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
         int flags = (int)ipc_mem->arg2;
@@ -583,7 +577,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef DEBUG_LOGGING
+#ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statx(%s) (fd: %d) allowed: flags: %d | mask: %u", path, fd, flags, mask);
         }
@@ -597,10 +591,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          log_violation("(sigaction)", culprit_lib, ipc_mem->caller_pc, offset);
+          log_violation("sigaction(SIGSYS)", culprit_lib, ipc_mem->caller_pc, offset);
         }
-        if (signal == SIGSEGV && !is_trusted) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed segmentation fault handler");
+        if (signal == SIGSEGV) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGSEGV handler");
+        }
+        if (signal == SIGQUIT) {
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGQUIT handler");
+          log_violation("sigaction(SIGQUIT)", culprit_lib, ipc_mem->caller_pc, offset);
         }
 
         break;
@@ -721,8 +719,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_getdents64: {
-        if (is_trusted) break;
-
         int fd = (int)ipc_mem->arg0;
         struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
         size_t count = (size_t)ipc_mem->arg2;
@@ -751,7 +747,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_readlinkat: {
-        if (is_trusted) break;
         int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
         ipc_mem->action = ACTION_USE_RET;
@@ -892,7 +887,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (shouldLog(resolved_link_path)) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
           }
-          
+
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);
         } else {
@@ -914,7 +909,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mq_notify: {
-        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
         break;
       }
@@ -954,12 +948,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mremap: {
-        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
         break;
       }
       case __NR_mincore: {
-        if (is_trusted) break;
         void* addr = (void*)ipc_mem->arg0;
         size_t length = (size_t)ipc_mem->arg1;
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
@@ -1051,12 +1043,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_mmap: {
-        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
         break;
       }
       case __NR_mprotect: {
-        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
         break;
       }
@@ -1077,7 +1067,7 @@ dead_client_exit:
   munmap(ipc_mem, sizeof(SharedIPC));
   if (pidfd >= 0) close(pidfd);
   close(epfd);
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (TID: %d) exiting for dead client PID %d", tid, client_pid);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d) (TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
 }
 
 /**
