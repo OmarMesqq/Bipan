@@ -22,8 +22,7 @@ enum BrokerStatus {
 enum IpcAction {
   ACTION_EXECUTE_NATIVE = 1,
   ACTION_USE_RET = 2,
-  ACTION_RECV_FD = 3,
-  ACTION_EXIT_PROCESS = 4
+  ACTION_EXIT_PROCESS = 3
 };
 
 // for stack unwinding at Broker
