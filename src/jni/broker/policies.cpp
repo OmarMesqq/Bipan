@@ -62,6 +62,7 @@ bool shouldLog(const char* pathname) {
       starts_with(pathname, "/dev/urandom") ||
       starts_with(pathname, "/dev/random") ||
       starts_with(pathname, "/dev/hwbinder") ||
+      starts_with(pathname, "/dev/mali") ||
       starts_with(pathname, "/dev/zero") ||
       starts_with(pathname, "/dev/null")) {
     return false;

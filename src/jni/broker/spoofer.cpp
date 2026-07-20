@@ -183,9 +183,8 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
                         strstr(line, "mdnsd") ||
                         strstr(line, "magisk") ||
                         strstr(line, "zygisk") ||
-                        strstr(line, "/system/etc/hosts") ||
-                        strstr(line, "/etc/security/cacerts") ||
-                        strstr(line, "/system/lib");
+                        strstr(line, "/etc/hosts") ||
+                        strstr(line, "/etc/security/cacerts");
 
         if (!is_dirty) {
           write(fake_fd, line, line_pos);
