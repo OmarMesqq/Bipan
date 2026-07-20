@@ -4,35 +4,10 @@
 #include <link.h>
 #include <sys/auxv.h>
 #include <sys/mman.h>
-#include <sys/random.h>
 #include <unistd.h>
 
 #include "in-app/globals.hpp"
 #include "logger/logger.hpp"
-
-/**
- * `dl_iterate_phdr` callback:
- * Purpose: find Bipan's start and end addresses
- */
-int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
-  auto* bounds = reinterpret_cast<LibBounds*>(data);
-
-  // Match our library base address with the loaded segment address
-  extern char __executable_start;
-  if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
-    bounds->start = info->dlpi_addr;
-
-    // Iterate through program headers to find the maximum memory span
-    for (int i = 0; i < info->dlpi_phnum; i++) {
-      uintptr_t seg_end = bounds->start + info->dlpi_phdr[i].p_vaddr + info->dlpi_phdr[i].p_memsz;
-      if (seg_end > bounds->end) {
-        bounds->end = seg_end;
-      }
-    }
-    return 1;  // Stop iteration
-  }
-  return 0;
-}
 
 /**
  * `dl_iterate_phdr` callback:
@@ -75,44 +50,6 @@ int dumpBipanLinkerInfo(struct dl_phdr_info* info, size_t size, void* data) {
     }
   }
   return 0;
-}
-
-/**
- * Removes ELF headers from the lib:
- * 0x7f, 0x45, 0x4c, 0x46
- */
-bool scrubBipansElfHeader() {
-  // system's page size
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  // align our base address to beginning of a page
-  uintptr_t page_start = g_bipan_lib_start & ~(page_size - 1);
-
-  if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanMemDump", "Failed to change perms of lib's page-aligned addr! errno: %s", strerror(errno));
-    return false;
-  }
-
-  unsigned char* dest = reinterpret_cast<unsigned char*>(g_bipan_lib_start);
-  const size_t bytesToPatch = 4;
-
-  unsigned char new_data[4];
-  ssize_t result = getrandom(new_data, sizeof(new_data), 0);
-  if (result == -1) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanMemDump", "Failed to getrandom!");
-    return false;
-  }
-
-  for (size_t i = 0; i < bytesToPatch; ++i) {
-    dest[i] = new_data[i];
-  }
-
-  mprotect((void*)page_start, page_size, PROT_READ | PROT_EXEC);
-
-  char* begin = reinterpret_cast<char*>(g_bipan_lib_start);
-  char* end = begin + bytesToPatch;
-  __builtin___clear_cache(begin, end);
-
-  return true;
 }
 
 /**
