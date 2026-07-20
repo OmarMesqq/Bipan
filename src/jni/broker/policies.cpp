@@ -38,6 +38,7 @@ bool isLanAddress(struct sockaddr* addr) {
 bool shouldLog(const char* pathname) {
   // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
+      starts_with(pathname, "/data/resource-cache") ||
       starts_with(pathname, "/data/dalvik-cache") ||
       starts_with(pathname, "/data/app") ||
       starts_with(pathname, "/system/framework") ||
