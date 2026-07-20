@@ -249,10 +249,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
+          break;
         } else if (shouldSpoofExistence(path_payload) || handleSuRelatedNode(path_payload) == SPOOF || shouldReportEmptyDir(path_payload)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
+          break;
         } else if (is_maps(path_payload) || is_smaps(path_payload) || is_proc_status(path_payload) || is_mounts(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
           char real_path[256];
@@ -317,10 +319,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           // Tell target to use the fd it already has
           ipc_mem->ret = target_fd;
           ipc_mem->action = ACTION_USE_RET;
+          break;
         }
 #ifdef DEBUG_LOGGING
         if (shouldLog(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Allowing untrusted openat(%s)", path_payload);
+          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Allowing untrusted openat(%s)", path_payload);
         }
 #endif
         break;
@@ -677,16 +680,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_mmap: {
-        if (is_trusted) break;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
-        break;
-      }
-      case __NR_mprotect: {
-        if (is_trusted) break;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
-        break;
-      }
       case __NR_inotify_add_watch: {
         int fd = (int)ipc_mem->arg0;
         const char* path = (const char*)ipc_mem->string_payload == nullptr ? "NULL path" : ipc_mem->string_payload;
@@ -725,11 +718,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           break;
         }
-        break;
-      }
-      case __NR_mq_notify: {
-        if (is_trusted) break;
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
         break;
       }
       case __NR_getdents64: {
@@ -902,9 +890,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           free(proc_pid_fd_path);
           if (shouldLog(resolved_link_path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
           }
-
+          
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);
         } else {
@@ -919,6 +907,62 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           resolved_link_path[len] = '\0';
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with abs path): %s -> %s", path, resolved_link_path);
         }
+        break;
+      }
+      case __NR_syslog: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (syslog)!");
+        break;
+      }
+      case __NR_mq_notify: {
+        if (is_trusted) break;
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
+        break;
+      }
+
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
+      case __NR_pipe2: {
+        int* pipefd = (int*)ipc_mem->pipefd_payload;
+        int flags = (int)ipc_mem->arg1;
+
+        std::string flagsAnalysis = "";
+        flagsAnalysis.reserve(100);
+        if (flags & O_NONBLOCK) flagsAnalysis += "O_NONBLOCK";
+        if (flags & O_CLOEXEC) flagsAnalysis += "Close-on-exec";
+
+        if (!pipefd) {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): Flags: %s", flagsAnalysis.c_str());
+        } else {
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): pipefd[0]: %d | pipefd[1]: %d | Flags: %s", pipefd[0], pipefd[1], flagsAnalysis.c_str());
+        }
+
+        break;
+      }
+      case __NR_clone: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (clone)!");
+        break;
+      }
+      case __NR_clone3: {
+        struct clone_args* cl_args = (struct clone_args*)ipc_mem->struct_payload;
+
+        char* childThName = get_thread_name(ipc_mem->target_pid, cl_args->child_tid);
+        if (!childThName) {
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(clone3): Child TID: %llu | Thread name: %s | Exit signal: %llu", cl_args->child_tid, childThName, cl_args->exit_signal);
+        free(childThName);
+        break;
+      }
+      case __NR_mremap: {
+        if (is_trusted) break;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
+        break;
+      }
+      case __NR_mincore: {
+        if (is_trusted) break;
+        void* addr = (void*)ipc_mem->arg0;
+        size_t length = (size_t)ipc_mem->arg1;
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
         break;
       }
       case __NR_gettimeofday: {
@@ -1006,55 +1050,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         free(opName);
         break;
       }
-      case __NR_syslog: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (syslog)!");
-        break;
-      }
-      case __NR_pipe2: {
-        int* pipefd = (int*)ipc_mem->pipefd_payload;
-        int flags = (int)ipc_mem->arg1;
-
-        std::string flagsAnalysis = "";
-        flagsAnalysis.reserve(100);
-        if (flags & O_NONBLOCK) flagsAnalysis += "O_NONBLOCK";
-        if (flags & O_CLOEXEC) flagsAnalysis += "Close-on-exec";
-
-        if (!pipefd) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): Flags: %s", flagsAnalysis.c_str());
-        } else {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(pipe2): pipefd[0]: %d | pipefd[1]: %d | Flags: %s", pipefd[0], pipefd[1], flagsAnalysis.c_str());
-        }
-
-        break;
-      }
-      case __NR_clone: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (clone)!");
-        break;
-      }
-      case __NR_clone3: {
-        struct clone_args* cl_args = (struct clone_args*)ipc_mem->struct_payload;
-
-        char* childThName = get_thread_name(ipc_mem->target_pid, cl_args->child_tid);
-        if (!childThName) {
-          break;
-        }
-
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(clone3): Child TID: %llu | Thread name: %s | Exit signal: %llu", cl_args->child_tid, childThName, cl_args->exit_signal);
-        free(childThName);
-        break;
-      }
-      case __NR_mremap: {
+      case __NR_mmap: {
         if (is_trusted) break;
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
         break;
       }
-      case __NR_mincore: {
+      case __NR_mprotect: {
         if (is_trusted) break;
-        void* addr = (void*)ipc_mem->arg0;
-        size_t length = (size_t)ipc_mem->arg1;
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
         break;
       }
+#endif
+
       default: {
         write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected syscall: %d. Returning ENOSYS.", nr);
         ipc_mem->ret = -ENOSYS;

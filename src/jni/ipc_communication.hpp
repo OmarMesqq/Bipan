@@ -1,12 +1,12 @@
 #ifndef IPC_COMMUNICATION_HPP
 #define IPC_COMMUNICATION_HPP
 
+#include <linux/limits.h>
 #include <sys/types.h>
 
 #include <cstdint>
 
 #include "compile_time_flags.hpp"
-#include <linux/limits.h>
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,
@@ -26,6 +26,7 @@ enum IpcAction {
   ACTION_EXIT_PROCESS = 4
 };
 
+// for stack unwinding at Broker
 #define MAX_STACK_TRACE 60
 
 typedef struct {
@@ -42,9 +43,9 @@ typedef struct {
   long arg0, arg1, arg2, arg3, arg4, arg5;
 
   // Payloads to cross the process boundary
-  char string_payload[256];     // Paths (/sbin/su, etc)
-  uint8_t struct_payload[128];  // sockaddrs
-  uint8_t out_buffer[PATH_MAX];      // Returned data (uname, readlinkat)
+  char string_payload[256];      // Paths (/sbin/su, etc)
+  uint8_t struct_payload[128];   // sockaddrs
+  uint8_t out_buffer[PATH_MAX];  // Returned data (uname, readlinkat)
 
   int action;
   long ret;  // return value provided by kernel
@@ -52,7 +53,9 @@ typedef struct {
   char package_name[256];
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
-  int pipefd_payload[2];        // pipe2 1st arg
+  // pipe2 1st arg
+  int pipefd_payload[2];
+
   // process_vm_readv and process_vm_writev info
   uintptr_t vm_iov_addr[4];
   size_t vm_iov_len[4];
