@@ -2,6 +2,7 @@
 #include <android/sensor.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include <sys/random.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -11,21 +12,29 @@
 #include "broker.hpp"
 #include "common_utils.hpp"
 #include "compile_time_flags.hpp"
-#include "deps/dobby.h"
 #include "deps/zygisk.hpp"
 #include "hooks.hpp"
 #include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
+#ifdef IN_APP_DEBUG_LOGGING
 #include "tools/mem.hpp"
+#endif
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
 using zygisk::ServerSpecializeArgs;
 
+struct LibBounds {
+  uintptr_t start = 0;
+  uintptr_t end = 0;
+};
+
 #define BIPAN_JAVA_PACKAGE_NAME "b.J"
 
 static inline ssize_t send_fd(int socket, int fd);
+static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data);
+static inline bool scrubBipansElfHeader();
 
 // Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
@@ -83,11 +92,14 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
 
-#ifdef DEBUG_LOGGING
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at preAppSpecialize (BEFORE scrubbing):");
     dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan's segments:");
     dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
+    
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Processes' auxiliary vector:");
     readAuxVector();
 
     size_t lib_size = my_lib.end - my_lib.start;
@@ -168,7 +180,7 @@ class Bipan : public zygisk::ModuleBase {
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
 
-#ifdef DEBUG_LOGGING
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
     dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 #endif
@@ -408,6 +420,67 @@ class Bipan : public zygisk::ModuleBase {
     orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
   }
 };
+
+/**
+ * `dl_iterate_phdr` callback:
+ * Purpose: find Bipan's start and end addresses
+ */
+__attribute__((always_inline)) static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
+  auto* bounds = reinterpret_cast<LibBounds*>(data);
+
+  // Match our library base address with the loaded segment address
+  if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
+    bounds->start = info->dlpi_addr;
+
+    // Iterate through program headers to find the maximum memory span
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+      uintptr_t seg_end = bounds->start + info->dlpi_phdr[i].p_vaddr + info->dlpi_phdr[i].p_memsz;
+      if (seg_end > bounds->end) {
+        bounds->end = seg_end;
+      }
+    }
+    return 1;  // Stop iteration
+  }
+  return 0;
+}
+
+/**
+ * Removes ELF headers from the lib:
+ * 0x7f, 0x45, 0x4c, 0x46
+ */
+__attribute__((always_inline)) static inline bool scrubBipansElfHeader() {
+  // system's page size
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  // align our base address to beginning of a page
+  uintptr_t page_start = g_bipan_lib_start & ~(page_size - 1);
+
+  if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to change perms of lib's page-aligned addr! errno: %s", strerror(errno));
+    return false;
+  }
+
+  unsigned char* dest = reinterpret_cast<unsigned char*>(g_bipan_lib_start);
+  const size_t bytesToPatch = 4;
+
+  unsigned char new_data[4];
+  ssize_t result = getrandom(new_data, sizeof(new_data), 0);
+  if (result == -1) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to getrandom!");
+    return false;
+  }
+
+  for (size_t i = 0; i < bytesToPatch; ++i) {
+    dest[i] = new_data[i];
+  }
+
+  mprotect((void*)page_start, page_size, PROT_READ | PROT_EXEC);
+
+  char* begin = reinterpret_cast<char*>(g_bipan_lib_start);
+  char* end = begin + bytesToPatch;
+  __builtin___clear_cache(begin, end);
+
+  return true;
+}
 
 /**
  * The app calls this to send an fd to the companion

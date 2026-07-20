@@ -69,7 +69,7 @@ static void companion_handler(int sock) {
     startBroker(sock, local_ipc_mem);
     pid_t pid = getpid();
     pid_t tid = gettid();
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker exited. Companion's PID: %d | TID: %d", tid, pid);
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker exited. Companion's PID: %d | TID: %d", pid, tid);
   }
 }
 

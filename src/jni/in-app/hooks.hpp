@@ -10,12 +10,13 @@
 
 #include <unordered_map>
 
+#include "as_safe_string.hpp"
 #include "common_utils.hpp"
+#include "deps/dobby.h"
 #include "deps/zygisk.hpp"
 #include "filter.hpp"
 #include "in-app/globals.hpp"
 #include "logger/logger.hpp"
-#include "as_safe_string.hpp"
 
 using zygisk::Api;
 
