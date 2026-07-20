@@ -77,7 +77,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     l[len] = '\0';
 
     bool is_dirty = strstr(l, "/memfd:jit-cache (deleted)") ||
-                    strstr(l, "7EFE8wVJq686");
+                    strstr(l, "7EFE8wVJq686"); // RAM-backed SharedIPC
 
     if (!is_dirty) {
       write(fake_fd, l, len);
@@ -136,7 +136,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         if (is_header) {
           skip_current_region = strstr(line, "/memfd:jit-cache (deleted)") ||
-                                strstr(line, "7EFE8wVJq686");
+                                strstr(line, "7EFE8wVJq686"); // RAM-backed SharedIPC
         }
 
         if (!skip_current_region) {

@@ -119,7 +119,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   pid_t pid = getpid();
   pid_t tid = gettid();
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
 
   // Open target's pidfd
   pid_t client_pid = ipc_mem->target_pid;
@@ -200,7 +200,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           culprit_lib = frame_lib;
           offset = frame_offset;
           is_trusted = false;
-          // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
+          // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Found malicious lib (%s) at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), offset, malicious_pc, i);
           break;
         }
 
@@ -353,7 +353,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
         break;
       }
-
       case __NR_fstat: {
         if (is_trusted) break;
 
@@ -517,7 +516,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
         break;
       }
-
       case __NR_newfstatat: {
         if (is_trusted) break;
 
@@ -561,7 +559,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
         break;
       }
-
       case __NR_statx: {
         if (is_trusted) break;
 
@@ -590,7 +587,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
         break;
       }
-
       case __NR_rt_sigaction: {
         long signal = ipc_mem->arg0;
 
@@ -836,7 +832,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           size_t pathLength = strlen(path);
           char reversedDirfdStr[6] = {0};
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[D] readlinkat (AT_FDCWD): path: %s | pathLength: %zu", path, pathLength);
 
           char c = -1;
           int i = 0;
@@ -906,7 +901,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
 
           free(proc_pid_fd_path);
+          if (shouldLog(resolved_link_path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
+          }
 
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);
