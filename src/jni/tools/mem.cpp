@@ -14,11 +14,11 @@
  * `dl_iterate_phdr` callback:
  * Purpose: find Bipan's start and end addresses
  */
-int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
+int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
   // Match our library base address with the loaded segment address
-  extern char __executable_start;  // TODO: use global in-app elf start
+  extern char __executable_start;
   if (info->dlpi_addr == reinterpret_cast<uintptr_t>(&__executable_start)) {
     bounds->start = info->dlpi_addr;
 
@@ -36,72 +36,9 @@ int find_lib_bounds(struct dl_phdr_info* info, size_t size, void* data) {
 
 /**
  * `dl_iterate_phdr` callback:
- * Purpose: find all shared objects before app starts
- */
-int find_loaded_shared_libs(struct dl_phdr_info* info, size_t size, void* data) {
-  char entry[512];  // for each shared lib
-
-  snprintf(entry, sizeof(entry), "%s\n", info->dlpi_name);
-  strcat((char*)data, entry);
-
-  return 0;
-}
-
-/**
- * `dl_iterate_phdr` callback:
- * Finds info on a shared object of a name passed in `data` (`DumpContext`)
- */
-int searchSonameInfo(struct dl_phdr_info* info, size_t size, void* data) {
-  DumpContext* ctx = (DumpContext*)data;
-
-  if (info->dlpi_name == nullptr || !strstr(info->dlpi_name, ctx->target_soname)) {
-    return 0;
-  }
-
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] found: %s base=0x%lx", info->dlpi_name, (uintptr_t)info->dlpi_addr);
-
-  for (int i = 0; i < info->dlpi_phnum; i++) {
-    const ElfW(Phdr)* phdr = &info->dlpi_phdr[i];
-
-    if (phdr->p_type != PT_LOAD) {
-      // interested only in sections to be eagerly loaded by the linker
-      continue;
-    }
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[phdr] flags=0x%x vaddr=0x%lx memsz=%zu filesz=%zu", phdr->p_flags, phdr->p_vaddr, phdr->p_memsz, phdr->p_filesz);
-
-    uintptr_t start = info->dlpi_addr + phdr->p_vaddr;
-    size_t len = phdr->p_memsz;
-
-    char dumppath[128];
-    snprintf(dumppath, sizeof(dumppath), "/data/data/%s/dump_%lx.bin", g_package_name, start);
-
-    int out_fd = open(dumppath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (out_fd < 0) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] failed to open %s: %s", dumppath, strerror(errno));
-      continue;
-    }
-
-    uint8_t buf[4096];
-    size_t remaining = len;
-    uintptr_t cur = start;
-    while (remaining > 0) {
-      size_t to_read = remaining < sizeof(buf) ? remaining : sizeof(buf);
-      memcpy(buf, (void*)cur, to_read);
-      write(out_fd, buf, to_read);
-      cur += to_read;
-      remaining -= to_read;
-    }
-    close(out_fd);
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[dump] wrote 0x%lx len=%zu -> %s", start, len, dumppath);
-  }
-  return 0;
-}
-
-/**
- * `dl_iterate_phdr` callback:
  * Purpose: dump information on the lib provided by the linker
  */
-int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* data) {
+int dumpBipanLinkerInfo(struct dl_phdr_info* info, size_t size, void* data) {
   const char* type;
   int p_type;
 
@@ -144,15 +81,14 @@ int dump_lib_info_with_dlitphdr(struct dl_phdr_info* info, size_t size, void* da
  * Removes ELF headers from the lib:
  * 0x7f, 0x45, 0x4c, 0x46
  */
-bool scrub_elf_header() {
+bool scrubBipansElfHeader() {
   // system's page size
   size_t page_size = sysconf(_SC_PAGESIZE);
   // align our base address to beginning of a page
-  // TODO: should be independent of in-app
   uintptr_t page_start = g_bipan_lib_start & ~(page_size - 1);
 
   if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) == -1) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to change perms of lib's page-aligned addr! errno: %s", strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanMemDump", "Failed to change perms of lib's page-aligned addr! errno: %s", strerror(errno));
     return false;
   }
 
@@ -162,7 +98,7 @@ bool scrub_elf_header() {
   unsigned char new_data[4];
   ssize_t result = getrandom(new_data, sizeof(new_data), 0);
   if (result == -1) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to getrandom!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanMemDump", "Failed to getrandom!");
     return false;
   }
 
@@ -182,19 +118,21 @@ bool scrub_elf_header() {
 /**
  * Dumps `bytes` at `addr`
  */
-void dump_mem(void* addr, int bytes) {
+void dumpBytes(void* addr, int bytes) {
   unsigned char* p = reinterpret_cast<unsigned char*>(addr);
   while (bytes--) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Dump: %02x (hex) | %c (char)", *p, *p);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "%02x (hex) | %c (char)", *p, *p);
     p++;
   }
 }
 
-void dump_lib_info_with_auxv() {
+/**
+ * Dumps info on the PROCESS using kernel-provided auxiliary vector
+ */
+void readAuxVector() {
   const unsigned long types[] = {
-      AT_PHDR, AT_PHNUM, AT_PAGESZ, AT_BASE, AT_ENTRY, AT_EXECFN, AT_PHENT, AT_SYSINFO_EHDR
-
-  };
+      AT_PHDR, AT_PHNUM, AT_PHENT,
+      AT_BASE, AT_ENTRY, AT_SYSINFO_EHDR};
 
   for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
     unsigned long type = types[i];
@@ -202,35 +140,27 @@ void dump_lib_info_with_auxv() {
 
     switch (type) {
       case AT_PHDR: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_PHDR: %#lx", val);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_PHDR (address of the program headers of the executable): %#lx", val);
         break;
       }
       case AT_PHNUM: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_PHNUM: %lu", val);
-        break;
-      }
-      case AT_PAGESZ: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_PAGESZ: %lu", val);
-        break;
-      }
-      case AT_BASE: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_BASE: %#lx", val);
-        break;
-      }
-      case AT_ENTRY: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_ENTRY: %#lx", val);
-        break;
-      }
-      case AT_SYSINFO_EHDR: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_SYSINFO_EHDR: %#lx", val);
-        break;
-      }
-      case AT_EXECFN: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_EXECFN: %s", (const char*)val);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_PHNUM (number of program headers): %lu", val);
         break;
       }
       case AT_PHENT: {
-        write_to_logcat_async(ANDROID_LOG_INFO, "BipanMemDump", "AT_PHENT: %lu", val);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_PHENT (size of program header entry): %lu", val);
+        break;
+      }
+      case AT_BASE: {
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_BASE (base addr of linker): %#lx", val);
+        break;
+      }
+      case AT_ENTRY: {
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_ENTRY (entry address of the executable): %#lx", val);
+        break;
+      }
+      case AT_SYSINFO_EHDR: {
+        write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanMemDump", "AT_SYSINFO_EHDR (address of page with the vDSO): %#lx", val);
         break;
       }
     }

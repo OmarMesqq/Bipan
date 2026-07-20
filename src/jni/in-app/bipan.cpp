@@ -79,17 +79,22 @@ class Bipan : public zygisk::ModuleBase {
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
-    dl_iterate_phdr(find_lib_bounds, &my_lib);
+    dl_iterate_phdr(findBipansBounds, &my_lib);
     g_bipan_lib_start = my_lib.start;
     g_bipan_lib_end = my_lib.end;
 
 #ifdef DEBUG_LOGGING
-    dl_iterate_phdr(dump_lib_info_with_dlitphdr, nullptr);
-    // dump_lib_info_with_auxv();
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at preAppSpecialize (BEFORE scrubbing):");
+    dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
+
+    dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
+    readAuxVector();
+
     size_t lib_size = my_lib.end - my_lib.start;
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 #endif
-    if (!scrub_elf_header()) {
+
+    if (!scrubBipansElfHeader()) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to scrub lib's headers. Aborting!");
       BIPAN_PANIC();
     }
@@ -162,14 +167,14 @@ class Bipan : public zygisk::ModuleBase {
     // Setup tripwires for seccomp
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
+
+#ifdef DEBUG_LOGGING
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
+    dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
+#endif
+
 #ifdef IN_APP_EXPERIMENTS
     registerDobbyLinkerHooks();
-    // char loadedSharedLibs[1024];
-    // memset(loadedSharedLibs, 0, sizeof(loadedSharedLibs));
-    // dl_iterate_phdr(find_loaded_shared_libs, loadedSharedLibs);
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Shared libs in address space at end of postAppSpecialize:");
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "%s", loadedSharedLibs);
-    // dump_mem(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 #endif
   }
 
