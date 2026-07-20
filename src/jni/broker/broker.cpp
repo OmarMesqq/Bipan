@@ -110,10 +110,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     return;
   }
 
-  char threadName[16];
-  snprintf(threadName, sizeof(threadName), "bb-%s", ipc_mem->package_name);
-  prctl(PR_SET_NAME, threadName, 0, 0, 0);
-
   std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
 

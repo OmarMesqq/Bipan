@@ -98,7 +98,7 @@ class Bipan : public zygisk::ModuleBase {
 
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan's segments:");
     dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
-    
+
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Processes' auxiliary vector:");
     readAuxVector();
 
@@ -143,9 +143,6 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
-
-    memset(ipc_mem->package_name, 0, sizeof(ipc_mem->package_name));
-    strncpy(ipc_mem->package_name, g_package_name, 255);
 
     // Send the Broker sock to the companion
     if (send_fd(g_broker_socket, memfd) == -1) {
