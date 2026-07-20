@@ -85,6 +85,7 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App's logcat fd: %d", getLogcatFd());
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -131,6 +132,7 @@ class Bipan : public zygisk::ModuleBase {
       BIPAN_PANIC();
     }
     ftruncate(memfd, sizeof(SharedIPC));
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App's memfd: %d", memfd);
 
     // Map it locally for the Target App
     ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
