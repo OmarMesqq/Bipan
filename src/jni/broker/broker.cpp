@@ -2,7 +2,6 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
-#include <inttypes.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
 #include <linux/netlink.h>
@@ -78,6 +77,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   }
 
   std::unordered_set<uintptr_t> patched_pcs;
+  std::unordered_set<uintptr_t> trusted_pcs;
+  std::unordered_set<uintptr_t> malicious_pcs;
 
   pid_t pid = getpid();
   pid_t tid = gettid();
@@ -131,14 +132,37 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     const char* path_payload = ipc_mem->string_payload;
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
-    uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR (`x30`)
-    uintptr_t current_fp = ipc_mem->caller_fp;
-    bool is_trusted = unwinder(current_fp, current_pc, ipc_mem->target_pid, nr);
-    ipc_mem->action = ACTION_EXECUTE_NATIVE;  // Default to allow
+    uintptr_t pc = ipc_mem->caller_pc;
+    uintptr_t fp = ipc_mem->caller_fp;
+    uintptr_t lr = ipc_mem->stack_trace[0];
 
-    // if (is_trusted) {
-    //   goto standard_exit;
-    // }
+    // Assuming good faith
+    bool is_trusted = true;
+    ipc_mem->action = ACTION_EXECUTE_NATIVE;  // Allow syscall
+
+    // Check if it's a legitimate lib/bin making the call
+    if (trusted_pcs.count(pc)) {
+      goto standard_exit;
+    }
+
+    // Check the bad guys collection
+    if (malicious_pcs.count(pc)) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC in malicious pool. Skipping unwinding.");
+      is_trusted = false;
+    }
+
+    // If still trusted, unwind to check its ancestors and actual safety
+    if (is_trusted) {
+      is_trusted = unwinder(pc, fp, lr, ipc_mem->target_pid, nr);
+      if (is_trusted) {
+        trusted_pcs.insert(pc);
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed trusty. Allowing natively and caching.");
+        goto standard_exit;
+      } else {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed malicious. Applying policies and caching.");
+        malicious_pcs.insert(pc);
+      }
+    }
 
     switch (nr) {
       case __NR_execve:
@@ -540,7 +564,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
@@ -563,7 +587,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
           }
@@ -579,7 +603,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
-            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
           }
