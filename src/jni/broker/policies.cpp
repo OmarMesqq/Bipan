@@ -112,6 +112,7 @@ bool shouldReportEmptyDir(const char* pathname) {
       // CAs
       starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // Crash reports
+      starts_with(pathname, "/data/tombstones") ||
       starts_with(pathname, "/data/anr")));
 }
 
