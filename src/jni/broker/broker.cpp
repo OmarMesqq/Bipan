@@ -81,7 +81,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   pid_t pid = getpid();
   pid_t tid = gettid();
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] Starting Broker: PID: %d | TID: %d", pid, tid);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker started: PID: %d | TID: %d", pid, tid);
 
   // Open target's pidfd
   pid_t client_pid = ipc_mem->target_pid;
@@ -112,6 +112,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   ev.data.fd = pidfd;
   epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
 
+  initializeUnwinder(ipc_mem->target_pid);
   bool client_dead = false;
   while (!client_dead) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
@@ -966,7 +967,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
     }
 
-    // standard_exit:
+  standard_exit:
     __sync_synchronize();
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);

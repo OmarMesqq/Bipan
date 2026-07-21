@@ -4,26 +4,27 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <common_utils.hpp>
 #include <cstdio>
 #include <cstring>
-#include <ipc_communication.hpp>
+#include <vector>
 
+#include "common_utils.hpp"
+#include "ipc_communication.hpp"
 #include "logger/logger.hpp"
 
 #define TAG "BipanUnwinder"
 
+// static thread_local std::vector<MapEntry> current_maps;
+static std::vector<MapEntry> current_maps;
+
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
-static bool manual_dladdr(uintptr_t addr, ManualDlInfo* info, pid_t pid);
+static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid);
 static inline bool is_trusted_lib(const char* lib_path);
 
-bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
-  // Immediate caller is in LR (x30)
-  lr &= 0x0000FFFFFFFFFFFFULL;  // Strip arm64 PAC auth bits
-
-  char mem_path[64];
+bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
+  char mem_path[64] = {0};
   snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
-  // TODO: cache?
+
   int mem_fd = open(mem_path, O_RDONLY);
   if (mem_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "unwinder: Failed to open %s", mem_path);
@@ -31,25 +32,38 @@ bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
   }
 
   ManualDlInfo info;
-  char sym_name[PATH_MAX] = "???";
+  memset(&info, 0, sizeof(ManualDlInfo));
+  // char sym_name[PATH_MAX] = "???";
 
-  if (manual_dladdr(lr, &info, pid)) {
-    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+  lr &= 0x0000FFFFFFFFFFFFULL;  // Strip arm64 PAC auth bits
+  if (find_lib_name_in_maps(lr, &info, pid)) {
+    // find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
 
     if (!is_trusted_lib(info.dli_fname)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib: %s triggering nr %d. Unwinding over :)", (void*)lr, info.dli_fname, nr);
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d. Unwinding over :)", (void*)lr, info.dli_fname, nr);
       close(mem_fd);
       return false;
     }
 
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)pc, sym_name, info.dli_fname, info.dli_offset);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> PC: %p | Lib: %s", nr, (void*)pc, info.dli_fname);
   } else {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve very first LR (%p)!", (void*)lr);
     close(mem_fd);
     return false;
   }
 
-  // Walk the Frame Pointer chain (x29)
+  /**
+   * Actual unwinding logic:
+   * we walk the frame records [fp/x29, x30/lr]:
+   *
+   * ```
+   * stp x29, x30, [sp, #-16]!   ; push {old FP, LR} as a pair
+   * mov x29, sp                 ; new FP points at this pair
+   * ```
+   */
+  // Immediate caller is in LR (x30)
+
   for (unsigned int i = 0; i < MAX_STACK_TRACE; ++i) {
     if (!fp || (fp & 0x7)) {
       /**
@@ -64,9 +78,17 @@ bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
 
     /**
      * Read [x29] and [x29+8] from the target
+     *
      * On arm64, the return address is 8 bytes above the Frame Pointer
+     *
+     * On arm64, the return address is at lr (x30)
      */
-    uintptr_t next_fp = 0, return_addr = 0;
+    uintptr_t next_fp = 0;
+    /**
+     * Return address (lr) from current frame i.e.
+     * the caller's PC
+     */
+    uintptr_t return_addr = 0;
     if (
         pread(mem_fd, &next_fp, sizeof(next_fp), fp) != sizeof(next_fp) ||
         pread(mem_fd, &return_addr, sizeof(return_addr), fp + 8) != sizeof(return_addr)) {
@@ -75,7 +97,7 @@ bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
        * backed by a readable page in the target's address space.
        * Could be garbage or we're at the edge of the stack region.
        */
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[Unwind ending by exhaustion (%d passes)] -> Failed to pread current FP %p and next in chain (%p)", i, (void*)fp, (void*)(fp + 8));
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[Unwind ending by exhaustion (%d passes)] -> Failed to pread current FP and/or its ret addr (FP+8)(%p)", i);
       close(mem_fd);
       return true;
     }
@@ -93,22 +115,19 @@ bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
     // Strip ARM64 PAC (Pointer Authentication) bits
     return_addr &= 0x0000FFFFFFFFFFFFULL;
 
-    ManualDlInfo info;
-    char sym_name[PATH_MAX] = "???";
+    if (find_lib_name_in_maps(return_addr, &info, pid)) {
+      // find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+      // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's addr: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)next_lr, sym_name, info.dli_fname, info.dli_offset);
 
-    if (manual_dladdr(return_addr, &info, pid)) {
-      find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
-#ifdef BROKER_DEBUG_LOGGING
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's addr: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
-#endif
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Lib: %s", (void*)return_addr, info.dli_fname);
 
       if (!is_trusted_lib(info.dli_fname)) {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s at %p", i, info.dli_fname, (void*)return_addr);
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
         close(mem_fd);
         return false;
       }
     } else {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tFailed to resolve ancestor addr: %p. Continuing...", (void*)return_addr);
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tFailed to find ancestor's PC (%p) in maps. Continuing...", (void*)return_addr);
     }
 
     if (next_fp <= fp) {
@@ -125,12 +144,92 @@ bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
       return true;
     }
 
+    // Walk the linked list to next frame record
     fp = next_fp;
   }
 
   close(mem_fd);
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind rare exhaustion ending] -> Walked %d frames and found only safe libs. Allowing syscall!", MAX_STACK_TRACE);
   return true;
+}
+
+void initializeUnwinder(pid_t pid) {
+  if (current_maps.empty()) {
+    char proc_pid_maps_path[PATH_MAX] = {0};
+    snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
+
+    FILE* f = fopen(proc_pid_maps_path, "re");
+    if (!f) {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "initializeUnwinder: Failed to open remote's %s", proc_pid_maps_path);
+      return;
+    }
+    char line[PATH_MAX] = {0};
+    while (fgets(line, sizeof(line), f)) {
+      if (!isxdigit(line[0])) {
+        continue;
+      }
+
+      uintptr_t start = 0;
+      uintptr_t end = 0;
+      uintptr_t offset = 0;
+      char perms[5] = {0};
+      char devMajor[8] = {0};
+      char devMinor[8] = {0};
+      size_t libInode = 0;
+      char libName[PATH_MAX] = {0};
+
+      int ret = sscanf(line,
+                       "%lx-%lx %4s %lx %7[^:]:%7s %zu %s",
+                       &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
+
+      if (ret != 7 && ret != 8) {
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] initializeUnwinder: Skipping malformed maps line: %s", line);
+        continue;
+      }
+
+      if (start >= end) {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t[*] initializeUnwinder: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
+        continue;
+      }
+
+      std::string lib_path(libName);
+
+      // Empty lib/malformed libname fallback 1
+      if (lib_path.empty()) {
+        lib_path = "[Anonymous Memory]";
+        current_maps.push_back({start, end, offset, lib_path});
+        break;
+      }
+
+      // Extract the path
+      // 1st attempt: look for '/' or '[' (for [stack], [vdso], etc)
+      char* path_start = strchr(line, '/');
+      if (!path_start) {
+        // 2nd attempt: '[' (for things like [stack], [vdso], etc)
+        path_start = strchr(line, '[');
+      }
+
+      // Empty lib/malformed libname fallback 2
+      if (!path_start) {
+        lib_path = "[Anonymous Memory]";
+        current_maps.push_back({start, end, offset, lib_path});
+        break;
+      }
+
+      current_maps.push_back({start, end, offset, std::string(path_start)});
+    }
+
+    if (ferror(f)) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "initializeUnwinder: error while reading %s", proc_pid_maps_path);
+    }
+    fclose(f);
+
+    if (current_maps.empty()) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "initializeUnwinder: maps are still empty!");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "maps successfully prefetched (size: %d)", current_maps.size());
+    }
+  }
 }
 
 /**
@@ -163,7 +262,6 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
     return;
   }
 
-  // TODO: can we cache this too?
   void* map = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   close(fd);
 
@@ -229,65 +327,132 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 }
 
 /**
- * `dladdr` mimicking:
- * - opens /proc/<PID>/maps
- * - finds which region contains `addr`
- * - calculates the in-file offset of it
+ * Tries to resolve PC in current `maps` snapshot
+ * Otherwise, opens it and tries again
  */
-static bool manual_dladdr(uintptr_t addr, ManualDlInfo* info, pid_t pid) {
+static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
+  int found = false;
+
+  // Step 1: Check if Program Counter is in currently cached maps
+  for (const auto& m : current_maps) {
+    if (pc >= m.start && pc < m.end) {
+      strncpy(info->dli_fname, m.libName.c_str(), sizeof(m.libName.c_str()) - 1);
+      found = true;
+      return found;
+    }
+  }
+
+  // Step 2 (expected): cache missed: something was loaded -> refresh maps and try again
+  current_maps.clear();
+
   char proc_pid_maps_path[PATH_MAX] = {0};
   snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
 
-  // TODO: cache this fd?
-  FILE* f = fopen(proc_pid_maps_path, "r");
+  FILE* f = fopen(proc_pid_maps_path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tmanual_dladdr: Failed to open remote's %s", proc_pid_maps_path);
-    return false;
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tfind_lib_name_in_maps: Failed to open remote's %s", proc_pid_maps_path);
+    found = false;
+    return found;
   }
 
   char line[PATH_MAX] = {0};
-  int found = false;
-
   while (fgets(line, sizeof(line), f)) {
-    uintptr_t start, end, file_offset;
-    char perms[5] = {0};
-    // Standard `maps` format: start-end perms offset dev inode path
-    if (sscanf(line, "%lx-%lx %4s %lx", &start, &end, perms, &file_offset) < 4) {
-#ifdef BROKER_DEBUG_LOGGING
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] manual_dladdr: Skipping malformed maps line: %s", line);
-#endif
+    if (!isxdigit(line[0])) {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
       continue;
     }
 
-    if (addr >= start && addr < end) {
-      info->dli_fbase = start;
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    uintptr_t offset = 0;
+    char perms[5] = {0};
+    char devMajor[8] = {0};
+    char devMinor[8] = {0};
+    size_t libInode = 0;
+    char libName[PATH_MAX] = {0};
 
-      // Calculate offset: (Actual Addr - Map Start) + File Offset
-      info->dli_offset = (addr - start) + file_offset;
+    // Standard `maps` format: start-end perms offset dev inode path
+    int ret = sscanf(line,
+                     "%lx-%lx %4s %lx %7[^:]:%7s %zu %s",
+                     &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
+
+    if (ret != 7 && ret != 8) {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
+      continue;
+    }
+
+    if (start >= end) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t\t[*] find_lib_name_in_maps: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
+      continue;
+    }
+
+    std::string lib_path(libName);
+
+    // The PC is within this lib's range!
+    if (pc >= start && pc < end) {
+      // info->dli_fbase = start;
+      // // Calculate offset: (Actual Addr - Map Start) + File Offset
+      // info->dli_offset = (pc - start) + offset;
+
+      // Empty lib/malformed libname fallback 1
+      if (lib_path.empty()) {
+        lib_path = "[Anonymous Memory]";
+        strncpy(info->dli_fname, lib_path.c_str(), lib_path.size());
+        found = true;
+
+        // Update cache
+        current_maps.push_back({start, end, offset, lib_path});
+        break;
+      }
 
       // Extract the path
-      // Look for the first '/' or '[' (for [stack], [vdso], etc)
+      // 1st attempt: look for '/' or '[' (for [stack], [vdso], etc)
       char* path_start = strchr(line, '/');
       if (!path_start) {
+        // 2nd attempt: '[' (for things like [stack], [vdso], etc)
         path_start = strchr(line, '[');
       }
 
-      if (path_start) {
-        char* newline = strchr(path_start, '\n');
-        if (newline) {
-          *newline = '\0';
-        }
-        strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
-      } else {
-        strcpy(info->dli_fname, "[anonymous memory]");
+      // Empty lib/malformed libname fallback 2
+      if (!path_start) {
+        strcpy(info->dli_fname, "[Anonymous Memory]");
+        found = true;
+
+        // Update cache
+        current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
+        break;
       }
 
+      strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
       found = true;
+
+      // Update cache
+      current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
       break;
+    }
+
+    // If it's not, keep on looping...
+  }
+
+  if (ferror(f)) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Error while reading %s", proc_pid_maps_path);
+  }
+  fclose(f);
+
+  if (current_maps.empty()) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: No maps found for PID %d", pid);
+  }
+
+  // Final step: Check PC again in fresh maps
+  for (const auto& m : current_maps) {
+    if (pc >= m.start && pc < m.end) {
+      strncpy(info->dli_fname, m.libName.c_str(), sizeof(m.libName.c_str()) - 1);
+      found = true;
+      return found;
     }
   }
 
-  fclose(f);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: Ultimate fallthrough. found=%s", found == 0 ? "false" : "true");
   return found;
 }
 
