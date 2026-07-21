@@ -398,20 +398,18 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 
 static void* my_dlopen(const char* filename, int flag) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] dlopen(%s)", filename);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlopen(%s)", filename);
   }
 
   // calling the original here probably already calls .init_array
   void* result = orig_dlopen(filename, flag);
-  const char* soname = strrchr(filename, '/');
-  soname = soname ? soname + 1 : filename;
 
   return result;
 }
 
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] android_dlopen_ext(%s)", filename);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: android_dlopen_ext(%s)", filename);
   }
 
   // calling the original here probably already calls .init_array

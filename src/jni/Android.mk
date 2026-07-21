@@ -7,7 +7,12 @@ LOCAL_SRC_FILES := deps/libdobby.a
 include $(PREBUILT_STATIC_LIBRARY)
 
 ifeq ($(BIPAN_DEBUG), 1)
-	BIPAN_CPPFLAGS := -O0 -g -Wall -Wextra -fno-exceptions -fno-rtti
+	BIPAN_CPPFLAGS := -O0 -g \
+		-Wall -Wextra \
+		-Wconversion -Wsign-conversion \
+		-Wdouble-promotion -Winline \
+		-fno-exceptions -fno-rtti
+	
 	BIPAN_LDFLAGS := 
 $(info Building DEBUG variant...)
 else
@@ -18,7 +23,6 @@ else
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
 		-fomit-frame-pointer -flto \
-		-Wno-unused-parameter \
 		-Rpass=inline -Rpass-missed=inline
 
 	BIPAN_LDFLAGS := -Wl,--gc-sections \
