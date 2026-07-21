@@ -22,6 +22,6 @@ typedef Elf64_Ehdr ElfHeader;
 typedef Elf64_Shdr ElfSection;
 typedef Elf64_Sym ElfSymbol;
 
-bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid);
+bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid, int nr);
 
 #endif
