@@ -34,8 +34,7 @@ static void baz(void);
 static void applySeccomp(void);
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 
-#define MAX_FRAMES 20
-#define MAX_INSTRUCTIONS 2048
+#define MAX_FRAMES 300
 
 // Use 64-bit ELF structures for ARM64
 typedef Elf64_Ehdr ElfHeader;

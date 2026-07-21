@@ -25,8 +25,11 @@ enum IpcAction {
   ACTION_EXIT_PROCESS = 3
 };
 
-// for stack unwinding at Broker
-#define MAX_STACK_TRACE 60
+/**
+ * For stack unwinding at Broker.
+ * Yes, large value but 99% of time it won't unwind this much :)
+ */
+#define MAX_STACK_TRACE 300
 
 typedef struct {
   volatile int lock;

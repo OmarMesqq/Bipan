@@ -39,40 +39,25 @@
 #include "spoofer.hpp"
 #include "synchronization.hpp"
 
-#define TAG "BipanBroker"
+typedef struct {
+  uintptr_t pc;  // Program Counter
+  uintptr_t sp;  // TODO: ???
+} StackFrame;
 
-// Use 64-bit ELF structures for ARM64
+typedef struct {
+  char dli_fname[PATH_MAX];  // Path to the library
+  uintptr_t dli_fbase;       // Base address of the library
+  uintptr_t dli_offset;      // Relative offset inside the file
+} ManualDlInfo;
+
+#define TAG "BipanBroker"
+#define SPOOFED_WD 224
+
+// 64-bit ELF structures for ARM64
 typedef Elf64_Ehdr ElfHeader;
 typedef Elf64_Shdr ElfSection;
 typedef Elf64_Sym ElfSymbol;
 
-typedef struct {
-  char dli_fname[256];   // Path to the library
-  uintptr_t dli_fbase;   // Base address of the library
-  uintptr_t dli_offset;  // Relative offset inside the file
-} ManualDlInfo;
-
-struct MapEntry {
-  uintptr_t start, end, offset;
-  std::string path;
-};
-
-struct linux_dirent64 {
-  ino64_t d_ino;           /* 64-bit inode number */
-  off64_t d_off;           /* Not an offset; see getdents() */
-  unsigned short d_reclen; /* Size of this dirent */
-  unsigned char d_type;    /* File type */
-  char d_name[];           /* Filename (null-terminated) */
-};
-
-#define SPOOFED_WD 224
-
-static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps);
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps);
-static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
-static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset);
-static inline bool is_trusted_library(const std::string& lib_path);
-static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out);
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static std::string get_sockaddr_info(const struct sockaddr* sa);
 static inline bool client_is_dead(int epfd, int pidfd);
@@ -83,6 +68,7 @@ static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
 static inline bool is_hosts_file(const char* pathname);
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
+static bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid);
 
 static thread_local bool inside_remote_patcher = false;
 
@@ -110,7 +96,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     return;
   }
 
-  std::vector<MapEntry> current_maps;
   std::unordered_set<uintptr_t> patched_pcs;
 
   pid_t pid = getpid();
@@ -164,71 +149,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     const char* path_payload = ipc_mem->string_payload;
     struct sockaddr* sock_payload = (struct sockaddr*)ipc_mem->struct_payload;
 
-    uintptr_t offset = 0;
-    uintptr_t malicious_pc = ipc_mem->caller_pc;
-    std::string culprit_lib = get_culprit_so(ipc_mem->target_pid, ipc_mem->caller_pc, &offset, current_maps);
-    bool is_trusted = is_trusted_library(culprit_lib);
+    uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR (`x30`)
+    uintptr_t current_fp = ipc_mem->caller_fp;
+    bool is_trusted = unwinder(current_fp, current_pc, ipc_mem->target_pid);
+    ipc_mem->action = ACTION_EXECUTE_NATIVE;  // Default to allow
 
-    // Stack unwinding
-    if (is_trusted) {
-      char mem_path[64];
-      snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", ipc_mem->target_pid);
-      int mem_fd = open(mem_path, O_RDONLY);
-
-      if (mem_fd < 0) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open /proc/%d/mem!", ipc_mem->target_pid);
-        return;
-      }
-
-      uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR
-      uintptr_t current_fp = ipc_mem->caller_fp;
-
-      size_t unwindCount;
-      for (unwindCount = 0; unwindCount < MAX_STACK_TRACE; unwindCount++) {
-        if (current_pc == 0) break;
-
-        // strip arm64 PAC bits
-        current_pc &= 0x0000FFFFFFFFFFFFULL;
-
-        uintptr_t frame_offset = 0;
-        std::string frame_lib = get_culprit_so(ipc_mem->target_pid, current_pc, &frame_offset, current_maps);
-
-        if (!is_trusted_library(frame_lib)) {
-          malicious_pc = current_pc;
-          culprit_lib = frame_lib;
-          offset = frame_offset;
-          is_trusted = false;
-          break;
-        }
-
-        // Walk to the next frame in the target process
-        uintptr_t next_fp, next_lr;
-        if (
-            !safe_read(mem_fd, current_fp, &next_fp) ||
-            !safe_read(mem_fd, current_fp + 8, &next_lr)) {
-#ifdef BROKER_DEBUG_LOGGING
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[E] Unwinding exhausted (couldn't read next frame ptrs) after %d unwindings", unwindCount);
-#endif
-          break;
-        }
-
-        current_fp = next_fp;
-        current_pc = next_lr;
-        if (!current_fp || (current_fp & 0x7)) {
-#ifdef BROKER_DEBUG_LOGGING
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[E] Unwinding exhausted (no more frame ptrs) after %d unwindings", unwindCount);
-#endif
-          break;
-        }
-      }
-#ifdef BROKER_DEBUG_LOGGING
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Found malicious lib (%s) triggering NR %d at offset %p (PC: %p) after %d unwindings", culprit_lib.c_str(), nr, offset, malicious_pc, unwindCount);
-#endif
-      close(mem_fd);
-    }
-
-    // Default to allow
-    ipc_mem->action = ACTION_EXECUTE_NATIVE;
+    // if (is_trusted) {
+    //   goto standard_exit;
+    // }
 
     switch (nr) {
       case __NR_execve:
@@ -589,14 +517,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          log_violation("sigaction(SIGSYS)", culprit_lib, ipc_mem->caller_pc, offset);
+          // log_violation("sigaction(SIGSYS)", culprit_lib, ipc_mem->caller_pc, offset);
         }
         if (signal == SIGSEGV) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGSEGV handler");
         }
         if (signal == SIGQUIT) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGQUIT handler");
-          log_violation("sigaction(SIGQUIT)", culprit_lib, ipc_mem->caller_pc, offset);
+          // log_violation("sigaction(SIGQUIT)", culprit_lib, ipc_mem->caller_pc, offset);
         }
 
         break;
@@ -630,7 +558,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, 0, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
           }
@@ -653,7 +581,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
           }
@@ -669,7 +597,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
           if (!is_trusted) {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
-            patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
+            // patch_instruction_remote(ipc_mem->target_pid, malicious_pc, ghost_len, patched_pcs);
           } else {
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
           }
@@ -1057,6 +985,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
     }
 
+    // standard_exit:
     __sync_synchronize();
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
@@ -1066,198 +995,6 @@ dead_client_exit:
   if (pidfd >= 0) close(pidfd);
   close(epfd);
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d) (TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
-}
-
-/**
- * Parses the physical ELF file to find a name for a relative offset.
- * This sees STATIC labels that dladdr cannot.
- */
-static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
-  int fd = open(path, O_RDONLY);
-  if (fd < 0) return;
-
-  struct stat st;
-  if (fstat(fd, &st) < 0) {
-    close(fd);
-    return;
-  }
-
-  void* map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  close(fd);
-  if (map == MAP_FAILED) return;
-
-  ElfHeader* ehdr = (ElfHeader*)map;
-
-  // Verify ELF Magic before parsing
-  // If this is an APK (ZIP), it will fail this check and safely return
-  if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
-    strncpy(out_name, "[APK/ZIP File]", max_len - 1);
-    munmap(map, st.st_size);
-    return;
-  }
-  ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
-
-  uintptr_t best_diff = (uintptr_t)-1;
-  char* found_name = NULL;
-
-  // Search both SYMTAB (Static) and DYNSYM (Dynamic)
-  for (int i = 0; i < ehdr->e_shnum; i++) {
-    if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
-      ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
-      size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
-
-      // sh_link automatically points to the correct string table for this symbol table
-      char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
-
-      for (size_t j = 0; j < count; j++) {
-        char* current_name = &strings[syms[j].st_name];
-
-        // Skip empty names, mapping symbols ($x, $d) and symbols that start after our offset.
-        if (syms[j].st_name == 0 || current_name[0] == '$' || syms[j].st_value > offset) {
-          continue;
-        }
-
-        uintptr_t diff = offset - syms[j].st_value;
-        if (diff < best_diff) {
-          best_diff = diff;
-          found_name = current_name;
-        }
-      }
-
-      // If we found a perfect match (diff 0) in SYMTAB, we can stop early
-      if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) break;
-    }
-  }
-
-  if (found_name && strlen(found_name) > 0) {
-    strncpy(out_name, found_name, max_len - 1);
-  } else {
-    strncpy(out_name, "???", max_len);
-  }
-
-  munmap(map, st.st_size);
-}
-
-static void log_violation(const char* action, const std::string& culprit, uintptr_t pc, uintptr_t offset) {
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Action:  %s", action);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Culprit: %s", culprit.c_str());
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "PC:      %p", (void*)pc);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Offset:  0x%lx", offset);
-  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "-----------------------");
-}
-
-static inline bool is_trusted_library(const std::string& lib_path) {
-  return (lib_path.find("/system/") == 0 ||
-          lib_path.find("/vendor/") == 0 ||
-          lib_path.find("/apex/") == 0 ||
-          lib_path.find("/product/") == 0 ||
-          lib_path.find("/system_ext/") == 0);
-}
-
-static inline bool safe_read(int mem_fd, uintptr_t addr, uintptr_t* out) {
-  return pread(mem_fd, out, sizeof(uintptr_t), addr) == sizeof(uintptr_t);
-}
-
-static void refresh_maps(pid_t pid, std::vector<MapEntry>& current_maps) {
-  // 1. Clear the old state
-  current_maps.clear();
-
-  char path[64];
-  snprintf(path, sizeof(path), "/proc/%d/maps", pid);
-
-  // 'e' is O_CLOEXEC for `fopen`
-  FILE* f = fopen(path, "re");
-  if (!f) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open %s (errno: %s)", path, strerror(errno));
-    return;
-  }
-
-  char line[2048];
-  int line_count = 0;
-
-  while (fgets(line, sizeof(line), f)) {
-    if (!isxdigit(line[0])) {
-      continue;
-    }
-    line_count++;
-    uintptr_t start = 0, end = 0, offset = 0;
-    int path_pos = -1;  // Initialize to -1 to detect if %n was actually hit
-
-    // Format: address(start-end) perms offset dev inode pathname
-    // Example: 7b1c428000-7b1c517000 r--p 00000000 fd:29 259069 /lib/libiconv.so
-    int matches = sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %*s %" SCNxPTR " %*s %*s %n", &start, &end, &offset, &path_pos);
-
-    // Basic structural check
-    if (matches < 3) {
-      // If we see a non-empty line that doesn't match our regex, it's a parse error
-      if (line[0] != '\n' && line[0] != '\0') {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Parse failure on line[%d] = %s", line_count, line);
-      }
-      continue;
-    }
-
-    std::string lib_path;
-    if (path_pos != -1 && (size_t)path_pos < strlen(line)) {
-      lib_path = &line[path_pos];
-
-      // Remove trailing newline
-      if (!lib_path.empty() && lib_path.back() == '\n') {
-        lib_path.pop_back();
-      }
-
-      // Standardize empty paths
-      if (lib_path.empty()) {
-        lib_path = "[Anonymous Memory]";
-      }
-    } else {
-      lib_path = "[Anonymous Memory]";
-    }
-
-    // Safety: Verify range integrity before adding
-    if (start < end) {
-      current_maps.push_back({start, end, offset, lib_path});
-    } else {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Malformed map range at line %d: %p-%p", line_count, (void*)start, (void*)end);
-    }
-  }
-
-  if (ferror(f)) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Error while reading %s", path);
-  }
-
-  fclose(f);
-
-  if (current_maps.empty()) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "refresh_maps: No maps found for PID %d", pid);
-  }
-}
-
-static std::string get_culprit_so(pid_t pid, uintptr_t pc, uintptr_t* out_offset, std::vector<MapEntry>& current_maps) {
-  for (const auto& m : current_maps) {
-    if (pc >= m.start && pc < m.end) {
-      if (out_offset) {
-        *out_offset = (pc - m.start) + m.offset;
-      }
-      return m.path;
-    }
-  }
-
-  // Cache MISS: something was loaded -> refresh maps and try again
-  refresh_maps(pid, current_maps);
-
-  for (const auto& m : current_maps) {
-    if (pc >= m.start && pc < m.end) {
-      if (out_offset) {
-        *out_offset = (pc - m.start) + m.offset;
-      }
-      return m.path;
-    }
-  }
-
-  if (out_offset) {
-    *out_offset = 0;
-  }
-  return "[Unknown]";
 }
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
@@ -1537,4 +1274,277 @@ static inline bool looks_like_proc_fd(const char* pathname, pid_t pid) {
     return true;
   }
   return false;
+}
+
+/**
+ * Parses the physical (in-disk ?) ELF file to find a name for a relative offset.
+ * This sees STATIC labels that `dladdr` cannot. (really?)
+ */
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
+  if (!path) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "find_label_in_elf: got empty path. early returning!");
+    return;
+  }
+
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "find_label_in_elf: Failed to open %s", path);
+    return;
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "find_label_in_elf: Failed to fstat fd: %d (from %s)", fd, path);
+    close(fd);
+    return;
+  }
+
+  if (st.st_size < (off_t)sizeof(ElfHeader)) {
+    write_to_logcat_async(ANDROID_LOG_WARN, "BipanBrokerUnwinder", "find_label_in_elf: %s st_size's too small to be an ELF. Not searching symbols.", path);
+    close(fd);
+    strncpy(out_name, "[Too Small]", max_len - 1);
+    return;
+  }
+
+  void* map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  close(fd);
+  if (map == MAP_FAILED) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "find_label_in_elf: Failed to mmap fd-backed mem");
+    return;
+  }
+
+  ElfHeader* ehdr = (ElfHeader*)map;
+
+  // If this is an APK (ZIP), it will fail this check and safely return
+  if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+    write_to_logcat_async(ANDROID_LOG_WARN, "BipanBrokerUnwinder", "find_label_in_elf: %s not an ELF. Not searching symbols.", path);
+    strncpy(out_name, "[APK/ZIP File]", max_len - 1);
+    munmap(map, st.st_size);
+    return;
+  }
+
+  ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
+
+  uintptr_t best_diff = (uintptr_t)-1;
+  char* found_name = NULL;
+
+  // Search both SYMTAB (Static) and DYNSYM (Dynamic)
+  for (int i = 0; i < ehdr->e_shnum; i++) {
+    if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
+      ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
+      size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
+
+      // sh_link automatically points to the correct string table for this symbol table
+      char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
+
+      for (size_t j = 0; j < count; j++) {
+        char* current_name = &strings[syms[j].st_name];
+
+        // TWEAK: Skip empty names, mapping symbols ($x, $d),
+        // and symbols that start after our offset.
+        if (syms[j].st_name == 0 || current_name[0] == '$' || syms[j].st_value > offset) {
+          continue;
+        }
+
+        uintptr_t diff = offset - syms[j].st_value;
+        if (diff < best_diff) {
+          best_diff = diff;
+          found_name = current_name;
+        }
+      }
+
+      // If we found a perfect match (diff 0) in SYMTAB, we can stop early
+      if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) {
+        break;
+      }
+    }
+  }
+
+  if (found_name && strlen(found_name) > 0) {
+    strncpy(out_name, found_name, max_len - 1);
+  } else {
+    strncpy(out_name, "???", max_len);
+  }
+
+  munmap(map, st.st_size);
+}
+
+/**
+ * `dladdr` mimicking:
+ * - opens /proc/<PID>/maps
+ * - finds which region contains `addr`
+ * - calculates the in-file offset of it
+ */
+static bool manual_dladdr(uintptr_t addr, ManualDlInfo* info, pid_t pid) {
+  char proc_pid_maps_path[PATH_MAX] = {0};
+  snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
+
+  FILE* f = fopen(proc_pid_maps_path, "r");
+  if (!f) {
+    write_to_logcat_async(ANDROID_LOG_WARN, "BipanBrokerUnwinder", "Failed to open remote's %s", proc_pid_maps_path);
+    return false;
+  }
+
+  char line[PATH_MAX];
+  int found = false;
+
+  while (fgets(line, sizeof(line), f)) {
+    uintptr_t start, end, file_offset;
+    char perms[5];
+    // Standard `maps` format: start-end perms offset dev inode path
+    if (sscanf(line, "%lx-%lx %4s %lx", &start, &end, perms, &file_offset) < 4) {
+      // Silently skip broken lines...
+      continue;
+    }
+
+    if (addr >= start && addr < end) {
+      info->dli_fbase = start;
+
+      // Calculate offset: (Actual Addr - Map Start) + File Offset
+      info->dli_offset = (addr - start) + file_offset;
+
+      // Extract the path
+      // Look for the first '/' or '[' (for [stack], [vdso], etc)
+      char* path_start = strchr(line, '/');
+      if (!path_start) {
+        path_start = strchr(line, '[');
+      }
+
+      if (path_start) {
+        char* newline = strchr(path_start, '\n');
+        if (newline) *newline = '\0';
+        strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
+      } else {
+        strcpy(info->dli_fname, "[anonymous memory]");
+      }
+
+      found = true;
+      break;
+    }
+  }
+
+  fclose(f);
+  return found;
+}
+
+static inline bool is_trusted_lib(const char* lib_path) {
+  return (
+      starts_with(lib_path, "/apex") ||
+      starts_with(lib_path, "/vendor") ||
+      starts_with(lib_path, "/system") ||
+      starts_with(lib_path, "/product") ||
+      starts_with(lib_path, "/system_ext"));
+}
+
+static bool unwinder(uintptr_t fp, uintptr_t lr, pid_t pid) {
+  // Immediate caller is in LR (x30)
+  lr &= 0x0000FFFFFFFFFFFFULL;
+
+  char mem_path[64];
+  snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
+  int mem_fd = open(mem_path, O_RDONLY);
+  if (mem_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "unwinder: failed to open %s", mem_path);
+    return false;  // fail closed, assuming untrusted
+  }
+
+  ManualDlInfo info;
+  char sym_name[PATH_MAX] = "???";
+
+  if (manual_dladdr(lr, &info, pid)) {
+    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+
+    if (!is_trusted_lib(info.dli_fname)) {
+      write_to_logcat_async(ANDROID_LOG_INFO, "BipanBrokerUnwinder", "Very first LR (%p) is a malicious lib: %s. Unwinding over :)", (void*)lr, info.dli_fname);
+      close(mem_fd);
+      return false;
+    }
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanBrokerUnwinder", "Starting unwinding at LR:  %p -> %-15s | %s (+0x%lx)", (void*)lr, sym_name, info.dli_fname, info.dli_offset);
+  } else {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanBrokerUnwinder", "Failed to resolve very first LR (%p)!", (void*)lr);
+    close(mem_fd);
+    return false;
+  }
+
+  // Walk the Frame Pointer chain (x29)
+  for (int i = 0; i < MAX_STACK_TRACE; ++i) {
+    if (!fp || (fp & 0x7)) {
+      /**
+       * Trying to take one more step, but
+       * the value we'd use as the next FP isn't a valid pointer.
+       * Typical in leaf functions.
+       */
+      write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "Unwinder exhausted: frame ptr is null/misaligned!");
+      close(mem_fd);
+      return true;
+    }
+
+    /**
+     * Read [x29] and [x29+8] from the target
+     * On arm64, the return address is 8 bytes above the Frame Pointer
+     */
+    uintptr_t next_fp = 0, return_addr = 0;
+    if (
+        pread(mem_fd, &next_fp, sizeof(next_fp), fp) != sizeof(next_fp) ||
+        pread(mem_fd, &return_addr, sizeof(return_addr), fp + 8) != sizeof(return_addr)) {
+      /**
+       * Address we're about to dereference isn't
+       * backed by a readable page in the target's address space.
+       * Could be garbage or we're at the edge of the stack region.
+       */
+      write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "Unwinder exhausted: couldn't read remote frame at %p", (void*)fp);
+      close(mem_fd);
+      return true;
+    }
+
+    if (!return_addr) {
+      /**
+       * All 8 bytes at fp+8 are zero (nullptr).
+       * We can have walked past the bottom of the frame chain
+       */
+      write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "Unwinder exhausted: null return addr");
+      close(mem_fd);
+      return true;
+    }
+
+    // Strip ARM64 PAC (Pointer Authentication) bits
+    return_addr &= 0x0000FFFFFFFFFFFFULL;
+
+    ManualDlInfo info;
+    char sym_name[PATH_MAX] = "???";
+
+    if (manual_dladdr(return_addr, &info, pid)) {
+      find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+      write_to_logcat_async(ANDROID_LOG_DEBUG, "BipanBrokerUnwinder", "  Ancestor:      %p -> %-15s | %s (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
+
+      if (!is_trusted_lib(info.dli_fname)) {
+        write_to_logcat_async(ANDROID_LOG_INFO, "BipanBrokerUnwinder", "Found malicious lib: %s at %p after %d unwindings", info.dli_fname, (void*)return_addr, i);
+        close(mem_fd);
+        return false;
+      }
+    } else {
+      write_to_logcat_async(ANDROID_LOG_WARN, "BipanBrokerUnwinder", "Failed to resolve ancestor addr: %p. Continuing...", (void*)return_addr);
+    }
+
+    if (next_fp <= fp) {
+      /**
+       * Sanity check for stack direction.
+       * In other words, the Frame Pointer isn't increasing.
+       * As the stack grows downward on arm64,
+       * a legitimate frame chain should show monotonically
+       * increasing addresses we walk towards the ultimate caller.
+       * TLDR: each caller's frame sits at a higher address than the callee's.
+       */
+      write_to_logcat_async(ANDROID_LOG_ERROR, "BipanBrokerUnwinder", "Unwinder exhausted: FP not increasing");
+      close(mem_fd);
+      return true;
+    }
+
+    fp = next_fp;
+  }
+
+  close(mem_fd);
+  write_to_logcat_async(ANDROID_LOG_WARN, "BipanBrokerUnwinder", "Walked %d frames and found only safe libs. Allowing!", MAX_STACK_TRACE);
+  return true;
 }
