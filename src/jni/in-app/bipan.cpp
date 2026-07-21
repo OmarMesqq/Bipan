@@ -64,17 +64,13 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void preAppSpecialize(AppSpecializeArgs* args) override {
-    initializeLogger();
     fetchTargetProcesses();
-
-    if (!initializeLogger()) {
-      BIPAN_PANIC();
-    }
 
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] preAppSpecialize: process name is nil. Aborting.");
-      BIPAN_PANIC();
+      env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
+      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+      return;
     }
     isTargetApp = isTarget(raw_process_name);
 
@@ -84,8 +80,16 @@ class Bipan : public zygisk::ModuleBase {
       api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
       return;
     }
+
+    if (!initializeLogger()) {
+      BIPAN_PANIC();
+    }
+#ifdef IN_APP_EXPERIMENTS
+    registerDobbyLinkerHooks();
+#endif
+
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] App's logcat fd: %d", getLogcatFd());
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app logcat fd: %d", getLogcatFd());
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -119,7 +123,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] In-app Broker socket: %d", g_broker_socket);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app Broker sockfd: %d", g_broker_socket);
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -132,7 +136,7 @@ class Bipan : public zygisk::ModuleBase {
       BIPAN_PANIC();
     }
     ftruncate(memfd, sizeof(SharedIPC));
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] App's memfd: %d", memfd);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app memfd: %d", memfd);
 
     // Map it locally for the Target App
     ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
@@ -140,7 +144,7 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[*] Shared IPC mmap'ed at: %p", (void*)ipc_mem);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app shared IPC mem region at %p", (void*)ipc_mem);
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
@@ -182,10 +186,6 @@ class Bipan : public zygisk::ModuleBase {
 #ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
     dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
-#endif
-
-#ifdef IN_APP_EXPERIMENTS
-    registerDobbyLinkerHooks();
 #endif
   }
 
@@ -287,7 +287,7 @@ class Bipan : public zygisk::ModuleBase {
   void fetchTargetProcesses() {
     int fd = api->connectCompanion();
     if (fd < 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
+      // write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
       BIPAN_PANIC();
     }
 
