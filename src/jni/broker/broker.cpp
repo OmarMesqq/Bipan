@@ -525,13 +525,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           // log_violation("sigaction(SIGSYS)", culprit_lib, ipc_mem->caller_pc, offset);
         }
+#ifdef BROKER_EXPERIMENTS
         if (signal == SIGSEGV) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGSEGV handler");
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
         }
         if (signal == SIGQUIT) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGQUIT handler");
-          // log_violation("sigaction(SIGQUIT)", culprit_lib, ipc_mem->caller_pc, offset);
+          ipc_mem->ret = 0;
+          ipc_mem->action = ACTION_USE_RET;
         }
+#endif
 
         break;
       }
