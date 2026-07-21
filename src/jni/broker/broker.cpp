@@ -132,7 +132,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     uintptr_t current_pc = ipc_mem->stack_trace[0];  // Start with LR (`x30`)
     uintptr_t current_fp = ipc_mem->caller_fp;
-    bool is_trusted = unwinder(current_fp, current_pc, ipc_mem->target_pid);
+    bool is_trusted = unwinder(current_fp, current_pc, ipc_mem->target_pid, nr);
     ipc_mem->action = ACTION_EXECUTE_NATIVE;  // Default to allow
 
     // if (is_trusted) {
@@ -213,7 +213,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
 
-          char buf[4096];
+          char buf[PATH_MAX] = {0};
           ssize_t n;
           lseek(fake_fd, 0, SEEK_SET);
           while ((n = read(fake_fd, buf, sizeof(buf))) > 0) {
