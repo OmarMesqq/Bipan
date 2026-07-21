@@ -35,9 +35,9 @@ typedef struct {
   volatile int lock;
   volatile int status;
 
-  uintptr_t caller_pc;
-  uintptr_t caller_fp;
-  uintptr_t stack_trace[MAX_STACK_TRACE];
+  uintptr_t caller_pc;                     // Program counter at time of trap
+  uintptr_t caller_fp;                     // Frame Pointer (x29)
+  uintptr_t stack_trace[MAX_STACK_TRACE];  // Link Register (x30)
 
   pid_t target_pid;
 
