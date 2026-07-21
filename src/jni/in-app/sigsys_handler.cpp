@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <linux/memfd.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 
@@ -12,26 +13,17 @@
 #include "ipc_communication.hpp"
 #include "logger/logger.hpp"
 
-struct kernel_sigaction {
-  void (*sa_handler)(int, siginfo_t*, void*);
-  unsigned long sa_flags;
-  void (*sa_restorer)(void);
-  uint64_t sa_mask;
-};
-
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static void scrub_socket(struct sockaddr* s);
 
 void registerSignalHandler() {
-  struct kernel_sigaction sa_SYS = {};
-  sa_SYS.sa_handler = sigsys_handler;
-  sa_SYS.sa_flags = SA_SIGINFO;
-  long ret = 0;
+  struct sigaction act = {
+      .sa_sigaction = &sigsys_handler,
+      .sa_flags = SA_SIGINFO | SA_NODEFER};
 
-  // Register signal directly with kernel to bypass libsigchain.so
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
+  int ret = sigaction(SIGSYS, &act, nullptr);
   if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to set SIGSYS handler. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
 }
