@@ -14,6 +14,9 @@
  * Purpose: dump information on the lib provided by the linker
  */
 int dumpBipanLinkerInfo(struct dl_phdr_info* info, size_t size, void* data) {
+  // Mark unused
+  (void)size; (void)data;
+
   const char* type;
   int p_type;
 
@@ -26,7 +29,8 @@ int dumpBipanLinkerInfo(struct dl_phdr_info* info, size_t size, void* data) {
       continue;
     }
 
-    p_type = info->dlpi_phdr[j].p_type;
+    // PT_* enum vals are small, should fit in `int`
+    p_type = (int)info->dlpi_phdr[j].p_type;
     type = (p_type == PT_LOAD) ? "PT_LOAD" : (p_type == PT_DYNAMIC)    ? "PT_DYNAMIC"
                                          : (p_type == PT_INTERP)       ? "PT_INTERP"
                                          : (p_type == PT_NOTE)         ? "PT_NOTE"

@@ -461,14 +461,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
-            if (strstr(libName, "memfd")) {
+            if (strstr(libName, "memfd") || strstr(libName, "libnativebridge")) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
                 strcat(report, entry);
                 return (*env)->NewStringUTF(env, report);
             }
             // ignore problematic lines
         }
-        if (strstr(libName, "memfd")) {
+        if (strstr(libName, "memfd") || strstr(libName, "libnativebridge")) {
             snprintf(entry, sizeof(entry), "%s", buf);
             strcat(report, entry);
         }
@@ -1606,6 +1606,7 @@ static void dump_fstat_info(const char* path, char* const report, struct stat* s
     snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n\n", change_time_str, statbuf->st_ctim.tv_nsec);
     strcat(report, entry);
 
+    // mode analysis
     const char* file_type = "Unknown";
     if (S_ISREG(statbuf->st_mode))  file_type = "Regular File";
     else if (S_ISDIR(statbuf->st_mode))  file_type = "Directory";

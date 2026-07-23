@@ -166,6 +166,9 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
+    // not using it
+    (void)args;
+
     if (!isTargetApp) {
       return;
     }
@@ -425,6 +428,8 @@ class Bipan : public zygisk::ModuleBase {
  * Purpose: find Bipan's start and end addresses
  */
 __attribute__((always_inline)) static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
+  (void)size;  // not using it
+
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
   // Match our library base address with the loaded segment address
@@ -448,8 +453,8 @@ __attribute__((always_inline)) static inline int findBipansBounds(struct dl_phdr
  * 0x7f, 0x45, 0x4c, 0x46
  */
 __attribute__((always_inline)) static inline bool scrubBipansElfHeader() {
-  // system's page size
-  size_t page_size = sysconf(_SC_PAGESIZE);
+  // system's page size: always positive for Love's sake
+  size_t page_size = (size_t)sysconf(_SC_PAGESIZE);
   // align our base address to beginning of a page
   uintptr_t page_start = g_bipan_lib_start & ~(page_size - 1);
 

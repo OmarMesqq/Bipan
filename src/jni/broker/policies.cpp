@@ -176,9 +176,6 @@ bool shouldDenyStat(const char* pathname) {
 }
 
 const char* shouldFakeFile(const char* pathname) {
-  if (strstr(pathname, "build.prop") != nullptr) {
-    return "ro.build.product=husky\nro.product.device=husky\nro.product.model=Pixel 8 Pro\nro.product.brand=google\nro.product.name=husky\nro.product.manufacturer=Google\nro.build.tags=release-keys\nro.build.type=user\nro.secure=1\nro.debuggable=0\n";
-  }
   if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
     return "127.0.0.1       localhost\n::1       localhost\n";
   }
@@ -278,11 +275,6 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     char proc_pid_mounts[PATH_MAX] = {0};
     snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/status", pid);
     strcpy(fixed, proc_pid_mounts);
-    return fixed;
-  }
-
-  if (strstr(resolvedPath, "build.prop")) {
-    strcpy(fixed, resolvedPath);
     return fixed;
   }
 
@@ -414,7 +406,12 @@ static inline bool is_ipv6_lan_addr(uint8_t* ip6) {
 
   if (is_v4_mapped && ip6[10] == 0xFF && ip6[11] == 0xFF) {
     // Reconstruct the 32-bit IPv4 address in host byte order
-    uint32_t ipv4 = (ip6[12] << 24) | (ip6[13] << 16) | (ip6[14] << 8) | ip6[15];
+    // Each ip[x] is uint8_t i.e. unsigned char
+    // yet they get promoted to int (signed) after the shift,
+    // potentially setting the sign bit
+    // Solve the problem by interpreting each shift as unsigned regardless
+    uint32_t ipv4 = ((uint32_t)ip6[12] << 24) | ((uint32_t)ip6[13] << 16) |
+                    ((uint32_t)ip6[14] << 8) | (uint32_t)ip6[15];
 
     // Apply IPv4 policies
     return is_ipv4_lan_addr(ipv4);
@@ -488,7 +485,15 @@ static inline bool is_dynamic_proc_file(const char* pathname, const char* suffix
   }
 
   // 3. Ensure the characters between the slashes are a valid PID number
-  size_t pid_len = next_slash - pid_start;
+  // Use signed type to avoid wraparound in ptr subtraction
+  ptrdiff_t diff = next_slash - pid_start;
+  if (diff < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Pointer subtraction (%p - %p) produced negative number!", (void*)next_slash, (void*)pid_start);
+    return false;
+  }
+
+  // Now safe to cast :)
+  size_t pid_len = (size_t)diff;
   if (!is_pure_numeric(pid_start, pid_len)) {
     return false;
   }
