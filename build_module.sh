@@ -31,6 +31,7 @@ else
   export BIPAN_DEBUG=0
 fi
 echo "Building Bipan in $BUILD_MODE mode..."
+echo ""
 
 cd src
 ndk-build
@@ -42,6 +43,7 @@ mkdir -p zygisk
 cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
 
 if [[ "${1:-}" == "debug" ]]; then
+  echo ""
   echo "Skipping symbol stripping"
 else
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -65,6 +67,7 @@ else
   fi
 fi
 
+echo ""
 # Create the final flashable zip with no compression
 rm -f ../bipan.zip
 zip -0 -r ../bipan.zip module.prop customize.sh zygisk/

@@ -71,7 +71,6 @@ fun NativeScreen() {
     /**
      * /data/misc/user/0/cacerts-added
      * /data/anr
-     * *build.prop
      */
     val statAndAccessNodes = arrayOf(
         "/etc",
@@ -79,6 +78,10 @@ fun NativeScreen() {
 
         "/system/etc",
         "/system/etc/hosts",
+
+        "/proc/self/maps",
+        "/proc/$pid/maps",
+
 
 //        "/system/bin",
 //        "/system/bin/mdnsd",

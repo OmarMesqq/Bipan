@@ -186,7 +186,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       ipc_mem->vm_iov_addr[i] = (uintptr_t)remote_iov[i].iov_base;
       ipc_mem->vm_iov_len[i] = remote_iov[i].iov_len;
     }
-    ipc_mem->vm_iov_count = (riovcnt < 4) ? riovcnt : 4;
+    ipc_mem->vm_iov_count = (int)((riovcnt < 4) ? riovcnt : 4);
   }
 #endif
 

@@ -89,9 +89,13 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
      * the caller's PC
      */
     uintptr_t return_addr = 0;
+
     if (
-        pread(mem_fd, &next_fp, sizeof(next_fp), fp) != sizeof(next_fp) ||
-        pread(mem_fd, &return_addr, sizeof(return_addr), fp + 8) != sizeof(return_addr)) {
+        // Interpret uintptr_t (unsigned) as off_t (signed)
+        // Both are 64-bit and fit in the data type, but I
+        // shall cast only to reduce warnings
+        pread(mem_fd, &next_fp, sizeof(next_fp), (off_t)fp) != sizeof(next_fp) ||
+        pread(mem_fd, &return_addr, sizeof(return_addr), (off_t)(fp + 8)) != sizeof(return_addr)) {
       /**
        * Address we're about to dereference isn't
        * backed by a readable page in the target's address space.
@@ -262,7 +266,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
     return;
   }
 
-  void* map = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  void* map = mmap(nullptr, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   close(fd);
 
   if (map == MAP_FAILED) {
@@ -276,7 +280,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\t%s header doesn't match ELF magic. Not searching symbols.", path);
     strncpy(out_name, "[APK/ZIP File]", max_len - 1);
-    munmap(map, st.st_size);
+    munmap(map, (size_t)st.st_size);
     return;
   }
 
@@ -323,7 +327,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
     strncpy(out_name, "???", max_len);
   }
 
-  munmap(map, st.st_size);
+  munmap(map, (size_t)st.st_size);
 }
 
 /**

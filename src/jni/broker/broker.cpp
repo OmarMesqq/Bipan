@@ -147,7 +147,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     // Check the bad guys collection
     if (malicious_pcs.count(pc)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC in malicious pool. Skipping unwinding.");
       is_trusted = false;
     }
 
@@ -242,14 +241,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ssize_t n;
           lseek(fake_fd, 0, SEEK_SET);
           while ((n = read(fake_fd, buf, sizeof(buf))) > 0) {
-            write(root_fd, buf, n);
+            // `n` is already positive here: safe cast
+            write(root_fd, buf, (size_t)n);
           }
           lseek(root_fd, 0, SEEK_SET);
 
-          // Cleanup daemon's ref of target's pre_fd
-          close(root_fd);
-          // Cleanup daemon's own fake fd
-          close(fake_fd);
+          close(root_fd);  // Cleanup daemon's ref of target's pre_fd
+          close(fake_fd);  // Cleanup daemon's own fake fd
 
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed with fd %d", path_payload, target_fd);
           // Tell target to use the fd it already has
@@ -668,7 +666,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         char filename[512] = {0};
         ssize_t flen = readlinkat(0, proc_pid_fd_path, filename, sizeof(filename) - 1);
         if (flen == -1) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename of in getdents64. errno: %s", strerror(errno));
+          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename in getdents64. errno: %s", strerror(errno));
           free(proc_pid_fd_path);
           break;
         }
@@ -753,7 +751,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           size_t pathLength = strlen(path);
           char reversedDirfdStr[6] = {0};
 
-          char c = -1;
+          char c = '*';  // just any char that's not `/`
           int i = 0;
 
           while ((c = path[pathLength - 1]) != '/') {
@@ -1051,7 +1049,11 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   }
 
   // __builtin___clear_cache
-  ssize_t written = pwrite(mem_fd, &opcode, sizeof(opcode), target_addr);
+
+  // Interpret uintptr_t (unsigned) as off_t (signed)
+  // Both are 64-bit and fit in the data type, but I
+  // shall cast only to reduce warnings
+  ssize_t written = pwrite(mem_fd, &opcode, sizeof(opcode), (off_t)target_addr);
   close(mem_fd);
 
   if (written == sizeof(opcode)) {

@@ -591,16 +591,16 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 // Legacy: __system_property_get
 static int hook_system_property_get(const char* name, char* value) {
   if (name != nullptr) {
-    auto it = g_prop_overrides.find(name);
-    if (it != g_prop_overrides.end()) {
-      strncpy(value, it->second.c_str(), 91);
+    auto globalPropItPair = g_prop_overrides.find(name);
+    if (globalPropItPair != g_prop_overrides.end()) {
+      strncpy(value, globalPropItPair->second.c_str(), 91);
       value[91] = '\0';
       return (int)strlen(value);
     }
     if (g_telephony_spoofing_allowlist.find(g_package_name) == g_telephony_spoofing_allowlist.end()) {
-      auto it = g_telephony_prop_overrides.find(name);
-      if (it != g_telephony_prop_overrides.end()) {
-        strncpy(value, it->second.c_str(), 91);
+      auto telephonyPropItPair = g_telephony_prop_overrides.find(name);
+      if (telephonyPropItPair != g_telephony_prop_overrides.end()) {
+        strncpy(value, telephonyPropItPair->second.c_str(), 91);
         value[91] = '\0';
         return (int)strlen(value);
       }
@@ -825,15 +825,15 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
   const char* effective = value;
   std::string override_buf;
   if (name != nullptr) {
-    auto it = g_prop_overrides.find(name);
-    if (it != g_prop_overrides.end()) {
-      override_buf = it->second;
+    auto globalPropItPair = g_prop_overrides.find(name);
+    if (globalPropItPair != g_prop_overrides.end()) {
+      override_buf = globalPropItPair->second;
       effective = override_buf.c_str();
     }
     if (g_telephony_spoofing_allowlist.find(g_package_name) == g_telephony_spoofing_allowlist.end()) {
-      auto it = g_telephony_prop_overrides.find(name);
-      if (it != g_telephony_prop_overrides.end()) {
-        override_buf = it->second;
+      auto telephonyPropItPair = g_telephony_prop_overrides.find(name);
+      if (telephonyPropItPair != g_telephony_prop_overrides.end()) {
+        override_buf = telephonyPropItPair->second;
         effective = override_buf.c_str();
       }
     }
