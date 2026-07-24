@@ -46,11 +46,7 @@ uintptr_t g_bipan_lib_end = 0;
 char g_package_name[256] = {0};
 jclass g_bipan_java_class = nullptr;
 SharedIPC* ipc_mem = nullptr;
-std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
-    "com.android.vending",
-    "com.google.android.gms",
-    "com.whatsapp",
-    "com.instagram.android"};
+
 
 class Bipan : public zygisk::ModuleBase {
  public:

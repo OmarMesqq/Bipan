@@ -360,6 +360,12 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"persist.radio.def_network", "9"},
 };
 
+std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
+    "com.android.vending",
+    "com.google.android.gms",
+    "com.whatsapp",
+    "com.instagram.android"};
+
 static bool linker_hooked = false;
 static bool seccomp_applied = false;
 static struct ifaddrs* g_cached_ifaddrs = nullptr;
