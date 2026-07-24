@@ -14,6 +14,13 @@
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <elf.h>
+#include <linux/limits.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <netdb.h>
@@ -44,6 +51,10 @@
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 
+typedef Elf64_Ehdr ElfHeader;
+typedef Elf64_Shdr ElfSection;
+typedef Elf64_Sym ElfSymbol;
+
 /**
  * func-like macro to convert negative error values provided by the kernel to raw syscalls
  * back to nice libc/bionic errnos
@@ -65,10 +76,17 @@ static void dump_fstat_info(const char* path, char* const report, struct stat* s
 static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf);
 static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
+static char* getSuspiciousMapsInfo(void);
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
+
+#define NATIVE_BRIDGE_AVAIL_SYM "NativeBridgeAvailable"
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
-    early_init_sysprop_tests();
     LOGI("Early init: __attribute__((constructor))");
+}
+
+JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    return JNI_VERSION_1_6;
 }
 
 
@@ -461,16 +479,64 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
-            if (strstr(libName, "memfd") || strstr(libName, "libnativebridge")) {
+            if (
+                    strstr(libName, "memfd") ||
+                    strstr(libName, "libnativebridge") ||
+                    strstr(libName, "libandroid_runtime") ||
+                    strstr(libName, "libart.so") ||
+                    strstr(libName, "libartbase.so") ||
+                    strstr(libName, "zygisk")
+                    ) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
                 strcat(report, entry);
                 return (*env)->NewStringUTF(env, report);
             }
             // ignore problematic lines
         }
-        if (strstr(libName, "memfd") || strstr(libName, "libnativebridge")) {
-            snprintf(entry, sizeof(entry), "%s", buf);
-            strcat(report, entry);
+        if (
+                strstr(libName, "memfd") ||
+                strstr(libName, "libnativebridge") ||
+                strstr(libName, "libandroid_runtime") ||
+                strstr(libName, "libart.so") ||
+                strstr(libName, "libartbase.so") ||
+                strstr(libName, "zygisk")
+                ) {
+            void* addr = (void*)strtoull(start, NULL, 16);
+            Dl_info info;
+            int dladdr_res = dladdr(addr, &info);
+
+            if (dladdr_res != 0) {
+                snprintf(entry, sizeof(entry),
+                         "MAP: %s"
+                         "  -> dladdr: file = %s, fbase = %p, sname = %s, saddr = %p\n",
+                         buf,
+                         info.dli_fname ? info.dli_fname : "NULL",
+                         info.dli_fbase,
+                         info.dli_sname ? info.dli_sname : "NONE",
+                         info.dli_saddr);
+                LOGI(entry, sizeof(entry),
+                         "MAP: %s"
+                         "  -> dladdr: file = %s, fbase = %p, sname = %s, saddr = %p\n",
+                         buf,
+                         info.dli_fname ? info.dli_fname : "NULL",
+                         info.dli_fbase,
+                         info.dli_sname ? info.dli_sname : "NONE",
+                         info.dli_saddr);
+            } else {
+                snprintf(entry, sizeof(entry),
+                         "MAP: %s"
+                         "  -> dladdr failed to resolve address %p\n",
+                         buf, addr);
+                LOGI(entry, sizeof(entry),
+                         "MAP: %s"
+                         "  -> dladdr failed to resolve address %p\n",
+                         buf, addr);
+            }
+            if (strlen(report) + strlen(entry) < 19999) {
+                strcat(report, entry);
+            } else {
+                break; // Buffer full
+            }
         }
     }
 
@@ -1840,6 +1906,68 @@ static void prop_cb(void* cookie, const char* name, const char* value, uint32_t 
     out[PROP_VALUE_MAX] = '\0';
 }
 
+// HEAP ALLOCATION
+static char* getSuspiciousMapsInfo(void) {
+    char* report = calloc(20000, sizeof(char));
+    if (!report) {
+        return NULL;
+    }
+    char entry[PATH_MAX + 100] = {0};
+
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) {
+        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/maps (errno: %s)\n", strerror(errno));
+        strcat(report, entry);
+        return report;
+    }
+
+    char buf[PATH_MAX];
+    while (fgets(buf, sizeof(buf), fp) != NULL) {
+        char start[11] = {0};
+        char end[11] = {0};
+        char perms[5] = {0};
+        char offset[9] = {0};
+        char devMajor[3] = {0};
+        char devMinor[3] = {0};
+        size_t libInode = 0;
+        char libName[PATH_MAX] = {0};
+
+        int ret = sscanf(buf,
+                         "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
+                         start, end, perms, offset, devMajor, devMinor, &libInode, libName);
+        if (ret != 8) {
+            if (
+                    strstr(libName, "memfd:jit-cache") ||
+                    strstr(libName, "libnativebridge") ||
+                    strstr(libName, "libandroid_runtime") ||
+                    strstr(libName, "libart.so") ||
+                    strstr(libName, "libartbase.so") ||
+                    strstr(libName, "zygisk")
+                    ) {
+                snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
+                strcat(report, entry);
+                return report;
+            }
+            // ignore problematic lines
+        }
+        if (
+                strstr(libName, "memfd:jit-cache") ||
+                strstr(libName, "libnativebridge") ||
+                strstr(libName, "libandroid_runtime") ||
+                strstr(libName, "libart.so") ||
+                strstr(libName, "libartbase.so") ||
+                strstr(libName, "zygisk")
+                ) {
+            snprintf(entry, sizeof(entry), "%s", buf);
+            strcat(report, entry);
+        }
+    }
+
+    fclose(fp);
+    return report;
+}
+
+
 static inline void early_init_sysprop_tests(void) {
     char radio1[PROP_VALUE_MAX]  = {0};
     int len = __system_property_get("gsm.version.baseband", radio1);
@@ -1895,40 +2023,145 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     int p_type;
 
     char entry[512];
-    snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
-    strcat((char*)data, entry);
-
-    for (size_t j = 0; j < info->dlpi_phnum; j++) {
-        if (!strstr(info->dlpi_name, "memfd"))  {
-            continue;
-        }
-        p_type = info->dlpi_phdr[j].p_type;
-        type = (p_type == PT_LOAD) ? "PT_LOAD" :
-               (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
-               (p_type == PT_INTERP) ? "PT_INTERP" :
-               (p_type == PT_NOTE) ? "PT_NOTE" :
-               (p_type == PT_INTERP) ? "PT_INTERP" :
-               (p_type == PT_PHDR) ? "PT_PHDR" :
-               (p_type == PT_TLS) ? "PT_TLS" :
-               (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
-               (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
-               (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
-
-        snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
-                 (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
-                 (uintmax_t) info->dlpi_phdr[j].p_memsz,
-                 (uintmax_t) info->dlpi_phdr[j].p_flags);
-        strcat((char*)data, entry);
-
-        if (type != NULL) {
-            snprintf(entry, sizeof(entry), "%s\n", type);
-        }
-        else {
-            snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
-        }
+    if (
+            strstr(info->dlpi_name, "memfd") ||
+            strstr(info->dlpi_name, "libnativebridge") ||
+            strstr(info->dlpi_name, "libandroid_runtime") ||
+            strstr(info->dlpi_name, "libart.so") ||
+            strstr(info->dlpi_name, "libartbase.so") ||
+            strstr(info->dlpi_name, "zygisk")
+            ) {
+        snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
         strcat((char*)data, entry);
     }
+
+
+    for (size_t j = 0; j < info->dlpi_phnum; j++) {
+        if (
+                strstr(info->dlpi_name, "memfd") ||
+                strstr(info->dlpi_name, "libnativebridge") ||
+                strstr(info->dlpi_name, "libandroid_runtime") ||
+                strstr(info->dlpi_name, "libart.so") ||
+                strstr(info->dlpi_name, "libartbase.so") ||
+                strstr(info->dlpi_name, "zygisk")
+                ) {
+            p_type = info->dlpi_phdr[j].p_type;
+            type = (p_type == PT_LOAD) ? "PT_LOAD" :
+                   (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
+                   (p_type == PT_INTERP) ? "PT_INTERP" :
+                   (p_type == PT_NOTE) ? "PT_NOTE" :
+                   (p_type == PT_INTERP) ? "PT_INTERP" :
+                   (p_type == PT_PHDR) ? "PT_PHDR" :
+                   (p_type == PT_TLS) ? "PT_TLS" :
+                   (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
+                   (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
+                   (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
+
+            snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
+                     (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
+                     (uintmax_t) info->dlpi_phdr[j].p_memsz,
+                     (uintmax_t) info->dlpi_phdr[j].p_flags);
+            strcat((char*)data, entry);
+            
+            if (type != NULL) {
+                snprintf(entry, sizeof(entry), "%s\n", type);
+            }
+            else {
+                snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
+            }
+            strcat((char*)data, entry);
+        }
+    }
     return 0;
+}
+
+static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
+    if (!path) {
+        return;
+    }
+    int fd = open(path, O_RDONLY);
+
+    if (fd < 0) {
+        LOGE("Failed to open %s", path);
+        return;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        LOGE("Failed to fstat fd %d associated with %s", fd, path);
+        close(fd);
+        return;
+    }
+
+    if (st.st_size < (off_t)sizeof(ElfHeader)) {
+        LOGE("find_label_in_elf: %s st_size's too small to be an ELF. Not searching symbols.", path);
+        close(fd);
+        strncpy(out_name, "[Too Small]", max_len - 1);
+        return;
+    }
+
+    void* map = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+
+    if (map == MAP_FAILED) {
+        LOGE("find_label_in_elf: mmap failed!");
+        return;
+    }
+
+    ElfHeader* ehdr = (ElfHeader*)map;
+
+    // TODO: If this is an APK (ZIP), it will fail this check and safely return
+    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+        LOGE("%s header doesn't match ELF magic. Not searching symbols.", path);
+        strncpy(out_name, "[APK/ZIP/JAR]", max_len - 1);
+        munmap(map, (size_t)st.st_size);
+        return;
+    }
+
+    ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
+
+    uintptr_t best_diff = (uintptr_t)-1;
+    char* found_name = NULL;
+
+    // Search both SYMTAB (Static) and DYNSYM (Dynamic)
+    for (int i = 0; i < ehdr->e_shnum; i++) {
+        if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
+            ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
+            size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
+
+            // sh_link automatically points to the correct string table for this symbol table
+            char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
+
+            for (size_t j = 0; j < count; j++) {
+                char* current_name = &strings[syms[j].st_name];
+
+                // Skip empty names, mapping symbols ($x, $d),
+                // and symbols that start after our offset.
+                if (syms[j].st_name == 0 || syms[j].st_value > offset) {
+                    continue;
+                }
+
+                uintptr_t diff = offset - syms[j].st_value;
+                if (diff < best_diff) {
+                    best_diff = diff;
+                    found_name = current_name;
+                }
+            }
+
+            // If we found a perfect match (diff 0) in SYMTAB, we can stop early
+            if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) {
+                break;
+            }
+        }
+    }
+
+    if (found_name && strlen(found_name) > 0) {
+        strncpy(out_name, found_name, max_len - 1);
+    } else {
+        strncpy(out_name, "???", max_len);
+    }
+
+    munmap(map, (size_t)st.st_size);
 }
 
 #pragma clang diagnostic push
