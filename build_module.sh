@@ -44,11 +44,10 @@ cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
 
 if [[ "${1:-}" == "debug" ]]; then
   echo ""
-  echo "Skipping symbol stripping"
+  echo "Skipping symbol stripping..."
 else
   if [[ "$(uname -s)" == "Darwin" ]]; then
     $NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objcopy \
-      --strip-all \
       -R .eh_frame \
       -R .eh_frame_hdr \
       -R .gcc_except_table \
@@ -57,7 +56,6 @@ else
       ./zygisk/arm64-v8a.so
   else
     $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy \
-      --strip-all \
       -R .eh_frame \
       -R .eh_frame_hdr \
       -R .gcc_except_table \
@@ -65,6 +63,9 @@ else
       -R .note.android.ident \
       ./zygisk/arm64-v8a.so
   fi
+
+  echo ""
+  echo "Symbols stripped!"
 fi
 
 echo ""

@@ -4,8 +4,7 @@
 #include <cstddef>
 
 /**
- * Collection of AS-safe clones
- * of string manipulation libc functions.
+ * Collection of AS-safe clones of string manipulation libc functions.
  *
  * This is necessary as a good chunk of Bipan is injected into the process
  * and seccomp needs a signal handler. Turns out there are tons of limitations
@@ -69,20 +68,20 @@ __attribute__((always_inline)) inline const char* local_strchr(const char* s, in
   return nullptr;
 }
 
-__attribute__((always_inline)) static inline void* local_memset(void* s, int c, size_t n) {
+__attribute__((always_inline)) inline void* local_memset(void* s, int c, size_t n) {
   unsigned char* p = (unsigned char*)s;
   while (n--) *p++ = (unsigned char)c;
   return s;
 }
 
-__attribute__((always_inline)) static inline char* local_strncpy(char* dest, const char* src, size_t n) {
+__attribute__((always_inline)) inline char* local_strncpy(char* dest, const char* src, size_t n) {
   size_t i;
   for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
   for (; i < n; i++) dest[i] = '\0';
   return dest;
 }
 
-__attribute__((always_inline)) static inline void* local_memcpy(void* dest, const void* src, size_t n) {
+__attribute__((always_inline)) inline void* local_memcpy(void* dest, const void* src, size_t n) {
   unsigned char* d = (unsigned char*)dest;
   const unsigned char* s = (const unsigned char*)src;
   while (n--) *d++ = *s++;
