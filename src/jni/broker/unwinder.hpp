@@ -10,8 +10,8 @@
 
 typedef struct {
   char dli_fname[PATH_MAX];  // Path to the library
-  // uintptr_t dli_fbase;       // Base address of the library
-  // uintptr_t dli_offset;      // Relative offset inside the file
+  uintptr_t dli_fbase;       // Base address of the library
+  uintptr_t dli_offset;      // Relative offset inside the file
 } ManualDlInfo;
 
 // 64-bit ELF structures for ARM64
