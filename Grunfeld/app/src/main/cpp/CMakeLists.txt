@@ -5,7 +5,6 @@ project(GrunfeldProject)
 # Define the library
 add_library(grunfeld SHARED main.c socket_helper.c)
 
-# I could make my life harder by adding -fomit-frame-pointer here, but apparently most libs have frame pointers on
 target_compile_options(grunfeld PRIVATE
     -O3
     -Wall
@@ -20,6 +19,9 @@ target_compile_options(grunfeld PRIVATE
     -Wno-unused-parameter
     -ffunction-sections
     -fdata-sections
+    -fno-asynchronous-unwind-tables
+    -fno-unwind-tables
+    -fomit-frame-pointer
 )
 
 # Align the lib to 16KB (Android 15+ requirement)
@@ -28,6 +30,12 @@ target_link_options(grunfeld PRIVATE
         "-Wl,--gc-sections"
         "-Wl,--exclude-libs,ALL"
         "-Wl,--icf=all"
+        "-Wl,--build-id=none"
+        "-Wl,--no-eh-frame-hdr"
+        "-Wl,--no-dynamic-linker"
+        "-Wl,-z,nognustack"
+        "-Wl,-z,relro"
+        "-Wl,-z,now"
 )
 
 

@@ -56,7 +56,7 @@ bool initializeLogger() {
 }
 
 bool destroyLogger() {
-  int ret = arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
+  int ret = (int) arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
   if (ret != 0) {
     return false;
   }
