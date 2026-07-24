@@ -181,7 +181,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
-  local_memset(ipc_mem->dirents_buf, 0, sizeof(ipc_mem->dirents_buf));
+  // local_memset(ipc_mem->dirents_buf, 0, sizeof(ipc_mem->dirents_buf));
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
@@ -367,10 +367,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct stat* buf = (struct stat*)ipc_mem->arg1;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
-    if (nr == __NR_getdents64 && result >= 0) {
-      struct dirent* buf = (struct dirent*)ipc_mem->arg1;
-      local_memcpy(buf, ipc_mem->dirents_buf, sizeof(struct dirent));
-    }
+    // if (nr == __NR_getdents64 && result >= 0) {
+    //   struct dirent* buf = (struct dirent*)ipc_mem->arg1;
+    //   local_memcpy(buf, ipc_mem->dirents_buf, sizeof(struct dirent));
+    // }
   }
 
   ipc_mem->status = IDLE;
