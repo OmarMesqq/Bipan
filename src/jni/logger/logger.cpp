@@ -55,6 +55,14 @@ bool initializeLogger() {
   return true;
 }
 
+bool destroyLogger() {
+  int ret = arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
+  if (ret != 0) {
+    return false;
+  }
+  return true;
+}
+
 int getLogcatFd() {
   return g_log_fd;
 }
