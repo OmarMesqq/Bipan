@@ -76,6 +76,10 @@ static thread_local bool inside_remote_patcher = false;
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
+  char thName[16] = {0};
+  snprintf(thName, sizeof(thName), "bb-%d", ipc_mem->target_pid);
+  prctl(PR_SET_NAME, thName);
+
   if (!initializeLogger()) {
     return;
   }
@@ -1082,7 +1086,7 @@ dead_client_exit:
     close(pidfd);
   }
   close(epfd);
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d) (TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d | TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
 }
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
