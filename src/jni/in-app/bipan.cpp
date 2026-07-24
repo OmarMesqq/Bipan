@@ -36,18 +36,16 @@ static inline ssize_t send_fd(int socket, int fd);
 static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data);
 static inline bool scrubBipansElfHeader();
 
-// Variables "owned" exclusively by the entrypoint (this module)
 extern "C" char __executable_start;  // Thanks, linker
-// Variables shared across modules
+static int sv[2] = {0};
+static int g_broker_socket = -1;
+static bool seccompApplied = false;
+
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
 char g_package_name[256] = {0};
 jclass g_bipan_java_class = nullptr;
-// Broker
 SharedIPC* ipc_mem = nullptr;
-int sv[2] = {0};
-int g_broker_socket = -1;
-
 std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.android.vending",
     "com.google.android.gms",
@@ -64,7 +62,10 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void preAppSpecialize(AppSpecializeArgs* args) override {
-    fetchTargetProcesses();
+    if (!fetchTargetProcesses()) {
+      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+      return;
+    }
 
     const char* raw_process_name = env->GetStringUTFChars(args->nice_name, nullptr);
     if (!raw_process_name) {
@@ -85,8 +86,10 @@ class Bipan : public zygisk::ModuleBase {
       BIPAN_PANIC();
     }
 #ifdef IN_APP_EXPERIMENTS
-    registerDobbyLinkerHooks();
+    api->setOption(zygisk::Option::FORCE_DENYLIST_UNMOUNT);
 #endif
+    // Install application-wide SIGSYS handler
+    registerSignalHandler();
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app logcat fd: %d", getLogcatFd());
@@ -98,17 +101,16 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_end = my_lib.end;
 
 #ifdef IN_APP_DEBUG_LOGGING
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at preAppSpecialize (BEFORE scrubbing):");
-    dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
-
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan's segments:");
     dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
 
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Processes' auxiliary vector:");
-    readAuxVector();
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Processes' auxiliary vector:");
+    // readAuxVector();
 
     size_t lib_size = my_lib.end - my_lib.start;
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "__executable_start (.text section): %p", &__executable_start);
 #endif
 
     if (!scrubBipansElfHeader()) {
@@ -149,6 +151,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
+    strncpy(ipc_mem->package_name, g_package_name, 255);
 
     // Send the Broker sock to the companion
     if (send_fd(g_broker_socket, memfd) == -1) {
@@ -287,11 +290,10 @@ class Bipan : public zygisk::ModuleBase {
     return false;
   }
 
-  void fetchTargetProcesses() {
+  bool fetchTargetProcesses() {
     int fd = api->connectCompanion();
     if (fd < 0) {
-      // write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "fetchTargetProcesses: unexpected file descriptor %d", fd);
-      BIPAN_PANIC();
+      return false;
     }
 
     // Tell the companion we want to fetch the targets list
@@ -309,6 +311,7 @@ class Bipan : public zygisk::ModuleBase {
       }
     }
     close(fd);
+    return true;
   }
 
   void setField(jclass clazz, const char* fieldName, const char* value) {

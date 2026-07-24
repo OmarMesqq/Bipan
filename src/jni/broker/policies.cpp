@@ -99,62 +99,32 @@ bool shouldLog(const char* pathname) {
 }
 
 bool shouldSpoofExistence(const char* pathname) {
-  return ((  // CAs
-      strstr(pathname, "c7981ca8.0") != nullptr ||
-      starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
-      starts_with(pathname, "/proc/meminfo_extra") ||
-      strstr(pathname, "lineage") != nullptr ||
-      strstr(pathname, "Lineage") != nullptr));
-}
-
-bool shouldReportEmptyDir(const char* pathname) {
-  return ((
-      // CAs
-      starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
-      // Crash reports
-      starts_with(pathname, "/data/tombstones") ||
-      starts_with(pathname, "/data/anr")));
-}
-
-SuNodeHandlerResponse handleSuRelatedNode(const char* pathname) {
-  if (!pathname) return OK;
-
-  if (starts_with(pathname, "/cache") &&
-      strstr(pathname, "magisk")) {
-    return DENY;
-  }
-
-  if (starts_with(pathname, "/data/adb/modules")) {
-    return DENY;
-  }
-
-  if (starts_with(pathname, "/vendor/bin/install-recovery.sh")) {
-    return DENY;
-  }
-
-  if (starts_with(pathname, "/data") &&
-      strstr(pathname, "magisk")) {
-    return DENY;
-  }
+  // if (
+  //     starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
+  //     starts_with(pathname, "/proc/meminfo_extra") ||
+  //     starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+  //     starts_with(pathname, "/data/tombstones") ||
+  //     starts_with(pathname, "/data/anr")
+  //     // strstr(pathname, "lineage") != nullptr ||
+  //     // strstr(pathname, "Lineage") != nullptr
+  // ) {
+  //   return true;
+  // }
 
   if (starts_with(pathname, "/system/lib") &&
       strstr(pathname, "zygisk")) {
-    return SPOOF;
+    return true;
   }
 
-  if (starts_with(pathname, "/system/xbin")) {
-    return SPOOF;
+  if (
+      (starts_with(pathname, "/product/bin") ||
+       starts_with(pathname, "/debug_ramdisk")) &&
+      (strstr(pathname, "magisk") ||
+       strstr(pathname, "resetprop") ||
+       strstr(pathname, "su"))) {
+    return true;
   }
-
-  if (starts_with(pathname, "/product/bin")) {
-    return SPOOF;
-  }
-
-  if (starts_with(pathname, "/debug_ramdisk")) {
-    return SPOOF;
-  }
-
-  return OK;
+  return false;
 }
 
 bool shouldDenyOpen(const char* pathname) {
