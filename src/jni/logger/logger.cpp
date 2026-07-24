@@ -75,9 +75,20 @@ void write_to_logcat_async(android_LogPriority prio, const char* tag, const char
     return;
   }
 
-  char buffer[1024];
+  if (!tag || !fmt) {
+    write_to_logcat_raw(prio, "BipanLogger", "Got bad input for logging");
+    return;
+  }
+
+  char buffer[1024] ={0};
+
+  // Skip AS-unsafe vsnprintf if no formatting in passed string
+  if (!local_strstr(fmt, "\%")) {
+    write_to_logcat_raw(prio, tag, fmt);
+  }
 
   /**
+   * TODO:
    * Welp, this is from libc. Probably not AS-safe :/
    * Formats the string into our local buffer
    */
@@ -89,12 +100,6 @@ void write_to_logcat_async(android_LogPriority prio, const char* tag, const char
   write_to_logcat_raw(prio, tag, buffer);
 }
 
-/**
- * Doing unbuffered I/O and socket creation/destruction for every log
- * is a bad idea.
- *
- * TODO: buffer messages with prio < FATAL, otherwise write directly to logcat
- */
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg) {
   if (g_log_fd == -1) {
     return;
