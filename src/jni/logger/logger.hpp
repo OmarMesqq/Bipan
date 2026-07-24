@@ -29,6 +29,7 @@ typedef enum android_LogPriority {
 } android_LogPriority;
 
 bool initializeLogger();
+bool destroyLogger();
 int getLogcatFd();
 void write_to_logcat_async(android_LogPriority prio, const char* tag, const char* fmt, ...);
 
