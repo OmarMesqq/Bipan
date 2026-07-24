@@ -24,6 +24,9 @@
 
 #include <string>
 #include <unordered_set>
+#ifdef BROKER_DEBUG_BUILD
+#include "broker_assist.hpp"
+#endif
 
 #include "common_utils.hpp"
 #include "compile_time_flags.hpp"
@@ -77,22 +80,32 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     return;
   }
 
+  pid_t pid = getpid();
+  pid_t tid = gettid();
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] Broker (PID: %d | TID: %d) started for: %s (PID: %d)", pid, tid, ipc_mem->package_name, ipc_mem->target_pid);
+
   std::unordered_set<uintptr_t> patched_pcs;
   std::unordered_set<uintptr_t> trusted_pcs;
   std::unordered_set<uintptr_t> malicious_pcs;
+  std::unordered_set<void*> mincore_targets;
 
-  pid_t pid = getpid();
-  pid_t tid = gettid();
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker started: PID: %d | TID: %d", pid, tid);
+  pid_t client_pid = ipc_mem->target_pid;
+
+#ifdef BROKER_DEBUG_BUILD
+  g_current_client_pid = client_pid;
+  bool registrationRet = registerDebugSigHandlers();
+  if (!registrationRet) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't setup debug signal handlers for Broker. Proceeding anyway...");
+  }
+#endif
 
   // Open target's pidfd
-  pid_t client_pid = ipc_mem->target_pid;
   int pidfd = bipan_pidfd_open(client_pid, 0);
   if (pidfd < 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] pidfd_open failed for client PID %d", client_pid);
   }
 
-  // epoll monitoring socket and pidfd
+  // Create epoll watcher
   int epfd = epoll_create1(EPOLL_CLOEXEC);
   if (epfd < 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
