@@ -1,6 +1,7 @@
 #include "sigsys_handler.hpp"
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <linux/memfd.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -13,7 +14,17 @@
 #include "logger/logger.hpp"
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
-static void scrub_socket(struct sockaddr* s);
+static inline void scrub_socket(struct sockaddr* s);
+
+#ifdef IN_APP_PERF_ANALYSIS
+#include <linux/prctl.h>
+#include <time.h>
+__attribute__((always_inline)) static inline long long ns_now(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+#endif
 
 #ifdef IN_APP_RAW_SIGNAL_REGISTRATION
 struct kernel_sigaction {
@@ -40,8 +51,8 @@ void registerSignalHandler() {
 #include <signal.h>
 void registerSignalHandler() {
   struct sigaction act = {
-      .sa_sigaction = &sigsys_handler,
-      .sa_flags = SA_SIGINFO | SA_NODEFER};
+      .sa_flags = SA_SIGINFO | SA_NODEFER,
+      .sa_sigaction = &sigsys_handler};
 
   int ret = sigaction(SIGSYS, &act, nullptr);
   if (ret != 0) {
@@ -53,14 +64,24 @@ void registerSignalHandler() {
 
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
-  ucontext_t* ctx = (ucontext_t*)void_context;
-  int nr = info->si_syscall;
+  if (sig != SIGSYS) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Received signal %d != SIGSYS. Aborting!");
+    BIPAN_PANIC();
+  }
 
   if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Aborting!");
     BIPAN_PANIC();
   }
   in_sigsys_handler = true;
+
+  ucontext_t* ctx = (ucontext_t*)void_context;
+  int nr = info->si_syscall;
+
+  if (ipc_mem == nullptr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Caught syscall %d but IPC mem not ready!", nr);
+    BIPAN_PANIC();
+  }
 
   long arg0 = (long)ctx->uc_mcontext.regs[0];
   long arg1 = (long)ctx->uc_mcontext.regs[1];
@@ -121,7 +142,25 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+#ifdef IN_APP_PERF_ANALYSIS
+  pid_t injectedPid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  char injectedThName[16] = {0};
+  arm64_raw_syscall(__NR_prctl, PR_GET_NAME, (long)injectedThName, 0, 0, 0, 0);
+  pid_t injectedTid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+  long long beforeIpcLock = ns_now();
+#endif
+
   lock_ipc();
+
+#ifdef IN_APP_PERF_ANALYSIS
+  long long afterIpcLock = ns_now() - beforeIpcLock;
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) to get lock on IPC memory",
+                        injectedThName,
+                        injectedPid,
+                        injectedTid,
+                        afterIpcLock,
+                        (double)afterIpcLock / 1e6);
+#endif
 
   ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];  // Link Register (x30)
   ipc_mem->caller_pc = ctx->uc_mcontext.pc;             // Program counter at time of trap
@@ -142,6 +181,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
+  local_memset(ipc_mem->dirents_buf, 0, sizeof(ipc_mem->dirents_buf));
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
   local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
@@ -242,13 +282,28 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     local_memcpy(ipc_mem->struct_payload, (const void*)sock_ptr, copy_len);
   }
 
+#ifdef IN_APP_PERF_ANALYSIS
+  long long beforeBrokerResponse = ns_now();
+#endif
+
   // Wake Broker
   ipc_mem->status = REQUEST_SYSCALL;
   futex_wake(&ipc_mem->status);
-  // Spinlock
+  // Go to sleep...
   while (ipc_mem->status != BROKER_ANSWERED) {
     futex_wait(&ipc_mem->status, REQUEST_SYSCALL);
   }
+
+// Thread woke up...
+#ifdef IN_APP_PERF_ANALYSIS
+  long long afterBrokerResponse = ns_now() - beforeBrokerResponse;
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) for Broker to answer",
+                        injectedThName,
+                        injectedPid,
+                        injectedTid,
+                        afterBrokerResponse,
+                        (double)afterBrokerResponse / 1e6);
+#endif
 
   long result = 0;
   int action = ipc_mem->action;
@@ -312,6 +367,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct stat* buf = (struct stat*)ipc_mem->arg1;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
+    if (nr == __NR_getdents64 && result >= 0) {
+      struct dirent* buf = (struct dirent*)ipc_mem->arg1;
+      local_memcpy(buf, ipc_mem->dirents_buf, sizeof(struct dirent));
+    }
   }
 
   ipc_mem->status = IDLE;
@@ -321,7 +380,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   in_sigsys_handler = false;
 }
 
-static void scrub_socket(struct sockaddr* s) {
+static inline void scrub_socket(struct sockaddr* s) {
   if (!s) return;
 
   if (s->sa_family == AF_INET) {
