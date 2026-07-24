@@ -1,6 +1,7 @@
 #ifndef IPC_COMMUNICATION_HPP
 #define IPC_COMMUNICATION_HPP
 
+// #include <dirent.h>
 #include <linux/limits.h>
 #include <sys/types.h>
 
@@ -43,11 +44,13 @@ typedef struct {
 
   int nr;  // syscall number
   long arg0, arg1, arg2, arg3, arg4, arg5;
+  char package_name[PATH_MAX];
 
   // Payloads to cross the process boundary
   char string_payload[256];      // Paths (/sbin/su, etc)
   uint8_t struct_payload[128];   // sockaddrs
   uint8_t out_buffer[PATH_MAX];  // Returned data (uname, readlinkat)
+  // struct dirent dirents_buf[PATH_MAX];
 
   int action;
   long ret;  // return value provided by kernel
