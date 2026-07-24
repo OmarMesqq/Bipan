@@ -13,8 +13,10 @@
 #include "logger/logger.hpp"
 
 #define TAG "BipanUnwinder"
+#define UNRESOLVED_SYMBOL_NAME "???"
+#define UNKNOWN_LIB_FRAME_NAME "[Untrusted: anon/unknown memory]"
 
-// static thread_local std::vector<MapEntry> current_maps;
+// TODO: should be thread_local?
 static std::vector<MapEntry> current_maps;
 
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
@@ -33,20 +35,19 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
 
   ManualDlInfo info;
   memset(&info, 0, sizeof(ManualDlInfo));
-  // char sym_name[PATH_MAX] = "???";
+  char sym_name[PATH_MAX] = UNRESOLVED_SYMBOL_NAME;
 
   lr &= 0x0000FFFFFFFFFFFFULL;  // Strip arm64 PAC auth bits
   if (find_lib_name_in_maps(lr, &info, pid)) {
-    // find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
-
+    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
     if (!is_trusted_lib(info.dli_fname)) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d. Unwinding over :)", (void*)lr, info.dli_fname, nr);
       close(mem_fd);
       return false;
     }
 
-    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)pc, sym_name, info.dli_fname, info.dli_offset);
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> PC: %p | Lib: %s", nr, (void*)pc, info.dli_fname);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
+    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> PC: %p | Lib: %s", nr, (void*)pc, info.dli_fname);
   } else {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve very first LR (%p)!", (void*)lr);
     close(mem_fd);
@@ -126,10 +127,14 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Lib: %s", (void*)return_addr, info.dli_fname);
 
       if (!is_trusted_lib(info.dli_fname)) {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
+        // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
         close(mem_fd);
         return false;
       }
+
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
+      // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Lib: %s", (void*)return_addr, info.dli_fname);
     } else {
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tFailed to find ancestor's PC (%p) in maps. Continuing...", (void*)return_addr);
     }
@@ -200,7 +205,7 @@ void initializeUnwinder(pid_t pid) {
 
       // Empty lib/malformed libname fallback 1
       if (lib_path.empty()) {
-        lib_path = "[Anonymous Memory]";
+        lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
         break;
       }
@@ -215,7 +220,7 @@ void initializeUnwinder(pid_t pid) {
 
       // Empty lib/malformed libname fallback 2
       if (!path_start) {
-        lib_path = "[Anonymous Memory]";
+        lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
         break;
       }
@@ -279,7 +284,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   // TODO: If this is an APK (ZIP), it will fail this check and safely return
   if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\t%s header doesn't match ELF magic. Not searching symbols.", path);
-    strncpy(out_name, "[APK/ZIP File]", max_len - 1);
+    strncpy(out_name, "[APK/ZIP/JAR]", max_len - 1);
     munmap(map, (size_t)st.st_size);
     return;
   }
@@ -324,7 +329,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   if (found_name && strlen(found_name) > 0) {
     strncpy(out_name, found_name, max_len - 1);
   } else {
-    strncpy(out_name, "???", max_len);
+    strncpy(out_name, UNRESOLVED_SYMBOL_NAME, max_len);
   }
 
   munmap(map, (size_t)st.st_size);
@@ -340,7 +345,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
   // Step 1: Check if Program Counter is in currently cached maps
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
-      strncpy(info->dli_fname, m.libName.c_str(), sizeof(m.libName.c_str()) - 1);
+      strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
       found = true;
       return found;
     }
@@ -394,13 +399,13 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
 
     // The PC is within this lib's range!
     if (pc >= start && pc < end) {
-      // info->dli_fbase = start;
-      // // Calculate offset: (Actual Addr - Map Start) + File Offset
-      // info->dli_offset = (pc - start) + offset;
+      info->dli_fbase = start;
+      // Calculate offset: (Actual Addr - Map Start) + File Offset
+      info->dli_offset = (pc - start) + offset;
 
       // Empty lib/malformed libname fallback 1
       if (lib_path.empty()) {
-        lib_path = "[Anonymous Memory]";
+        lib_path = UNKNOWN_LIB_FRAME_NAME;
         strncpy(info->dli_fname, lib_path.c_str(), lib_path.size());
         found = true;
 
@@ -419,13 +424,19 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
 
       // Empty lib/malformed libname fallback 2
       if (!path_start) {
-        strcpy(info->dli_fname, "[Anonymous Memory]");
+        strcpy(info->dli_fname, UNKNOWN_LIB_FRAME_NAME);
         found = true;
 
         // Update cache
         current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
         break;
       }
+
+      // Strip the trailing newline fgets() leaves in `line` — without this,
+      // dli_fname ends up with an embedded '\n', which breaks open() on the
+      // resulting path (ENOENT) even though the path looks correct when logged.
+      char* newline = strchr(path_start, '\n');
+      if (newline) *newline = '\0';
 
       strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
       found = true;
@@ -450,7 +461,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
   // Final step: Check PC again in fresh maps
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
-      strncpy(info->dli_fname, m.libName.c_str(), sizeof(m.libName.c_str()) - 1);
+      strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
       found = true;
       return found;
     }
@@ -466,5 +477,18 @@ static inline bool is_trusted_lib(const char* lib_path) {
       starts_with(lib_path, "/vendor") ||
       starts_with(lib_path, "/system") ||
       starts_with(lib_path, "/product") ||
-      starts_with(lib_path, "/system_ext"));
+      starts_with(lib_path, "/data/resource-cache") ||
+      starts_with(lib_path, "/dev") ||
+      starts_with(lib_path, "/metadata") ||
+      starts_with(lib_path, "[vdso]") ||
+      starts_with(lib_path, "[vvar]") ||
+      starts_with(lib_path, "[anon:dalvik-") ||
+      starts_with(lib_path, "[anon:bionic") ||
+      starts_with(lib_path, "[anon:cfi") ||
+      starts_with(lib_path, "[stack]") ||
+      starts_with(lib_path, "[anon:cfi") ||
+      starts_with(lib_path, "[anon:linker_alloc]") ||
+      starts_with(lib_path, "/system/lib64/libzygisk.so") ||
+      starts_with(lib_path, "/memfd:jit-cache (deleted)")  // TODO: ourselves
+  );
 }
