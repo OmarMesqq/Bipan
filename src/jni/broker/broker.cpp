@@ -38,6 +38,7 @@
 
 // Arbitrary, relatively high `wfd` for `inotify_add_watch`
 #define SPOOFED_WFD 224
+#define BROKER_THREAD_WAKEUP_TIMEOUT 500  // milliseconds
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static std::string get_sockaddr_info(const struct sockaddr* sa);
@@ -117,7 +118,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   bool client_dead = false;
   while (!client_dead) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
-      int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, 500);
+      int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, BROKER_THREAD_WAKEUP_TIMEOUT);
       if (ret == -ETIMEDOUT) {
         if (client_is_dead(epfd, pidfd)) {
           client_dead = true;
@@ -180,12 +181,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_openat: {
-        if (shouldDenyOpen(path_payload) || handleSuRelatedNode(path_payload) == DENY) {
+        if (shouldDenyOpen(path_payload)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
           break;
-        } else if (shouldSpoofExistence(path_payload) || handleSuRelatedNode(path_payload) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        } else if (shouldSpoofExistence(path_payload)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
@@ -263,18 +264,18 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat: {
-        int dirfd = (int)ipc_mem->arg0;
+        // int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
-        int mode = (int)ipc_mem->arg2;
-        int flags = (int)ipc_mem->arg3;
+        // int mode = (int)ipc_mem->arg2;
+        // int flags = (int)ipc_mem->arg3;
 
         ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+        if (shouldDenyStat(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
@@ -309,14 +310,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         resolved_link_path[len] = '\0';
 
-        if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
+        if (shouldDenyStat(resolved_link_path)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] denied", resolved_link_path);
           ipc_mem->ret = -EPERM;
           break;
         }
 
-        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(resolved_link_path)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
@@ -355,7 +356,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
 
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(fstat) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%d) fixed: original link: %s | extracted path: %s | fixed link: %s", fd, resolved_link_path, actualPath, fixedSymlink);
           if (strcmp(fixedSymlink, "ENOENT") == 0) {
             ipc_mem->ret = -ENOENT;
             free(actualPath);
@@ -385,12 +386,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         const char* path = ipc_mem->string_payload;
 
         ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyOpen(path) || handleSuRelatedNode(path) == DENY) {
+        if (shouldDenyOpen(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(path)) {
           ipc_mem->ret = -ENOENT;
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] spoofed", path);
           break;
@@ -425,13 +426,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         resolved_link_path[len] = '\0';
 
-        if (shouldDenyStat(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == DENY) {
+        if (shouldDenyStat(resolved_link_path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] denied", resolved_link_path);
           free(proc_pid_fd_path);
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(resolved_link_path) || handleSuRelatedNode(resolved_link_path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(resolved_link_path)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
@@ -448,17 +449,19 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_newfstatat: {
+#ifdef BROKER_DEBUG_LOGGING
         int fd = (int)ipc_mem->arg0;
+#endif
         const char* path = ipc_mem->string_payload;
         int flags = (int)ipc_mem->arg3;
 
         ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+        if (shouldDenyStat(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
@@ -489,18 +492,21 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_statx: {
-        int fd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
+#ifdef BROKER_DEBUG_LOGGING
+        int fd = (int)ipc_mem->arg0;
+
         int flags = (int)ipc_mem->arg2;
         unsigned int mask = (unsigned int)ipc_mem->arg3;
+#endif
 
         ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path) || handleSuRelatedNode(path) == DENY) {
+        if (shouldDenyStat(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
-        if (shouldSpoofExistence(path) || handleSuRelatedNode(path) == SPOOF || shouldReportEmptyDir(path_payload)) {
+        if (shouldSpoofExistence(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
@@ -515,27 +521,70 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_rt_sigaction: {
-        long signal = ipc_mem->arg0;
+        int signal = (int)ipc_mem->arg0;
 
-        if (signal == SIGSYS) {
+        switch (signal) {
+          case SIGSYS: {
+            // Essential signal for Bipan: spoof installation success
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          // log_violation("sigaction(SIGSYS)", culprit_lib, ipc_mem->caller_pc, offset);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App tried to install SIGSYS handler!");
+            break;
+          }
+          case SIGABRT: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGABRT handler");
+            break;
+          }
+          case SIGQUIT: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGQUIT handler");
+            break;
+          }
+          case SIGTERM: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGTERM handler");
+            break;
+          }
+          case SIGSEGV: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGSEGV handler");
+            break;
+          }
+          case SIGILL: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGILL handler");
+            break;
+          }
+          case SIGBUS: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGBUS handler");
+            break;
+          }
+          case SIGTRAP: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGTRAP handler");
+            break;
+          }
+          case SIGCONT: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGCONT handler");
+            break;
         }
-#ifdef BROKER_EXPERIMENTS
-        if (signal == SIGSEGV) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGSEGV handler");
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
+          case SIGSTOP: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGSTOP handler");
+            break;
+          }
+          case SIGCHLD: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGCHLD handler");
+            break;
+          }
+          case SIGPIPE: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGPIPE handler");
+            break;
+          }
+          case SIGFPE: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGFPE handler");
+            break;
         }
-        if (signal == SIGQUIT) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!!] App installed SIGQUIT handler");
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
+          default: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed handler for unknown signal: %d", signal);
+            break;
+          }
         }
-#endif
-
         break;
       }
       case __NR_bind: {
@@ -655,8 +704,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_getdents64: {
         int fd = (int)ipc_mem->arg0;
-        struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
-        size_t count = (size_t)ipc_mem->arg2;
+        // struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
+        // size_t count = (size_t)ipc_mem->arg2;
 
         char* proc_pid_fd_path = assemble_proc_pid_fd(ipc_mem->target_pid, fd);
         if (!proc_pid_fd_path) {
@@ -719,7 +768,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               break;
             }
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
             if (strcmp(fixedSymlink, "ENOENT") == 0) {
               ipc_mem->ret = -ENOENT;
               free(actualPath);
@@ -882,14 +931,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         free(childThName);
         break;
       }
-      case __NR_mremap: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
-        break;
-      }
       case __NR_mincore: {
         void* addr = (void*)ipc_mem->arg0;
         size_t length = (size_t)ipc_mem->arg1;
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
+
+        if (mincore_targets.count(addr)) {
+          break;
+        }
+
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(mincore) addr: %p | vecsiz: %ld", addr, length);
+        mincore_targets.insert(addr);
         break;
       }
       case __NR_gettimeofday: {
@@ -966,23 +1017,35 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_ptrace: {
         int op = (int)ipc_mem->arg0;
-        pid_t pid = (pid_t)ipc_mem->arg2;
+        pid_t target_ptrace_pid = (pid_t)ipc_mem->arg2;
 
         char* opName = get_ptrace_op_name(op);
         if (!opName) {
           break;
         }
 
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(ptrace): op: %s | PID: %d", opName, pid);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(ptrace): op: %s | PID: %d", opName, target_ptrace_pid);
         free(opName);
         break;
       }
       case __NR_mmap: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] executable (mmap)!");
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mmap)!");
         break;
       }
       case __NR_mprotect: {
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mprotect)!");
+        break;
+      }
+      case __NR_mremap: {
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (mremap)!");
+        break;
+      }
+      case __NR_munmap: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (munmap)!");
+        break;
+      }
+      case __NR_rt_sigprocmask: {
+        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] sigprocmask()");
         break;
       }
 #endif
@@ -999,9 +1062,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ipc_mem->status = BROKER_ANSWERED;
     futex_wake(&ipc_mem->status);
   }
+
 dead_client_exit:
   munmap(ipc_mem, sizeof(SharedIPC));
-  if (pidfd >= 0) close(pidfd);
+  if (pidfd >= 0) {
+    close(pidfd);
+  }
   close(epfd);
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d) (TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
 }
