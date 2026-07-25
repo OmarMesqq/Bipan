@@ -529,6 +529,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Log.i(TAG, "Blinded: queryIntentReceivers badge count receiver enumeration");
             return emptyParceledListSlice();
           }
+          if ("com.facebook.GET_PHONE_ID".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Meta's GET_PHONE_ID");
+            return emptyParceledListSlice();
+          }
           Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
