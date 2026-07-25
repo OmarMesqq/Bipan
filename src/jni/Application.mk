@@ -1,11 +1,12 @@
 APP_ABI      := arm64-v8a
-APP_STL      := c++_static
 APP_PLATFORM := android-28
 
-# TODO: add the following to debug builds (requires battling with APP_STL)
+# TODO: add the following to ease debugging (requires battling with APP_STL)
+# -fsanitize=undefined,address or
 # APP_CFLAGS 	 := -fsanitize=hwaddress
 # APP_LDFLAGS  := -fsanitize=hwaddress
- 
+APP_STL      := c++_static
+
 ifeq ($(BIPAN_DEBUG), 1)
   APP_OPTIM    := debug
   APP_CPPFLAGS := -std=c++17 \
