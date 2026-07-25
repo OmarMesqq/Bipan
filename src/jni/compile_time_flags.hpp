@@ -18,6 +18,10 @@
 // #define IN_APP_PERF_ANALYSIS
 
 /**
+ * *For some reason, some crash reporters fail/bail out app execution
+ * if this flag is off, might be something to do with the early registration
+ * in bionic.*
+ * 
  * If enabled, the SIGSYS handler registration is done in assembly,
  * bypassing `bionic`'s wrappers and `libsigchain.so`.
  *
@@ -27,13 +31,13 @@
  * definitely useful for debugging the lib as we don't overwrite
  * `tombstoned`/`debuggerd` built-in handlers that generate dumps.
  */
-// #define IN_APP_RAW_SIGNAL_REGISTRATION
+#define IN_APP_RAW_SIGNAL_REGISTRATION
 
 // #define BROKER_DEBUG_LOGGING
 
 // #define BROKER_DEBUG_BUILD
 
 // Syscalls I am still trying to investigate severity and how "hot" they are
-#define TRAP_EXPERIMENTAL_SYSCALLS
+// #define TRAP_EXPERIMENTAL_SYSCALLS
 
 #endif

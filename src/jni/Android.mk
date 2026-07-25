@@ -7,23 +7,27 @@ LOCAL_SRC_FILES := deps/libdobby.a
 include $(PREBUILT_STATIC_LIBRARY)
 
 ifeq ($(BIPAN_DEBUG), 1)
-	BIPAN_CPPFLAGS := -O0 -g \
+	BIPAN_CPPFLAGS := -Og -g3 \
 		-Wall -Wextra \
 		-Wconversion -Wsign-conversion \
-		-Wdouble-promotion -Winline \
-		-fno-exceptions -fno-rtti
+		-Wdouble-promotion -Winline -Wshadow \
+		-fno-exceptions -fno-rtti \
+		-fno-omit-frame-pointer -fstrict-overflow
 	
-	BIPAN_LDFLAGS := 
+	BIPAN_LDFLAGS := -fno-exceptions -fno-rtti \
+									 -fstrict-overflow
+	BIPAN_LDLIBS  := -lstdc++
 $(info Building DEBUG variant...)
 else
 	BIPAN_CPPFLAGS := -O3 -Wall -Wextra \
 		-ffunction-sections -fdata-sections \
 		-Wconversion -Wsign-conversion \
-		-Wdouble-promotion -Winline \
+		-Wdouble-promotion -Winline -Wshadow \
 		-fno-exceptions -fno-rtti \
 		-fvisibility=hidden -fvisibility-inlines-hidden \
-		-fomit-frame-pointer -flto \
-		-Rpass=inline -Rpass-missed=inline
+		-fomit-frame-pointer \
+		-fno-asynchronous-unwind-tables -fno-unwind-tables \
+		-flto
 
 	BIPAN_LDFLAGS := -Wl,--gc-sections \
 								 	 -Wl,--exclude-libs,ALL \
@@ -36,9 +40,6 @@ else
 									 -Wl,--no-dynamic-linker \
 									 -Wl,-z,nognustack \
 									 -Wl,-z,relro -Wl,-z,now \
-									 -Wl,--print-gc-sections \
-									 -Wl,--print-icf-sections \
-									 -Wl,--cref \
 								 	 -flto
 $(info Building RELEASE variant...)
 endif
