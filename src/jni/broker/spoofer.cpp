@@ -104,8 +104,6 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
   close(real_fd);
 
-  fake_maps_size = lseek(fake_fd, 0, SEEK_END);
-
   lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }
