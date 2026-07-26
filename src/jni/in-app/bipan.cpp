@@ -177,8 +177,6 @@ class Bipan : public zygisk::ModuleBase {
     // Unseal the VM
     initBipanJava();
 
-    // Install application-wide SIGSYS handler
-    registerSignalHandler();
     // Setup tripwires for seccomp
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
