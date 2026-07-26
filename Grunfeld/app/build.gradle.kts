@@ -37,6 +37,19 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("debug")
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
+        }
+
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DCMAKE_BUILD_TYPE=Debug"
+                }
+            }
         }
 
         create("debugLeakCanary") {
