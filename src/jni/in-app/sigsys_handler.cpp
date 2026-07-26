@@ -7,7 +7,7 @@
 #include <sys/utsname.h>
 
 #include "as_safe_string.hpp"
-#include "compile_time_flags.hpp"
+#include "feature_flags.hpp"
 #include "globals.hpp"
 #include "in-app/ipc_lock.hpp"
 #include "ipc_communication.hpp"
