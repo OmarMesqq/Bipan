@@ -47,12 +47,14 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static std::string get_sockaddr_info(const struct sockaddr* sa);
 static inline bool client_is_dead(int epfd, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
-static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
-static char* get_ptrace_op_name(int op);
 static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
 static inline bool is_hosts_file(const char* pathname);
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
+static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
+static char* get_ptrace_op_name(int op);
+#endif
 
 static thread_local bool inside_remote_patcher = false;
 
@@ -154,8 +156,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     uintptr_t fp = ipc_mem->caller_fp;
     uintptr_t lr = ipc_mem->stack_trace[0];
 
-    // Assuming good faith
-    bool is_trusted = true;
+    // Assuming well intentioned
+    UNWIND_DECISION is_trusted = SAFE;
     ipc_mem->action = ACTION_EXECUTE_NATIVE;  // Allow syscall
 
     // Check if it's a legitimate lib/bin making the call
@@ -165,19 +167,20 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     // Check the bad guys collection
     if (malicious_pcs.count(pc)) {
-      is_trusted = false;
+      is_trusted = UNSAFE;
     }
 
     // If still trusted, unwind to check its ancestors and actual safety
-    if (is_trusted) {
+    if (is_trusted == SAFE) {
       is_trusted = unwinder(pc, fp, lr, ipc_mem->target_pid, nr);
-      if (is_trusted) {
+
+      if (is_trusted == SAFE) {
         trusted_pcs.insert(pc);
         write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed trusty. Allowing natively and caching.");
         goto standard_exit;
       } else {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed malicious. Applying policies and caching.");
         malicious_pcs.insert(pc);
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed malicious. Applying policies and caching.");
       }
     }
 
@@ -742,7 +745,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             !starts_with(filename, "/data/data") &&
             !starts_with(filename, "/data/app") &&
             !starts_with(filename, "/storage/emulated/0/Android")) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] getdents64(%s)", filename);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "getdents64(%s)", filename);
         }
         free(proc_pid_fd_path);
         break;
@@ -1014,7 +1017,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_clock_gettime: {
-        if (is_trusted) break;
         write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (clock_gettime)!");
         break;
       }
@@ -1197,6 +1199,7 @@ static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
   return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
 }
 
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
 // HEAP ALLOCATION:
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid) {
   char path[64];
@@ -1324,6 +1327,8 @@ static char* get_ptrace_op_name(int op) {
   memcpy(result, name, len);
   return result;
 }
+
+#endif
 
 // HEAP ALLOCATION:
 static char* extract_real_path_from_memfd(const char* memfdPath) {

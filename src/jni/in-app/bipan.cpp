@@ -98,9 +98,6 @@ class Bipan : public zygisk::ModuleBase {
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan's segments:");
     dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
 
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Processes' auxiliary vector:");
-    // readAuxVector();
-
     size_t lib_size = my_lib.end - my_lib.start;
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
