@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-#include "compile_time_flags.hpp"
+#include "feature_flags.hpp"
 
 enum CompanionCommand {
   CMD_FETCH_TARGETS = 1,

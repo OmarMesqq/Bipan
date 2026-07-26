@@ -11,7 +11,7 @@
 #include "bipan_java.h"
 #include "broker.hpp"
 #include "common_utils.hpp"
-#include "compile_time_flags.hpp"
+#include "feature_flags.hpp"
 #include "deps/zygisk.hpp"
 #include "hooks.hpp"
 #include "ipc_communication.hpp"
