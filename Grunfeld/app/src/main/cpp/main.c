@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include <unwind.h>
 #include <sys/types.h>
 #include <netdb.h>
 #include <ifaddrs.h>
@@ -36,7 +37,9 @@
 #include <dlfcn.h>
 #include <sys/wait.h>
 #include <linux/limits.h>
+#include <signal.h>
 #include <sys/statfs.h>
+#include <ctype.h>
 
 #include "socket_helper.h"
 
@@ -60,6 +63,87 @@ typedef Elf64_Sym ElfSymbol;
  * back to nice libc/bionic errnos
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
+
+#define MAX_FRAMES 120
+
+typedef struct {
+    void** frames;
+    int    count;
+    int    max;
+} BacktraceState;
+
+static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
+    BacktraceState* state = (BacktraceState*)arg;
+
+    uintptr_t pc = _Unwind_GetIP(context);
+    if (pc == 0) {
+        return _URC_END_OF_STACK;
+    }
+
+    if (state->count >= state->max) {
+        return _URC_END_OF_STACK;
+    }
+
+    state->frames[state->count++] = (void*)pc;
+    return _URC_NO_REASON;
+}
+
+int capture_backtrace(void** out_frames, int max_frames) {
+    BacktraceState state = { out_frames, 0, max_frames };
+    _Unwind_Backtrace(unwind_callback, &state);
+    return state.count;
+}
+
+
+void print_backtrace() {
+    void* frames[MAX_FRAMES];
+    int count = capture_backtrace(frames, MAX_FRAMES);
+
+    for (int i = 0; i < count; i++) {
+        Dl_info info;
+        if (dladdr(frames[i], &info) && info.dli_sname) {
+            uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_saddr;
+            LOGI("#%02d pc %p %s (%s+0x%lx)",
+                                i, frames[i],
+                                info.dli_fname ? info.dli_fname : "?",
+                                info.dli_sname,
+                                (unsigned long)offset);
+        } else if (dladdr(frames[i], &info) && info.dli_fname) {
+            uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_fbase;
+            LOGI("#%02d pc 0x%lx %s",i, (unsigned long)offset, info.dli_fname);
+        } else {
+            LOGI("#%02d pc %p <unknown>", i, frames[i]);
+        }
+    }
+}
+
+static void signal_handler(int sig, siginfo_t* info, void* void_context) {
+    if (sig == SIGABRT) {
+        LOGE("Grunfeld got SIGABRT!");
+    }
+    else if (sig == SIGSEGV) {
+        LOGE("Grunfeld got SIGSEGV!");
+    }
+    print_backtrace();
+    _exit(1);
+}
+
+void registerSignalHandler() {
+    struct sigaction act = {
+            .sa_flags = SA_SIGINFO | SA_NODEFER,
+            .sa_sigaction = &signal_handler};
+
+    int ret = sigaction(SIGABRT, &act, NULL);
+    if (ret != 0) {
+        LOGE("[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
+    }
+    ret = sigaction(SIGSEGV, &act, NULL);
+    if (ret != 0) {
+        LOGE("[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
+    }
+}
+
+
 
 
 static inline void early_init_sysprop_tests(void);
@@ -86,6 +170,7 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    registerSignalHandler();
     return JNI_VERSION_1_6;
 }
 
@@ -464,6 +549,28 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
         return (*env)->NewStringUTF(env, report);
     }
 
+    print_backtrace();
+    jclass throwableClass = (*env)->FindClass(env, "java/lang/Throwable");
+    jmethodID ctor = (*env)->GetMethodID(env, throwableClass, "<init>", "()V");
+    jobject throwable = (*env)->NewObject(env, throwableClass, ctor);
+
+    jmethodID getStackTrace = (*env)->GetMethodID(env, throwableClass,
+                                                  "getStackTrace", "()[Ljava/lang/StackTraceElement;");
+    jobjectArray stackTrace = (jobjectArray)(*env)->CallObjectMethod(env, throwable, getStackTrace);
+
+    jsize len = (*env)->GetArrayLength(env, stackTrace);
+    jclass steClass = (*env)->FindClass(env, "java/lang/StackTraceElement");
+    jmethodID toString = (*env)->GetMethodID(env, steClass, "toString", "()Ljava/lang/String;");
+
+    for (jsize i = 0; i < len; i++) {
+        jobject frame = (*env)->GetObjectArrayElement(env, stackTrace, i);
+        jstring str = (jstring)(*env)->CallObjectMethod(env, frame, toString);
+        const char* cstr = (*env)->GetStringUTFChars(env, str, NULL);
+        LOGI("Java frame #%d: %s", i, cstr);
+        (*env)->ReleaseStringUTFChars(env, str, cstr);
+        (*env)->DeleteLocalRef(env, str);
+        (*env)->DeleteLocalRef(env, frame);
+    }
     char buf[PATH_MAX];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
         char start[11] = {0};
@@ -546,58 +653,66 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
-    char tmpBuffer[512] = {0};
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        char err[128];
+        snprintf(err, sizeof(err), "pipe failed: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, err);
+    }
+
     pid_t pid = fork();
     if (pid == -1) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "'fork' failed. errno: %s", strerror(errno));
-        return (*env)->NewStringUTF(env, tmpBuffer);
+        char err[128];
+        snprintf(err, sizeof(err), "fork failed: %s", strerror(errno));
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return (*env)->NewStringUTF(env, err);
     }
 
     if (pid == 0) {
+        // Child Process
+        close(pipefd[0]);          // Close reading end in child
+        dup2(pipefd[1], STDOUT_FILENO); // Redirect stdout to pipe
+        dup2(pipefd[1], STDERR_FILENO); // Redirect stderr to pipe
+        close(pipefd[1]);
+
         const char* path = "/system/bin/uname";
         char* const argv[] = {"uname", "-a", NULL};
-        // char *const envp[] = {NULL};
+        execve(path, argv, environ);
 
-        int execRet = execve(path, argv, environ);
-        LOGE("[!] Something bad happened: execve returned. ret:%d | errno: %s", execRet, strerror(errno));
-        _exit(execRet);
+        // If execve fails
+        _exit(127);
     }
+
+    // Parent Process
+    close(pipefd[1]); // Close writing end in parent
+
+    char outputBuffer[1024] = {0};
+    ssize_t totalRead = 0;
+
+    // Read output from child
+    ssize_t n;
+    while ((n = read(pipefd[0], outputBuffer + totalRead, sizeof(outputBuffer) - totalRead - 1)) > 0) {
+        totalRead += n;
+        if (totalRead >= sizeof(outputBuffer) - 1) break;
+    }
+    close(pipefd[0]);
 
     int wstatus = 0;
-    /**
-     * Suspends this calling thread (which is probably Main Thread (?), as it's called from MainActivity)
-     * wait for any child process (`-1`), writes results into `wstatus`, and return immediately if no child has exited (`WNOHANG`)
-     */
-    pid_t waitRes = waitpid(-1, &wstatus, WNOHANG);
+    // Wait properly without WNOHANG so the child finishes execution
+    pid_t waitRes = waitpid(pid, &wstatus, 0);
+
+    char finalReport[2048] = {0};
     if (waitRes == -1) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "'waitpid' failed. errno: %s", strerror(errno));
-        return (*env)->NewStringUTF(env, tmpBuffer);
+        snprintf(finalReport, sizeof(finalReport), "waitpid failed: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, finalReport);
     }
-    char finalReport[1024] = {0};
 
-    snprintf(tmpBuffer, sizeof(tmpBuffer), "waitpid result: %d\n", waitRes);
-    strcat(finalReport, tmpBuffer);
-
-    if (WIFEXITED(wstatus)) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child terminated normally. Exit code: %d\n", WEXITSTATUS(wstatus));
-        strcat(finalReport, tmpBuffer);
-    }
-    if (WIFSIGNALED(wstatus)) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "[!] Child terminated by signal: %d\n", WTERMSIG(wstatus));
-        strcat(finalReport, tmpBuffer);
-        if (WCOREDUMP(wstatus)) {
-            snprintf(tmpBuffer, sizeof(tmpBuffer), "Child produced core dump.\n");
-            strcat(finalReport, tmpBuffer);
-        }
-    }
-    if (WIFSTOPPED(wstatus)) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "[! likely ptrace] Child stopped by a signal: %d\n", WSTOPSIG(wstatus));
-        strcat(finalReport, tmpBuffer);
-    }
-    if (WIFCONTINUED(wstatus)) {
-        snprintf(tmpBuffer, sizeof(tmpBuffer), "Child was resumed i.e. got SIGCONT\n");
-        strcat(finalReport, tmpBuffer);
-    }
+    // Combine execution output and status info
+    snprintf(finalReport, sizeof(finalReport),
+             "--- UNAME OUTPUT ---\n%s\n--- STATUS ---\nExit Code: %d",
+             outputBuffer,
+             WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
 
     return (*env)->NewStringUTF(env, finalReport);
 }
@@ -2045,29 +2160,29 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
                 strstr(info->dlpi_name, "libartbase.so") ||
                 strstr(info->dlpi_name, "zygisk")
                 ) {
-            p_type = info->dlpi_phdr[j].p_type;
-            type = (p_type == PT_LOAD) ? "PT_LOAD" :
-                   (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
+        p_type = info->dlpi_phdr[j].p_type;
+        type = (p_type == PT_LOAD) ? "PT_LOAD" :
+               (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
+               (p_type == PT_INTERP) ? "PT_INTERP" :
+               (p_type == PT_NOTE) ? "PT_NOTE" :
                    (p_type == PT_INTERP) ? "PT_INTERP" :
-                   (p_type == PT_NOTE) ? "PT_NOTE" :
-                   (p_type == PT_INTERP) ? "PT_INTERP" :
-                   (p_type == PT_PHDR) ? "PT_PHDR" :
-                   (p_type == PT_TLS) ? "PT_TLS" :
-                   (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
-                   (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
-                   (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
+               (p_type == PT_PHDR) ? "PT_PHDR" :
+               (p_type == PT_TLS) ? "PT_TLS" :
+               (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
+               (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
+               (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
 
             snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
                      (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
                      (uintmax_t) info->dlpi_phdr[j].p_memsz,
                      (uintmax_t) info->dlpi_phdr[j].p_flags);
             strcat((char*)data, entry);
-            
-            if (type != NULL) {
-                snprintf(entry, sizeof(entry), "%s\n", type);
+
+        if (type != NULL) {
+            snprintf(entry, sizeof(entry), "%s\n", type);
             }
             else {
-                snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
+            snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
             }
             strcat((char*)data, entry);
         }
@@ -2157,6 +2272,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 
     if (found_name && strlen(found_name) > 0) {
         strncpy(out_name, found_name, max_len - 1);
+        out_name[max_len - 1] = '\0';
     } else {
         strncpy(out_name, "???", max_len);
     }
