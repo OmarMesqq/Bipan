@@ -39,14 +39,12 @@ static inline bool scrubBipansElfHeader();
 extern "C" char __executable_start;  // Thanks, linker
 static int sv[2] = {0};
 static int g_broker_socket = -1;
-static bool seccompApplied = false;
 
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
 char g_package_name[256] = {0};
 jclass g_bipan_java_class = nullptr;
 SharedIPC* ipc_mem = nullptr;
-
 
 class Bipan : public zygisk::ModuleBase {
  public:
@@ -128,7 +126,7 @@ class Bipan : public zygisk::ModuleBase {
     write(g_broker_socket, &cmd, sizeof(cmd));
 
     // Create the RAM-backed IPC memory
-    int memfd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"7EFE8wVJq686", MFD_CLOEXEC, 0, 0, 0, 0);
+    int memfd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"BipanSharedIPCMemfd", MFD_CLOEXEC, 0, 0, 0, 0);
     if (memfd < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
       BIPAN_PANIC();
@@ -185,6 +183,9 @@ class Bipan : public zygisk::ModuleBase {
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
 
+#ifdef IN_APP_EXPERIMENTS
+    registerDobbyLinkerHooks();
+#endif
 #ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
     dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);

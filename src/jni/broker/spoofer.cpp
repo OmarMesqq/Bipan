@@ -77,7 +77,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     l[len] = '\0';
 
     bool is_dirty = strstr(l, "/memfd:jit-cache (deleted)") ||
-                    strstr(l, "7EFE8wVJq686"); // RAM-backed SharedIPC
+                    strstr(l, "BipanSharedIPCMemfd");
 
     if (!is_dirty) {
       write(fake_fd, l, len);
@@ -86,7 +86,10 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
   while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
-      if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
       if (buf[i] == '\n') {
         process_and_write_line(line, line_pos);
         line_pos = 0;
@@ -100,6 +103,9 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   }
 
   close(real_fd);
+
+  fake_maps_size = lseek(fake_fd, 0, SEEK_END);
+
   lseek(fake_fd, 0, SEEK_SET);
   return fake_fd;
 }
@@ -136,7 +142,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         if (is_header) {
           skip_current_region = strstr(line, "/memfd:jit-cache (deleted)") ||
-                                strstr(line, "7EFE8wVJq686"); // RAM-backed SharedIPC
+                                strstr(line, "BipanSharedIPCMemfd");
         }
 
         if (!skip_current_region) {
