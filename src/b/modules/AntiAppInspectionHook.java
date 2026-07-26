@@ -508,7 +508,11 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           Intent intent = (Intent) args[0];
           String action = intent.getAction();
           if ("com.facebook.usdid.CROSS_SIGN_SERVICE".equals(action)) {
-            Log.i(TAG, "Blinded: queryIntentServices USDID cross-sign service");
+            Log.i(TAG, "Blinded: queryIntentServices Meta's USDID cross-sign service");
+            return emptyParceledListSlice();
+          }
+          if ("android.intent.action.RESPOND_VIA_MESSAGE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
             return emptyParceledListSlice();
           }
           Log.d(TAG, "queryIntentServices: intent: " + dumpIntent(intent));
@@ -531,6 +535,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           }
           if ("com.facebook.GET_PHONE_ID".equals(action)) {
             Log.i(TAG, "Blinded: queryIntentReceivers Meta's GET_PHONE_ID");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.SMS_DELIVER".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers ");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.WAP_PUSH_DELIVER".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.WAP_PUSH_DELIVER");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.action.DEFAULT_SMS_PACKAGE_CHANGED".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers DEFAULT_SMS_PACKAGE_CHANGED");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.action.EXTERNAL_PROVIDER_CHANGE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers EXTERNAL_PROVIDER_CHANGE");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.SIM_FULL".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SIM_FULL");
             return emptyParceledListSlice();
           }
           Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
