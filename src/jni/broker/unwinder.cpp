@@ -18,19 +18,28 @@
 
 // TODO: should be thread_local?
 static std::vector<MapEntry> current_maps;
+static std::vector<MapEntry> safe_maps;
+
+enum LIB_IN_MAPS_RET {
+  DEFINITELY_SAFE,
+  FOUND,
+  FAILED,
+  NOT_FOUND
+};
 
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
-static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid);
+static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid);
 static inline bool is_trusted_lib(const char* lib_path);
+static inline bool should_passthrough(const char* libPath);
 
-bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
+UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
   char mem_path[64] = {0};
   snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
 
   int mem_fd = open(mem_path, O_RDONLY);
   if (mem_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "unwinder: Failed to open %s", mem_path);
-    return false;  // fail closed, assuming untrusted
+    return UNSAFE;  // fail closed, assuming untrusted
   }
 
   ManualDlInfo info;
@@ -38,21 +47,57 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
   char sym_name[PATH_MAX] = UNRESOLVED_SYMBOL_NAME;
 
   lr &= 0x0000FFFFFFFFFFFFULL;  // Strip arm64 PAC auth bits
-  if (find_lib_name_in_maps(lr, &info, pid)) {
-    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
-    if (!is_trusted_lib(info.dli_fname)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d. Unwinding over :)", (void*)lr, info.dli_fname, nr);
-      close(mem_fd);
-      return false;
-    }
 
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
-    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> PC: %p | Lib: %s", nr, (void*)pc, info.dli_fname);
-  } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve very first LR (%p)!", (void*)lr);
+  // Try the actual PC first (like for inline asm)
+  LIB_IN_MAPS_RET ret = find_lib_name_in_maps(pc, &info, pid);
+  if (ret == DEFINITELY_SAFE) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a trusted lib from safe maps.", (void*)pc);
     close(mem_fd);
-    return false;
+    return SAFE;
   }
+
+  if (ret == FAILED || ret == NOT_FOUND) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Couldn't establish trust for trapped PC. Treating as unsafe.", (void*)pc);
+    close(mem_fd);
+    return UNSAFE;
+  }
+
+  find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+  if (should_passthrough(info.dli_fname)) {
+    close(mem_fd);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC is allowlisted -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", info.dli_fname, sym_name, info.dli_offset);
+    return SAFE;
+  }
+
+  if (!is_trusted_lib(info.dli_fname)) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a malicious lib(%s) triggering nr %d", (void*)pc, info.dli_fname, nr);
+    close(mem_fd);
+    return UNSAFE;
+  }
+
+  // Here, pc is FOUND, so inclusive. Check its ancestors
+  ret = find_lib_name_in_maps(lr, &info, pid);
+  if (ret == FAILED || ret == NOT_FOUND) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve very first LR (%p). Treating as unsafe", (void*)lr);
+    close(mem_fd);
+    return UNSAFE;
+  }
+
+  find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+
+  if (should_passthrough(info.dli_fname)) {
+    close(mem_fd);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LR is allowlisted -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", info.dli_fname, sym_name, info.dli_offset);
+    return SAFE;
+  }
+
+  if (!is_trusted_lib(info.dli_fname)) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d", (void*)lr, info.dli_fname, nr);
+    close(mem_fd);
+    return UNSAFE;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
 
   /**
    * Actual unwinding logic:
@@ -74,7 +119,7 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
        */
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> Current FP isn't a valid pointer (null/misaligned)", i);
       close(mem_fd);
-      return true;
+      return UNSAFE;
     }
 
     /**
@@ -104,7 +149,7 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
        */
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[Unwind ending by exhaustion (%d passes)] -> Failed to pread current FP and/or its ret addr (FP+8)(%p)", i);
       close(mem_fd);
-      return true;
+      return UNSAFE;
     }
 
     if (!return_addr) {
@@ -114,30 +159,35 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
        */
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> next return addr in frame chain is null", i);
       close(mem_fd);
-      return true;
+      return UNSAFE;
     }
 
     // Strip ARM64 PAC (Pointer Authentication) bits
     return_addr &= 0x0000FFFFFFFFFFFFULL;
 
-    if (find_lib_name_in_maps(return_addr, &info, pid)) {
-      // find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
-      // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's addr: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)next_lr, sym_name, info.dli_fname, info.dli_offset);
-
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Lib: %s", (void*)return_addr, info.dli_fname);
-
-      if (!is_trusted_lib(info.dli_fname)) {
-        // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
-        close(mem_fd);
-        return false;
-      }
-
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
-      // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Lib: %s", (void*)return_addr, info.dli_fname);
-    } else {
+    ret = find_lib_name_in_maps(return_addr, &info, pid);
+    if (ret == FAILED || ret == NOT_FOUND) {
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tFailed to find ancestor's PC (%p) in maps. Continuing...", (void*)return_addr);
+      close(mem_fd);
+      return UNSAFE;
     }
+
+    find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
+
+    if (should_passthrough(info.dli_fname)) {
+      close(mem_fd);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind absolute allowlist ending (%d passes)] -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
+      return SAFE;
+    }
+
+    if (!is_trusted_lib(info.dli_fname)) {
+      // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
+      close(mem_fd);
+      return UNSAFE;
+    }
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
 
     if (next_fp <= fp) {
       /**
@@ -150,7 +200,7 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
        */
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> FP not increasing", i);
       close(mem_fd);
-      return true;
+      return UNSAFE;
     }
 
     // Walk the linked list to next frame record
@@ -159,11 +209,11 @@ bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
 
   close(mem_fd);
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind rare exhaustion ending] -> Walked %d frames and found only safe libs. Allowing syscall!", MAX_STACK_TRACE);
-  return true;
+  return SAFE;
 }
 
 void initializeUnwinder(pid_t pid) {
-  if (current_maps.empty()) {
+  if (current_maps.empty() && safe_maps.empty()) {
     char proc_pid_maps_path[PATH_MAX] = {0};
     snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
 
@@ -207,6 +257,7 @@ void initializeUnwinder(pid_t pid) {
       if (lib_path.empty()) {
         lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
+        safe_maps.push_back({start, end, offset, lib_path});
         break;
       }
 
@@ -222,10 +273,12 @@ void initializeUnwinder(pid_t pid) {
       if (!path_start) {
         lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
+        safe_maps.push_back({start, end, offset, lib_path});
         break;
       }
 
       current_maps.push_back({start, end, offset, std::string(path_start)});
+      safe_maps.push_back({start, end, offset, lib_path});
     }
 
     if (ferror(f)) {
@@ -252,6 +305,10 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   }
 
   int fd = open(path, O_RDONLY);
+  if (strstr(path, "/memfd")) {
+    return;
+  }
+
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\tfind_label_in_elf: Failed to open %s", path);
     return;
@@ -328,6 +385,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 
   if (found_name && strlen(found_name) > 0) {
     strncpy(out_name, found_name, max_len - 1);
+    out_name[max_len - 1] = '\0';
   } else {
     strncpy(out_name, UNRESOLVED_SYMBOL_NAME, max_len);
   }
@@ -339,15 +397,22 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
  * Tries to resolve PC in current `maps` snapshot
  * Otherwise, opens it and tries again
  */
-static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
-  int found = false;
+static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
+  LIB_IN_MAPS_RET found = NOT_FOUND;
+
+  // Step 0: Check if Program Counter is in safe maps
+  for (const auto& m : safe_maps) {
+    if (pc >= m.start && pc < m.end) {
+      strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
+      return DEFINITELY_SAFE;
+    }
+  }
 
   // Step 1: Check if Program Counter is in currently cached maps
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
       strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
-      found = true;
-      return found;
+      return FOUND;
     }
   }
 
@@ -360,8 +425,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
   FILE* f = fopen(proc_pid_maps_path, "re");
   if (!f) {
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tfind_lib_name_in_maps: Failed to open remote's %s", proc_pid_maps_path);
-    found = false;
-    return found;
+    return FAILED;
   }
 
   char line[PATH_MAX] = {0};
@@ -407,7 +471,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
       if (lib_path.empty()) {
         lib_path = UNKNOWN_LIB_FRAME_NAME;
         strncpy(info->dli_fname, lib_path.c_str(), lib_path.size());
-        found = true;
+        found = FOUND;
 
         // Update cache
         current_maps.push_back({start, end, offset, lib_path});
@@ -425,7 +489,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
       // Empty lib/malformed libname fallback 2
       if (!path_start) {
         strcpy(info->dli_fname, UNKNOWN_LIB_FRAME_NAME);
-        found = true;
+        found = FOUND;
 
         // Update cache
         current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
@@ -439,7 +503,7 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
       if (newline) *newline = '\0';
 
       strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
-      found = true;
+      found = FOUND;
 
       // Update cache
       current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
@@ -462,12 +526,12 @@ static bool find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
       strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
-      found = true;
+      found = FOUND;
       return found;
     }
   }
 
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: Ultimate fallthrough. found=%s", found == 0 ? "false" : "true");
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: Ultimate fallthrough. Failed to find.");
   return found;
 }
 
@@ -491,4 +555,17 @@ static inline bool is_trusted_lib(const char* lib_path) {
       starts_with(lib_path, "/system/lib64/libzygisk.so") ||
       starts_with(lib_path, "/memfd:jit-cache (deleted)")  // TODO: ourselves
   );
+}
+
+static inline bool should_passthrough(const char* libPath) {
+  if (!libPath) {
+    return false;
+  }
+
+  if (
+      starts_with(libPath, "/system/lib64/libzygisk.so") ||
+      starts_with(libPath, "/memfd:jit-cache (deleted)")) {
+    return true;
+  }
+  return false;
 }

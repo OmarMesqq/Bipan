@@ -24,7 +24,12 @@ struct MapEntry {
   std::string libName;
 };
 
-bool unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr);
+enum UNWIND_DECISION {
+  UNSAFE,
+  SAFE,
+};
+
+UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr);
 void initializeUnwinder(pid_t pid);
 
 #endif
