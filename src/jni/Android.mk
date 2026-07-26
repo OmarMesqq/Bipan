@@ -53,11 +53,13 @@ LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
 include $(BUILD_STATIC_LIBRARY)
 
 # Tools module
-include $(CLEAR_VARS)
-LOCAL_MODULE    := bipan-tools
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/tools/*.cpp))
-LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
-include $(BUILD_STATIC_LIBRARY)
+ifeq ($(BIPAN_DEBUG), 1)
+	include $(CLEAR_VARS)
+	LOCAL_MODULE    := bipan-tools
+	LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/tools/*.cpp))
+	LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
+	include $(BUILD_STATIC_LIBRARY)
+endif
 
 # In-app static lib (injected code)
 include $(CLEAR_VARS)
@@ -77,21 +79,16 @@ include $(BUILD_STATIC_LIBRARY)
 # Build final Bipan shared library
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
-
-# Nothing (or a thin glue .cpp) goes here if all real code lives in
-# the two static libs. Add one if you need a JNI_OnLoad or entrypoint.
-# LOCAL_SRC_FILES := bipan_entry.cpp
-
-# Use WHOLE_STATIC here — you almost certainly want every object
-# from both, since the in-app/broker code likely self-registers
-# hooks (Dobby install points, broker IPC handlers) rather than
-# being called directly from a small glue file the linker would
-# otherwise see as "the reason to keep this".
-LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
+ifeq ($(BIPAN_DEBUG), 1)
+	LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
 																bipan-tools \
 																bipan-inapp \
 																bipan-broker
-
+else 
+	LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
+																bipan-inapp \
+																bipan-broker
+endif
 LOCAL_LDFLAGS := $(BIPAN_LDFLAGS)
 
 include $(BUILD_SHARED_LIBRARY)

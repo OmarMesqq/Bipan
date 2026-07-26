@@ -1,7 +1,7 @@
 #ifndef COMPILE_TIME_FLAGS_HPP
 #define COMPILE_TIME_FLAGS_HPP
 
-#define IN_APP_DEBUG_LOGGING
+// #define IN_APP_DEBUG_LOGGING
 
 /**
  * Enables:
