@@ -15,19 +15,24 @@
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline void scrub_socket(struct sockaddr* s);
-#ifdef IN_APP_SIGSEGV_HANDLER
+#ifdef IN_APP_ADDITIONAL_HANDLERS
 #include <dlfcn.h>
-#include <unwind.h>
 #include <sys/mman.h>
+#include <unwind.h>
 typedef struct {
   void** frames;
   int count;
   int max;
 } BacktraceState;
-static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg);
 static int capture_backtrace(void** out_frames, int max_frames);
 static void print_backtrace();
+
+static struct sigaction old_segv = {};
+static struct sigaction old_abrt = {};
+static struct sigaction old_quit = {};
+
+static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_context);
 #endif
 
 #ifdef IN_APP_PERF_ANALYSIS
@@ -61,9 +66,9 @@ void registerSignalHandler() {
     BIPAN_PANIC();
   }
 
-#ifdef IN_APP_SIGSEGV_HANDLER
+#ifdef IN_APP_ADDITIONAL_HANDLERS
   struct kernel_sigaction sa_SEGV = {};
-  sa_SEGV.sa_handler = sigsegv_handler;
+  sa_SEGV.sa_handler = bipan_additional_sig_handler;
   sa_SEGV.sa_flags = SA_SIGINFO;
 
   ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, 0, 8, 0, 0);
@@ -85,6 +90,34 @@ void registerSignalHandler() {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
+#ifdef IN_APP_ADDITIONAL_HANDLERS
+  struct sigaction additionalAct = {
+      .sa_flags = SA_SIGINFO,
+      .sa_sigaction = &bipan_additional_sig_handler};
+
+  ret = sigemptyset(&additionalAct.sa_mask);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(additional signals) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGABRT, &additionalAct, &old_abrt);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+  ret = sigaction(SIGSEGV, &additionalAct, &old_segv);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGQUIT, &additionalAct, &old_quit);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGQUIT) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+#endif
 }
 #endif
 
@@ -434,19 +467,31 @@ static inline void scrub_socket(struct sockaddr* s) {
   }
 }
 
-#ifdef IN_APP_SIGSEGV_HANDLER
-static thread_local bool in_segv_handler = false;
-static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
-  if (sig != SIGSEGV) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Received signal %d != SIGSEGV. Aborting!");
+#ifdef IN_APP_ADDITIONAL_HANDLERS
+static thread_local bool inside_additional_handler = false;
+static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_context) {
+  if (sig == SIGABRT) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGABRT!");
+  } else if (sig == SIGSEGV) {
+    if (info->si_code == SEGV_MAPERR) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGSEGV SEGV_MAPERR");
+    } else if (info->si_code == SEGV_ACCERR) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGSEGV SEGV_ACCERR");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Injected app got unknown SIGSEGV(%d)", info->si_code);
+    }
+  } else if (sig == SIGQUIT) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGQUIT!");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Injected app got unknown signal: (%d). Aborting!", sig);
     BIPAN_PANIC();
   }
 
-  if (in_segv_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSEGV handler. We're probably cooked. Aborting!");
+  if (inside_additional_handler) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed additional signal handler. Aborting!");
     BIPAN_PANIC();
   }
-  in_segv_handler = true;
+  inside_additional_handler = true;
 
   ucontext_t* ctx = (ucontext_t*)void_context;
 
