@@ -367,12 +367,11 @@ std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.instagram.android"};
 
 static bool linker_hooked = false;
+static bool dlsym_hooked = false;
+static bool dl_iterate_phdr_hooked = false;
 static bool seccomp_applied = false;
-static struct ifaddrs* g_cached_ifaddrs = nullptr;
-static bool g_ifaddrs_cached = false;
 
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
-void my_freeifaddrs(struct ifaddrs* ifa);
 static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data);
 
 // ==========================================
@@ -384,6 +383,9 @@ static void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
 static void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
 static void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
+static void* (*orig_dlvsym)(void*, const char*, const char*) = nullptr;
+static void* (*orig_dlsym)(void*, const char*) = nullptr;
+
 static int (*orig_dl_iterate_phdr)(int (*)(struct dl_phdr_info*, size_t, void*), void*) = nullptr;
 
 static ASensorManager* (*orig_ASensorManager_getInstance)();
@@ -394,9 +396,6 @@ static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager
 
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
-
-static int (*orig_getifaddrs)(struct ifaddrs**) = nullptr;
-static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 
 // ==========================================
 // Linker hooks
@@ -413,6 +412,28 @@ static void* my_dlopen(const char* filename, int flag) {
   return result;
 }
 
+static void* my_dlvsym(void* handle, const char* symbol, const char* version) {
+  if (symbol != nullptr) {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlvsym(%s)", symbol);
+    if (version != nullptr) {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlvsym(%s, version=%s)", symbol, version);
+    }
+  }
+  void* result = orig_dlsym(handle, symbol);
+
+  return result;
+}
+
+static void* my_dlsym(void* handle, const char* symbol) {
+  if (symbol != nullptr) {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlsym(%s)", symbol);
+  }
+
+  void* result = orig_dlsym(handle, symbol);
+
+  return result;
+}
+
 static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
   if (filename != nullptr) {
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: android_dlopen_ext(%s)", filename);
@@ -425,7 +446,7 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
 }
 
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
-  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] dl_iterate_phdr called!");
+  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "dl_iterate_phdr called. Filtering.");
   FilteredCallback ctx = {cb, data};
   return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
 }
@@ -620,6 +641,58 @@ static void hook_system_property_read_callback(const void* pi, void (*callback)(
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
+#ifdef IN_APP_SPOOF_GETIFADDRS
+static int (*orig_getifaddrs)(struct ifaddrs**) = nullptr;
+static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
+
+static struct ifaddrs* g_cached_ifaddrs = nullptr;
+static bool g_ifaddrs_cached = false;
+
+// TODO: if `registerGetifaddrsHook` succeeds, memory leaks as this is never called
+void my_freeifaddrs(struct ifaddrs* ifa) {
+  if (ifa == g_cached_ifaddrs) {
+    return;
+  }
+  orig_freeifaddrs(ifa);
+}
+
+int my_getifaddrs(struct ifaddrs** ifap) {
+  if (!g_ifaddrs_cached || g_cached_ifaddrs == nullptr) {
+    // Cache miss: shouldn't happen
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "getifaddrs cache miss: returning error");
+    *ifap = nullptr;
+    return -1;
+  }
+
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[getifaddrs] called: feeding fake data");
+  // Return the cached and scrubbed result
+  *ifap = g_cached_ifaddrs;
+  return 0;
+}
+
+void registerGetifaddrsHook() {
+  void* sym = dlsym(RTLD_DEFAULT, "getifaddrs");
+  if (!sym) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs symbol not found!");
+    return;
+  }
+
+  int r1 = DobbyHook(sym, reinterpret_cast<void*>(my_getifaddrs), reinterpret_cast<void**>(&orig_getifaddrs));
+  if (r1 != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook getifaddrs!");
+    return;
+  }
+
+  void* freeSym = dlsym(RTLD_DEFAULT, "freeifaddrs");
+  if (freeSym) {
+    int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
+    if (r2 != 0) {
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook freeifaddrs!");
+      return;
+    }
+  }
+}
+
 void preCacheIfaddrs() {
   if (getifaddrs(&g_cached_ifaddrs) != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to pre-cache ifaddrs: %d", errno);
@@ -696,23 +769,13 @@ void preCacheIfaddrs() {
   }
 }
 
-int my_getifaddrs(struct ifaddrs** ifap) {
-  if (!g_ifaddrs_cached || g_cached_ifaddrs == nullptr) {
-    // Cache miss: shouldn't happen
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "getifaddrs cache miss: returning error");
-    *ifap = nullptr;
-    return -1;
-  }
-
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[getifaddrs] called: feeding fake data");
-  // Return the cached and scrubbed result
-  *ifap = g_cached_ifaddrs;
-  return 0;
-}
+#endif
 
 void registerDobbyNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
-  if (!handle) handle = dlopen("libandroid.so", RTLD_NOW);
+  if (!handle) {
+    handle = dlopen("libandroid.so", RTLD_NOW);
+  }
 
   if (!handle) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to get handle to libandroid.so. Aborting for safety!");
@@ -756,21 +819,51 @@ void registerDobbyLinkerHooks() {
     return;
   }
 
-  void* dlopen_addr = dlsym(RTLD_DEFAULT, "dlopen");
-  void* android_dlopen_ext_addr = dlsym(RTLD_DEFAULT, "android_dlopen_ext");
+  const char* symbols[] = {
+      "dlopen",
+      "android_dlopen_ext",
+      "dlvsym",
+      "dlsym",
+  };
 
-  if (dlopen_addr && android_dlopen_ext_addr) {
-    int dlopenHookRes = DobbyHook(dlopen_addr, (void*)my_dlopen, (void**)&orig_dlopen);
-    int android_dlopen_extHookRes = DobbyHook(android_dlopen_ext_addr, (void*)my_android_dlopen_ext, (void**)&orig_android_dlopen_ext);
-    if (dlopenHookRes == 0 && android_dlopen_extHookRes == 0) {
-      linker_hooked = true;
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to setup Dobby hooks!");
+  void* hooks[] = {
+      (void*)my_dlopen,
+      (void*)my_android_dlopen_ext,
+      (void*)my_dlvsym,
+      (void*)my_dlsym};
+
+  void** originals[] = {
+      (void**)&orig_dlopen,
+      (void**)&orig_android_dlopen_ext,
+      (void**)&orig_dlvsym,
+      (void**)&orig_dlsym};
+
+  for (int i = 0; i < 4; i++) {
+    void* addr = dlsym(RTLD_DEFAULT, symbols[i]);
+    if (!addr) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to dlsym(%s)", symbols[i]);
+      linker_hooked = true;  // set regardless to avoid trying again
+      return;
     }
+
+    int hookRet = DobbyHook(addr, hooks[i], originals[i]);
+    if (hookRet != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to DobbyHook(%s)", symbols[i]);
+      linker_hooked = true;  // set regardless to avoid trying again
+      return;
+    }
+
+    __builtin___clear_cache((char*)addr, (char*)addr + 32);
   }
+
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "All linker hooks were successful :)");
+  linker_hooked = true;
 }
 
 void registerDobbyDlIteratePhdrHook() {
+  if (dl_iterate_phdr_hooked) {
+    return;
+  }
   void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
   if (!dl_iterate_phdr_addr) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve dl_iterate_phdr!");
@@ -781,6 +874,7 @@ void registerDobbyDlIteratePhdrHook() {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook dl_iterate_phdr!");
     BIPAN_PANIC();
   }
+  dl_iterate_phdr_hooked = true;
 }
 
 void registerDobbyNativeSystemPropertiesHook() {
@@ -796,29 +890,6 @@ void registerDobbyNativeSystemPropertiesHook() {
 
   if ((getHook != 0) || (readcbHook != 0)) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook sysprop functions");
-  }
-}
-
-void registerGetifaddrsHook() {
-  void* sym = dlsym(RTLD_DEFAULT, "getifaddrs");
-  if (!sym) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs symbol not found!");
-    return;
-  }
-
-  int r1 = DobbyHook(sym, reinterpret_cast<void*>(my_getifaddrs), reinterpret_cast<void**>(&orig_getifaddrs));
-  if (r1 != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook getifaddrs!");
-    return;
-  }
-
-  void* freeSym = dlsym(RTLD_DEFAULT, "freeifaddrs");
-  if (freeSym) {
-    int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
-    if (r2 != 0) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook freeifaddrs!");
-      return;
-    }
   }
 }
 
@@ -846,13 +917,6 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
   }
   ctx->user_cb(ctx->user_cookie, name, effective, serial);
   delete ctx;
-}
-
-void my_freeifaddrs(struct ifaddrs* ifa) {
-  if (ifa == g_cached_ifaddrs) {
-    return;
-  }
-  orig_freeifaddrs(ifa);
 }
 
 static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, void* data) {

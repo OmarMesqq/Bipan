@@ -11,8 +11,8 @@
 #include "bipan_java.h"
 #include "broker.hpp"
 #include "common_utils.hpp"
-#include "feature_flags.hpp"
 #include "deps/zygisk.hpp"
+#include "feature_flags.hpp"
 #include "hooks.hpp"
 #include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
@@ -178,10 +178,8 @@ class Bipan : public zygisk::ModuleBase {
     hookJniFunctions();
     registerDobbyNativeSystemPropertiesHook();
 
-#ifdef IN_APP_EXPERIMENTS
-    registerDobbyLinkerHooks();
-#endif
 #ifdef IN_APP_DEBUG_LOGGING
+    registerDobbyLinkerHooks();
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
     dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 #endif

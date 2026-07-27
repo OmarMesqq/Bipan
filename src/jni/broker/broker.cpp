@@ -546,8 +546,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         switch (signal) {
           case SIGSYS: {
             // Essential signal for Bipan: spoof installation success
-          ipc_mem->ret = 0;
-          ipc_mem->action = ACTION_USE_RET;
+            ipc_mem->ret = 0;
+            ipc_mem->action = ACTION_USE_RET;
 
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App tried to install SIGSYS handler!");
             break;
@@ -583,7 +583,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           case SIGCONT: {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGCONT handler");
             break;
-        }
+          }
           case SIGSTOP: {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGSTOP handler");
             break;
@@ -599,7 +599,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           case SIGFPE: {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGFPE handler");
             break;
-        }
+          }
           default: {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed handler for unknown signal: %d", signal);
             break;
@@ -634,17 +634,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (bind) to LAN blocked");
-            patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (bind) to LAN blocked");
-          }
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(bind) to LAN blocked");
         }
         break;
       }
       case __NR_connect: {
         if (isLanAddress(sock_payload)) {
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN blocked");
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
         }
@@ -657,12 +653,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
-          if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
-            patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendto) LAN/discovery spoofed. Socket info:\n %s", sockInfo.c_str());
-          }
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendto) LAN spoofed. Socket info:\n %s", sockInfo.c_str());
         }
         break;
       }
@@ -673,12 +664,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
-          if (!is_trusted) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "App-originated (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
-            patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "System (sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
-          }
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
         }
         break;
       }

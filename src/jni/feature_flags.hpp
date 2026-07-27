@@ -5,17 +5,13 @@
 
 /**
  * Enables:
- * - Hooking of the linker's `dlopen` and `android_dlopen_ext` at `preAppSpecialize`
  * - Zygisk's `FORCE_DENYLIST_UNMOUNT` at `preAppSpecialize`
- * - Hooking of the linker's `dlsym` at `postAppSpecialize`
  */
 #define IN_APP_EXPERIMENTS
 
-
 // #define IN_APP_SPOOF_GETIFADDRS
-
-
 // #define IN_APP_PERF_ANALYSIS
+// #define IN_APP_SIGSEGV_HANDLER
 
 /**
  * *For some reason, some crash reporters fail/bail out app execution

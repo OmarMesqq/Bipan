@@ -23,8 +23,8 @@ typedef struct {
 static void bipan_broker_signal_handler(int sig, siginfo_t* info, void* void_context);
 static void kill_current_client();
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg);
-int capture_backtrace(void** out_frames, int max_frames);
-void print_backtrace();
+static int capture_backtrace(void** out_frames, int max_frames);
+static void print_backtrace();
 
 // Set at the top of each Broker thread's loop iteration, so the handler
 // knows which client this specific thread was servicing when it died.
@@ -110,13 +110,13 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
   return _URC_NO_REASON;
 }
 
-int capture_backtrace(void** out_frames, int max_frames) {
+static int capture_backtrace(void** out_frames, int max_frames) {
   BacktraceState state = {out_frames, 0, max_frames};
   _Unwind_Backtrace(unwind_callback, &state);
   return state.count;
 }
 
-void print_backtrace() {
+static void print_backtrace() {
   void* frames[MAX_FRAMES_BROKER_ASSIST];
   int count = capture_backtrace(frames, MAX_FRAMES_BROKER_ASSIST);
 

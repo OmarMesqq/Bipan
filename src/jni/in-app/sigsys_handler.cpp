@@ -15,6 +15,20 @@
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline void scrub_socket(struct sockaddr* s);
+#ifdef IN_APP_SIGSEGV_HANDLER
+#include <dlfcn.h>
+#include <unwind.h>
+#include <sys/mman.h>
+typedef struct {
+  void** frames;
+  int count;
+  int max;
+} BacktraceState;
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context);
+static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg);
+static int capture_backtrace(void** out_frames, int max_frames);
+static void print_backtrace();
+#endif
 
 #ifdef IN_APP_PERF_ANALYSIS
 #include <linux/prctl.h>
@@ -40,12 +54,23 @@ void registerSignalHandler() {
   sa_SYS.sa_flags = SA_SIGINFO;
   long ret = 0;
 
-  // Register signal directly with kernel to bypass libsigchain.so
   ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
     BIPAN_PANIC();
   }
+
+#ifdef IN_APP_SIGSEGV_HANDLER
+  struct kernel_sigaction sa_SEGV = {};
+  sa_SEGV.sa_handler = sigsegv_handler;
+  sa_SEGV.sa_flags = SA_SIGINFO;
+
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, 0, 8, 0, 0);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror((int)ret));
+    BIPAN_PANIC();
+  }
+#endif
 }
 #else
 #include <signal.h>
@@ -70,7 +95,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed signal handler. We're probably cooked. Aborting!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler. We're probably cooked. Aborting!");
     BIPAN_PANIC();
   }
   in_sigsys_handler = true;
@@ -92,6 +117,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about sendmmsg existing...");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_statx) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Lying about statx existing...");
     ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
     in_sigsys_handler = false;
     return;
@@ -136,8 +168,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       return;
     }
 
-    long ret = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = (__u64)ret;
+    long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    ctx->uc_mcontext.regs[0] = (__u64)r;
     in_sigsys_handler = false;
     return;
   }
@@ -400,3 +432,94 @@ static inline void scrub_socket(struct sockaddr* s) {
     // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
   }
 }
+
+#ifdef IN_APP_SIGSEGV_HANDLER
+static thread_local bool in_segv_handler = false;
+static void sigsegv_handler(int sig, siginfo_t* info, void* void_context) {
+  if (sig != SIGSEGV) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Received signal %d != SIGSEGV. Aborting!");
+    BIPAN_PANIC();
+  }
+
+  if (in_segv_handler) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSEGV handler. We're probably cooked. Aborting!");
+    BIPAN_PANIC();
+  }
+  in_segv_handler = true;
+
+  ucontext_t* ctx = (ucontext_t*)void_context;
+
+  int nr = info->si_syscall;
+  __u64 faultAddr = ctx->uc_mcontext.fault_address;
+
+  long x0 = (long)ctx->uc_mcontext.regs[0];
+  long x1 = (long)ctx->uc_mcontext.regs[1];
+  long x2 = (long)ctx->uc_mcontext.regs[2];
+  long x3 = (long)ctx->uc_mcontext.regs[3];
+  long x4 = (long)ctx->uc_mcontext.regs[4];
+  long x5 = (long)ctx->uc_mcontext.regs[5];
+
+  __u64 pc = ctx->uc_mcontext.pc;
+  __u64 lr = ctx->uc_mcontext.regs[30];
+  __u64 fp = ctx->uc_mcontext.regs[29];
+  __u64 sp = ctx->uc_mcontext.sp;
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Syscall that triggered segfault: %d | Fault addr: %p", nr, faultAddr);
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
+                        "x0=%ld | x1=%ld | x2=%ld | x3=%ld | x4=%ld | x5=%ld",
+                        x0, x1, x2, x3, x4, x5);
+
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
+                        "pc=%p | lr=%p | fp=%p | sp=%p",
+                        pc, lr, fp, sp);
+
+  print_backtrace();
+  BIPAN_PANIC();
+}
+
+static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
+  BacktraceState* state = (BacktraceState*)arg;
+
+  uintptr_t pc = _Unwind_GetIP(context);
+  if (pc == 0) {
+    return _URC_END_OF_STACK;
+  }
+
+  if (state->count >= state->max) {
+    return _URC_END_OF_STACK;
+  }
+
+  state->frames[state->count++] = (void*)pc;
+  return _URC_NO_REASON;
+}
+
+static int capture_backtrace(void** out_frames, int max_frames) {
+  BacktraceState state = {out_frames, 0, max_frames};
+  _Unwind_Backtrace(unwind_callback, &state);
+  return state.count;
+}
+
+static void print_backtrace() {
+  void* frames[MAX_STACK_TRACE];
+  int count = capture_backtrace(frames, MAX_STACK_TRACE);
+
+  for (int i = 0; i < count; i++) {
+    Dl_info info;
+    if (dladdr(frames[i], &info) && info.dli_sname) {
+      uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_saddr;
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc %p %s (%s+0x%lx)",
+                            i, frames[i],
+                            info.dli_fname ? info.dli_fname : "?",
+                            info.dli_sname,
+                            (unsigned long)offset);
+    } else if (dladdr(frames[i], &info) && info.dli_fname) {
+      uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_fbase;
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc 0x%lx %s", i, (unsigned long)offset, info.dli_fname);
+    } else {
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc %p <unknown>", i, frames[i]);
+    }
+  }
+}
+
+#endif

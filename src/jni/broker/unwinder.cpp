@@ -305,7 +305,7 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   }
 
   int fd = open(path, O_RDONLY);
-  if (strstr(path, "/memfd")) {
+  if (strstr(path, "/memfd") || strstr(path, "[")) {
     return;
   }
 
