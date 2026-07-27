@@ -47,35 +47,18 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
-      // Evaluate mmap
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 5),
-      // Load lower 32 bits of arg2 (prot) into accumulator
-      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[2])),
-      // Bitwise AND with PROT_EXEC
-      BPF_STMT(BPF_ALU | BPF_AND | BPF_K, PROT_EXEC),
-      // If result is 0 (no PROT_EXEC), jump forward 1 instruction to ALLOW
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 0),
-      // If result is > 0 (has PROT_EXEC), TRAP it to userspace!
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // Safe mmap: ALLOW
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mprotect, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mmap, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mremap, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
-      // Evaluate mprotect
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mprotect, 0, 5),
-      // Load lower 32 bits of arg2 (prot) into accumulator
-      BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[2])),
-      // Bitwise AND with PROT_EXEC
-      BPF_STMT(BPF_ALU | BPF_AND | BPF_K, PROT_EXEC),
-      // If result is 0 (no PROT_EXEC), jump forward 1 instruction to ALLOW
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 0),
-      // If result is > 0 (has PROT_EXEC), TRAP it to userspace!
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // Safe mprotect: ALLOW
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-
-      // Anti-tamper: infamous ptrace
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ptrace, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),   
+      
+      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigprocmask, 0, 1),
+      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Pipe creation
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mknodat, 0, 1),
@@ -96,14 +79,12 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Memory whatnots
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mremap, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_readv, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_process_vm_writev, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
-      // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mincore, 0, 1),
+      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Thread and child birth
       // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clone, 0, 1),
@@ -116,7 +97,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
       // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
       // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      
 #endif
 
       // System info
