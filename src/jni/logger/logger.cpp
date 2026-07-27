@@ -1,6 +1,5 @@
 #include "logger/logger.hpp"
 
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/un.h>
@@ -9,10 +8,12 @@
 
 #include <cstdio>
 
-#include "common_utils.hpp"
 #include "as_safe_string.hpp"
+#include "common_utils.hpp"
 
 #define LOGCAT_SOCKET_PATH "/dev/socket/logdw"
+
+static constexpr const char* TAG = "BipanLogger";
 
 /**
  * Credits to the amazing AOSP team:
@@ -56,7 +57,7 @@ bool initializeLogger() {
 }
 
 bool destroyLogger() {
-  int ret = (int) arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
+  int ret = (int)arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
   if (ret != 0) {
     return false;
   }
@@ -76,15 +77,16 @@ void write_to_logcat_async(android_LogPriority prio, const char* tag, const char
   }
 
   if (!tag || !fmt) {
-    write_to_logcat_raw(prio, "BipanLogger", "Got bad input for logging");
+    write_to_logcat_raw(ANDROID_LOG_ERROR, TAG, "Got bad input for logging");
     return;
   }
 
-  char buffer[1024] ={0};
+  char buffer[1024] = {0};
 
   // Skip AS-unsafe vsnprintf if no formatting in passed string
   if (!local_strstr(fmt, "\%")) {
     write_to_logcat_raw(prio, tag, fmt);
+    return;
   }
 
   /**
