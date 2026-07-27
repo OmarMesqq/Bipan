@@ -97,8 +97,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
     return UNSAFE;
   }
 
+#ifdef BROKER_UNWINDER_LOGGING
   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
-
+#endif
   /**
    * Actual unwinding logic:
    * we walk the frame records [fp/x29, x30/lr]:
@@ -112,12 +113,14 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   for (unsigned int i = 0; i < MAX_STACK_TRACE; ++i) {
     if (!fp || (fp & 0x7)) {
-      /**
-       * Trying to take one more step, but
-       * the value we'd use as the next FP isn't a valid pointer.
-       * Typical in leaf functions.
-       */
+/**
+ * Trying to take one more step, but
+ * the value we'd use as the next FP isn't a valid pointer.
+ * Typical in leaf functions.
+ */
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> Current FP isn't a valid pointer (null/misaligned)", i);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
@@ -142,22 +145,26 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
         // shall cast only to reduce warnings
         pread(mem_fd, &next_fp, sizeof(next_fp), (off_t)fp) != sizeof(next_fp) ||
         pread(mem_fd, &return_addr, sizeof(return_addr), (off_t)(fp + 8)) != sizeof(return_addr)) {
-      /**
-       * Address we're about to dereference isn't
-       * backed by a readable page in the target's address space.
-       * Could be garbage or we're at the edge of the stack region.
-       */
+/**
+ * Address we're about to dereference isn't
+ * backed by a readable page in the target's address space.
+ * Could be garbage or we're at the edge of the stack region.
+ */
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[Unwind ending by exhaustion (%d passes)] -> Failed to pread current FP and/or its ret addr (FP+8)(%p)", i);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
 
     if (!return_addr) {
-      /**
-       * All 8 bytes at fp+8 are zero (nullptr).
-       * We can have walked past the bottom of the frame chain
-       */
+/**
+ * All 8 bytes at fp+8 are zero (nullptr).
+ * We can have walked past the bottom of the frame chain
+ */
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> next return addr in frame chain is null", i);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
@@ -167,7 +174,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
     ret = find_lib_name_in_maps(return_addr, &info, pid);
     if (ret == FAILED || ret == NOT_FOUND) {
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tFailed to find ancestor's PC (%p) in maps. Continuing...", (void*)return_addr);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
@@ -176,29 +185,36 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
     if (should_passthrough(info.dli_fname)) {
       close(mem_fd);
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind absolute allowlist ending (%d passes)] -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
+#endif
       return SAFE;
     }
 
     if (!is_trusted_lib(info.dli_fname)) {
-      // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s", i, info.dli_fname);
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "[Unwind good ending (%d passes)] -> Found malicious lib: %s | Sym: %s | Offset: (+0x%lx)\n", i, info.dli_fname, sym_name, info.dli_offset);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
 
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\tAncestor's PC: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)\n", (void*)return_addr, sym_name, info.dli_fname, info.dli_offset);
+#endif
 
     if (next_fp <= fp) {
-      /**
-       * Sanity check for stack direction:
-       * In this case, the Frame Pointer isn't increasing.
-       * As the stack grows downward on arm64,
-       * a legitimate frame chain should show monotonically
-       * increasing addresses we walk towards the ultimate caller.
-       * TLDR: each caller's frame sits at a higher address than the callee's.
-       */
+/**
+ * Sanity check for stack direction:
+ * In this case, the Frame Pointer isn't increasing.
+ * As the stack grows downward on arm64,
+ * a legitimate frame chain should show monotonically
+ * increasing addresses we walk towards the ultimate caller.
+ * TLDR: each caller's frame sits at a higher address than the callee's.
+ */
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind ending by exhaustion (%d passes)] -> FP not increasing", i);
+#endif
       close(mem_fd);
       return UNSAFE;
     }
@@ -208,7 +224,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
   }
 
   close(mem_fd);
+#ifdef BROKER_UNWINDER_LOGGING
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[Unwind rare exhaustion ending] -> Walked %d frames and found only safe libs. Allowing syscall!", MAX_STACK_TRACE);
+#endif
   return SAFE;
 }
 
@@ -242,12 +260,16 @@ void initializeUnwinder(pid_t pid) {
                        &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
 
       if (ret != 7 && ret != 8) {
+#ifdef BROKER_UNWINDER_LOGGING
         write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] initializeUnwinder: Skipping malformed maps line: %s", line);
+#endif
         continue;
       }
 
       if (start >= end) {
+#ifdef BROKER_UNWINDER_LOGGING
         write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t[*] initializeUnwinder: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
+#endif
         continue;
       }
 
@@ -310,19 +332,25 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   }
 
   if (fd < 0) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\tfind_label_in_elf: Failed to open %s", path);
+#endif
     return;
   }
 
   struct stat st;
   if (fstat(fd, &st) < 0) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\tfind_label_in_elf: Failed to fstat fd %d associated with %s", fd, path);
+#endif
     close(fd);
     return;
   }
 
   if (st.st_size < (off_t)sizeof(ElfHeader)) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tfind_label_in_elf: %s st_size's too small to be an ELF. Not searching symbols.", path);
+#endif
     close(fd);
     strncpy(out_name, "[Too Small]", max_len - 1);
     return;
@@ -332,7 +360,9 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
   close(fd);
 
   if (map == MAP_FAILED) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\tfind_label_in_elf: mmap failed!");
+#endif
     return;
   }
 
@@ -340,7 +370,9 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
 
   // TODO: If this is an APK (ZIP), it will fail this check and safely return
   if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\t%s header doesn't match ELF magic. Not searching symbols.", path);
+#endif
     strncpy(out_name, "[APK/ZIP/JAR]", max_len - 1);
     munmap(map, (size_t)st.st_size);
     return;
@@ -431,7 +463,9 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
   char line[PATH_MAX] = {0};
   while (fgets(line, sizeof(line), f)) {
     if (!isxdigit(line[0])) {
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
+#endif
       continue;
     }
 
@@ -450,12 +484,16 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
                      &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
 
     if (ret != 7 && ret != 8) {
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
+#endif
       continue;
     }
 
     if (start >= end) {
+#ifdef BROKER_UNWINDER_LOGGING
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t\t[*] find_lib_name_in_maps: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
+#endif
       continue;
     }
 
@@ -464,7 +502,8 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
     // The PC is within this lib's range!
     if (pc >= start && pc < end) {
       info->dli_fbase = start;
-      // Calculate offset: (Actual Addr - Map Start) + File Offset
+
+      // Offset calculation: (Actual Addr - Map Start) + File Offset
       info->dli_offset = (pc - start) + offset;
 
       // Empty lib/malformed libname fallback 1
@@ -500,7 +539,9 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
       // dli_fname ends up with an embedded '\n', which breaks open() on the
       // resulting path (ENOENT) even though the path looks correct when logged.
       char* newline = strchr(path_start, '\n');
-      if (newline) *newline = '\0';
+      if (newline) {
+        *newline = '\0';
+      }
 
       strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
       found = FOUND;
@@ -519,7 +560,7 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
   fclose(f);
 
   if (current_maps.empty()) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: No maps found for PID %d", pid);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "find_lib_name_in_maps: No maps found for PID %d", pid);
   }
 
   // Final step: Check PC again in fresh maps
@@ -531,7 +572,9 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
     }
   }
 
+#ifdef BROKER_UNWINDER_LOGGING
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: Ultimate fallthrough. Failed to find.");
+#endif
   return found;
 }
 
