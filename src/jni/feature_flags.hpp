@@ -11,7 +11,7 @@
 
 // #define IN_APP_SPOOF_GETIFADDRS
 // #define IN_APP_PERF_ANALYSIS
-// #define IN_APP_SIGSEGV_HANDLER
+#define IN_APP_ADDITIONAL_HANDLERS
 
 /**
  * *For some reason, some crash reporters fail/bail out app execution
