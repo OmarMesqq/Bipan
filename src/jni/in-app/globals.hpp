@@ -8,7 +8,7 @@
 
 #include "ipc_communication.hpp"
 
-#define TAG "Bipan"
+#define TAG "BipanInApp"
 #define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
 
 /**
