@@ -170,13 +170,13 @@ class Bipan : public zygisk::ModuleBase {
     // Native (C/C++ setup)
     registerDobbyDlIteratePhdrHook();
     registerDobbyNativeSensorsHooks();
+    registerDobbyNativeSystemPropertiesHook();
 
     // Unseal the VM
     initBipanJava();
 
     // Setup tripwires for seccomp
     hookJniFunctions();
-    registerDobbyNativeSystemPropertiesHook();
 
 #ifdef IN_APP_DEBUG_LOGGING
     registerDobbyLinkerHooks();

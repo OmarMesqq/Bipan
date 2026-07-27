@@ -176,11 +176,16 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       if (is_trusted == SAFE) {
         trusted_pcs.insert(pc);
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed trusty. Allowing natively and caching.");
+#ifdef BROKER_DEBUG_LOGGING
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC %p deemed trusty. Allowing natively and caching.", (void*)pc);
+#endif
+
         goto standard_exit;
       } else {
         malicious_pcs.insert(pc);
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "PC deemed malicious. Applying policies and caching.");
+#ifdef BROKER_DEBUG_LOGGING
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC %p deemed malicious. Applying policies and caching.", (void*)pc);
+#endif
       }
     }
 

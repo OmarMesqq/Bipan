@@ -33,6 +33,7 @@ static void print_backtrace();
 #ifdef IN_APP_PERF_ANALYSIS
 #include <linux/prctl.h>
 #include <time.h>
+#define PERF_TAG "BipanPerf"
 __attribute__((always_inline)) static inline long long ns_now(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -186,7 +187,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
 #ifdef IN_APP_PERF_ANALYSIS
   long long afterIpcLock = ns_now() - beforeIpcLock;
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) to get lock on IPC memory",
+  write_to_logcat_async(ANDROID_LOG_DEBUG, PERF_TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) to get lock on IPC memory",
                         injectedThName,
                         injectedPid,
                         injectedTid,
@@ -329,7 +330,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 // Thread woke up...
 #ifdef IN_APP_PERF_ANALYSIS
   long long afterBrokerResponse = ns_now() - beforeBrokerResponse;
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) for Broker to answer",
+  write_to_logcat_async(ANDROID_LOG_DEBUG, PERF_TAG, "Thread %s (PID: %d | TID: %d) waited %lld ns (%.3f ms) for Broker to answer",
                         injectedThName,
                         injectedPid,
                         injectedTid,
