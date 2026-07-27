@@ -37,19 +37,28 @@ static struct sigaction g_old_abrt = {};
 static char g_altstack[SIGSTKSZ * 4];
 
 bool registerDebugSigHandlers() {
+  int ret = -1;
+
   stack_t ss = {};
   ss.ss_sp = g_altstack;
   ss.ss_size = sizeof(g_altstack);
   ss.ss_flags = 0;
   if (sigaltstack(&ss, nullptr) != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] sigaltstack failed (errno: %s)", strerror(errno));
-    return false;  // don't proceed with a handler you know can't safely run
+    // force use of altstack in case original stack is corrupted
+    return false;
   }
 
   struct sigaction segvAct = {};
   segvAct.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
   segvAct.sa_sigaction = &bipan_broker_signal_handler;
-  sigemptyset(&segvAct.sa_mask);
+
+  ret = sigemptyset(&segvAct.sa_mask);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(SIGSEGV) failed (errno: %s)", strerror(errno));
+    return false;
+  }
+
   int segvRegistration = sigaction(SIGSEGV, &segvAct, &g_old_segv);
   if (segvRegistration != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
@@ -59,7 +68,13 @@ bool registerDebugSigHandlers() {
   struct sigaction abrtAct = {};
   abrtAct.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
   abrtAct.sa_sigaction = &bipan_broker_signal_handler;
-  sigemptyset(&abrtAct.sa_mask);
+
+  ret = sigemptyset(&abrtAct.sa_mask);
+  if (ret == -1) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(SIGABRT) failed (errno: %s)", strerror(errno));
+    return false;
+  }
+
   int abrtRegistration = sigaction(SIGABRT, &abrtAct, &g_old_abrt);
   if (abrtRegistration != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
