@@ -10,8 +10,18 @@
 #define IN_APP_EXPERIMENTS
 
 // #define IN_APP_SPOOF_GETIFADDRS
+
+/**
+ * Logs time taken to get IPC mem lock and for Broker to answer.
+ * This is will log a lot.
+ */
 // #define IN_APP_PERF_ANALYSIS
-#define IN_APP_ADDITIONAL_HANDLERS
+
+/**
+ * For devtime only: install sig handlers for
+ * useful signals in the injected side
+ */
+// #define IN_APP_ADDITIONAL_HANDLERS
 
 /**
  * *For some reason, some crash reporters fail/bail out app execution
@@ -29,8 +39,24 @@
  */
 #define IN_APP_RAW_SIGNAL_REGISTRATION
 
+/**
+ * Logs all stats/accesses/opens Broker-side.
+ * This may log a lot. 
+ */
 // #define BROKER_DEBUG_LOGGING
 
+/**
+ * Logs the stack unwinding iterations and lib search in
+ * /proc/self/maps.
+ * 
+ * This will log a lot.
+ */
+// #define BROKER_UNWINDER_LOGGING
+
+/**
+ * Devtime only: installs BipanBrokerAssitant to handle bad programming
+ * (sorry) I may leave out in the privileged Broker thread.
+ */
 // #define BROKER_DEBUG_BUILD
 
 // Syscalls I am still trying to investigate severity and how "hot" they are
