@@ -608,19 +608,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (sock_payload->sa_family == AF_INET) {
           struct sockaddr_in* sin = (struct sockaddr_in*)sock_payload;
           uint16_t port = ntohs(sin->sin_port);
-          uint32_t ip4 = ntohl(sin->sin_addr.s_addr);
 
-          // Allow 0.0.0.0 and loopback (127.0.0.0/8)
-          if (ip4 != 0x00000000 || ((ip4 & 0xFF000000) != 0x7F000000)) {
-            if (isLanAddress(sock_payload) || port == 5353 || port == 1900) {
+          // Multicast DNS, UPnP/SSDP, Spotify Connect
+          if (isLanAddress(sock_payload) || port == 5353 || port == 1900 || port == 57621) {
               should_block = true;
-            }
           }
         } else if (sock_payload->sa_family == AF_INET6) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
           uint16_t port = ntohs(sin6->sin6_port);
 
-          if (isLanAddress(sock_payload) || port == 5353 || port == 1900) {
+          // Multicast DNS, UPnP/SSDP, Spotify Connect
+          if (isLanAddress(sock_payload) || port == 5353 || port == 1900 || port == 57621) {
             should_block = true;
           }
         }
@@ -629,13 +627,17 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = 0;
           ipc_mem->action = ACTION_USE_RET;
 
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(bind) to LAN blocked");
+          std::string sockInfo = get_sockaddr_info(sock_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(bind) to LAN blocked. Socket info: %s", sockInfo.c_str());
+          patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
         }
         break;
       }
       case __NR_connect: {
         if (isLanAddress(sock_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN blocked");
+          std::string sockInfo = get_sockaddr_info(sock_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN blocked. Socket info: %s", sockInfo.c_str());
+
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
         }
@@ -648,7 +650,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendto) LAN spoofed. Socket info:\n %s", sockInfo.c_str());
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendto) LAN spoofed | Socket info: %s", sockInfo.c_str());
+          // patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
         }
         break;
       }
@@ -659,7 +662,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendmsg) to LAN address blocked. Socket info:\n %s", sockInfo.c_str());
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendmsg) to LAN address blocked. Socket info: %s", sockInfo.c_str());
+          patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
         }
         break;
       }
