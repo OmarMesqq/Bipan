@@ -23,6 +23,7 @@
 #include <syscall.h>
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #ifdef BROKER_DEBUG_BUILD
 #include "broker_assist.hpp"
@@ -45,7 +46,7 @@
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs);
 static std::string get_sockaddr_info(const struct sockaddr* sa);
-static inline bool client_is_dead(int epfd, int pidfd);
+static inline bool client_is_dead(int epfd, int sock, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
@@ -108,33 +109,36 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   }
 #endif
 
-  // Open target's pidfd
-  int pidfd = bipan_pidfd_open(client_pid, 0);
-  if (pidfd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] pidfd_open failed for client PID %d", client_pid);
-  }
-
   // Create epoll watcher
   int epfd = epoll_create1(EPOLL_CLOEXEC);
   if (epfd < 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
-    // without epoll we don't have a watchdog, kill broker
+    // Will cause thread leak if we can't monitor the app, won't proceed
     munmap(ipc_mem, sizeof(SharedIPC));
     return;
   }
-
   struct epoll_event ev{};
   ev.events = EPOLLIN | EPOLLHUP | EPOLLERR;
+
+  // Open target's pidfd
+  int pidfd = -1;
+  pidfd = bipan_pidfd_open(client_pid, 0);
+  if (pidfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] pidfd_open failed for PID %d. errno: %s. Proceeding with just sockfd monitoring.", client_pid, strerror(pidfd));
+
+    // Just monitor the in-app sockfd
   ev.data.fd = sock;
   epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
-  if (pidfd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_ctl for Broker's socket and pidfd failed!");
-    munmap(ipc_mem, sizeof(SharedIPC));
-    return;
-  }
+  } else {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Monitoring target app using sockfd and pidfd");
+
+    // Monitor both in-app sockfd and target's pidfd
+    ev.data.fd = sock;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
 
   ev.data.fd = pidfd;
   epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
+  }
 
   initializeUnwinder(ipc_mem->target_pid);
   bool client_dead = false;
@@ -142,7 +146,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
       int ret = futex_wait_timeout(&ipc_mem->status, ipc_mem->status, BROKER_THREAD_WAKEUP_TIMEOUT);
       if (ret == -ETIMEDOUT) {
-        if (client_is_dead(epfd, pidfd)) {
+        if (client_is_dead(epfd, sock, pidfd)) {
           client_dead = true;
           goto dead_client_exit;
         }
@@ -1165,16 +1169,26 @@ static std::string get_sockaddr_info(const struct sockaddr* sa) {
   }
 }
 
-static inline bool client_is_dead(int epfd, int pidfd) {
+static inline bool client_is_dead(int epfd, int sock, int pidfd) {
   struct epoll_event events[2];
   int n = epoll_wait(epfd, events, 2, 0);
+
   for (int i = 0; i < n; i++) {
-    if (
-        events[i].data.fd == pidfd &&
-        (events[i].events & (EPOLLHUP | EPOLLERR | EPOLLIN))) {
+    int fd = events[i].data.fd;
+    uint32_t ev = events[i].events;
+
+    if (fd == sock && (ev & (EPOLLHUP | EPOLLERR))) {
+      // Peer socket closed/errored -> client side gone
       return true;
     }
+
+    if (pidfd >= 0 && fd == pidfd &&
+        (ev & (EPOLLHUP | EPOLLERR | EPOLLIN))) {
+      // pidfd signals process exit
+      return true;
   }
+  }
+
   return false;
 }
 
