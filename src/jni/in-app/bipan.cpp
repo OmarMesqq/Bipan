@@ -82,8 +82,6 @@ class Bipan : public zygisk::ModuleBase {
 #ifdef IN_APP_EXPERIMENTS
     api->setOption(zygisk::Option::FORCE_DENYLIST_UNMOUNT);
 #endif
-    // Install application-wide SIGSYS handler
-    registerSignalHandler();
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app logcat fd: %d", getLogcatFd());
@@ -174,6 +172,8 @@ class Bipan : public zygisk::ModuleBase {
     // Unseal the VM
     initBipanJava();
 
+    // Install application-wide SIGSYS handler
+    registerSignalHandler();
     // Setup tripwires for seccomp
     hookJniFunctions();
 
