@@ -530,7 +530,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             return emptyParceledListSlice();
           }
           if ("android.intent.action.BADGE_COUNT_UPDATE".equals(action)) {
-            Log.i(TAG, "Blinded: queryIntentReceivers badge count receiver enumeration");
+            Log.i(TAG, "Blinded: queryIntentReceivers BADGE_COUNT_UPDATE");
             return emptyParceledListSlice();
           }
           if ("com.facebook.GET_PHONE_ID".equals(action)) {
@@ -538,7 +538,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             return emptyParceledListSlice();
           }
           if ("android.provider.Telephony.SMS_DELIVER".equals(action)) {
-            Log.i(TAG, "Blinded: queryIntentReceivers ");
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SMS_DELIVER");
             return emptyParceledListSlice();
           }
           if ("android.provider.Telephony.WAP_PUSH_DELIVER".equals(action)) {

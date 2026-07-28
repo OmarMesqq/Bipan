@@ -129,7 +129,6 @@ class Bipan : public zygisk::ModuleBase {
       BIPAN_PANIC();
     }
     ftruncate(memfd, sizeof(SharedIPC));
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app memfd: %d", memfd);
 
     // Map it locally for the Target App
     ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);

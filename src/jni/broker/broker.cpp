@@ -93,7 +93,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::unordered_set<uintptr_t> patched_pcs;
   std::unordered_set<uintptr_t> trusted_pcs;
   std::unordered_set<uintptr_t> malicious_pcs;
+
+#ifdef TRAP_EXPERIMENTAL_SYSCALLS
   std::unordered_set<void*> mincore_targets;
+#endif
 
   pid_t client_pid = ipc_mem->target_pid;
 
@@ -804,7 +807,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         } else if (dirfd == AT_FDCWD) {
           if (!looks_like_proc_fd(path, ipc_mem->target_pid)) {
             ipc_mem->action = ACTION_EXECUTE_NATIVE;
+            if (shouldLog(path)) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) with apparently not fd path(%s). Letting through...", path);
+            }
             break;
           }
 
