@@ -359,6 +359,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = -ENOENT;
             break;
           }
+
           if (is_hosts_file(actualPath)) {
             struct stat* fixedStatBuf = fixHostsFileStat(actualPath, 0);
             if (!fixedStatBuf) {
@@ -376,30 +377,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = 0;
             break;
           }
-          char* fixedSymlink = fixMemfdSymlink(resolved_link_path, ipc_mem->target_pid);
-          if (!fixedSymlink) {
+
             free(actualPath);
-            free(proc_pid_fd_path);
-            ipc_mem->ret = -ENOENT;
-            break;
-          }
-
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstat(%d) fixed: original link: %s | extracted path: %s | fixed link: %s", fd, resolved_link_path, actualPath, fixedSymlink);
-          if (strcmp(fixedSymlink, "ENOENT") == 0) {
-            ipc_mem->ret = -ENOENT;
-            free(actualPath);
-            free(fixedSymlink);
-            free(proc_pid_fd_path);
-            break;
-          }
-
-          memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
-          ipc_mem->ret = 0;
-
-          free(fixedSymlink);
-          free(actualPath);
-          free(proc_pid_fd_path);
-          break;
         }
 #ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(resolved_link_path)) {
@@ -561,19 +540,19 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
           case SIGABRT: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGABRT handler");
-            break;
-          }
-          case SIGQUIT: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGQUIT handler");
-            break;
-          }
-          case SIGTERM: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGTERM handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGABRT handler");
             break;
           }
           case SIGSEGV: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGSEGV handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGSEGV handler");
+            break;
+          }
+          case SIGQUIT: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGQUIT handler");
+            break;
+          }
+          case SIGTERM: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGTERM handler");
             break;
           }
           case SIGILL: {
@@ -581,31 +560,39 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
           case SIGBUS: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGBUS handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGBUS handler");
             break;
           }
           case SIGTRAP: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGTRAP handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGTRAP handler");
             break;
           }
           case SIGCONT: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGCONT handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGCONT handler");
             break;
           }
           case SIGSTOP: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGSTOP handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGSTOP handler");
             break;
           }
           case SIGCHLD: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGCHLD handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGCHLD handler");
             break;
           }
           case SIGPIPE: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGPIPE handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGPIPE handler");
             break;
           }
           case SIGFPE: {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed SIGFPE handler");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGFPE handler");
+            break;
+          }
+          case SIGALRM: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGALRM handler");
+            break;
+          }
+          case SIGINT: {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGINT handler");
             break;
           }
           default: {

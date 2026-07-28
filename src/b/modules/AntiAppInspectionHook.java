@@ -511,6 +511,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Log.i(TAG, "Blinded: queryIntentServices Meta's USDID cross-sign service");
             return emptyParceledListSlice();
           }
+          if ("com.whatsapp.wfl.OPERATION".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices Meta's WhatsApp wfl operation");
+            return emptyParceledListSlice();
+          }
           if ("android.intent.action.RESPOND_VIA_MESSAGE".equals(action)) {
             Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
             return emptyParceledListSlice();
