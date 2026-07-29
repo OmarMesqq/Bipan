@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(GrunfeldProject)
 
-# Define the library
 add_library(grunfeld SHARED main.c socket_helper.c)
 
 target_compile_options(grunfeld PRIVATE
@@ -14,7 +13,6 @@ target_compile_options(grunfeld PRIVATE
         -Wconversion
         -Wsign-conversion
         -Wdouble-promotion
-        -fvisibility=hidden
         -Wno-unused-parameter
         -ffunction-sections
         -fdata-sections
@@ -31,8 +29,12 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(grunfeld PRIVATE
             -O0
             -g
-            -funwind-tables
             -fno-omit-frame-pointer
+            -funwind-tables
+            -fasynchronous-unwind-tables
+            -fstrict-overflow
+            -fsanitize=undefined
+            -fsanitize-trap=undefined
     )
 else()
     target_compile_options(grunfeld PRIVATE
@@ -40,14 +42,18 @@ else()
             -fno-asynchronous-unwind-tables
             -fno-unwind-tables
             -fomit-frame-pointer
+            -fvisibility=hidden
     )
     target_link_options(grunfeld PRIVATE
+            "-Wl,--gc-sections"
             "-Wl,--exclude-libs,ALL"
             "-Wl,--icf=all"
             "-Wl,--build-id=none"
             "-Wl,--no-eh-frame-hdr"
             "-Wl,--no-dynamic-linker"
             "-Wl,-z,nognustack"
+            "-Wl,-z,relro"
+            "-Wl,-z,now"
     )
 endif()
 

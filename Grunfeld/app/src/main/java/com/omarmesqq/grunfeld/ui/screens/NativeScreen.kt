@@ -64,14 +64,11 @@ fun NativeScreen() {
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
+    var procSelfSmapsInfo by remember { mutableStateOf("/proc/self/smaps not studied yet") }
     var procMountPoints by remember { mutableStateOf("mounts not studied yet") }
 
     val pid = Process.myPid()
 
-    /**
-     * /data/misc/user/0/cacerts-added
-     * /data/anr
-     */
     val statAndAccessNodes = arrayOf(
         "/etc",
         "/etc/hosts",
@@ -79,24 +76,19 @@ fun NativeScreen() {
         "/system/etc",
         "/system/etc/hosts",
 
-        "/proc/self/maps",
-        "/proc/$pid/maps",
+        "/data/anr",
+        "/data/misc/user/0/cacerts-added",
 
+        "/system/etc/security",
+        "/system/etc/security/cacerts",
 
-//        "/system/bin",
-//        "/system/bin/mdnsd",
-//
-//        "/system/etc/security",
-//        "/system/etc/security/cacerts",
-//
-//        "/system/lib",
-//        "/system/lib/libzygisk.so",
-//
-//        "/system/lib64",
-//        "/system/lib64/libzygisk.so",
+        "/system/lib",
+        "/system/lib/libzygisk.so",
 
-//        "/product/bin",
-//        "/system/bin/app_process64"
+        "/system/lib64",
+        "/system/lib64/libzygisk.so",
+
+        "/product/bin",
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -238,6 +230,20 @@ fun NativeScreen() {
 
                     ) {
                         Text("open(/proc/self/maps)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study /proc/self/smaps", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfSmapsInfo, "/proc/self/smaps not studied yet")
+                    Button(
+                        onClick = {
+                            procSelfSmapsInfo = NativeLibWrapper.scanProcSelfSmaps()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open(/proc/self/smaps)")
                     }
                 }
 

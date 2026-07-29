@@ -58,6 +58,9 @@ typedef Elf64_Ehdr ElfHeader;
 typedef Elf64_Shdr ElfSection;
 typedef Elf64_Sym ElfSymbol;
 
+static struct sigaction old_segv = {};
+static struct sigaction old_abrt = {};
+
 /**
  * func-like macro to convert negative error values provided by the kernel to raw syscalls
  * back to nice libc/bionic errnos
@@ -95,7 +98,7 @@ int capture_backtrace(void** out_frames, int max_frames) {
 }
 
 
-void print_backtrace() {
+void print_native_backtrace(void) {
     void* frames[MAX_FRAMES];
     int count = capture_backtrace(frames, MAX_FRAMES);
 
@@ -117,33 +120,61 @@ void print_backtrace() {
     }
 }
 
+void print_java_backtrace(JNIEnv *env) {
+    jclass throwableClass = (*env)->FindClass(env, "java/lang/Throwable");
+    jmethodID ctor = (*env)->GetMethodID(env, throwableClass, "<init>", "()V");
+    jobject throwable = (*env)->NewObject(env, throwableClass, ctor);
+
+    jmethodID getStackTrace = (*env)->GetMethodID(env, throwableClass,
+                                                  "getStackTrace", "()[Ljava/lang/StackTraceElement;");
+    jobjectArray stackTrace = (jobjectArray)(*env)->CallObjectMethod(env, throwable, getStackTrace);
+
+    jsize len = (*env)->GetArrayLength(env, stackTrace);
+    jclass steClass = (*env)->FindClass(env, "java/lang/StackTraceElement");
+    jmethodID toString = (*env)->GetMethodID(env, steClass, "toString", "()Ljava/lang/String;");
+
+    for (jsize i = 0; i < len; i++) {
+        jobject frame = (*env)->GetObjectArrayElement(env, stackTrace, i);
+        jstring str = (jstring)(*env)->CallObjectMethod(env, frame, toString);
+        const char* cstr = (*env)->GetStringUTFChars(env, str, NULL);
+        LOGI("Java frame #%d: %s", i, cstr);
+        (*env)->ReleaseStringUTFChars(env, str, cstr);
+        (*env)->DeleteLocalRef(env, str);
+        (*env)->DeleteLocalRef(env, frame);
+    }
+}
+
 static void signal_handler(int sig, siginfo_t* info, void* void_context) {
     if (sig == SIGABRT) {
         LOGE("Grunfeld got SIGABRT!");
     }
     else if (sig == SIGSEGV) {
-        LOGE("Grunfeld got SIGSEGV!");
+        if (info->si_code == SEGV_MAPERR) {
+            LOGE("Grunfeld got SIGSEGV SEGV_MAPERR");
+        } else if (info->si_code == SEGV_ACCERR) {
+            LOGE("Grunfeld got SIGSEGV SEGV_ACCERR");
+        } else {
+            LOGE("Grunfeld got unknown SIGSEGV(%d)", info->si_code);
+        }
     }
-    print_backtrace();
-    _exit(1);
+    print_native_backtrace();
+    _exit(-1);
 }
 
-void registerSignalHandler() {
+void registerSignalHandler(void) {
     struct sigaction act = {
             .sa_flags = SA_SIGINFO | SA_NODEFER,
             .sa_sigaction = &signal_handler};
 
-    int ret = sigaction(SIGABRT, &act, NULL);
+    int ret = sigaction(SIGABRT, &act, &old_abrt);
     if (ret != 0) {
         LOGE("[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
     }
-    ret = sigaction(SIGSEGV, &act, NULL);
+    ret = sigaction(SIGSEGV, &act, &old_segv);
     if (ret != 0) {
         LOGE("[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
     }
 }
-
-
 
 
 static inline void early_init_sysprop_tests(void);
@@ -163,13 +194,12 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
 static char* getSuspiciousMapsInfo(void);
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
 
-#define NATIVE_BRIDGE_AVAIL_SYM "NativeBridgeAvailable"
-
 __attribute__((constructor)) void grunfeld_early_init(void) {
-    LOGI("Early init: __attribute__((constructor))");
+    LOGI("__attribute__((constructor))");
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    LOGI("JNI_OnLoad");
     registerSignalHandler();
     return JNI_VERSION_1_6;
 }
@@ -181,10 +211,11 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountNodes(JNIEnv *env, j
     char entry[PATH_MAX] = {0};
     char errorBuffer[128] = {0};
 
-#define PATHS 2
+    #define PATHS 3
     const char* paths[PATHS] = {
             "/proc/self/mountinfo",
-            "/proc/mounts"
+            "/proc/mounts",
+            "/proc/self/mountstats"
     };
 
     size_t reportLen = 0;
@@ -209,6 +240,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountNodes(JNIEnv *env, j
         }
 
         while (fgets(entry, sizeof(entry), fp) != NULL) {
+            if (
+                    !strstr(entry, "magisk") &&
+                    !strstr(entry, "hosts") &&
+                    !strstr(entry, "mdns") &&
+                    !strstr(entry, "cacerts") &&
+                    !strstr(entry, "zygisk") &&
+                    !strstr(entry, "/adb") &&
+                    !strstr(entry, "debug_ramdisk") &&
+                    !strstr(entry, "/cache/") &&
+                    !strstr(entry, "/product/bin") &&
+                    !strstr(entry, "modules")
+                    ) {
+                continue;
+            }
+
             size_t lineLen = strlen(entry);
             if (reportLen + lineLen >= sizeof(report) - 1) {
                 // Not enough room left in report; stop reading this file
@@ -340,6 +386,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
         }
         snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
+        close(fd);
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -549,28 +596,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
         return (*env)->NewStringUTF(env, report);
     }
 
-    print_backtrace();
-    jclass throwableClass = (*env)->FindClass(env, "java/lang/Throwable");
-    jmethodID ctor = (*env)->GetMethodID(env, throwableClass, "<init>", "()V");
-    jobject throwable = (*env)->NewObject(env, throwableClass, ctor);
-
-    jmethodID getStackTrace = (*env)->GetMethodID(env, throwableClass,
-                                                  "getStackTrace", "()[Ljava/lang/StackTraceElement;");
-    jobjectArray stackTrace = (jobjectArray)(*env)->CallObjectMethod(env, throwable, getStackTrace);
-
-    jsize len = (*env)->GetArrayLength(env, stackTrace);
-    jclass steClass = (*env)->FindClass(env, "java/lang/StackTraceElement");
-    jmethodID toString = (*env)->GetMethodID(env, steClass, "toString", "()Ljava/lang/String;");
-
-    for (jsize i = 0; i < len; i++) {
-        jobject frame = (*env)->GetObjectArrayElement(env, stackTrace, i);
-        jstring str = (jstring)(*env)->CallObjectMethod(env, frame, toString);
-        const char* cstr = (*env)->GetStringUTFChars(env, str, NULL);
-        LOGI("Java frame #%d: %s", i, cstr);
-        (*env)->ReleaseStringUTFChars(env, str, cstr);
-        (*env)->DeleteLocalRef(env, str);
-        (*env)->DeleteLocalRef(env, frame);
-    }
     char buf[PATH_MAX];
     while (fgets(buf, sizeof(buf), fp) != NULL) {
         char start[11] = {0};
@@ -588,10 +613,8 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
         if (ret != 8) {
             if (
                     strstr(libName, "memfd") ||
-                    strstr(libName, "libnativebridge") ||
-                    strstr(libName, "libandroid_runtime") ||
-                    strstr(libName, "libart.so") ||
-                    strstr(libName, "libartbase.so") ||
+                    strstr(libName, "Bipan") ||
+                    strstr(libName, "bipan") ||
                     strstr(libName, "zygisk")
                     ) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
@@ -602,53 +625,98 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
         }
         if (
                 strstr(libName, "memfd") ||
-                strstr(libName, "libnativebridge") ||
-                strstr(libName, "libandroid_runtime") ||
-                strstr(libName, "libart.so") ||
-                strstr(libName, "libartbase.so") ||
+                strstr(libName, "Bipan") ||
+                strstr(libName, "bipan") ||
                 strstr(libName, "zygisk")
                 ) {
-            void* addr = (void*)strtoull(start, NULL, 16);
-            Dl_info info;
-            int dladdr_res = dladdr(addr, &info);
-
-            if (dladdr_res != 0) {
-                snprintf(entry, sizeof(entry),
-                         "MAP: %s"
-                         "  -> dladdr: file = %s, fbase = %p, sname = %s, saddr = %p\n",
-                         buf,
-                         info.dli_fname ? info.dli_fname : "NULL",
-                         info.dli_fbase,
-                         info.dli_sname ? info.dli_sname : "NONE",
-                         info.dli_saddr);
-                LOGI(entry, sizeof(entry),
-                         "MAP: %s"
-                         "  -> dladdr: file = %s, fbase = %p, sname = %s, saddr = %p\n",
-                         buf,
-                         info.dli_fname ? info.dli_fname : "NULL",
-                         info.dli_fbase,
-                         info.dli_sname ? info.dli_sname : "NONE",
-                         info.dli_saddr);
-            } else {
-                snprintf(entry, sizeof(entry),
-                         "MAP: %s"
-                         "  -> dladdr failed to resolve address %p\n",
-                         buf, addr);
-                LOGI(entry, sizeof(entry),
-                         "MAP: %s"
-                         "  -> dladdr failed to resolve address %p\n",
-                         buf, addr);
-            }
-            if (strlen(report) + strlen(entry) < 19999) {
-                strcat(report, entry);
-            } else {
-                break; // Buffer full
-            }
+            snprintf(entry, sizeof(entry), "%s", buf);
+            strcat(report, entry);
         }
     }
 
     fclose(fp);
     return (*env)->NewStringUTF(env, report);
+}
+
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz) {
+    size_t reportCap = 65536;
+    size_t reportLen = 0;
+    char* report = malloc(reportCap);
+    if (!report) {
+        return (*env)->NewStringUTF(env, "Allocation failed");
+    }
+    report[0] = '\0';
+
+    char entry[PATH_MAX + 100] = {0};
+
+    FILE* fp = fopen("/proc/self/smaps", "r");
+    if (!fp) {
+        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/smaps (errno: %s)\n", strerror(errno));
+        size_t entryLen = strlen(entry);
+        if (reportLen + entryLen + 1 > reportCap) {
+            reportCap = reportLen + entryLen + 1;
+            report = realloc(report, reportCap);
+        }
+        memcpy(report + reportLen, entry, entryLen + 1);
+        jstring result = (*env)->NewStringUTF(env, report);
+        free(report);
+        return result;
+    }
+
+    char buf[PATH_MAX] = {0};
+    int matchedCurrentRegion = 0;
+
+#define APPEND(str) do { \
+        size_t _len = strlen(str); \
+        if (reportLen + _len + 1 > reportCap) { \
+            while (reportLen + _len + 1 > reportCap) reportCap *= 2; \
+            char* _tmp = realloc(report, reportCap); \
+            if (!_tmp) { free(report); fclose(fp); return (*env)->NewStringUTF(env, "OOM"); } \
+            report = _tmp; \
+        } \
+        memcpy(report + reportLen, (str), _len + 1); \
+        reportLen += _len; \
+    } while (0)
+
+    while (fgets(buf, sizeof(buf), fp) != NULL) {
+        char start[11] = {0};
+        char end[11] = {0};
+        char perms[5] = {0};
+        char offset[9] = {0};
+        char devMajor[3] = {0};
+        char devMinor[3] = {0};
+        size_t libInode = 0;
+        char libName[PATH_MAX] = {0};
+
+        int ret = sscanf(buf,
+                         "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
+                         start, end, perms, offset, devMajor, devMinor, &libInode, libName);
+
+        if (ret == 8) {
+            matchedCurrentRegion = (
+                                           strstr(libName, "memfd") ||
+                                           strstr(libName, "Bipan") ||
+                                           strstr(libName, "bipan") ||
+                                           strstr(libName, "zygisk")
+                                   ) != 0;
+
+            if (matchedCurrentRegion) {
+                APPEND(buf);
+            }
+        } else {
+            if (matchedCurrentRegion) {
+                APPEND(buf);
+            }
+        }
+    }
+
+#undef APPEND
+    fclose(fp);
+    jstring result = (*env)->NewStringUTF(env, report);
+    free(report);
+    return result;
 }
 
 JNIEXPORT jstring JNICALL
@@ -2137,7 +2205,7 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     char *type;
     int p_type;
 
-    char entry[512];
+    char entry[PATH_MAX] = {0};
     if (
             strstr(info->dlpi_name, "memfd") ||
             strstr(info->dlpi_name, "libnativebridge") ||
@@ -2161,6 +2229,7 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
                 strstr(info->dlpi_name, "zygisk")
                 ) {
         p_type = info->dlpi_phdr[j].p_type;
+
         type = (p_type == PT_LOAD) ? "PT_LOAD" :
                (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
                (p_type == PT_INTERP) ? "PT_INTERP" :
@@ -2172,19 +2241,19 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
                (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
                (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
 
-            snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
-                     (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
-                     (uintmax_t) info->dlpi_phdr[j].p_memsz,
-                     (uintmax_t) info->dlpi_phdr[j].p_flags);
-            strcat((char*)data, entry);
+//            snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
+//                     (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
+//                     (uintmax_t) info->dlpi_phdr[j].p_memsz,
+//                     (uintmax_t) info->dlpi_phdr[j].p_flags);
+//            strcat((char*)data, entry);
 
         if (type != NULL) {
             snprintf(entry, sizeof(entry), "%s\n", type);
-            }
-            else {
+        }
+        else {
             snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
-            }
-            strcat((char*)data, entry);
+        }
+        strcat((char*)data, entry);
         }
     }
     return 0;
