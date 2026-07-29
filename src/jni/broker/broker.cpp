@@ -121,6 +121,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
     // Will cause thread leak if we can't monitor the app, won't proceed
     munmap(ipc_mem, sizeof(SharedIPC));
+    close(sock);
+    destroyLogger();
     return;
   }
   struct epoll_event ev{};

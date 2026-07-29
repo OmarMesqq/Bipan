@@ -81,7 +81,7 @@ bool registerDebugSigHandlers() {
     return false;
   }
 
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[!] Debug handlers registered on altstack, size=%zu", sizeof(g_altstack));
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Debug handlers registered on altstack, size=%zu", sizeof(g_altstack));
   return true;
 }
 

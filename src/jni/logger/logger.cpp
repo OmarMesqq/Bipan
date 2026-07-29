@@ -28,7 +28,7 @@ struct __attribute__((packed)) log_header {
   uint32_t tv_nsec;  // Offset 7
 };  // Total size: 11 bytes
 
-static int g_log_fd = -1;
+static thread_local int g_log_fd = -1;
 
 static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag, const char* msg);
 
@@ -57,7 +57,14 @@ bool initializeLogger() {
 }
 
 bool destroyLogger() {
-  int ret = (int)arm64_raw_syscall(__NR_close, g_log_fd, 0, 0, 0, 0, 0);
+  int fd = g_log_fd;
+  g_log_fd = -1;
+
+  if (fd == -1) {
+    return true;
+  }
+
+  int ret = (int)arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
   if (ret != 0) {
     return false;
   }
