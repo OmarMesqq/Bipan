@@ -91,6 +91,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   prctl(PR_SET_NAME, thName);
 
   if (!initializeLogger()) {
+    close(sock);
     return;
   }
 
@@ -134,8 +135,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] pidfd_open failed for PID %d. errno: %s. Proceeding with just sockfd monitoring.", client_pid, strerror(pidfd));
 
     // Just monitor the in-app sockfd
-  ev.data.fd = sock;
-  epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
+    ev.data.fd = sock;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
   } else {
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Monitoring target app using sockfd and pidfd");
 
@@ -143,8 +144,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ev.data.fd = sock;
     epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
 
-  ev.data.fd = pidfd;
-  epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
+    ev.data.fd = pidfd;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
   }
 
   initializeUnwinder(ipc_mem->target_pid);
@@ -389,7 +390,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
 
-            free(actualPath);
+          free(actualPath);
         }
 #ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(resolved_link_path)) {
@@ -622,7 +623,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           // Multicast DNS, UPnP/SSDP, Spotify Connect
           if (isLanAddress(sock_payload) || port == 5353 || port == 1900 || port == 57621) {
-              should_block = true;
+            should_block = true;
           }
         } else if (sock_payload->sa_family == AF_INET6) {
           struct sockaddr_in6* sin6 = (struct sockaddr_in6*)sock_payload;
@@ -810,7 +811,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (!looks_like_proc_fd(path, ipc_mem->target_pid)) {
             ipc_mem->action = ACTION_EXECUTE_NATIVE;
             if (shouldLog(path)) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) with apparently not fd path(%s). Letting through...", path);
+              write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) with apparently not fd path(%s). Letting through...", path);
             }
             break;
           }
@@ -1088,6 +1089,8 @@ dead_client_exit:
   close(epfd);
 
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d | TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
+  close(sock);
+  destroyLogger();
 }
 
 static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
@@ -1285,7 +1288,7 @@ static inline bool client_is_dead(int epfd, int sock, int pidfd) {
         (ev & (EPOLLHUP | EPOLLERR | EPOLLIN))) {
       // pidfd signals process exit
       return true;
-  }
+    }
   }
 
   return false;
