@@ -165,9 +165,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
       case "getServiceState":
       case "getServiceStateForSlot": {
         Log.i(TAG, "Neutered " + method.getName());
-        return new ServiceState(); 
+        return new ServiceState();
       }
-      
+
       case "getVisualVoicemailPackageName":
         Log.i(TAG, "Neutered " + method.getName());
         return "com.google.android.dialer";
