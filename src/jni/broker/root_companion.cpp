@@ -1,10 +1,13 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <string>
+#include <unordered_set>
 
 #include "broker.hpp"
 #include "deps/zygisk.hpp"
@@ -16,6 +19,7 @@
 
 static void handle_fetch_targets(int sockfd);
 static inline int recv_fd(int socket);
+static void close_unrelated_fds(const std::unordered_set<int>& keep);
 
 /**
  * Our root companion's request handler function. This function runs in
@@ -42,35 +46,91 @@ static void companion_handler(int sock) {
 
   // Get the command ID from the client
   if (read(sock, &cmd, sizeof(cmd)) <= 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler failed to read CMD from target!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to read CMD from target!");
     return;
   }
 
-  // Multiplexing: route the request
   if (cmd == CMD_FETCH_TARGETS) {
     handle_fetch_targets(sock);
-  } else if (cmd == CMD_START_BROKER) {
-    // Receive the Memory FD from the Target App
-    int memfd = recv_fd(sock);
-    if (memfd < 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler failed to receive memfd from target!");
-      return;
+    return;
+  }
+
+  if (cmd != CMD_START_BROKER) {
+    return;
+  }
+
+  int memfd = recv_fd(sock);
+  if (memfd < 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to receive memfd from target!");
+    return;
+  }
+
+  /**
+   * If we are asked to start a Broker, spin up a new process
+   * so we don't block Zygisk's threads on the potentially long-lived Broker
+   */
+  pid_t mid_pid = fork();
+  if (mid_pid < 0) {
+    initializeLogger();
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 1st fork() (intermediate/zygiskd's child) failed: %s", strerror(errno));
+    close(memfd);
+    close(sock);
+    return;
+  }
+
+  if (mid_pid == 0) {
+    // Intermediate child (`zygiskd`'s child)
+
+    // Double-fork idiom: fork again, then exit immediately so the
+    // grandchild gets reparented to init(1), which auto-reaps it on exit.
+    pid_t grandchild_pid = fork();
+    if (grandchild_pid < 0) {
+      initializeLogger();
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 2nd fork() (reparented grandchild) failed: %s", strerror(errno));
+      _exit(1);
     }
 
-    // Map the memory for THIS specific app's thread
+    if (grandchild_pid > 0) {
+      // exit cleanly so actual `zygiskd` unblocks the `waitpid` outside this scope; below
+      _exit(0);
+    }
+
+    // Grandchild: the actual Broker process
+    initializeLogger();
+
+    pid_t sessionId = setsid();
+    if (sessionId == -1) {
+      initializeLogger();
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: setsid failed %s", strerror(errno));
+      _exit(1);
+    }
+    initializeLogger();
+
+
+    close_unrelated_fds({sock, memfd, getLogcatFd(), STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO});
+    initializeLogger();
+
     SharedIPC* local_ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
     close(memfd);
     if (local_ipc_mem == MAP_FAILED) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler mmap failed!");
-      return;
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: grandchild mmap failed!");
+      _exit(1);
     }
 
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
-    pid_t pid = getpid();
-    pid_t tid = gettid();
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker exited. Companion's PID: %d | TID: %d", pid, tid);
+
+    _exit(0); // prevent fallthrough
   }
+
+  // `zygiskd` resumes here
+  int status;
+  // Block Zygisk's thread for a while till first child exits after 2nd fork
+  waitpid(mid_pid, &status, 0);
+
+  // Session now belongs entirely to the grandchild; this thread is done with it.
+  close(sock);
+  close(memfd);
 }
 
 // Register the root companion function
@@ -132,4 +192,21 @@ static inline int recv_fd(int socket) {
 
   // The kernel has now placed a new fd into our table: extract it
   return *((int*)CMSG_DATA(cmsg));
+}
+
+static void close_unrelated_fds(const std::unordered_set<int>& keep) {
+  DIR* d = opendir("/proc/self/fd");
+  if (!d) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "close_unrelated_fds: failed to open /proc/self/fd!");
+    return;
+  }
+  struct dirent* entry;
+  while ((entry = readdir(d)) != nullptr) {
+    if (entry->d_name[0] == '.') continue;
+    int fd = atoi(entry->d_name);
+    if (fd >= 0 && !keep.count(fd) && fd != dirfd(d)) {
+      close(fd);
+    }
+  }
+  closedir(d);
 }
