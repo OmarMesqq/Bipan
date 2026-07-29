@@ -86,14 +86,22 @@ static thread_local bool inside_remote_patcher = false;
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
-  set_broker_proctitle(ipc_mem->package_name);
-  char thName[16] = "BrokerMain";
-  prctl(PR_SET_NAME, thName);
-
   if (!initializeLogger()) {
     close(sock);
     return;
   }
+
+  pid_t client_pid = ipc_mem->target_pid;
+#ifdef BROKER_DEBUG_BUILD
+  g_current_client_pid = client_pid;
+  bool registrationRet = registerDebugSigHandlers();
+  if (!registrationRet) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't setup debug signal handlers for Broker. Proceeding anyway...");
+  }
+#endif
+
+  set_broker_proctitle(ipc_mem->package_name);
+  prctl(PR_SET_NAME, "BrokerMain");
 
   pid_t pid = getpid();
   pid_t tid = gettid();
@@ -105,16 +113,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   std::unordered_set<void*> mincore_targets;
-#endif
-
-  pid_t client_pid = ipc_mem->target_pid;
-
-#ifdef BROKER_DEBUG_BUILD
-  g_current_client_pid = client_pid;
-  bool registrationRet = registerDebugSigHandlers();
-  if (!registrationRet) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't setup debug signal handlers for Broker. Proceeding anyway...");
-  }
 #endif
 
   // Create epoll watcher

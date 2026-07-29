@@ -39,29 +39,30 @@ static void close_unrelated_fds(const std::unordered_set<int>& keep);
  * 2. Asking the companion to start our trusted `Broker` process and registering the `sockfd` for "later talk"
  */
 static void companion_handler(int sock) {
-  CompanionCommand cmd;
   if (!initializeLogger()) {
+    close(sock);
     return;
   }
+  CompanionCommand cmd;
 
   // Get the command ID from the client
   if (read(sock, &cmd, sizeof(cmd)) <= 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to read CMD from target!");
+    destroyLogger();
+    close(sock);
     return;
   }
 
   if (cmd == CMD_FETCH_TARGETS) {
     handle_fetch_targets(sock);
+    destroyLogger();
+    close(sock);
     return;
   }
 
   if (cmd != CMD_START_BROKER) {
-    return;
-  }
-
-  int memfd = recv_fd(sock);
-  if (memfd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to receive memfd from target!");
+    destroyLogger();
+    close(sock);
     return;
   }
 
@@ -73,7 +74,7 @@ static void companion_handler(int sock) {
   if (mid_pid < 0) {
     initializeLogger();
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 1st fork() (intermediate/zygiskd's child) failed: %s", strerror(errno));
-    close(memfd);
+    destroyLogger();
     close(sock);
     return;
   }
@@ -87,11 +88,15 @@ static void companion_handler(int sock) {
     if (grandchild_pid < 0) {
       initializeLogger();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 2nd fork() (reparented grandchild) failed: %s", strerror(errno));
+      destroyLogger();
+      close(sock);
       _exit(1);
     }
 
     if (grandchild_pid > 0) {
       // exit cleanly so actual `zygiskd` unblocks the `waitpid` outside this scope; below
+      destroyLogger();
+      close(sock);
       _exit(0);
     }
 
@@ -102,10 +107,19 @@ static void companion_handler(int sock) {
     if (sessionId == -1) {
       initializeLogger();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: setsid failed %s", strerror(errno));
+      destroyLogger();
+      close(sock);
       _exit(1);
     }
     initializeLogger();
 
+    int memfd = recv_fd(sock);
+    if (memfd < 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to receive memfd from target!");
+      destroyLogger();
+      close(sock);
+      return;
+    }
 
     close_unrelated_fds({sock, memfd, getLogcatFd(), STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO});
     initializeLogger();
@@ -114,23 +128,28 @@ static void companion_handler(int sock) {
     close(memfd);
     if (local_ipc_mem == MAP_FAILED) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: grandchild mmap failed!");
+      destroyLogger();
+      close(sock);
       _exit(1);
     }
 
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
 
-    _exit(0); // prevent fallthrough
+    destroyLogger();
+    close(sock);
+    _exit(0);  // prevent fallthrough
   }
 
   // `zygiskd` resumes here
+  initializeLogger();
   int status;
   // Block Zygisk's thread for a while till first child exits after 2nd fork
   waitpid(mid_pid, &status, 0);
 
   // Session now belongs entirely to the grandchild; this thread is done with it.
+  destroyLogger();
   close(sock);
-  close(memfd);
 }
 
 // Register the root companion function
