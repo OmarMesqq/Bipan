@@ -249,6 +249,7 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   }
 
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Got unexpected path when correcting symlink: %s", resolvedPath);
+  free(fixed);
   return nullptr;
 }
 
