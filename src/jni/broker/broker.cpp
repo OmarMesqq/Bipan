@@ -802,8 +802,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             free(proc_pid_fd_path);
             break;
           }
-          free(proc_pid_fd_path);
+
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat with dirfd): %s -> %s", proc_pid_fd_path, resolved_link_path);
+          free(proc_pid_fd_path);
 
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);
@@ -1097,7 +1098,7 @@ static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
   FILE* f = fopen("/proc/self/stat", "r");
   if (!f) return false;
 
-  char buf[4096];
+  char buf[4096] = {0};
   if (!fgets(buf, sizeof(buf), f)) {
     fclose(f);
     return false;
@@ -1249,7 +1250,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 static std::string get_sockaddr_info(const struct sockaddr* sa) {
   if (sa == nullptr) return "NULL Address";
 
-  char addr_str[INET6_ADDRSTRLEN];
+  char addr_str[INET6_ADDRSTRLEN] = {0};
   uint16_t port = 0;
 
   switch (sa->sa_family) {
@@ -1317,13 +1318,14 @@ static char* get_thread_name(pid_t parentPid, __aligned_u64 tid) {
     return nullptr;
   }
 
-  char* name = (char*)calloc(16, sizeof(char));
+  constexpr const int TASK_MAX_COMM = 16;
+  char* name = (char*)calloc(TASK_MAX_COMM, sizeof(char));
   if (!name) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "get_thread_name: Failed to allocate memory!");
     return nullptr;
   }
 
-  fgets(name, sizeof(name), f);
+  fgets(name, TASK_MAX_COMM, f);
   fclose(f);
   return name;
 }
