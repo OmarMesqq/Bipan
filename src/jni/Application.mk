@@ -2,7 +2,6 @@ APP_ABI      := arm64-v8a
 APP_PLATFORM := android-28
 
 # TODO: add the following to ease debugging (requires battling with APP_STL)
-# -fsanitize=undefined,address or
 # APP_CFLAGS 	 := -fsanitize=hwaddress
 # APP_LDFLAGS  := -fsanitize=hwaddress
 APP_STL      := c++_static
