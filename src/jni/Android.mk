@@ -12,10 +12,11 @@ ifeq ($(BIPAN_DEBUG), 1)
 		-Wconversion -Wsign-conversion \
 		-Wdouble-promotion -Winline -Wshadow \
 		-fno-exceptions -fno-rtti \
-		-fno-omit-frame-pointer -fstrict-overflow
+		-funwind-tables -fasynchronous-unwind-tables \
+		-fno-omit-frame-pointer -fstrict-overflow \
+		-fsanitize=undefined -fsanitize-trap=undefined
 	
-	BIPAN_LDFLAGS := -fno-exceptions -fno-rtti \
-									 -fstrict-overflow
+	BIPAN_LDFLAGS := 
 	BIPAN_LDLIBS  := -lstdc++
 $(info Building DEBUG variant...)
 else
@@ -39,7 +40,8 @@ else
 									 -Wl,--no-eh-frame-hdr \
 									 -Wl,--no-dynamic-linker \
 									 -Wl,-z,nognustack \
-									 -Wl,-z,relro -Wl,-z,now \
+									 -Wl,-z,relro \
+									 -Wl,-z,now \
 								 	 -flto
 $(info Building RELEASE variant...)
 endif
