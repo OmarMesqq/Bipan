@@ -101,7 +101,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
 
   set_broker_proctitle(ipc_mem->package_name);
-  prctl(PR_SET_NAME, "BrokerMain");
+  prctl(PR_SET_NAME, "BrokerMainTh");
 
   pid_t pid = getpid();
   pid_t tid = gettid();
@@ -1174,6 +1174,9 @@ static void set_broker_proctitle(const char* package_name) {
       break;
     case 3:
       procTitle = segments[1];
+      if (procTitle == "android") {
+        procTitle = segments.back();
+      }
       break;
     default:
       procTitle = segments.empty() ? "" : segments.back();

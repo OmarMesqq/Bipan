@@ -12,7 +12,7 @@
 
 #define TAG "BipanBrokerAssistant"
 
-static constexpr int MAX_FRAMES_BROKER_ASSIST = 120;
+static constexpr int MAX_FRAMES_BROKER_ASSIST = 50;
 
 typedef struct {
   void** frames;
@@ -26,11 +26,14 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
 static int capture_backtrace(void** out_frames, int max_frames);
 static void print_backtrace();
 
-// Set at the top of each Broker thread's loop iteration, so the handler
-// knows which client this specific thread was servicing when it died.
+/**
+ * Broker's responsibility to set this at the top of `startBroker`
+ * Informs the daemon-side which client was being served when it crashed.
+ * Also used for killing the app since without Broker we deadlock on the IPC
+ */
 thread_local pid_t g_current_client_pid = -1;
 
-// Saved original dispositions, so we can chain to them for a real tombstone
+// Original dispositions, so they can be chained to create a tombstone
 static struct sigaction g_old_segv = {};
 static struct sigaction g_old_abrt = {};
 
@@ -44,7 +47,7 @@ bool registerDebugSigHandlers() {
   ss.ss_size = sizeof(g_altstack);
   ss.ss_flags = 0;
   if (sigaltstack(&ss, nullptr) != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] sigaltstack failed (errno: %s)", strerror(errno));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaltstack failed (errno: %s)", strerror(errno));
     // force use of altstack in case original stack is corrupted
     return false;
   }
