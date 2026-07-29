@@ -21,10 +21,16 @@
 #include <sys/sysmacros.h>
 #include <sys/utsname.h>
 #include <syscall.h>
+#include <unistd.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #ifdef BROKER_DEBUG_BUILD
 #include "broker_assist.hpp"
 #endif
@@ -52,6 +58,7 @@ static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
 static inline bool is_hosts_file(const char* pathname);
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
+static void set_broker_proctitle(const char* package_name);
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
 static char* get_ptrace_op_name(int op);
@@ -79,8 +86,8 @@ static thread_local bool inside_remote_patcher = false;
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
-  char thName[16] = {0};
-  snprintf(thName, sizeof(thName), "bb-%d", ipc_mem->target_pid);
+  set_broker_proctitle(ipc_mem->package_name);
+  char thName[16] = "BrokerMain";
   prctl(PR_SET_NAME, thName);
 
   if (!initializeLogger()) {
@@ -1079,7 +1086,99 @@ dead_client_exit:
     close(pidfd);
   }
   close(epfd);
+
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d | TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
+}
+
+static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
+  FILE* f = fopen("/proc/self/stat", "r");
+  if (!f) return false;
+
+  char buf[4096];
+  if (!fgets(buf, sizeof(buf), f)) {
+    fclose(f);
+    return false;
+  }
+  fclose(f);
+
+  char* p = strrchr(buf, ')');
+  if (!p) return false;
+  p += 2;  // skip ") "
+
+  int field = 3;
+  char* tok = strtok(p, " ");
+  unsigned long as = 0, ae = 0;
+  while (tok) {
+    if (field == 48) as = strtoul(tok, nullptr, 10);  // arg_start
+    if (field == 49) {                                // arg_end
+      ae = strtoul(tok, nullptr, 10);
+      break;
+    }
+    tok = strtok(nullptr, " ");
+    field++;
+  }
+  if (as == 0 || ae == 0) return false;
+  *arg_start = as;
+  *arg_end = ae;
+  return true;
+}
+
+static bool set_linux_proctitle(const char* new_title) {
+  unsigned long arg_start = 0, arg_end = 0;
+  if (!get_arg_bounds(&arg_start, &arg_end)) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] set_linux_proctitle: get_arg_bounds failed");
+    return false;
+  }
+
+  char* argv0 = reinterpret_cast<char*>(arg_start);
+  size_t avail = arg_end - arg_start;
+
+  size_t title_len = strlen(new_title);
+  size_t to_write = title_len < avail ? title_len : avail - 1;
+
+  memset(argv0, 0, avail);
+  memcpy(argv0, new_title, to_write);
+
+  unsigned long new_end = arg_start + to_write + 1;
+  if (prctl(PR_SET_MM, PR_SET_MM_ARG_END, new_end, 0, 0) != 0) {
+    write_to_logcat_async(ANDROID_LOG_WARN, TAG,
+                          "[!] set_linux_proctitle: PR_SET_MM_ARG_END failed: %s (avail=%zu, wanted=%zu)",
+                          strerror(errno), avail, title_len);
+    return false;
+  }
+
+  return true;
+}
+
+static void set_broker_proctitle(const char* package_name) {
+  if (!package_name) {
+    set_linux_proctitle("BBroker-empty");
+    return;
+  }
+
+  std::vector<std::string> segments;
+  std::stringstream ss(package_name);
+  std::string segment;
+  while (std::getline(ss, segment, '.')) {
+    segments.push_back(segment);
+  }
+
+  std::string procTitle;
+  switch (segments.size()) {
+    case 2:
+    case 4:
+      procTitle = segments.back();
+      break;
+    case 3:
+      procTitle = segments[1];
+      break;
+    default:
+      procTitle = segments.empty() ? "" : segments.back();
+      break;
+  }
+
+  std::string fullTitle = "BBroker-" + procTitle;
+  set_linux_proctitle(fullTitle.c_str());
 }
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
