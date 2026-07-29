@@ -10,14 +10,13 @@ SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* addr
         return NULL;
     }
 
-    // Allocate memory on the heap
     SockFactoryRes* res = malloc(sizeof(SockFactoryRes));
     if (res == NULL) {
-        close(sock); // Clean up the socket descriptor if malloc fails
+        close(sock);
         return NULL;
     }
 
-    // Initialize the common elements
+    // Common elements
     res->sock = sock;
     res->fam = fam;
 
