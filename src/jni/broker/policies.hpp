@@ -12,7 +12,7 @@ bool shouldDenyOpen(const char* pathname);
 bool shouldDenyStat(const char* pathname);
 const char* shouldFakeFile(const char* pathname);
 bool is_maps(const char* pathname);
-bool is_proc_status(const char* pathname);
+// bool is_proc_status(const char* pathname);
 bool is_smaps(const char* pathname);
 bool is_mounts(const char* pathname);
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid);
