@@ -171,7 +171,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   if (nr == __NR_listen) {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Spoofing listen...");
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
     ctx->uc_mcontext.regs[0] = 0;
     in_sigsys_handler = false;
     return;
