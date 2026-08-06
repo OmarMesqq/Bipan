@@ -723,34 +723,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_getdents64: {
-        int fd = (int)ipc_mem->arg0;
-        // struct linux_dirent64* dirp = (struct linux_dirent64*)ipc_mem->arg1;
-        // size_t count = (size_t)ipc_mem->arg2;
-
-        char* proc_pid_fd_path = assemble_proc_pid_fd(ipc_mem->target_pid, fd);
-        if (!proc_pid_fd_path) {
-          ipc_mem->ret = -1;
-          break;
-        }
-        char filename[512] = {0};
-        ssize_t flen = readlinkat(0, proc_pid_fd_path, filename, sizeof(filename) - 1);
-        if (flen == -1) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to get filename in getdents64. errno: %s", strerror(errno));
-          free(proc_pid_fd_path);
-          break;
-        }
-        filename[flen] = '\0';
-
-        if (
-            !starts_with(filename, "/data/data") &&
-            !starts_with(filename, "/data/app") &&
-            !starts_with(filename, "/storage/emulated/0/Android")) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "getdents64(%s)", filename);
-        }
-        free(proc_pid_fd_path);
-        break;
-      }
       case __NR_readlinkat: {
         int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
