@@ -326,10 +326,15 @@ struct stat* fixHostsFileStat(const char* pathname, int flags) {
  * the IPv4 LAN ranges. `false` otherwise
  */
 static inline bool is_ipv4_lan_addr(uint32_t ip4) {
+  // Explicitly allow our fake LAN IP (10.111.222.1)
+  if (ip4 == 0x0A6FDE01) {
+    return false;
+  }
+
   // Unspecified address (0.0.0.0)
-  // if (ip4 == 0x00000000) {
-  //   return true;
-  // }
+  if (ip4 == 0x00000000) {
+    return true;
+  }
 
   // Loopback (127.0.0.0/8)
   // if ((ip4 & 0xFF000000) == 0x7F000000) {
@@ -391,22 +396,22 @@ static inline bool is_ipv6_lan_addr(uint8_t* ip6) {
   }
 
   // Unspecified (::)
-  // bool is_unspecified = true;
-  // for (int i = 0; i < 16; i++) {
-  //   if (ip6[i] != 0) is_unspecified = false;
-  // }
-  // if (is_unspecified) {
-  //   return true;
-  // }
+  bool is_unspecified = true;
+  for (int i = 0; i < 16; i++) {
+    if (ip6[i] != 0) is_unspecified = false;
+  }
+  if (is_unspecified) {
+    return true;
+  }
 
   // Loopback (::1)
-  // bool is_loopback = (ip6[15] == 1);
-  // for (int i = 0; i < 15; i++) {
-  //   if (ip6[i] != 0) is_loopback = false;
-  // }
-  // if (is_loopback) {
-  //   return true;
-  // }
+  bool is_loopback = (ip6[15] == 1);
+  for (int i = 0; i < 15; i++) {
+    if (ip6[i] != 0) is_loopback = false;
+  }
+  if (is_loopback) {
+    return true;
+  }
 
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
