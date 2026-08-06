@@ -38,7 +38,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   int mem_fd = open(mem_path, O_RDONLY);
   if (mem_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "unwinder: Failed to open %s", mem_path);
+#ifdef BROKER_UNWINDER_LOGGING
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to open %s", mem_path);
+#endif
     return UNSAFE;  // fail closed, assuming untrusted
   }
 
@@ -51,13 +53,17 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
   // Try the actual PC first (like for inline asm)
   LIB_IN_MAPS_RET ret = find_lib_name_in_maps(pc, &info, pid);
   if (ret == DEFINITELY_SAFE) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a trusted lib from safe maps.", (void*)pc);
+#endif
     close(mem_fd);
     return SAFE;
   }
 
   if (ret == FAILED || ret == NOT_FOUND) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Couldn't establish trust for trapped PC. Treating as unsafe.", (void*)pc);
+#endif
     close(mem_fd);
     return UNSAFE;
   }
@@ -65,12 +71,16 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
   find_label_in_elf(info.dli_fname, info.dli_offset, sym_name, sizeof(sym_name));
   if (should_passthrough(info.dli_fname)) {
     close(mem_fd);
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC is allowlisted -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", info.dli_fname, sym_name, info.dli_offset);
+#endif
     return SAFE;
   }
 
   if (!is_trusted_lib(info.dli_fname)) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a malicious lib(%s) triggering nr %d", (void*)pc, info.dli_fname, nr);
+#endif
     close(mem_fd);
     return UNSAFE;
   }
@@ -78,7 +88,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
   // Here, pc is FOUND, so inclusive. Check its ancestors
   ret = find_lib_name_in_maps(lr, &info, pid);
   if (ret == FAILED || ret == NOT_FOUND) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve very first LR (%p). Treating as unsafe", (void*)lr);
+#ifdef BROKER_UNWINDER_LOGGING
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Failed to resolve very first LR (%p). Treating as unsafe", (void*)lr);
+#endif
     close(mem_fd);
     return UNSAFE;
   }
@@ -87,12 +99,16 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   if (should_passthrough(info.dli_fname)) {
     close(mem_fd);
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LR is allowlisted -> Lib: %s | Sym: %s | Offset: (+0x%lx)\n", info.dli_fname, sym_name, info.dli_offset);
+#endif
     return SAFE;
   }
 
   if (!is_trusted_lib(info.dli_fname)) {
+#ifdef BROKER_UNWINDER_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d", (void*)lr, info.dli_fname, nr);
+#endif
     close(mem_fd);
     return UNSAFE;
   }
