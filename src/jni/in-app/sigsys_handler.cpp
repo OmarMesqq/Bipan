@@ -1,7 +1,6 @@
 #include "sigsys_handler.hpp"
 
 #include <arpa/inet.h>
-#include <dirent.h>
 #include <linux/memfd.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
@@ -433,10 +432,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       struct stat* buf = (struct stat*)ipc_mem->arg1;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
-    // if (nr == __NR_getdents64 && result >= 0) {
-    //   struct dirent* buf = (struct dirent*)ipc_mem->arg1;
-    //   local_memcpy(buf, ipc_mem->dirents_buf, sizeof(struct dirent));
-    // }
   }
 
   ipc_mem->status = IDLE;
