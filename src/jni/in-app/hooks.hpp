@@ -648,24 +648,29 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 static struct ifaddrs* g_cached_ifaddrs = nullptr;
 static bool g_ifaddrs_cached = false;
 
-// TODO: if `registerGetifaddrsHook` succeeds, memory leaks as this is never called
-void my_freeifaddrs(struct ifaddrs* ifa) {
+/**
+ * TODO: by hooking `getifaddrs`/`freeifaddrs` we really keep
+ * the scrubbed struct (`g_cached_ifaddrs`) in memory "forever". This is probably a leak.
+ * Maybe not, as this interception should exist during app lifecycle and when app
+ * dies it will be free for the system to use. idk
+ */
+static void my_freeifaddrs(struct ifaddrs* ifa) {
   if (ifa == g_cached_ifaddrs) {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "freeifaddrs: Returning cached ifaddrs struct");
     return;
   }
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "freeifaddrs: Falling back to original freeifdaddrs");
   orig_freeifaddrs(ifa);
 }
 
-int my_getifaddrs(struct ifaddrs** ifap) {
+static int my_getifaddrs(struct ifaddrs** ifap) {
   if (!g_ifaddrs_cached || g_cached_ifaddrs == nullptr) {
-    // Cache miss: shouldn't happen
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "getifaddrs cache miss: returning error");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs error: cache miss. Call preCacheIfaddrs() before");
     *ifap = nullptr;
     return -1;
   }
 
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[getifaddrs] called: feeding fake data");
-  // Return the cached and scrubbed result
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "getifaddrs success: returning cached and scrubbed result");
   *ifap = g_cached_ifaddrs;
   return 0;
 }
@@ -673,29 +678,32 @@ int my_getifaddrs(struct ifaddrs** ifap) {
 void registerGetifaddrsHook() {
   void* sym = dlsym(RTLD_DEFAULT, "getifaddrs");
   if (!sym) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs symbol not found!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: symbol not found (getifaddrs)");
     return;
   }
 
   int r1 = DobbyHook(sym, reinterpret_cast<void*>(my_getifaddrs), reinterpret_cast<void**>(&orig_getifaddrs));
   if (r1 != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook getifaddrs!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: failed to hook getifaddrs");
     return;
   }
 
   void* freeSym = dlsym(RTLD_DEFAULT, "freeifaddrs");
-  if (freeSym) {
-    int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
-    if (r2 != 0) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "failed to hook freeifaddrs!");
-      return;
-    }
+  if (!freeSym) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: symbol not found (freeifaddrs)");
+    return;
+  }
+
+  int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
+  if (r2 != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: failed to hook freeifaddrs");
+    return;
   }
 }
 
 void preCacheIfaddrs() {
   if (getifaddrs(&g_cached_ifaddrs) != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to pre-cache ifaddrs: %d", errno);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "preCacheIfaddrs: failed to pre-cache ifaddrs. error: %d", errno);
     return;
   }
   g_ifaddrs_cached = true;
