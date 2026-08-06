@@ -168,6 +168,9 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyDlIteratePhdrHook();
     registerDobbyNativeSensorsHooks();
     registerDobbyNativeSystemPropertiesHook();
+    
+    preCacheIfaddrs();
+    registerGetifaddrsHook();
 
     // Unseal the VM
     initBipanJava();
