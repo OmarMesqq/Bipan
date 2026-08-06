@@ -138,7 +138,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     ev.data.fd = sock;
     epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev);
   } else {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Monitoring target app using sockfd and pidfd");
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Monitoring target app using sockfd and pidfd");
 
     // Monitor both in-app sockfd and target's pidfd
     ev.data.fd = sock;
@@ -218,6 +218,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->ret = uname_spoofer(&spoofed_buf);
         memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
         ipc_mem->action = ACTION_USE_RET;
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[uname] spoofed", path_payload);
         break;
       }
       case __NR_openat: {

@@ -18,10 +18,8 @@
 
 // TODO: should be thread_local?
 static std::vector<MapEntry> current_maps;
-static std::vector<MapEntry> safe_maps;
 
 enum LIB_IN_MAPS_RET {
-  DEFINITELY_SAFE,
   FOUND,
   FAILED,
   NOT_FOUND
@@ -52,13 +50,6 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   // Try the actual PC first (like for inline asm)
   LIB_IN_MAPS_RET ret = find_lib_name_in_maps(pc, &info, pid);
-  if (ret == DEFINITELY_SAFE) {
-#ifdef BROKER_UNWINDER_LOGGING
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a trusted lib from safe maps.", (void*)pc);
-#endif
-    close(mem_fd);
-    return SAFE;
-  }
 
   if (ret == FAILED || ret == NOT_FOUND) {
 #ifdef BROKER_UNWINDER_LOGGING
@@ -247,7 +238,7 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 }
 
 void initializeUnwinder(pid_t pid) {
-  if (current_maps.empty() && safe_maps.empty()) {
+  if (current_maps.empty()) {
     char proc_pid_maps_path[PATH_MAX] = {0};
     snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
 
@@ -295,7 +286,6 @@ void initializeUnwinder(pid_t pid) {
       if (lib_path.empty()) {
         lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
-        safe_maps.push_back({start, end, offset, lib_path});
         break;
       }
 
@@ -311,12 +301,10 @@ void initializeUnwinder(pid_t pid) {
       if (!path_start) {
         lib_path = UNKNOWN_LIB_FRAME_NAME;
         current_maps.push_back({start, end, offset, lib_path});
-        safe_maps.push_back({start, end, offset, lib_path});
         break;
       }
 
       current_maps.push_back({start, end, offset, std::string(path_start)});
-      safe_maps.push_back({start, end, offset, lib_path});
     }
 
     if (ferror(f)) {
@@ -447,14 +435,6 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
  */
 static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
   LIB_IN_MAPS_RET found = NOT_FOUND;
-
-  // Step 0: Check if Program Counter is in safe maps
-  for (const auto& m : safe_maps) {
-    if (pc >= m.start && pc < m.end) {
-      strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
-      return DEFINITELY_SAFE;
-    }
-  }
 
   // Step 1: Check if Program Counter is in currently cached maps
   for (const auto& m : current_maps) {
