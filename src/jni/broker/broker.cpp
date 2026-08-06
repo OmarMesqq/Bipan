@@ -548,9 +548,10 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             ipc_mem->ret = 0;
             ipc_mem->action = ACTION_USE_RET;
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App tried to install SIGSYS handler!");
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App tried to install SIGSYS handler! Spoofed success");
             break;
           }
+#ifdef IN_APP_ADDITIONAL_HANDLERS
           case SIGABRT: {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGABRT handler");
             break;
@@ -607,8 +608,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "App installed SIGINT handler");
             break;
           }
+#endif
           default: {
+#ifdef IN_APP_ADDITIONAL_HANDLERS
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] App installed handler for unknown signal: %d", signal);
+#endif
             break;
           }
         }
@@ -648,7 +652,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       case __NR_connect: {
         if (isLanAddress(sock_payload)) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN blocked. Socket info: %s", sockInfo.c_str());
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN refused. Socket info: %s", sockInfo.c_str());
 
           ipc_mem->ret = -ECONNREFUSED;
           ipc_mem->action = ACTION_USE_RET;
@@ -888,9 +892,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           }
 
           free(proc_pid_fd_path);
+#ifdef BROKER_DEBUG_LOGGING
           if (shouldLog(resolved_link_path)) {
             write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD): %s -> %s", path, resolved_link_path);
           }
+#endif
 
           memcpy(ipc_mem->out_buffer, resolved_link_path, sizeof(ipc_mem->out_buffer));
           ipc_mem->ret = (long)strlen(resolved_link_path);

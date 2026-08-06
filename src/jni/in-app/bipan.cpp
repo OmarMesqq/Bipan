@@ -84,7 +84,9 @@ class Bipan : public zygisk::ModuleBase {
 #endif
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app logcat fd: %d", getLogcatFd());
+#endif
 
     // Get lib bounds in mappings for PC-relative seccomp
     LibBounds my_lib;
@@ -114,7 +116,9 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to connect to Broker Companion. Aborting!");
       BIPAN_PANIC();
     }
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app Broker sockfd: %d", g_broker_socket);
+#endif
 
     // Tell the companion daemon we want to start a Broker thread
     int cmd = CMD_START_BROKER;
@@ -134,7 +138,9 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to mmap shared memory for IPC! Aborting!");
       BIPAN_PANIC();
     }
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app shared IPC mem region at %p", (void*)ipc_mem);
+#endif
 
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
@@ -168,7 +174,7 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyDlIteratePhdrHook();
     registerDobbyNativeSensorsHooks();
     registerDobbyNativeSystemPropertiesHook();
-    
+
     preCacheIfaddrs();
     registerGetifaddrsHook();
 
