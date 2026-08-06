@@ -173,10 +173,10 @@ bool is_maps(const char* pathname) {
          is_dynamic_proc_file(pathname, "/maps");
 }
 
-bool is_proc_status(const char* pathname) {
-  return (strcmp(pathname, "/proc/self/status") == 0) ||
-         is_dynamic_proc_file(pathname, "/status");
-}
+// bool is_proc_status(const char* pathname) {
+//   return (strcmp(pathname, "/proc/self/status") == 0) ||
+//          is_dynamic_proc_file(pathname, "/status");
+// }
 
 bool is_smaps(const char* pathname) {
   return (strcmp(pathname, "/proc/self/smaps") == 0) ||
@@ -241,12 +241,12 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     return fixed;
   }
 
-  if (strstr(resolvedPath, "status")) {
-    char proc_pid_mounts[PATH_MAX] = {0};
-    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/status", pid);
-    strcpy(fixed, proc_pid_mounts);
-    return fixed;
-  }
+  // if (strstr(resolvedPath, "status")) {
+  //   char proc_pid_mounts[PATH_MAX] = {0};
+  //   snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/status", pid);
+  //   strcpy(fixed, proc_pid_mounts);
+  //   return fixed;
+  // }
 
   write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Got unexpected path when correcting symlink: %s", resolvedPath);
   free(fixed);

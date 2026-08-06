@@ -203,77 +203,77 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
-  int real_fd = openat(dirfd, pathname, flags, mode);
-  if (real_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: openat real dir failed!");
-    return -1;
-  }
+// int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
+//   int real_fd = openat(dirfd, pathname, flags, mode);
+//   if (real_fd < 0) {
+//     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: openat real dir failed!");
+//     return -1;
+//   }
 
-  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"QST42iyo0wWX", MFD_CLOEXEC, 0, 0, 0, 0);
-  if (fake_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
-    close(real_fd);
-    return -1;
-  }
+//   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"QST42iyo0wWX", MFD_CLOEXEC, 0, 0, 0, 0);
+//   if (fake_fd < 0) {
+//     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_status: memfd_create failed");
+//     close(real_fd);
+//     return -1;
+//   }
 
-  char buf[1024];
-  char line[1024];
-  long bytes_read;
-  size_t line_pos = 0;
+//   char buf[1024];
+//   char line[1024];
+//   long bytes_read;
+//   size_t line_pos = 0;
 
-  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
-    for (int i = 0; i < bytes_read; i++) {
-      // Avoid buffer overflow in the line accumulation buffer
-      if (line_pos < sizeof(line) - 1) {
-        line[line_pos++] = buf[i];
-      }
+//   while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
+//     for (int i = 0; i < bytes_read; i++) {
+//       // Avoid buffer overflow in the line accumulation buffer
+//       if (line_pos < sizeof(line) - 1) {
+//         line[line_pos++] = buf[i];
+//       }
 
-      // Process when a newline is encountered or line buffer is full
-      if (buf[i] == '\n' || line_pos >= sizeof(line) - 1) {
-        line[line_pos] = '\0';  // Null-terminate for string functions
+//       // Process when a newline is encountered or line buffer is full
+//       if (buf[i] == '\n' || line_pos >= sizeof(line) - 1) {
+//         line[line_pos] = '\0';  // Null-terminate for string functions
 
-        const char* output_line = line;
-        size_t output_len = line_pos;
+//         const char* output_line = line;
+//         size_t output_len = line_pos;
 
-        // Check and replace target keys
-        if (starts_with(line, "TracerPid:")) {
-          output_line = "TracerPid:\t0\n";
-          output_len = strlen(output_line);
-        } else if (starts_with(line, "NoNewPrivs:")) {
-          output_line = "NoNewPrivs:\t0\n";
-          output_len = strlen(output_line);
-        }
+//         // Check and replace target keys
+//         if (starts_with(line, "TracerPid:")) {
+//           output_line = "TracerPid:\t0\n";
+//           output_len = strlen(output_line);
+//         } else if (starts_with(line, "NoNewPrivs:")) {
+//           output_line = "NoNewPrivs:\t0\n";
+//           output_len = strlen(output_line);
+//         }
 
-        // Write the line to the anonymous file descriptor
-        write(fake_fd, output_line, output_len);
-        // Reset line position counter for the next line
-        line_pos = 0;
-      }
-    }
-  }
+//         // Write the line to the anonymous file descriptor
+//         write(fake_fd, output_line, output_len);
+//         // Reset line position counter for the next line
+//         line_pos = 0;
+//       }
+//     }
+//   }
 
-  // Handle any remaining data if the file didn't end with a newline
-  if (line_pos > 0) {
-    line[line_pos] = '\0';
-    const char* output_line = line;
-    size_t output_len = line_pos;
+//   // Handle any remaining data if the file didn't end with a newline
+//   if (line_pos > 0) {
+//     line[line_pos] = '\0';
+//     const char* output_line = line;
+//     size_t output_len = line_pos;
 
-    if (starts_with(line, "TracerPid:")) {
-      output_line = "TracerPid:\t0\n";
-      output_len = strlen(output_line);
-    } else if (starts_with(line, "NoNewPrivs:")) {
-      output_line = "NoNewPrivs:\t0\n";
-      output_len = strlen(output_line);
-    } else if (starts_with(line, "Cpus_allowed_list:")) {
-      output_line = "Cpus_allowed_list:\t0-3\n";
-      output_len = strlen(output_line);
-    }
+//     if (starts_with(line, "TracerPid:")) {
+//       output_line = "TracerPid:\t0\n";
+//       output_len = strlen(output_line);
+//     } else if (starts_with(line, "NoNewPrivs:")) {
+//       output_line = "NoNewPrivs:\t0\n";
+//       output_len = strlen(output_line);
+//     } else if (starts_with(line, "Cpus_allowed_list:")) {
+//       output_line = "Cpus_allowed_list:\t0-3\n";
+//       output_len = strlen(output_line);
+//     }
 
-    write(fake_fd, output_line, output_len);
-  }
+//     write(fake_fd, output_line, output_len);
+//   }
 
-  close(real_fd);
-  lseek(fake_fd, 0, SEEK_SET);
-  return fake_fd;
-}
+//   close(real_fd);
+//   lseek(fake_fd, 0, SEEK_SET);
+//   return fake_fd;
+// }
