@@ -68,8 +68,8 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  char buf[1024];
-  char line[1024];
+  char buf[1024] = {0};
+  char line[1024] = {0};
   long bytes_read;
   unsigned long line_pos = 0;
 
@@ -122,8 +122,8 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  char buf[1024];
-  char line[1024];
+  char buf[1024] = {0};
+  char line[1024] = {0};
   long bytes_read;
   unsigned long line_pos = 0;
   bool skip_current_region = false;
@@ -170,8 +170,8 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  char buf[1024];
-  char line[1024];
+  char buf[1024] = {0};
+  char line[1024] = {0};
   long bytes_read;
   unsigned long line_pos = 0;
 
@@ -187,8 +187,7 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
                         strstr(line, "mdnsd") ||
                         strstr(line, "magisk") ||
                         strstr(line, "zygisk") ||
-                        strstr(line, "/etc/hosts") ||
-                        strstr(line, "/etc/security/cacerts");
+                        strstr(line, "/etc/hosts");
 
         if (!is_dirty) {
           write(fake_fd, line, line_pos);
