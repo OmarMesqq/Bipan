@@ -3,12 +3,6 @@
 
 // #define IN_APP_DEBUG_LOGGING
 
-/**
- * Enables:
- * - Zygisk's `FORCE_DENYLIST_UNMOUNT` at `preAppSpecialize`
- */
-#define IN_APP_EXPERIMENTS
-
 #define IN_APP_SPOOF_GETIFADDRS
 
 /**
