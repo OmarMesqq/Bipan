@@ -44,10 +44,8 @@ import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getMemoryInfo
-import com.omarmesqq.grunfeld.utils.getPlayInstallReferrerInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
-import com.omarmesqq.grunfeld.utils.inspectPackageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -82,8 +80,6 @@ fun JavaInfoScreen() {
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
-    var playInstallReferrerInfo by remember { mutableStateOf("playInstallReferrerInfo not queried") }
-    var packageManagerClassInfo by remember { mutableStateOf("PM not inspected") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
     var stackTraceInfo by remember { mutableStateOf("Stack trace info not queried") }
@@ -235,50 +231,39 @@ fun JavaInfoScreen() {
             ) {
                 Text("getSomeSystemFeatures()")
             }
-
-            Text(text = "Inspect PM", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(packageManagerClassInfo, "PM not inspected")
-            Button(
-                onClick = {
-                    packageManagerClassInfo = inspectPackageManager(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Inspect Package Manager with reflection")
-            }
         }
 
-        SectionHeader("HARDWARE")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    memInfo = getMemoryInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("MEMORY INFO")
-            }
-
-            Text(
-                text = memInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-
-            Button(
-                onClick = {
-                    cpuInfo = dumpCpuInfo()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("CPU INFO")
-            }
-
-            Text(
-                text = cpuInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+//        SectionHeader("HARDWARE")
+//        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+//            Button(
+//                onClick = {
+//                    memInfo = getMemoryInfo(context)
+//                },
+//                modifier = Modifier.fillMaxWidth()
+//            ) {
+//                Text("MEMORY INFO")
+//            }
+//
+//            Text(
+//                text = memInfo,
+//                style = MaterialTheme.typography.bodyMedium
+//            )
+//
+//
+//            Button(
+//                onClick = {
+//                    cpuInfo = dumpCpuInfo()
+//                },
+//                modifier = Modifier.fillMaxWidth()
+//            ) {
+//                Text("CPU INFO")
+//            }
+//
+//            Text(
+//                text = cpuInfo,
+//                style = MaterialTheme.typography.bodyMedium
+//            )
+//        }
 
 
 
@@ -333,20 +318,6 @@ fun JavaInfoScreen() {
 
             Text(
                 text = mediaDrmIdInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Button(
-                onClick = {
-                    playInstallReferrerInfo = getPlayInstallReferrerInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get Play Install Referrer Info")
-            }
-
-            Text(
-                text = playInstallReferrerInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
         }

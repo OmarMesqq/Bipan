@@ -287,8 +287,6 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
             val broadcast = addr.broadcast?.hostAddress
             details.append("| -> IP: $ip/$prefix\n")
             details.append("| -> Broadcast: $broadcast\n")
-            details.appendLine("| -> HostName: ${addr.address.hostName}")
-            details.appendLine("| -> Canonical HostName: ${addr.address.canonicalHostName}")
         }
     }
 
@@ -978,49 +976,6 @@ fun readLogcatWithProcessBuilder(): String {
     return sb.toString()
 }
 
-fun getPlayInstallReferrerInfo(ctx: Context): String {
-    val sb = StringBuilder()
-    val pm = ctx.packageManager
-    val intent = Intent()
-    intent.action = "com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE"
-    val comp = ComponentName(
-        "com.android.vending",
-        "com.google.android.finsky.externalreferrer.GetInstallReferrerService"
-    )
-    intent.setComponent(comp)
-
-    val services = pm.queryIntentServices(intent, 0)
-    services.forEach {
-        sb.appendLine("package name: ${it.resolvePackageName}")
-        sb.appendLine("isDefault: ${it.isDefault}")
-        sb.appendLine("priority: ${it.priority}")
-        sb.appendLine("ActivityInfo: ${it.activityInfo}")
-        sb.appendLine("ProviderInfo: ${it.providerInfo}\n")
-        sb.appendLine("ServiceInfo")
-        sb.appendLine("name: ${it.serviceInfo.name}")
-        sb.appendLine("packageName: ${it.serviceInfo.packageName}")
-        sb.appendLine("flags: ${it.serviceInfo.flags}")
-        sb.appendLine("enabled: ${it.serviceInfo.enabled}")
-        sb.appendLine("processName: ${it.serviceInfo.processName}")
-        sb.appendLine("metaData: ${it.serviceInfo.metaData}")
-        sb.appendLine("permission: ${it.serviceInfo.permission}")
-        sb.appendLine("ApplicationInfo:\n")
-
-        val appInfo = it.serviceInfo.applicationInfo
-        sb.appendLine("App Component Factory: ${appInfo.appComponentFactory}")
-        sb.appendLine("Class name: ${appInfo.className}")
-        sb.appendLine("Enabled ?: ${appInfo.enabled}")
-        sb.appendLine("Minimum SDK: ${appInfo.minSdkVersion}")
-        sb.appendLine("UID: ${appInfo.uid}")
-        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-        val isDebuggable = (appInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        sb.appendLine("System package?: $isSystem") // TODO
-        sb.appendLine("Debuggable?: $isDebuggable")
-    }
-    return sb.toString()
-}
-
-
 fun DumpStackTraceAt(tr: Throwable, th: Thread) : String {
     val sb = StringBuilder()
 
@@ -1030,35 +985,6 @@ fun DumpStackTraceAt(tr: Throwable, th: Thread) : String {
     val threadName = th.name
     val threadStackTrace = th.stackTrace
     sb.appendLine("Thread $threadName Stack Trace: ${stackToString(threadStackTrace)}")
-
-    return sb.toString()
-}
-
-fun inspectPackageManager(ctx: Context): String {
-    val sb = StringBuilder()
-    val pm = ctx.packageManager
-
-    // 1. Get the actual class hierarchy details
-    val clazz = pm.javaClass
-    sb.appendLine("Simple Name: ${clazz.simpleName}")
-    sb.appendLine("Canonical Name: ${clazz.canonicalName}")
-
-    // 2. Check if it's a standard Java Dynamic Proxy
-    val isProxy = Proxy.isProxyClass(clazz)
-    sb.appendLine("Is Proxy? $isProxy")
-
-    if (isProxy) {
-        // Extract the InvocationHandler if it is a proxy
-        val handler = Proxy.getInvocationHandler(pm)
-        sb.appendLine("InvocationHandler Class: ${handler.javaClass.name}")
-    }
-
-    // 3. Check for other common proxy frameworks
-    sb.appendLine("Superclass: ${clazz.superclass?.name}")
-    sb.appendLine("Interfaces implemented: ${clazz.interfaces.joinToString { it.name }}")
-
-    // 4. Look for common indicators of synthetic/generated wrappers
-    sb.appendLine("Is Synthetic Class? ${clazz.isSynthetic}")
 
     return sb.toString()
 }

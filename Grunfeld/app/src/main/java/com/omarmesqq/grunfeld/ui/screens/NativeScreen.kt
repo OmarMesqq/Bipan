@@ -59,7 +59,6 @@ fun NativeScreen() {
     var statxInfo by remember { mutableStateOf("Files not stated") }
 
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
-    var procSelfAuxvInfo by remember { mutableStateOf("/proc/self/auxv not read yet") }
     var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
@@ -78,9 +77,6 @@ fun NativeScreen() {
 
         "/data/anr",
         "/data/misc/user/0/cacerts-added",
-
-        "/system/etc/security",
-        "/system/etc/security/cacerts",
 
         "/system/lib",
         "/system/lib/libzygisk.so",
@@ -303,14 +299,6 @@ fun NativeScreen() {
                     ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
                     Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
                         Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Read program's auxiliary vector", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfAuxvInfo, "/proc/self/auxv not read yet")
-                    Button(onClick = { procSelfAuxvInfo = NativeLibWrapper.testProcSelfAuxv() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("parse /proc/self/auxv")
                     }
                 }
 
