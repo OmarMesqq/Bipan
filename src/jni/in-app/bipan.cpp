@@ -79,9 +79,8 @@ class Bipan : public zygisk::ModuleBase {
     if (!initializeLogger()) {
       BIPAN_PANIC();
     }
-#ifdef IN_APP_EXPERIMENTS
+
     api->setOption(zygisk::Option::FORCE_DENYLIST_UNMOUNT);
-#endif
 
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
 #ifdef IN_APP_DEBUG_LOGGING

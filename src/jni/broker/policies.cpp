@@ -182,15 +182,15 @@ bool is_smaps(const char* pathname) {
          is_dynamic_proc_file(pathname, "/smaps");
 }
 
-bool is_mounts(const char* pathname) {
-  return (strcmp(pathname, "/proc/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mounts") == 0) ||
-         (strcmp(pathname, "/proc/self/mountstats") == 0) ||
-         (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
-         is_dynamic_proc_file(pathname, "/mountstats") ||
-         is_dynamic_proc_file(pathname, "/mountinfo") ||
-         is_dynamic_proc_file(pathname, "/mounts");
-}
+// bool is_mounts(const char* pathname) {
+//   return (strcmp(pathname, "/proc/mounts") == 0) ||
+//          (strcmp(pathname, "/proc/self/mounts") == 0) ||
+//          (strcmp(pathname, "/proc/self/mountstats") == 0) ||
+//          (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+//          is_dynamic_proc_file(pathname, "/mountstats") ||
+//          is_dynamic_proc_file(pathname, "/mountinfo") ||
+//          is_dynamic_proc_file(pathname, "/mounts");
+// }
 
 // HEAP ALLOCATION
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {

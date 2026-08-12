@@ -156,51 +156,51 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
   return fake_fd;
 }
 
-int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
-  int real_fd = openat(dirfd, pathname, flags, mode);
-  if (real_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
-    return -1;
-  }
+// int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
+//   int real_fd = openat(dirfd, pathname, flags, mode);
+//   if (real_fd < 0) {
+//     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
+//     return -1;
+//   }
 
-  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
-  if (fake_fd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
-    close(real_fd);
-    return -1;
-  }
+//   int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"8y7o7Y1J2FYv", MFD_CLOEXEC, 0, 0, 0, 0);
+//   if (fake_fd < 0) {
+//     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
+//     close(real_fd);
+//     return -1;
+//   }
 
-  char buf[1024] = {0};
-  char line[1024] = {0};
-  long bytes_read;
-  unsigned long line_pos = 0;
+//   char buf[1024] = {0};
+//   char line[1024] = {0};
+//   long bytes_read;
+//   unsigned long line_pos = 0;
 
-  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
-    for (int i = 0; i < bytes_read; i++) {
-      if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
+//   while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
+//     for (int i = 0; i < bytes_read; i++) {
+//       if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
 
-      if (buf[i] == '\n') {
-        line[line_pos] = '\0';
+//       if (buf[i] == '\n') {
+//         line[line_pos] = '\0';
 
-        bool is_dirty = strstr(line, "/product/bin") ||
-                        strstr(line, "debug_ramdisk") ||
-                        strstr(line, "mdnsd") ||
-                        strstr(line, "magisk") ||
-                        strstr(line, "zygisk") ||
-                        strstr(line, "/etc/hosts");
+//         bool is_dirty = strstr(line, "/product/bin") ||
+//                         strstr(line, "debug_ramdisk") ||
+//                         strstr(line, "mdnsd") ||
+//                         strstr(line, "magisk") ||
+//                         strstr(line, "zygisk") ||
+//                         strstr(line, "/etc/hosts");
 
-        if (!is_dirty) {
-          write(fake_fd, line, line_pos);
-        }
-        line_pos = 0;
-      }
-    }
-  }
+//         if (!is_dirty) {
+//           write(fake_fd, line, line_pos);
+//         }
+//         line_pos = 0;
+//       }
+//     }
+//   }
 
-  close(real_fd);
-  lseek(fake_fd, 0, SEEK_SET);
-  return fake_fd;
-}
+//   close(real_fd);
+//   lseek(fake_fd, 0, SEEK_SET);
+//   return fake_fd;
+// }
 
 // int clean_proc_status(int dirfd, const char* pathname, int flags, mode_t mode) {
 //   int real_fd = openat(dirfd, pathname, flags, mode);
