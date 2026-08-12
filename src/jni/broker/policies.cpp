@@ -100,10 +100,9 @@ bool shouldLog(const char* pathname) {
 
 bool shouldSpoofExistence(const char* pathname) {
   if (
-      starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
+      // starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
+      // starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
-      starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
-      starts_with(pathname, "/data/tombstones") ||
       starts_with(pathname, "/data/anr")
       // strstr(pathname, "lineage") != nullptr ||
       // strstr(pathname, "Lineage") != nullptr
