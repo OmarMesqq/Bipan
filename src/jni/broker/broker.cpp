@@ -218,7 +218,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->ret = uname_spoofer(&spoofed_buf);
         memcpy(ipc_mem->out_buffer, &spoofed_buf, sizeof(struct utsname));
         ipc_mem->action = ACTION_USE_RET;
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[uname] spoofed", path_payload);
         break;
       }
       case __NR_openat: {

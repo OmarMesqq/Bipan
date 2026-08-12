@@ -21,7 +21,6 @@ object NativeLibWrapper {
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun inspectHooks(): String
     external fun dl_iterate_phdrTest(): String
-    external fun testProcSelfAuxv(): String
     external fun testProcSelfTask(): String
     external fun testForkExec(progname: String): String
     external fun scanProcSelfMaps(): String
