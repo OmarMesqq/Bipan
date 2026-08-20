@@ -110,6 +110,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   std::unordered_set<uintptr_t> patched_pcs;
   std::unordered_set<uintptr_t> trusted_pcs;
   std::unordered_set<uintptr_t> malicious_pcs;
+  std::unordered_set<uintptr_t> lan_bound_pcs;
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
   std::unordered_set<void*> mincore_targets;
@@ -661,9 +662,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = ghost_len;
           ipc_mem->action = ACTION_USE_RET;
 
-          std::string sockInfo = get_sockaddr_info(sock_payload);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendto) LAN spoofed | Socket info: %s", sockInfo.c_str());
-          // patch_instruction_remote(ipc_mem->target_pid, pc, ghost_len, patched_pcs);
+          if (!lan_bound_pcs.count(pc)) {
+            lan_bound_pcs.insert(pc);
+            std::string sockInfo = get_sockaddr_info(sock_payload);
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendto) LAN spoofed | Socket info: %s", sockInfo.c_str());
+          }
         }
         break;
       }
