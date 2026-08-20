@@ -47,19 +47,15 @@
 #define MAX_REPORT_SIZE 8192
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 
-typedef Elf64_Ehdr ElfHeader;
-typedef Elf64_Shdr ElfSection;
-typedef Elf64_Sym ElfSymbol;
 
-static struct sigaction old_segv = {};
-static struct sigaction old_abrt = {};
+static struct sigaction old_segv = {0};
+static struct sigaction old_abrt = {0};
 
 /**
  * func-like macro to convert negative error values provided by the kernel to raw syscalls
@@ -177,13 +173,11 @@ void registerSignalHandler(void) {
 }
 
 
-static inline void early_init_sysprop_tests(void);
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
-static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 static inline void dump (void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
@@ -191,8 +185,7 @@ static void dump_fstat_info(const char* path, char* const report, struct stat* s
 static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf);
 static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
-static char* getSuspiciousMapsInfo(void);
-static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len);
+
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("__attribute__((constructor))");
@@ -2035,112 +2028,6 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
     }
 }
 
-static void prop_cb(void* cookie, const char* name, const char* value, uint32_t serial) {
-    char* out = (char*)cookie;
-    if (!out) {
-        return;
-    }
-    strncpy(out, value, PROP_VALUE_MAX);
-    out[PROP_VALUE_MAX] = '\0';
-}
-
-// HEAP ALLOCATION
-static char* getSuspiciousMapsInfo(void) {
-    char* report = calloc(20000, sizeof(char));
-    if (!report) {
-        return NULL;
-    }
-    char entry[PATH_MAX + 100] = {0};
-
-    FILE* fp = fopen("/proc/self/maps", "r");
-    if (!fp) {
-        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/maps (errno: %s)\n", strerror(errno));
-        strcat(report, entry);
-        return report;
-    }
-
-    char buf[PATH_MAX];
-    while (fgets(buf, sizeof(buf), fp) != NULL) {
-        char start[11] = {0};
-        char end[11] = {0};
-        char perms[5] = {0};
-        char offset[9] = {0};
-        char devMajor[3] = {0};
-        char devMinor[3] = {0};
-        size_t libInode = 0;
-        char libName[PATH_MAX] = {0};
-
-        int ret = sscanf(buf,
-                         "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
-                         start, end, perms, offset, devMajor, devMinor, &libInode, libName);
-        if (ret != 8) {
-            if (
-                    strstr(libName, "memfd:jit-cache") ||
-                    strstr(libName, "libnativebridge") ||
-                    strstr(libName, "libandroid_runtime") ||
-                    strstr(libName, "libart.so") ||
-                    strstr(libName, "libartbase.so") ||
-                    strstr(libName, "zygisk")
-                    ) {
-                snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
-                strcat(report, entry);
-                return report;
-            }
-            // ignore problematic lines
-        }
-        if (
-                strstr(libName, "memfd:jit-cache") ||
-                strstr(libName, "libnativebridge") ||
-                strstr(libName, "libandroid_runtime") ||
-                strstr(libName, "libart.so") ||
-                strstr(libName, "libartbase.so") ||
-                strstr(libName, "zygisk")
-                ) {
-            snprintf(entry, sizeof(entry), "%s", buf);
-            strcat(report, entry);
-        }
-    }
-
-    fclose(fp);
-    return report;
-}
-
-
-static inline void early_init_sysprop_tests(void) {
-    char radio1[PROP_VALUE_MAX]  = {0};
-    int len = __system_property_get("gsm.version.baseband", radio1);
-    if (len <= 0) {
-        strncpy(radio1, "gsm.version.baseband", sizeof(radio1));
-    }
-
-    const prop_info* pi = __system_property_find("gsm.version.baseband");
-    char radio2[PROP_VALUE_MAX] = {0};
-    if (pi) {
-        __system_property_read_callback(pi, prop_cb, radio2);
-    } else {
-        strncpy(radio2, "gsm.version.baseband", sizeof(radio2));
-    }
-
-    char operator[PROP_VALUE_MAX] = {0};
-
-    int len1 = __system_property_get("gsm.operator.alpha", operator);
-    if (len1 <= 0) {
-        strncpy(operator, "gsm.operator.alpha", sizeof(operator));
-    }
-
-    char fp[PROP_VALUE_MAX] = {0};
-
-    int len2 = __system_property_get("ro.build.fingerprint", fp);
-    if (len2 <= 0) {
-        strncpy(fp, "ro.build.fingerprint", sizeof(fp));
-    }
-
-    LOGI("[LEGACY] RADIO: %s", radio1);
-    LOGI("[MODERN] RADIO: %s", radio2);
-    LOGI("[LEGACY] OPERATOR: %s", operator);
-    LOGI("[LEGACY] FINGERPRINT: %s", fp);
-}
-
 static inline void dump(void *p, int n, char *report) {
     char entry[64];
     unsigned char *p1 = p;
@@ -2212,96 +2099,6 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
         }
     }
     return 0;
-}
-
-static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
-    if (!path) {
-        return;
-    }
-    int fd = open(path, O_RDONLY);
-
-    if (fd < 0) {
-        LOGE("Failed to open %s", path);
-        return;
-    }
-
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        LOGE("Failed to fstat fd %d associated with %s", fd, path);
-        close(fd);
-        return;
-    }
-
-    if (st.st_size < (off_t)sizeof(ElfHeader)) {
-        LOGE("find_label_in_elf: %s st_size's too small to be an ELF. Not searching symbols.", path);
-        close(fd);
-        strncpy(out_name, "[Too Small]", max_len - 1);
-        return;
-    }
-
-    void* map = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-
-    if (map == MAP_FAILED) {
-        LOGE("find_label_in_elf: mmap failed!");
-        return;
-    }
-
-    ElfHeader* ehdr = (ElfHeader*)map;
-
-    // TODO: If this is an APK (ZIP), it will fail this check and safely return
-    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
-        LOGE("%s header doesn't match ELF magic. Not searching symbols.", path);
-        strncpy(out_name, "[APK/ZIP/JAR]", max_len - 1);
-        munmap(map, (size_t)st.st_size);
-        return;
-    }
-
-    ElfSection* shdr = (ElfSection*)((uintptr_t)map + ehdr->e_shoff);
-
-    uintptr_t best_diff = (uintptr_t)-1;
-    char* found_name = NULL;
-
-    // Search both SYMTAB (Static) and DYNSYM (Dynamic)
-    for (int i = 0; i < ehdr->e_shnum; i++) {
-        if (shdr[i].sh_type == SHT_SYMTAB || shdr[i].sh_type == SHT_DYNSYM) {
-            ElfSymbol* syms = (ElfSymbol*)((uintptr_t)map + shdr[i].sh_offset);
-            size_t count = shdr[i].sh_size / sizeof(ElfSymbol);
-
-            // sh_link automatically points to the correct string table for this symbol table
-            char* strings = (char*)((uintptr_t)map + shdr[shdr[i].sh_link].sh_offset);
-
-            for (size_t j = 0; j < count; j++) {
-                char* current_name = &strings[syms[j].st_name];
-
-                // Skip empty names, mapping symbols ($x, $d),
-                // and symbols that start after our offset.
-                if (syms[j].st_name == 0 || syms[j].st_value > offset) {
-                    continue;
-                }
-
-                uintptr_t diff = offset - syms[j].st_value;
-                if (diff < best_diff) {
-                    best_diff = diff;
-                    found_name = current_name;
-                }
-            }
-
-            // If we found a perfect match (diff 0) in SYMTAB, we can stop early
-            if (best_diff == 0 && shdr[i].sh_type == SHT_SYMTAB) {
-                break;
-            }
-        }
-    }
-
-    if (found_name && strlen(found_name) > 0) {
-        strncpy(out_name, found_name, max_len - 1);
-        out_name[max_len - 1] = '\0';
-    } else {
-        strncpy(out_name, "???", max_len);
-    }
-
-    munmap(map, (size_t)st.st_size);
 }
 
 #pragma clang diagnostic push
