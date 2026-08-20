@@ -647,6 +647,34 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_connect: {
+        // Ad-blockers that change `hosts` will redirect domains to unspecified
+        // Save context-switches and just refuse it in userspace + avoid logging
+        if (sock_payload->sa_family == AF_INET) {
+          uint32_t ip4 = ntohl(((struct sockaddr_in*)sock_payload)->sin_addr.s_addr);
+          if (ip4 == 0x00000000) {
+            ipc_mem->ret = -ECONNREFUSED;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
+          }
+        } else if (sock_payload->sa_family == AF_INET6) {
+          uint8_t* ip6 = ((struct sockaddr_in6*)sock_payload)->sin6_addr.s6_addr;
+          if (!ip6) {
+            ipc_mem->ret = -ECONNREFUSED;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
+          }
+
+          bool is_unspecified = true;
+          for (int i = 0; i < 16; i++) {
+            if (ip6[i] != 0) is_unspecified = false;
+          }
+          if (is_unspecified) {
+            ipc_mem->ret = -ECONNREFUSED;
+            ipc_mem->action = ACTION_USE_RET;
+            break;
+          }
+        }
+
         if (isLanAddress(sock_payload)) {
           std::string sockInfo = get_sockaddr_info(sock_payload);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(connect) to LAN refused. Socket info: %s", sockInfo.c_str());
