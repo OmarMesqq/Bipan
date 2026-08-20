@@ -27,11 +27,11 @@
     "/Users/omar/Library/Android/sdk/platforms/android-36/android.jar"
   ],
 
-  "java.jdt.ls.java.home": "/opt/homebrew/Cellar/openjdk@17/17.0.20/libexec/openjdk.jdk/Contents/Home",
+  "java.jdt.ls.java.home": "/opt/homebrew/Cellar/openjdk@17/17.0.20.1/libexec/openjdk.jdk/Contents/Home",
   "java.configuration.runtimes": [
     {
       "name": "JavaSE-17",
-      "path": "/opt/homebrew/Cellar/openjdk@17/17.0.20/libexec/openjdk.jdk/Contents/Home",
+      "path": "/opt/homebrew/Cellar/openjdk@17/17.0.20.1/libexec/openjdk.jdk/Contents/Home",
       "default": true
     }
   ]
