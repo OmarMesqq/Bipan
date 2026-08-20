@@ -882,14 +882,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
         break;
       }
-      case __NR_syslog: {
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[*] (syslog)!");
-        break;
-      }
-      case __NR_mq_notify: {
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (mq_notify)!");
-        break;
-      }
 
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
       case __NR_pipe2: {
