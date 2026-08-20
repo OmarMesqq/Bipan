@@ -102,8 +102,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
       // System info
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syslog, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Binary execution
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
@@ -141,12 +139,6 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
 
       // Signal handling
       BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_rt_sigaction, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-
-      // Misc
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_userfaultfd, 0, 1),
-      BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
-      BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_mq_notify, 0, 1),
       BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
 
       // Networking

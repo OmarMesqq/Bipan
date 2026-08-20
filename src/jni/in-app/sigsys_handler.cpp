@@ -162,13 +162,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  if (nr == __NR_userfaultfd) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] Lying about userfaultfd existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
     ctx->uc_mcontext.regs[0] = 0;
