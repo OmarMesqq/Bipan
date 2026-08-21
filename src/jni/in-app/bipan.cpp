@@ -144,7 +144,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
-    strncpy(ipc_mem->package_name, g_package_name, 255);
+    strncpy(ipc_mem->package_name, g_package_name, IPC_PACKAGE_NAME_SIZE - 1);
 
     // Send the Broker sock to the companion
     if (send_fd(g_broker_socket, memfd) == -1) {
