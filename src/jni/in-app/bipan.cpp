@@ -157,7 +157,6 @@ class Bipan : public zygisk::ModuleBase {
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
-    // not using it
     (void)args;
 
     if (!isTargetApp) {
