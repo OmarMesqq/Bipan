@@ -1,6 +1,13 @@
-#ifndef COMPILE_TIME_FLAGS_HPP
-#define COMPILE_TIME_FLAGS_HPP
+#ifndef FEATURE_FLAGS_HPP
+#define FEATURE_FLAGS_HPP
 
+/**
+ * Prints memory mappings, `fd`s and
+ * technical details of Bipan once injected into
+ * the app's process.
+ * 
+ * Shouldn't log too much.
+ */
 // #define IN_APP_DEBUG_LOGGING
 
 /**

@@ -1,6 +1,6 @@
 /**
  * Hooks for JNI functions
- * using Zygisk's builtin `hookJniNativeMethods`
+ * using Zygisk's built-in `hookJniNativeMethods`
  */
 
 #ifndef JNI_HOOKS_HPP

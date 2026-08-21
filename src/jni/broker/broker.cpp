@@ -1227,7 +1227,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
     return;
   }
 
-  // __builtin___clear_cache
+  // TODO: ideally the remote app should flush its instruction cache
 
   // Interpret uintptr_t (unsigned) as off_t (signed)
   // Both are 64-bit and fit in the data type, but I

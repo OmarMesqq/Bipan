@@ -15,9 +15,9 @@
 #include "feature_flags.hpp"
 #include "hooks.hpp"
 #include "ipc_communication.hpp"
+#include "jni_hooks.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
-#include "jni_hooks.hpp"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -179,10 +179,6 @@ class Bipan : public zygisk::ModuleBase {
     registerSignalHandler();
     // Setup tripwires for seccomp
     hookJniFunctions();
-
-#ifdef IN_APP_DEBUG_LOGGING
-    registerDobbyLinkerHooks();
-#endif
   }
 
  private:
@@ -417,7 +413,7 @@ class Bipan : public zygisk::ModuleBase {
 
 // `dl_iterate_phdr` callback for finding Bipan's start and end addresses
 __attribute__((always_inline)) static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
-  (void)size;  // not using it
+  (void)size;
 
   auto* bounds = reinterpret_cast<LibBounds*>(data);
 
