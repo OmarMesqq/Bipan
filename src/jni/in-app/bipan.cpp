@@ -17,6 +17,7 @@
 #include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
+#include "jni_hooks.hpp"
 #ifdef IN_APP_DEBUG_LOGGING
 #include "tools/mem.hpp"
 #endif
@@ -356,7 +357,6 @@ class Bipan : public zygisk::ModuleBase {
     setField(buildClass, "MANUFACTURER", "google");
     setField(buildClass, "MODEL", "Pixel 8 Pro");
     setField(buildClass, "PRODUCT", "husky");
-    // RADIO needs native spoofing
     setField(buildClass, "SOC_MANUFACTURER", "Google");
     setField(buildClass, "SOC_MODEL", "Tensor G3");
     setField(buildClass, "TAGS", "release-keys");
@@ -365,7 +365,6 @@ class Bipan : public zygisk::ModuleBase {
     jfieldID timeId = env->GetStaticFieldID(buildClass, "TIME", "J");
     env->SetStaticLongField(buildClass, timeId, 1764954000000);
 
-    // Some version fields are inside a nested class of android.os.Build
     jclass versionClass = env->FindClass("android/os/Build$VERSION");
     if (versionClass == nullptr) {
       env->ExceptionClear();
@@ -397,21 +396,22 @@ class Bipan : public zygisk::ModuleBase {
       env->DeleteLocalRef(versionClass);
     }
 
-    // Java Layer Sensors hooking
-    const int JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT = 1;
-    JNINativeMethod event_queue_methods[JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT] = {
-        {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
-    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, JAVA_SENSORS_EVENT_QUEUE_METHODS_COUNT);
+    // Sensors blinding
+    const int eventQueueMethodsCount = 1;
+    const int sensorManagerMethodsCount = 4;
 
-    const int JAVA_SENSORS_MANAGER_METHODS_COUNT = 4;
-    JNINativeMethod manager_methods[JAVA_SENSORS_MANAGER_METHODS_COUNT] = {
+    JNINativeMethod event_queue_methods[eventQueueMethodsCount] = {
+        {"nativeEnableSensor", "(JIII)I", (void*)my_nativeEnableSensor}};
+    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager$BaseEventQueue", event_queue_methods, eventQueueMethodsCount);
+
+    JNINativeMethod sensor_manager_methods[sensorManagerMethodsCount] = {
         {"nativeGetSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
         {"nativeGetDefaultDeviceSensorAtIndex", "(JLandroid/hardware/Sensor;I)Z", (void*)my_nativeGetSensorAtIndex},
         {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
         {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
-    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", manager_methods, JAVA_SENSORS_MANAGER_METHODS_COUNT);
+    api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", sensor_manager_methods, sensorManagerMethodsCount);
 
-    // Setup JNI tripwires for activating seccomp and hooking Instrumentation.onCreate()
+    // Tripwires for installing seccomp and hooking Instrumentation.onCreate()
     JNINativeMethod runtime_methods[] = {
         {"clampGrowthLimit", "()V", (void*)my_clampGrowthLimit},
         {"clearGrowthLimit", "()V", (void*)my_clearGrowthLimit}};
@@ -423,10 +423,7 @@ class Bipan : public zygisk::ModuleBase {
   }
 };
 
-/**
- * `dl_iterate_phdr` callback:
- * Purpose: find Bipan's start and end addresses
- */
+// `dl_iterate_phdr` callback for finding Bipan's start and end addresses
 __attribute__((always_inline)) static inline int findBipansBounds(struct dl_phdr_info* info, size_t size, void* data) {
   (void)size;  // not using it
 

@@ -20,13 +20,13 @@
 
 using zygisk::Api;
 
-// type for spoofing bionic's __system_property_read_callback
+// type for spoofing bionic's `__system_property_read_callback`
 struct PropCallbackCtx {
   void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
   void* user_cookie;
 };
 
-// type for spoofing dl_iterate_phdr
+// type for spoofing `dl_iterate_phdr`
 struct FilteredCallback {
   int (*real_cb)(struct dl_phdr_info*, size_t, void*);
   void* real_data;
@@ -446,53 +446,8 @@ static void* my_android_dlopen_ext(const char* filename, int flag, const android
 }
 
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
-  // write_to_logcat_async(ANDROID_LOG_WARN, TAG, "dl_iterate_phdr called. Filtering.");
   FilteredCallback ctx = {cb, data};
   return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
-}
-
-// ==========================================
-// Java Sensors hooks
-// ==========================================
-
-jboolean my_nativeGetSensorAtIndex(JNIEnv* env, jclass clazz, jlong nativeInstance, jobject sensor, jint index) {
-  (void)env;
-  (void)clazz;
-  (void)nativeInstance;
-  (void)sensor;
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted SensorManager enumeration (index %d). Neutering...", index);
-  return JNI_FALSE;
-}
-
-jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint handle, jint rateUs, jint maxBatchReportLatencyUs) {
-  (void)env;
-  (void)clazz;
-  (void)eventQueuePtr;
-  (void)handle;
-  (void)rateUs;
-  (void)maxBatchReportLatencyUs;
-  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Java Sensors) Blocked nativeEnableSensor");
-  return -1;
-}
-
-jint my_nativeCreateDirectChannel(JNIEnv* env, jclass clazz, jlong nativeInstance, jint size, jint type, jint fd, jobject resource) {
-  (void)env;
-  (void)clazz;
-  (void)nativeInstance;
-  (void)size;
-  (void)type;
-  (void)fd;
-  (void)resource;
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted nativeCreateDirectChannel. Neutering...");
-  return -1;
-}
-
-jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
-  (void)env;
-  (void)clazz;
-  (void)opPackageName;
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java Sensors) App attempted nativeCreate. Neutering...");
-  return 0;
 }
 
 // ==========================================
@@ -641,7 +596,6 @@ static void hook_system_property_read_callback(const void* pi, void (*callback)(
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
-
 static int (*orig_getifaddrs)(struct ifaddrs**) = nullptr;
 static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 
@@ -746,7 +700,7 @@ void preCacheIfaddrs() {
       continue;
     }
 
-    // Drop IPv6 entirely
+    // Drop IPv6 on the active interface
     if (ifa->ifa_addr != nullptr && ifa->ifa_addr->sa_family == AF_INET6) {
       if (prev == nullptr) {
         g_cached_ifaddrs = next;
@@ -758,17 +712,17 @@ void preCacheIfaddrs() {
     }
 
     if (ifa->ifa_addr != nullptr && ifa->ifa_addr->sa_family == AF_INET) {
-      // Spoof IPs
-      reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
+      // Spoof IP: 10.111.222.1
+      reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)->sin_addr.s_addr = 0x01DE6F0A;
 
       // Spoof broadcast: 10.111.222.255
       if (ifa->ifa_broadaddr != nullptr && ifa->ifa_broadaddr->sa_family == AF_INET) {
-        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_broadaddr)->sin_addr.s_addr = 0xFFDE6F0A;  // 10.111.222.255
+        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_broadaddr)->sin_addr.s_addr = 0xFFDE6F0A;
       }
 
-      // Netmask spoofing: /24 = 255.255.255.0
+      // Spoof netmask: /24 = 255.255.255.0
       if (ifa->ifa_netmask != nullptr && ifa->ifa_netmask->sa_family == AF_INET) {
-        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_netmask)->sin_addr.s_addr = 0x00FFFFFF;  // 255.255.255.0
+        reinterpret_cast<struct sockaddr_in*>(ifa->ifa_netmask)->sin_addr.s_addr = 0x00FFFFFF;
       }
     }
 
