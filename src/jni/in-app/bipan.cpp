@@ -18,9 +18,6 @@
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
 #include "jni_hooks.hpp"
-#ifdef IN_APP_DEBUG_LOGGING
-#include "tools/mem.hpp"
-#endif
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -95,9 +92,6 @@ class Bipan : public zygisk::ModuleBase {
     g_bipan_lib_end = my_lib.end;
 
 #ifdef IN_APP_DEBUG_LOGGING
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Bipan's segments:");
-    dl_iterate_phdr(dumpBipanLinkerInfo, nullptr);
-
     size_t lib_size = my_lib.end - my_lib.start;
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib bounds: Start=0x%lx, End=0x%lx, Size=%zu bytes", (unsigned long)my_lib.start, (unsigned long)my_lib.end, lib_size);
 
@@ -188,8 +182,6 @@ class Bipan : public zygisk::ModuleBase {
 
 #ifdef IN_APP_DEBUG_LOGGING
     registerDobbyLinkerHooks();
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Lib's header at end of postAppSpecialize:");
-    dumpBytes(reinterpret_cast<unsigned char*>(g_bipan_lib_start), 4);
 #endif
   }
 

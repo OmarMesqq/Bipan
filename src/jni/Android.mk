@@ -54,15 +54,6 @@ LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/logger/*.cpp
 LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
 include $(BUILD_STATIC_LIBRARY)
 
-# Tools module
-ifeq ($(BIPAN_DEBUG), 1)
-	include $(CLEAR_VARS)
-	LOCAL_MODULE    := bipan-tools
-	LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/tools/*.cpp))
-	LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
-	include $(BUILD_STATIC_LIBRARY)
-endif
-
 # In-app static lib (injected code)
 include $(CLEAR_VARS)
 LOCAL_MODULE    := bipan-inapp
@@ -81,16 +72,9 @@ include $(BUILD_STATIC_LIBRARY)
 # Build final Bipan shared library
 include $(CLEAR_VARS)
 LOCAL_MODULE := bipan
-ifeq ($(BIPAN_DEBUG), 1)
-	LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
-																bipan-tools \
+LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
 																bipan-inapp \
 																bipan-broker
-else 
-	LOCAL_WHOLE_STATIC_LIBRARIES := bipan-logger \
-																bipan-inapp \
-																bipan-broker
-endif
 LOCAL_LDFLAGS := $(BIPAN_LDFLAGS)
 
 include $(BUILD_SHARED_LIBRARY)
