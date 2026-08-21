@@ -16,7 +16,6 @@
 #define UNRESOLVED_SYMBOL_NAME "???"
 #define UNKNOWN_LIB_FRAME_NAME "[Untrusted: anon/unknown memory]"
 
-// TODO: should be thread_local?
 static std::vector<MapEntry> current_maps;
 
 enum LIB_IN_MAPS_RET {
@@ -30,7 +29,7 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
 static inline bool is_trusted_lib(const char* lib_path);
 static inline bool should_passthrough(const char* libPath);
 
-UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, int nr) {
+UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   char mem_path[64] = {0};
   snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
 
@@ -70,7 +69,7 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   if (!is_trusted_lib(info.dli_fname)) {
 #ifdef BROKER_UNWINDER_LOGGING
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a malicious lib(%s) triggering nr %d", (void*)pc, info.dli_fname, nr);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Trapped PC (%p) is a malicious lib(%s)", (void*)pc, info.dli_fname);
 #endif
     close(mem_fd);
     return UNSAFE;
@@ -98,14 +97,14 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid, in
 
   if (!is_trusted_lib(info.dli_fname)) {
 #ifdef BROKER_UNWINDER_LOGGING
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s) triggering nr %d", (void*)lr, info.dli_fname, nr);
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Very first LR (%p) is a malicious lib(%s)", (void*)lr, info.dli_fname);
 #endif
     close(mem_fd);
     return UNSAFE;
   }
 
 #ifdef BROKER_UNWINDER_LOGGING
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start (nr: %d)] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", nr, (void*)lr, sym_name, info.dli_fname, info.dli_offset);
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[Unwind start] -> LR: %p | Sym: %s | Lib: %s | Offset: (+0x%lx)", (void*)lr, sym_name, info.dli_fname, info.dli_offset);
 #endif
   /**
    * Actual unwinding logic:

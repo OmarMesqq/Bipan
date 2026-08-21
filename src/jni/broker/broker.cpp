@@ -1,7 +1,6 @@
 #include "broker.hpp"
 
 #include <arpa/inet.h>
-#include <dirent.h>
 #include <linux/filter.h>
 #include <linux/memfd.h>
 #include <linux/netlink.h>
@@ -180,7 +179,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
     // If still trusted, unwind to check its ancestors and actual safety
     if (is_trusted == SAFE) {
-      is_trusted = unwinder(pc, fp, lr, ipc_mem->target_pid, nr);
+      is_trusted = unwinder(pc, fp, lr, ipc_mem->target_pid);
 
       if (is_trusted == SAFE) {
         trusted_pcs.insert(pc);
