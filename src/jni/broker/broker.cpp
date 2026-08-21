@@ -1153,7 +1153,7 @@ static bool set_linux_proctitle(const char* new_title) {
 
 static void set_broker_proctitle(const char* package_name) {
   if (!package_name) {
-    set_linux_proctitle("BBroker-empty");
+    set_linux_proctitle("BB-empty");
     return;
   }
 
@@ -1181,7 +1181,7 @@ static void set_broker_proctitle(const char* package_name) {
       break;
   }
 
-  std::string fullTitle = "BBroker-" + procTitle;
+  std::string fullTitle = "BB-" + procTitle;
   set_linux_proctitle(fullTitle.c_str());
 }
 

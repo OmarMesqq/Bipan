@@ -641,7 +641,7 @@ static void hook_system_property_read_callback(const void* pi, void (*callback)(
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
 }
 
-#ifdef IN_APP_SPOOF_GETIFADDRS
+
 static int (*orig_getifaddrs)(struct ifaddrs**) = nullptr;
 static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 
@@ -776,8 +776,6 @@ void preCacheIfaddrs() {
     ifa = next;
   }
 }
-
-#endif
 
 void registerDobbyNativeSensorsHooks() {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);

@@ -3,8 +3,6 @@
 
 // #define IN_APP_DEBUG_LOGGING
 
-#define IN_APP_SPOOF_GETIFADDRS
-
 /**
  * Logs time taken to get IPC mem lock and for Broker to answer.
  * This is will log a lot.
