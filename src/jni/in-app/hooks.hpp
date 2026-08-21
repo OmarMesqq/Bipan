@@ -10,7 +10,6 @@
 
 #include <unordered_map>
 
-#include "as_safe_string.hpp"
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "deps/zygisk.hpp"
@@ -366,8 +365,6 @@ std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.whatsapp",
     "com.instagram.android"};
 
-static bool linker_hooked = false;
-static bool dlsym_hooked = false;
 static bool dl_iterate_phdr_hooked = false;
 static bool seccomp_applied = false;
 
@@ -381,11 +378,6 @@ static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, voi
 void (*orig_clampGrowthLimit)(JNIEnv*, jobject) = nullptr;
 static void (*orig_clearGrowthLimit)(JNIEnv*, jobject) = nullptr;
 
-static void* (*orig_dlopen)(const char* filename, int flag) = nullptr;
-static void* (*orig_android_dlopen_ext)(const char* filename, int flag, const android_dlextinfo* extinfo) = nullptr;
-static void* (*orig_dlvsym)(void*, const char*, const char*) = nullptr;
-static void* (*orig_dlsym)(void*, const char*) = nullptr;
-
 static int (*orig_dl_iterate_phdr)(int (*)(struct dl_phdr_info*, size_t, void*), void*) = nullptr;
 
 static ASensorManager* (*orig_ASensorManager_getInstance)();
@@ -397,54 +389,6 @@ static ASensorEventQueue* (*orig_ASensorManager_createEventQueue)(ASensorManager
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
 
-// ==========================================
-// Linker hooks
-// ==========================================
-
-static void* my_dlopen(const char* filename, int flag) {
-  if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlopen(%s)", filename);
-  }
-
-  // calling the original here probably already calls .init_array
-  void* result = orig_dlopen(filename, flag);
-
-  return result;
-}
-
-static void* my_dlvsym(void* handle, const char* symbol, const char* version) {
-  if (symbol != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlvsym(%s)", symbol);
-    if (version != nullptr) {
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlvsym(%s, version=%s)", symbol, version);
-    }
-  }
-  void* result = orig_dlsym(handle, symbol);
-
-  return result;
-}
-
-static void* my_dlsym(void* handle, const char* symbol) {
-  if (symbol != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: dlsym(%s)", symbol);
-  }
-
-  void* result = orig_dlsym(handle, symbol);
-
-  return result;
-}
-
-static void* my_android_dlopen_ext(const char* filename, int flag, const android_dlextinfo* extinfo) {
-  if (filename != nullptr) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "LinkerHook: android_dlopen_ext(%s)", filename);
-  }
-
-  // calling the original here probably already calls .init_array
-  void* result = orig_android_dlopen_ext(filename, flag, extinfo);
-
-  return result;
-}
-
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data) {
   FilteredCallback ctx = {cb, data};
   return orig_dl_iterate_phdr(filtered_iterate_callback, &ctx);
@@ -453,8 +397,6 @@ static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), vo
 // ==========================================
 // Native Sensors hooks
 // ==========================================
-
-#define NATIVE_SENSORS_FUNCTIONS_COUNT 5
 
 ASensorManager* hook_ASensorManager_getInstance() {
   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native Sensors) Blocked ASensorManager_getInstance");
@@ -763,7 +705,8 @@ void registerDobbyNativeSensorsHooks() {
       (void**)&orig_ASensorManager_getDefaultSensor,
       (void**)&orig_ASensorManager_createEventQueue};
 
-  for (int i = 0; i < NATIVE_SENSORS_FUNCTIONS_COUNT; i++) {
+  const int nativeSensorsMethodsCount = 5;
+  for (int i = 0; i < nativeSensorsMethodsCount; i++) {
     void* addr = dlsym(handle, symbols[i]);
     if (addr) {
       if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
@@ -772,52 +715,6 @@ void registerDobbyNativeSensorsHooks() {
     }
   }
   dlclose(handle);
-}
-
-void registerDobbyLinkerHooks() {
-  if (linker_hooked) {
-    return;
-  }
-
-  const char* symbols[] = {
-      "dlopen",
-      "android_dlopen_ext",
-      "dlvsym",
-      "dlsym",
-  };
-
-  void* hooks[] = {
-      (void*)my_dlopen,
-      (void*)my_android_dlopen_ext,
-      (void*)my_dlvsym,
-      (void*)my_dlsym};
-
-  void** originals[] = {
-      (void**)&orig_dlopen,
-      (void**)&orig_android_dlopen_ext,
-      (void**)&orig_dlvsym,
-      (void**)&orig_dlsym};
-
-  for (int i = 0; i < 4; i++) {
-    void* addr = dlsym(RTLD_DEFAULT, symbols[i]);
-    if (!addr) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to dlsym(%s)", symbols[i]);
-      linker_hooked = true;  // set regardless to avoid trying again
-      return;
-    }
-
-    int hookRet = DobbyHook(addr, hooks[i], originals[i]);
-    if (hookRet != 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to DobbyHook(%s)", symbols[i]);
-      linker_hooked = true;  // set regardless to avoid trying again
-      return;
-    }
-
-    __builtin___clear_cache((char*)addr, (char*)addr + 32);
-  }
-
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "All linker hooks were successful :)");
-  linker_hooked = true;
 }
 
 void registerDobbyDlIteratePhdrHook() {
