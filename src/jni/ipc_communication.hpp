@@ -32,6 +32,8 @@ enum IpcAction {
  */
 #define MAX_STACK_TRACE 150
 
+#define IPC_PACKAGE_NAME_SIZE 128
+
 typedef struct {
   volatile int lock;
   volatile int status;
@@ -44,12 +46,14 @@ typedef struct {
 
   int nr;  // syscall number
   long arg0, arg1, arg2, arg3, arg4, arg5;
-  char package_name[PATH_MAX];
+  char package_name[IPC_PACKAGE_NAME_SIZE];
 
-  // Payloads to cross the process boundary
-  char string_payload[256];      // Paths (/sbin/su, etc)
-  uint8_t struct_payload[128];   // sockaddrs
-  uint8_t out_buffer[PATH_MAX];  // Returned data (uname, readlinkat)
+  // Paths
+  char string_payload[256];
+  // Binary data structs (e.g. `sockaddr`s)
+  uint8_t struct_payload[128];
+  // Data returned by Broker for syscalls like `uname` and `readlinkat`
+  uint8_t out_buffer[PATH_MAX];
   // struct dirent dirents_buf[PATH_MAX];
 
   int action;

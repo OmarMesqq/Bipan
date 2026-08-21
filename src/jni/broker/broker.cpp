@@ -58,7 +58,7 @@ static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
 static inline bool is_hosts_file(const char* pathname);
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
-static void set_broker_proctitle(const char* package_name);
+static void set_broker_proctitle(const char* pkgName);
 #ifdef TRAP_EXPERIMENTAL_SYSCALLS
 static char* get_thread_name(pid_t parentPid, __aligned_u64 tid);
 static char* get_ptrace_op_name(int op);
@@ -1151,14 +1151,14 @@ static bool set_linux_proctitle(const char* new_title) {
   return true;
 }
 
-static void set_broker_proctitle(const char* package_name) {
-  if (!package_name) {
+static void set_broker_proctitle(const char* pkgName) {
+  if (!pkgName) {
     set_linux_proctitle("BB-empty");
     return;
   }
 
   std::vector<std::string> segments;
-  std::stringstream ss(package_name);
+  std::stringstream ss(pkgName);
   std::string segment;
   while (std::getline(ss, segment, '.')) {
     segments.push_back(segment);
