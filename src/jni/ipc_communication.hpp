@@ -1,7 +1,6 @@
 #ifndef IPC_COMMUNICATION_HPP
 #define IPC_COMMUNICATION_HPP
 
-// #include <dirent.h>
 #include <linux/limits.h>
 #include <sys/types.h>
 
@@ -54,7 +53,6 @@ typedef struct {
   uint8_t struct_payload[128];
   // Data returned by Broker for syscalls like `uname` and `readlinkat`
   uint8_t out_buffer[PATH_MAX];
-  // struct dirent dirents_buf[PATH_MAX];
 
   int action;
   long ret;  // return value provided by kernel

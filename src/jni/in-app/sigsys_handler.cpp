@@ -236,7 +236,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
-  // local_memset(ipc_mem->dirents_buf, 0, sizeof(ipc_mem->dirents_buf));
   __sync_synchronize();
 
   int pre_fd = -1;  // app-side fd to be filled by Broker open-like syscalls
