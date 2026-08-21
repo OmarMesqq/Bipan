@@ -58,16 +58,6 @@ typedef struct {
 
   int action;
   long ret;  // return value provided by kernel
-
-#ifdef TRAP_EXPERIMENTAL_SYSCALLS
-  // pipe2 1st arg
-  int pipefd_payload[2];
-
-  // process_vm_readv and process_vm_writev info
-  uintptr_t vm_iov_addr[4];
-  size_t vm_iov_len[4];
-  int vm_iov_count;
-#endif
 } SharedIPC;
 
 #endif

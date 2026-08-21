@@ -54,11 +54,8 @@
 
 /**
  * Devtime only: installs BipanBrokerAssitant to handle bad programming
- * (sorry) I may leave out in the privileged Broker thread.
+ * (sorry) I may leave out in the Broker process.
  */
 // #define BROKER_DEBUG_BUILD
-
-// Syscalls I am still trying to investigate severity and how "hot" they are
-// #define TRAP_EXPERIMENTAL_SYSCALLS
 
 #endif

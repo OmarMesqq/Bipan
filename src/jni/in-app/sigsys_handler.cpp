@@ -231,20 +231,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->arg3 = arg3;
   ipc_mem->arg4 = arg4;
   ipc_mem->arg5 = arg5;
-#ifdef TRAP_EXPERIMENTAL_SYSCALLS
-  ipc_mem->vm_iov_count = 0;
-#endif
 
   // Zero-out string payloads
   local_memset(ipc_mem->string_payload, 0, sizeof(ipc_mem->string_payload));
   local_memset(ipc_mem->struct_payload, 0, sizeof(ipc_mem->struct_payload));
   local_memset(ipc_mem->out_buffer, 0, sizeof(ipc_mem->out_buffer));
   // local_memset(ipc_mem->dirents_buf, 0, sizeof(ipc_mem->dirents_buf));
-#ifdef TRAP_EXPERIMENTAL_SYSCALLS
-  local_memset(ipc_mem->pipefd_payload, 0, sizeof(ipc_mem->pipefd_payload));
-  local_memset(ipc_mem->vm_iov_addr, 0, sizeof(ipc_mem->vm_iov_addr));
-  local_memset(ipc_mem->vm_iov_len, 0, sizeof(ipc_mem->vm_iov_len));
-#endif
   __sync_synchronize();
 
   int pre_fd = -1;  // app-side fd to be filled by Broker open-like syscalls
@@ -268,25 +260,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
              nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
-#ifdef TRAP_EXPERIMENTAL_SYSCALLS
-  else if (nr == __NR_pipe2) {
-    local_memcpy(ipc_mem->pipefd_payload, (int*)arg0, 2);
-  }
-
-  else if (nr == __NR_process_vm_readv || nr == __NR_process_vm_writev) {
-    ipc_mem->arg0 = arg0;  // target pid
-
-    const struct iovec* remote_iov = (const struct iovec*)arg3;
-    unsigned long riovcnt = (unsigned long)arg4;
-
-    // Capture up to 4 remote iovec entries for inspection
-    for (unsigned long i = 0; i < riovcnt && i < 4; i++) {
-      ipc_mem->vm_iov_addr[i] = (uintptr_t)remote_iov[i].iov_base;
-      ipc_mem->vm_iov_len[i] = remote_iov[i].iov_len;
-    }
-    ipc_mem->vm_iov_count = (int)((riovcnt < 4) ? riovcnt : 4);
-  }
-#endif
 
   // Serialization of structs
   long sock_ptr = 0;
