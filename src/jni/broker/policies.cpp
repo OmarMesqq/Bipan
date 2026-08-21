@@ -172,25 +172,10 @@ bool is_maps(const char* pathname) {
          is_dynamic_proc_file(pathname, "/maps");
 }
 
-// bool is_proc_status(const char* pathname) {
-//   return (strcmp(pathname, "/proc/self/status") == 0) ||
-//          is_dynamic_proc_file(pathname, "/status");
-// }
-
 bool is_smaps(const char* pathname) {
   return (strcmp(pathname, "/proc/self/smaps") == 0) ||
          is_dynamic_proc_file(pathname, "/smaps");
 }
-
-// bool is_mounts(const char* pathname) {
-//   return (strcmp(pathname, "/proc/mounts") == 0) ||
-//          (strcmp(pathname, "/proc/self/mounts") == 0) ||
-//          (strcmp(pathname, "/proc/self/mountstats") == 0) ||
-//          (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
-//          is_dynamic_proc_file(pathname, "/mountstats") ||
-//          is_dynamic_proc_file(pathname, "/mountinfo") ||
-//          is_dynamic_proc_file(pathname, "/mounts");
-// }
 
 // HEAP ALLOCATION
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
@@ -404,13 +389,13 @@ static inline bool is_ipv6_lan_addr(uint8_t* ip6) {
   }
 
   // Loopback (::1)
-  bool is_loopback = (ip6[15] == 1);
-  for (int i = 0; i < 15; i++) {
-    if (ip6[i] != 0) is_loopback = false;
-  }
-  if (is_loopback) {
-    return true;
-  }
+  // bool is_loopback = (ip6[15] == 1);
+  // for (int i = 0; i < 15; i++) {
+  //   if (ip6[i] != 0) is_loopback = false;
+  // }
+  // if (is_loopback) {
+  //   return true;
+  // }
 
   if (ip6[0] == 0xFE && (ip6[1] & 0xC0) == 0x80) {
     // fe80::/10 (Link-Local)
