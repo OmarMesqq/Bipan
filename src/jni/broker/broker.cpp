@@ -389,72 +389,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
         break;
       }
-      case __NR_statfs: {
-        const char* path = ipc_mem->string_payload;
-
-        ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyOpen(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] denied", path);
-          ipc_mem->ret = -EPERM;
-          break;
-        }
-        if (shouldSpoofExistence(path)) {
-          ipc_mem->ret = -ENOENT;
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statfs(%s)] spoofed", path);
-          break;
-        }
-
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef BROKER_DEBUG_LOGGING
-        if (shouldLog(path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statfs(%s) allowed", path);
-        }
-#endif
-        break;
-      }
-      case __NR_fstatfs: {
-        int fd = (int)ipc_mem->arg0;
-
-        ipc_mem->action = ACTION_USE_RET;
-        char* proc_pid_fd_path = assemble_proc_pid_fd(ipc_mem->target_pid, fd);
-        if (!proc_pid_fd_path) {
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
-
-        char resolved_link_path[PATH_MAX] = {0};
-        ssize_t len = readlinkat(0, proc_pid_fd_path, resolved_link_path, sizeof(resolved_link_path) - 1);
-        if (len == -1) {
-          write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Failed to resolve path (%s) in fstatfs. errno: %s", proc_pid_fd_path, strerror(errno));
-          free(proc_pid_fd_path);
-          // Bubble up to app
-          ipc_mem->ret = len;
-          break;
-        }
-        resolved_link_path[len] = '\0';
-
-        if (shouldDenyStat(resolved_link_path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] denied", resolved_link_path);
-          free(proc_pid_fd_path);
-          ipc_mem->ret = -EPERM;
-          break;
-        }
-        if (shouldSpoofExistence(resolved_link_path)) {
-          free(proc_pid_fd_path);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstatfs(%s)] spoofed", resolved_link_path);
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
-#ifdef BROKER_DEBUG_LOGGING
-        if (shouldLog(resolved_link_path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "fstatfs(%s) (fd: %d) allowed", resolved_link_path, fd);
-        }
-#endif
-        free(proc_pid_fd_path);
-
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
-        break;
-      }
       case __NR_newfstatat: {
 #ifdef BROKER_DEBUG_LOGGING
         int fd = (int)ipc_mem->arg0;
@@ -494,35 +428,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
-        }
-#endif
-        break;
-      }
-      case __NR_statx: {
-        const char* path = ipc_mem->string_payload;
-#ifdef BROKER_DEBUG_LOGGING
-        int fd = (int)ipc_mem->arg0;
-
-        int flags = (int)ipc_mem->arg2;
-        unsigned int mask = (unsigned int)ipc_mem->arg3;
-#endif
-
-        ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] denied", path);
-          ipc_mem->ret = -EPERM;
-          break;
-        }
-        if (shouldSpoofExistence(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[statx(%s)] spoofed", path);
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
-
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef BROKER_DEBUG_LOGGING
-        if (shouldLog(path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "statx(%s) (fd: %d) allowed: flags: %d | mask: %u", path, fd, flags, mask);
         }
 #endif
         break;
@@ -706,21 +611,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         const char* path = (const char*)ipc_mem->string_payload == nullptr ? "NULL path" : ipc_mem->string_payload;
         uint32_t mask = (uint32_t)ipc_mem->arg2;
 
-        std::string maskAnalysis = "";
-        maskAnalysis.reserve(500);
-        if (mask & IN_ACCESS) maskAnalysis += " File accessed |";
-        if (mask & IN_ATTRIB) maskAnalysis += " Metadata changes (perms, timestamps) |";
-        if (mask & IN_CLOSE_WRITE) maskAnalysis += " File opened for writing was closed |";
-        if (mask & IN_CLOSE_NOWRITE) maskAnalysis += " File or directory not opened for writing was closed |";
-        if (mask & IN_CREATE) maskAnalysis += " File/directory created in watched directory |";
-        if (mask & IN_DELETE) maskAnalysis += " File/directory deleted from watched directory |";
-        if (mask & IN_DELETE_SELF) maskAnalysis += " Watched file/directory was deleted/moved |";
-        if (mask & IN_MODIFY) maskAnalysis += " File modifed |";
-        if (mask & IN_MOVE_SELF) maskAnalysis += " File was moved |";
-        if (mask & IN_MOVED_FROM) maskAnalysis += " Generated for the directory containing the old filename when a file is renamed |";
-        if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
-        if (mask & IN_OPEN) maskAnalysis += " File or directory was opened";
-
         if (strstr(path, "Screenshots")) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(inotify_add_watch): Neutered for path: %s", path);
           ipc_mem->ret = SPOOFED_WFD;
@@ -728,7 +618,25 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
 
-        write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
+        if (shouldLog(path)) {
+          std::string maskAnalysis = "";
+          maskAnalysis.reserve(500);
+          if (mask & IN_ACCESS) maskAnalysis += " File accessed |";
+          if (mask & IN_ATTRIB) maskAnalysis += " Metadata changes (perms, timestamps) |";
+          if (mask & IN_CLOSE_WRITE) maskAnalysis += " File opened for writing was closed |";
+          if (mask & IN_CLOSE_NOWRITE) maskAnalysis += " File or directory not opened for writing was closed |";
+          if (mask & IN_CREATE) maskAnalysis += " File/directory created in watched directory |";
+          if (mask & IN_DELETE) maskAnalysis += " File/directory deleted from watched directory |";
+          if (mask & IN_DELETE_SELF) maskAnalysis += " Watched file/directory was deleted/moved |";
+          if (mask & IN_MODIFY) maskAnalysis += " File modifed |";
+          if (mask & IN_MOVE_SELF) maskAnalysis += " File was moved |";
+          if (mask & IN_MOVED_FROM) maskAnalysis += " Generated for the directory containing the old filename when a file is renamed |";
+          if (mask & IN_MOVED_TO) maskAnalysis += " Generated for the directory containing the new filename when a file is renamed. |";
+          if (mask & IN_OPEN) maskAnalysis += " File or directory was opened";
+
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(inotify_add_watch): fd=%d, path=%s, flags= [%s]", fd, path, maskAnalysis.c_str());
+        }
+
         break;
       }
       case __NR_inotify_rm_watch: {
