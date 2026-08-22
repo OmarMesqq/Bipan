@@ -148,20 +148,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg4 = (long)ctx->uc_mcontext.regs[4];
   long arg5 = (long)ctx->uc_mcontext.regs[5];
 
-  if (nr == __NR_sendmmsg) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] Lying about sendmmsg existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
-  if (nr == __NR_statx) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] Lying about statx existing...");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
     ctx->uc_mcontext.regs[0] = 0;
@@ -245,15 +231,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat) {
-    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_statfs) {
-    local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
-  } else if (nr == __NR_newfstatat || nr == __NR_statx) {
-    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_inotify_add_watch ||
-             nr == __NR_readlinkat ||
-             nr == __NR_mknodat) {
+  } else if (nr == __NR_faccessat ||
+             nr == __NR_newfstatat ||
+             nr == __NR_inotify_add_watch ||
+             nr == __NR_readlinkat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_execve ||
              nr == __NR_execveat) {
