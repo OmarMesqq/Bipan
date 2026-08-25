@@ -1,6 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+BUILD_MODE="release"
+PRO_FILE="bipan-rules.pro"
+
+if [[ "${1:-}" == "debug" ]]; then
+  BUILD_MODE="debug"
+  PRO_FILE="bipan-rules-debug.pro"
+  export BIPAN_DEBUG=1
+else
+  export BIPAN_DEBUG=0
+fi
+
 # Compile the entire BipanJava suite to Java bytecode
 javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
   -sourcepath src \
@@ -10,10 +21,19 @@ javac -cp $ANDROID_HOME/platforms/android-36/android.jar \
 
 # Shrink, obfuscate, and minify all BipanJava.class into DEX
 mkdir -p ./r8analysis
+
+R8_FLAGS=(--pg-conf "$PRO_FILE")
+if [[ "$BUILD_MODE" == "release" ]]; then
+  R8_FLAGS+=(--release)
+else
+  R8_FLAGS+=(--debug)
+fi
+
+
 java -cp r8lib.jar \
   -Dcom.android.tools.r8.dumpkeepradiushtmltodirectory=./r8analysis \
   com.android.tools.r8.R8 \
-  --release \
+  "${R8_FLAGS[@]}" \
   --lib $ANDROID_HOME/platforms/android-36/android.jar \
   --pg-conf bipan-rules.pro \
   --output . \
@@ -23,13 +43,7 @@ java -cp r8lib.jar \
 xxd -i classes.dex > src/jni/in-app/bipan_java.h
 
 # Build the module's .so file
-BUILD_MODE="release"
-if [[ "${1:-}" == "debug" ]]; then
-  BUILD_MODE="debug"
-  export BIPAN_DEBUG=1
-else
-  export BIPAN_DEBUG=0
-fi
+
 echo "Building Bipan in $BUILD_MODE mode..."
 echo ""
 
