@@ -23,17 +23,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.InetAddress;
 import java.util.Map;
-import java.util.Set;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import b.J;
 
 /**
  * An almost-too-complex hook for some networking related services in Android:
  * - Trims VPN flag from NetworkCapabilities
  * - Hardcodes a fake IPv4 local address
- * - Hardcodes 53Mbps as link speed
  * - Hardcodes `VALIDATED` for connections i.e. not behind captive portal
  */
 public class NetworkSpoofingHook implements BaseHook {
@@ -63,12 +59,6 @@ public class NetworkSpoofingHook implements BaseHook {
   private static Object wifiProxy;
 
   private static String selfPackageName;
-
-  private static final Set<String> BENIGN_CM_METHODS = new HashSet<>(Arrays.asList(
-      "getNetworkInfo",
-      "getNetworkInfoForUid",
-      "getActiveNetwork",
-      "isActiveNetworkMetered"));
 
   @Override
   public void install(Context context) throws Exception {
@@ -102,10 +92,6 @@ public class NetworkSpoofingHook implements BaseHook {
     // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
-        if (!BENIGN_CM_METHODS.contains(method.getName())) {
-          // Log.w(TAG, "connHandler got async method: " + method.getName());
-        }
-
         for (int i = 0; i < args.length; i++) {
           if (args[i] instanceof Messenger) {
             final Messenger originalMessenger = (Messenger) args[i];
@@ -160,10 +146,6 @@ public class NetworkSpoofingHook implements BaseHook {
             throw new OutOfMemoryError();
           }
           return ni;
-        }
-      } else {
-        if (!BENIGN_CM_METHODS.contains(method.getName())) {
-          // Log.w(TAG, "Allowing connHandler synchronous method: " + method.getName());
         }
       }
 
@@ -267,8 +249,8 @@ public class NetworkSpoofingHook implements BaseHook {
       removeTransport.setAccessible(true);
       removeTransport.invoke(caps, NetworkCapabilities.TRANSPORT_VPN);
 
-      // Tell app we don't have a VPN and Internet is VALIDATED i.e. not behind
-      // captive portal
+      // Tell app we don't have a VPN and Internet is `VALIDATED`
+      // i.e. not behind a captive portal
       Method addCap = NetworkCapabilities.class.getDeclaredMethod("addCapability", int.class);
       addCap.setAccessible(true);
       addCap.invoke(caps, NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
@@ -280,16 +262,6 @@ public class NetworkSpoofingHook implements BaseHook {
       transportInfoField.setAccessible(true);
       transportInfoField.set(caps, null);
 
-      // Spoof bandwidth to realistic mid-range WiFi values
-      Field upBwField = NetworkCapabilities.class
-          .getDeclaredField("mLinkUpBandwidthKbps");
-      upBwField.setAccessible(true);
-      upBwField.setInt(caps, 53000); // 53 Mbps up
-
-      Field downBwField = NetworkCapabilities.class
-          .getDeclaredField("mLinkDownBandwidthKbps");
-      downBwField.setAccessible(true);
-      downBwField.setInt(caps, 52000); // 52 Mbps down
     } catch (Exception e) {
       Log.e(TAG, "Failed to apply VPN spoof", e);
       throw new OutOfMemoryError();
@@ -307,8 +279,8 @@ public class NetworkSpoofingHook implements BaseHook {
       int networkId = (int) networkIdField.get(wi);
 
       ArrayList<InetAddress> dnsServers = new ArrayList<>();
-      dnsServers.add(InetAddress.getByName("8.8.8.8"));
-      dnsServers.add(InetAddress.getByName("8.8.4.4"));
+      dnsServers.add(InetAddress.getByName("1.1.1.1"));
+      dnsServers.add(InetAddress.getByName("1.0.0.1"));
 
       // No permission, not connected or we are on mobile
       if (networkId == -1) {
@@ -319,7 +291,6 @@ public class NetworkSpoofingHook implements BaseHook {
         ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
         list.clear();
 
-        // Use a plausible cellular IP range
         InetAddress fakeIp = InetAddress.getByName(FAKE_IP);
         Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
         ctor.setAccessible(true);
@@ -442,13 +413,8 @@ public class NetworkSpoofingHook implements BaseHook {
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);
-      setField(info, "mLinkSpeed", 53); // Mbps
       setField(info, "mNetworkId", 4);
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
-      setField(info, "mMaxSupportedRxLinkSpeed", 62);
-      setField(info, "mMaxSupportedTxLinkSpeed", 60);
-      setField(info, "mTxLinkSpeed", 54);
-      setField(info, "mRxLinkSpeed", 54);
       spoofSsid(info);
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof WifiInfo", e);
