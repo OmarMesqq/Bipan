@@ -124,7 +124,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   int pidfd = -1;
   pidfd = bipan_pidfd_open(client_pid, 0);
   if (pidfd < 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] pidfd_open failed for PID %d. errno: %s. Proceeding with just sockfd monitoring.", client_pid, strerror(pidfd));
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "pidfd_open failed for PID %d. errno: %s. Proceeding with just sockfd monitoring.", client_pid, strerror(pidfd));
 
     // Just monitor the in-app sockfd
     ev.data.fd = sock;
@@ -202,7 +202,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         const char* action_name = (nr == __NR_execve) ? "execve" : "execveat";
         ipc_mem->ret = 0;
         ipc_mem->action = ACTION_EXIT_PROCESS;
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[%s(%s) spoofed to success]", action_name, path_payload);
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "%s(%s) spoofed to success", action_name, path_payload);
         break;
       }
       case __NR_uname: {
@@ -214,12 +214,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
       }
       case __NR_openat: {
         if (shouldDenyOpen(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] denied", path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) denied", path_payload);
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
           break;
         } else if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed", path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed", path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
@@ -246,7 +246,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             // fallback to denying if Broker can't create a fake fd
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
-            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to create fake FD!");
+            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] (openat): Failed to create fake fd!");
             break;
           }
 
@@ -259,7 +259,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           if (root_fd < 0) {
             // same logic:
             // fallback to denying if Broker can't open target's remote fd
-            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to open target's pre_fd!");
+            write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] (openat): Failed to open target's pre_fd!");
             ipc_mem->ret = -EACCES;
             ipc_mem->action = ACTION_USE_RET;
             close(fake_fd);
@@ -278,7 +278,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           close(root_fd);  // Cleanup daemon's ref of target's pre_fd
           close(fake_fd);  // Cleanup daemon's own fake fd
 
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[openat(%s)] spoofed with fd %d", path_payload, target_fd);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed with fd %d", path_payload, target_fd);
           // Tell target to use the fd it already has
           ipc_mem->ret = target_fd;
           ipc_mem->action = ACTION_USE_RET;
@@ -299,12 +299,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] denied", path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "faccessat(%s) denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
         if (shouldSpoofExistence(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[faccessat(%s)] spoofed", path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "faccessat(%s) spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -340,14 +340,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         if (shouldDenyStat(resolved_link_path)) {
           free(proc_pid_fd_path);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] denied", resolved_link_path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "fstat(%s) denied", resolved_link_path);
           ipc_mem->ret = -EPERM;
           break;
         }
 
         if (shouldSpoofExistence(resolved_link_path)) {
           free(proc_pid_fd_path);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat(%s)] spoofed", resolved_link_path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "fstat(%s) spoofed", resolved_link_path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -365,11 +365,11 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             if (!fixedStatBuf) {
               free(actualPath);
               free(proc_pid_fd_path);
-              write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat] failed to fix hosts!");
+              write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(fstat): failed to fix hosts!");
               ipc_mem->ret = -1;
               break;
             }
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[fstat] fixed hosts file.");
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(fstat): fixed hosts file.");
             memcpy(ipc_mem->out_buffer, fixedStatBuf, sizeof(struct stat));
             free(fixedStatBuf);
             free(actualPath);
@@ -398,12 +398,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] denied", path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "newfstatat(%s) denied", path);
           ipc_mem->ret = -EPERM;
           break;
         }
         if (shouldSpoofExistence(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat(%s)] spoofed", path);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "newfstatat(%s) spoofed", path);
           ipc_mem->ret = -ENOENT;
           break;
         }
@@ -412,13 +412,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (is_hosts_file(path)) {
           struct stat* fixedStatBuf = fixHostsFileStat(path, flags);
           if (!fixedStatBuf) {
-            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat] failed to fix hosts!");
+            write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(newfstatat): failed to fix hosts!");
             ipc_mem->ret = -1;
             break;
           }
           memcpy(ipc_mem->out_buffer, fixedStatBuf, sizeof(struct stat));
           free(fixedStatBuf);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[newfstatat] fixed hosts file.");
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(newfstatat): fixed hosts file.");
           ipc_mem->ret = 0;
           break;
         }
@@ -687,7 +687,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               break;
             }
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] (readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
             if (strcmp(fixedSymlink, "ENOENT") == 0) {
               ipc_mem->ret = -ENOENT;
               free(actualPath);
@@ -873,7 +873,7 @@ static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
 static bool set_linux_proctitle(const char* new_title) {
   unsigned long arg_start = 0, arg_end = 0;
   if (!get_arg_bounds(&arg_start, &arg_end)) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] set_linux_proctitle: get_arg_bounds failed");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] set_linux_proctitle: get_arg_bounds failed");
     return false;
   }
 
@@ -888,7 +888,7 @@ static bool set_linux_proctitle(const char* new_title) {
 
   unsigned long new_end = arg_start + to_write + 1;
   if (prctl(PR_SET_MM, PR_SET_MM_ARG_END, new_end, 0, 0) != 0) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG,
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
                           "[!] set_linux_proctitle: PR_SET_MM_ARG_END failed: %s (avail=%zu, wanted=%zu)",
                           strerror(errno), avail, title_len);
     return false;
@@ -933,7 +933,7 @@ static void set_broker_proctitle(const char* pkgName) {
 
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
   if (inside_remote_patcher) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Thread reentrancy in remote patcher!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Thread reentrancy in remote patcher!");
     return;
   }
   inside_remote_patcher = true;

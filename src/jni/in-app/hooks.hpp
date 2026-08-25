@@ -544,29 +544,21 @@ static void (*orig_freeifaddrs)(struct ifaddrs*) = nullptr;
 static struct ifaddrs* g_cached_ifaddrs = nullptr;
 static bool g_ifaddrs_cached = false;
 
-/**
- * TODO: by hooking `getifaddrs`/`freeifaddrs` we really keep
- * the scrubbed struct (`g_cached_ifaddrs`) in memory "forever". This is probably a leak.
- * Maybe not, as this interception should exist during app lifecycle and when app
- * dies it will be free for the system to use. idk
- */
 static void my_freeifaddrs(struct ifaddrs* ifa) {
   if (ifa == g_cached_ifaddrs) {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "freeifaddrs: Returning cached ifaddrs struct");
     return;
   }
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "freeifaddrs: Falling back to original freeifdaddrs");
+  write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "my_freeifaddrs: Got cached struct. Calling original freeifdaddrs");
   orig_freeifaddrs(ifa);
 }
 
 static int my_getifaddrs(struct ifaddrs** ifap) {
   if (!g_ifaddrs_cached || g_cached_ifaddrs == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "getifaddrs error: cache miss. Call preCacheIfaddrs() before");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "my_getifaddrs error: cache miss. Call preCacheIfaddrs() before");
     *ifap = nullptr;
     return -1;
   }
 
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "getifaddrs success: returning cached and scrubbed result");
   *ifap = g_cached_ifaddrs;
   return 0;
 }
