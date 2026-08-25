@@ -1,4 +1,5 @@
 # Keep the entry points C++ calls via JNI
+# and static references for hooking PM and CM
 -keep class b.J {
   public static void i();
   public static void h();
