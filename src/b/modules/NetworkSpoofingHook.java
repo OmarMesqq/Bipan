@@ -89,10 +89,10 @@ public class NetworkSpoofingHook implements BaseHook {
     Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
     final Object originalConnService = asInterface.invoke(null, realBinder);
 
-    // InvocationHandler for async callbacks
     InvocationHandler connHandler = (proxy, method, args) -> {
       if (args != null) {
         for (int i = 0; i < args.length; i++) {
+          // for async callbacks
           if (args[i] instanceof Messenger) {
             final Messenger originalMessenger = (Messenger) args[i];
             Handler interceptorHandler = new Handler(Looper.getMainLooper()) {
@@ -113,16 +113,30 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       }
 
-      Object result = method.invoke(originalConnService, args);
-
       // synchronous returns
+      Object result;
+      try {
+        result = method.invoke(originalConnService, args);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.w(TAG, "connHandler: InvocationTargetException: Underlying call to " + method.getName()
+            + " failed. Cause's msg: " + cause.getMessage());
+        throw cause;
+      }
+
       if ("getNetworkCapabilities".equals(method.getName())) {
         // Log.i(TAG, "Neutered getNetworkCapabilities");
         NetworkCapabilities nc = (NetworkCapabilities) result;
         applyVpnSpoof(nc);
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
-        // Log.i(TAG, "Neutered getLinkProperties");
-        spoofLinkProperties((LinkProperties) result);
+        try {
+          spoofLinkProperties((LinkProperties) result);
+        } catch (SecurityException e) {
+          Log.d(TAG, "connHandler: SecurityException (no ACCESS_WIFI_STATE): skipping LinkProperties spoof");
+        } catch (Exception e) {
+          Log.e(TAG, "connHandler: unknown exception. Aborting!", e);
+          throw new OutOfMemoryError();
+        }
       } else if ("getAllNetworks".equals(method.getName())) {
         // Log.i(TAG, "Neutered getAllNetworks");
         return new Network[0];
@@ -176,7 +190,16 @@ public class NetworkSpoofingHook implements BaseHook {
     final Object originalWifiService = asInterface.invoke(null, realBinder);
 
     InvocationHandler wifiHandler = (proxy, method, args) -> {
-      Object result = method.invoke(originalWifiService, args);
+      Object result;
+      try {
+        result = method.invoke(originalWifiService, args);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.w(TAG,
+            "wifiHandler: Underlying call to " + method.getName() + " failed. Cause's msg: " + cause.getMessage());
+        throw cause;
+      }
+
       if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
         spoofWifiInfo((WifiInfo) result);
       }
@@ -417,7 +440,7 @@ public class NetworkSpoofingHook implements BaseHook {
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       spoofSsid(info);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof WifiInfo", e);
+      Log.e(TAG, "spoofWifiInfo: Unknown exception", e);
       throw new OutOfMemoryError();
     }
   }
@@ -432,7 +455,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
       setField(info, "mWifiSsid", fakeSsid);
     } catch (Exception e) {
-      Log.e(TAG, "Failed to spoof SSID", e);
+      Log.e(TAG, "spoofSsid: Unknown exception: ", e);
       throw new OutOfMemoryError();
     }
   }
@@ -442,8 +465,10 @@ public class NetworkSpoofingHook implements BaseHook {
       Field f = obj.getClass().getDeclaredField(name);
       f.setAccessible(true);
       f.set(obj, value);
+    } catch (NoSuchFieldException e) {
+      Log.e(TAG, "setField(" + name + ") - NoSuchFieldException. Message: " + e.getMessage());
     } catch (Exception e) {
-      Log.e(TAG, "set field: " + name, e);
+      Log.e(TAG, "setField(" + name + "). Unknown exception: ", e);
       throw new OutOfMemoryError();
     }
   }
