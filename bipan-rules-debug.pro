@@ -1,6 +1,8 @@
-# ============================================
-# DEBUG BUILD - No obfuscation, no shrinking of names
-# ============================================
+# BipanJava DEBUG
+
+# Keeps pretty much the entirety of Java names,
+# file metadata and so on in the final DEX (which will certainly 
+# be larger than the release build). Don't use this as daily driver.
 
 # Disable obfuscation entirely - keeps original class/method/field names
 -dontobfuscate
@@ -14,13 +16,11 @@
 # Make sure filenames in stack traces show real file names, not stripped
 -renamesourcefileattribute SourceFile
 
-# Keep every class name as-is (belt and suspenders with -dontobfuscate)
+# Keep every class name as-is
 -keep,allowshrinking,allowoptimization class ** { *; }
 
-# Don't warn about missing classes (keeps build noise down)
 -dontwarn **
 
-# If you specifically need your JNI-facing class fully intact and unmoved
 -keep class b.J {
     *;
 }
