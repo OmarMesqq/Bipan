@@ -1,5 +1,6 @@
 package b.modules;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageInstaller;
 import android.os.IBinder;
@@ -323,6 +324,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           }
 
           Log.i(TAG, "Blinded: queryIntentActivities");
+          Log.d(TAG, "queryIntentActivities intent: " + dumpIntent(intent));
         }
         return emptyParceledListSlice();
       }
@@ -564,6 +566,30 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
+      }
+
+      case "setComponentEnabledSetting": {
+        if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
+          ComponentName cn = (ComponentName) args[0];
+          
+          if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
+            Log.i(TAG, "Neutered setComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
+            return null;
+          }
+          return method.invoke(originalPM, args);
+        }
+      }
+
+      case "getComponentEnabledSetting": {
+        if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
+          ComponentName cn = (ComponentName) args[0];
+          
+          if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
+            Log.i(TAG, "Spoofed value of getComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
+            return 0;
+          }
+          return method.invoke(originalPM, args);
+        }
       }
 
       default: {
