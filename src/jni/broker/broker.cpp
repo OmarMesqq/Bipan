@@ -278,7 +278,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           close(root_fd);  // Cleanup daemon's ref of target's pre_fd
           close(fake_fd);  // Cleanup daemon's own fake fd
 
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed with fd %d", path_payload, target_fd);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed", path_payload);
           // Tell target to use the fd it already has
           ipc_mem->ret = target_fd;
           ipc_mem->action = ACTION_USE_RET;
