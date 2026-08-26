@@ -84,7 +84,12 @@ public class SettingsHook implements BaseHook, InvocationHandler {
         }
 
         if (fakeValue != null) {
-          Log.i(TAG, "Spoofed Settings field " + settingKey + ": " + fakeValue);
+          if ("android_id".equals(settingKey)) {
+            Log.i(TAG, "Spoofed SSAID (android_id): " + fakeValue);
+          } else {
+            Log.i(TAG, "Spoofed Settings field " + settingKey + ": " + fakeValue);
+          }
+
           Bundle fakeResult = new Bundle();
           fakeResult.putString("value", fakeValue);
           return fakeResult;

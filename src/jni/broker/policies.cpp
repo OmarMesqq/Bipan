@@ -36,6 +36,12 @@ bool isLanAddress(struct sockaddr* addr) {
 }
 
 bool shouldLog(const char* pathname) {
+  if (
+      strstr(pathname, "lineage") != nullptr ||
+      strstr(pathname, "Lineage") != nullptr) {
+    return true;
+  }
+
   // Ignore spammy app/system areas
   if (starts_with(pathname, "/data/data") ||
       starts_with(pathname, "/data/resource-cache") ||
@@ -103,10 +109,7 @@ bool shouldSpoofExistence(const char* pathname) {
       // starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
       starts_with(pathname, "/proc/meminfo_extra") ||
-      starts_with(pathname, "/data/anr")
-      // strstr(pathname, "lineage") != nullptr ||
-      // strstr(pathname, "Lineage") != nullptr
-  ) {
+      starts_with(pathname, "/data/anr")) {
     return true;
   }
 
