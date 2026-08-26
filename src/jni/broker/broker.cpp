@@ -30,10 +30,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#ifdef BROKER_DEBUG_BUILD
-#include "broker_assist.hpp"
-#endif
 
+#include "broker_assist.hpp"
 #include "common_utils.hpp"
 #include "feature_flags.hpp"
 #include "ipc_communication.hpp"
@@ -87,13 +85,15 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   }
 
   pid_t client_pid = ipc_mem->target_pid;
-#ifdef BROKER_DEBUG_BUILD
+
+  // Broker Assist setup
   g_current_client_pid = client_pid;
-  bool registrationRet = registerDebugSigHandlers();
+  bool registrationRet = registerAssistSigHandlers();
   if (!registrationRet) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't setup debug signal handlers for Broker. Proceeding anyway...");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker assistance handlers registered successfuly :)");
   }
-#endif
 
   set_broker_proctitle(ipc_mem->package_name);
   prctl(PR_SET_NAME, "BrokerMainTh");
