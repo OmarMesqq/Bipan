@@ -27,7 +27,7 @@ import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
-import android.os.Process;
+import android.os.Process
 
 @Composable
 fun NativeScreen() {
@@ -53,8 +53,6 @@ fun NativeScreen() {
     var faccessatInfo by remember { mutableStateOf("Files not stated") }
 
     var fstatInfo by remember { mutableStateOf("Files not stated") }
-    var statfsInfo by remember { mutableStateOf("Files not stated") }
-    var fstatfsInfo by remember { mutableStateOf("Files not stated") }
     var newfstatatInfo by remember { mutableStateOf("Files not stated") }
     var statxInfo by remember { mutableStateOf("Files not stated") }
 
@@ -76,7 +74,6 @@ fun NativeScreen() {
         "/system/etc/hosts",
 
         "/data/anr",
-        "/data/misc/user/0/cacerts-added",
 
         "/system/lib",
         "/system/lib/libzygisk.so",
@@ -165,33 +162,6 @@ fun NativeScreen() {
 
                     ) {
                         Text("statx()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("statfs")
-                    ReportTextWithCopy(statfsInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            statfsInfo = NativeLibWrapper.testStatfs(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("statfs()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("fstatfs")
-                    ReportTextWithCopy(fstatfsInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            fstatfsInfo = NativeLibWrapper.testFstatfs(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("fstatfs()")
                     }
                 }
             }

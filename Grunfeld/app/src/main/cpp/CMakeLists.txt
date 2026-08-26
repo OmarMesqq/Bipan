@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(GrunfeldProject)
 
-add_library(grunfeld SHARED main.c socket_helper.c)
+add_library(grunfeld SHARED main.c socket_helper.c athena.c)
 
 target_compile_options(grunfeld PRIVATE
         -Wall
