@@ -155,6 +155,20 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
+  if (nr == __NR_statx) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statx): replying not implemented");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_sendmmsg) {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendmmsg): replying not implemented");
+    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
   if (nr == __NR_getsockname) {
     long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
