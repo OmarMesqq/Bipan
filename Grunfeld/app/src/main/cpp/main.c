@@ -2,46 +2,25 @@
 #include <android/sensor.h>
 #include <android/looper.h>
 #include <jni.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/prctl.h>
 #include <sys/utsname.h>
-#include <sys/ptrace.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <linux/fcntl.h>
 #include <sys/system_properties.h>
 #include <time.h>
 #include <errno.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <elf.h>
-#include <linux/limits.h>
-#include <stdint.h>
-#include <sys/types.h>
 #include <stdlib.h>
-#include <unwind.h>
-#include <sys/types.h>
-#include <netdb.h>
 #include <ifaddrs.h>
-#include <sys/types.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <link.h>
-#include <stdint.h>
 #include <fcntl.h>
-#include <elf.h>
-#include <sys/auxv.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
-#include <linux/limits.h>
-#include <signal.h>
-#include <sys/statfs.h>
-#include <ctype.h>
 
 #include "socket_helper.h"
+#include "athena.h"
 
 #define TAG "GrunfeldNative"
 #define MAX_REPORT_SIZE 8192
@@ -53,124 +32,11 @@
 #define LOOPER_ID_USER 8998
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 
-
-static struct sigaction old_segv = {0};
-static struct sigaction old_abrt = {0};
-
 /**
  * func-like macro to convert negative error values provided by the kernel to raw syscalls
  * back to nice libc/bionic errnos
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
-
-#define MAX_FRAMES 120
-
-typedef struct {
-    void** frames;
-    int    count;
-    int    max;
-} BacktraceState;
-
-static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
-    BacktraceState* state = (BacktraceState*)arg;
-
-    uintptr_t pc = _Unwind_GetIP(context);
-    if (pc == 0) {
-        return _URC_END_OF_STACK;
-    }
-
-    if (state->count >= state->max) {
-        return _URC_END_OF_STACK;
-    }
-
-    state->frames[state->count++] = (void*)pc;
-    return _URC_NO_REASON;
-}
-
-int capture_backtrace(void** out_frames, int max_frames) {
-    BacktraceState state = { out_frames, 0, max_frames };
-    _Unwind_Backtrace(unwind_callback, &state);
-    return state.count;
-}
-
-
-void print_native_backtrace(void) {
-    void* frames[MAX_FRAMES];
-    int count = capture_backtrace(frames, MAX_FRAMES);
-
-    for (int i = 0; i < count; i++) {
-        Dl_info info;
-        if (dladdr(frames[i], &info) && info.dli_sname) {
-            uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_saddr;
-            LOGI("#%02d pc %p %s (%s+0x%lx)",
-                                i, frames[i],
-                                info.dli_fname ? info.dli_fname : "?",
-                                info.dli_sname,
-                                (unsigned long)offset);
-        } else if (dladdr(frames[i], &info) && info.dli_fname) {
-            uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_fbase;
-            LOGI("#%02d pc 0x%lx %s",i, (unsigned long)offset, info.dli_fname);
-        } else {
-            LOGI("#%02d pc %p <unknown>", i, frames[i]);
-        }
-    }
-}
-
-void print_java_backtrace(JNIEnv *env) {
-    jclass throwableClass = (*env)->FindClass(env, "java/lang/Throwable");
-    jmethodID ctor = (*env)->GetMethodID(env, throwableClass, "<init>", "()V");
-    jobject throwable = (*env)->NewObject(env, throwableClass, ctor);
-
-    jmethodID getStackTrace = (*env)->GetMethodID(env, throwableClass,
-                                                  "getStackTrace", "()[Ljava/lang/StackTraceElement;");
-    jobjectArray stackTrace = (jobjectArray)(*env)->CallObjectMethod(env, throwable, getStackTrace);
-
-    jsize len = (*env)->GetArrayLength(env, stackTrace);
-    jclass steClass = (*env)->FindClass(env, "java/lang/StackTraceElement");
-    jmethodID toString = (*env)->GetMethodID(env, steClass, "toString", "()Ljava/lang/String;");
-
-    for (jsize i = 0; i < len; i++) {
-        jobject frame = (*env)->GetObjectArrayElement(env, stackTrace, i);
-        jstring str = (jstring)(*env)->CallObjectMethod(env, frame, toString);
-        const char* cstr = (*env)->GetStringUTFChars(env, str, NULL);
-        LOGI("Java frame #%d: %s", i, cstr);
-        (*env)->ReleaseStringUTFChars(env, str, cstr);
-        (*env)->DeleteLocalRef(env, str);
-        (*env)->DeleteLocalRef(env, frame);
-    }
-}
-
-static void signal_handler(int sig, siginfo_t* info, void* void_context) {
-    if (sig == SIGABRT) {
-        LOGE("Grunfeld got SIGABRT!");
-    }
-    else if (sig == SIGSEGV) {
-        if (info->si_code == SEGV_MAPERR) {
-            LOGE("Grunfeld got SIGSEGV SEGV_MAPERR");
-        } else if (info->si_code == SEGV_ACCERR) {
-            LOGE("Grunfeld got SIGSEGV SEGV_ACCERR");
-        } else {
-            LOGE("Grunfeld got unknown SIGSEGV(%d)", info->si_code);
-        }
-    }
-    print_native_backtrace();
-    _exit(-1);
-}
-
-void registerSignalHandler(void) {
-    struct sigaction act = {
-            .sa_flags = SA_SIGINFO | SA_NODEFER,
-            .sa_sigaction = &signal_handler};
-
-    int ret = sigaction(SIGABRT, &act, &old_abrt);
-    if (ret != 0) {
-        LOGE("[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
-    }
-    ret = sigaction(SIGSEGV, &act, &old_segv);
-    if (ret != 0) {
-        LOGE("[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
-    }
-}
 
 
 static const char* proto_to_str(int proto);
@@ -178,12 +44,10 @@ static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
-static inline void dump (void *p, int n, char* report);
+static inline void dump(void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
-static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf);
-static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
 
 
@@ -193,7 +57,15 @@ __attribute__((constructor)) void grunfeld_early_init(void) {
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad");
-    registerSignalHandler();
+
+    JNIEnv* env = NULL;
+    jint result = (*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6);
+    if (result != JNI_OK) {
+        LOGE("Failed to get env from JVM. Result code: %d. Not setting up Athena.", result);
+        return JNI_VERSION_1_6;
+    }
+
+    athenaInit(env);
     return JNI_VERSION_1_6;
 }
 
@@ -380,107 +252,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
         snprintf(entry, sizeof(entry), "======================================\n");
         strcat(report, entry);
         close(fd);
-    }
-
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfs(JNIEnv *env, jobject thiz,
-                                                              jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-
-        long ret = 0;
-
-        struct statfs statfsbuf = {0};
-
-        // int statfs(const char *path, struct statfs *buf);
-        ret = arm64_raw_syscall(__NR_statfs, (long) cstr, (long) &statfsbuf , 0, 0, 0, 0);
-
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "statfs(%s) SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-            char intermediateReport[8192] = {0};
-            dump_statfs_info(cstr, intermediateReport, &statfsbuf);
-            strcat(report, intermediateReport);
-        } else {
-            snprintf(entry, sizeof(entry), "statfs(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-        snprintf(entry, sizeof(entry), "======================================\n");
-        strcat(report, entry);
-    }
-
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstatfs(JNIEnv *env, jobject thiz,
-                                                               jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        int fd = (int) arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
-        if (fd == -1) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s)", cstr);
-            (*env)->ReleaseStringUTFChars(env, jstr, cstr);
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        long ret = 0;
-
-        struct statfs statfsbuf = {0};
-
-        // int fstatfs(int fd, struct statfs *buf);
-        ret = arm64_raw_syscall(__NR_fstatfs, fd , (long) &statfsbuf, 0, 0, 0, 0);
-
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "fstatfs(%s) SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-            char intermediateReport[8192] = {0};
-            dump_fstatfs_info(cstr, intermediateReport, &statfsbuf);
-            strcat(report, intermediateReport);
-        } else {
-            snprintf(entry, sizeof(entry), "fstatfs(%s) FAILED: %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-        snprintf(entry, sizeof(entry), "======================================\n");
-        strcat(report, entry);
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -796,7 +567,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env,
 
         threadCount++;
         // Read /proc/self/task/<tid>/comm
-        char comm_path[64];
+        char comm_path[64] = {0};
         snprintf(comm_path, sizeof(comm_path), "/proc/self/task/%s/comm", entry->d_name);
 
         int comm_fd = open(comm_path, O_RDONLY);
@@ -1184,7 +955,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
 
 
         // Build the /proc/self/fd/<fd> path and readlink THAT instead of cstr
-        char fdPath[64];
+        char fdPath[64] = {0};
         snprintf(fdPath, sizeof(fdPath), "/proc/self/fd/%d", fd);
 
         ssize_t readlinkLen = readlink(fdPath, symlinkPath, sizeof(symlinkPath) - 1);
@@ -1697,9 +1468,9 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
     strcat(report, entry);
 
     // Timestamps
-    char access_time_str[64];
-    char modify_time_str[64];
-    char change_time_str[64];
+    char access_time_str[64] = {0};
+    char modify_time_str[64] = {0};
+    char change_time_str[64] = {0};
     struct tm tm_info;
 
     // 1. Format Access Time
@@ -1779,9 +1550,9 @@ static void dump_fstat_info(const char* path, char* const report, struct stat* s
     strcat(report, entry);
 
     // Timestamps
-    char access_time_str[64];
-    char modify_time_str[64];
-    char change_time_str[64];
+    char access_time_str[64] = {0};
+    char modify_time_str[64] = {0};
+    char change_time_str[64] = {0};
     struct tm tm_info;
 
     // 1. Format Access Time
@@ -1837,60 +1608,6 @@ static void dump_fstat_info(const char* path, char* const report, struct stat* s
     strcat(report, entry);
 }
 
-static void dump_statfs_info(const char* path, char* const report, struct statfs* statfsbuf) {
-    char entry[PATH_MAX] = {0};
-
-    snprintf(entry, sizeof(entry), "\tFilesystem type: 0x%lx\n", (unsigned long)statfsbuf->f_type);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tOptimal transfer block size: %ld\n", (long)statfsbuf->f_bsize);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tTotal data blocks: %llu\n", (unsigned long long)statfsbuf->f_blocks);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree blocks: %llu\n", (unsigned long long)statfsbuf->f_bfree);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree blocks available to unprivileged user: %llu\n", (unsigned long long)statfsbuf->f_bavail);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tTotal file nodes: %llu\n", (unsigned long long)statfsbuf->f_files);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree file nodes: %llu\n", (unsigned long long)statfsbuf->f_ffree);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFilesystem ID: %d %d\n", statfsbuf->f_fsid.__val[0], statfsbuf->f_fsid.__val[1]);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tMaximum filename length: %ld\n", (long)statfsbuf->f_namelen);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFragment size: %ld\n", (long)statfsbuf->f_frsize);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tMount flags: 0x%lx\n\n", (unsigned long)statfsbuf->f_flags);
-    strcat(report, entry);
-}
-
-static void dump_fstatfs_info(const char* path, char* const report, struct statfs* statfsbuf) {
-    char entry[PATH_MAX] = {0};
-
-    snprintf(entry, sizeof(entry), "\tFilesystem type: 0x%lx\n", (unsigned long)statfsbuf->f_type);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tOptimal transfer block size: %ld\n", (long)statfsbuf->f_bsize);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tTotal data blocks: %llu\n", (unsigned long long)statfsbuf->f_blocks);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree blocks: %llu\n", (unsigned long long)statfsbuf->f_bfree);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree blocks available to unprivileged user: %llu\n", (unsigned long long)statfsbuf->f_bavail);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tTotal file nodes: %llu\n", (unsigned long long)statfsbuf->f_files);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFree file nodes: %llu\n", (unsigned long long)statfsbuf->f_ffree);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFilesystem ID: %d %d\n", statfsbuf->f_fsid.__val[0], statfsbuf->f_fsid.__val[1]);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tMaximum filename length: %ld\n", (long)statfsbuf->f_namelen);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tFragment size: %ld\n", (long)statfsbuf->f_frsize);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tMount flags: 0x%lx\n\n", (unsigned long)statfsbuf->f_flags);
-    strcat(report, entry);
-}
-
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf) {
     char entry[PATH_MAX] = {0};
 
@@ -1918,10 +1635,10 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
     strcat(report, entry);
 
     // Timestamps
-    char access_time_str[64];
-    char btime_str[64];
-    char change_time_str[64];
-    char modify_time_str[64];
+    char access_time_str[64] = {0};
+    char btime_str[64] = {0};
+    char change_time_str[64] = {0};
+    char modify_time_str[64] = {0};
     struct tm tm_info;
 
     // 1. Format Access Time
@@ -2029,7 +1746,7 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
 }
 
 static inline void dump(void *p, int n, char *report) {
-    char entry[64];
+    char entry[64] = {0};
     unsigned char *p1 = p;
     while (n--) {
         if (n % 4 == 0) {
@@ -2050,10 +1767,6 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     char entry[PATH_MAX] = {0};
     if (
             strstr(info->dlpi_name, "memfd") ||
-            strstr(info->dlpi_name, "libnativebridge") ||
-            strstr(info->dlpi_name, "libandroid_runtime") ||
-            strstr(info->dlpi_name, "libart.so") ||
-            strstr(info->dlpi_name, "libartbase.so") ||
             strstr(info->dlpi_name, "zygisk")
             ) {
         snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
@@ -2064,10 +1777,6 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     for (size_t j = 0; j < info->dlpi_phnum; j++) {
         if (
                 strstr(info->dlpi_name, "memfd") ||
-                strstr(info->dlpi_name, "libnativebridge") ||
-                strstr(info->dlpi_name, "libandroid_runtime") ||
-                strstr(info->dlpi_name, "libart.so") ||
-                strstr(info->dlpi_name, "libartbase.so") ||
                 strstr(info->dlpi_name, "zygisk")
                 ) {
         p_type = info->dlpi_phdr[j].p_type;
