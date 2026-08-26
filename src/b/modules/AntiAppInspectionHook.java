@@ -30,7 +30,7 @@ import b.J;
  * Replaces both InstallerInfoHook and AntiDiscoveryHook.
  */
 public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "BipanAntiAppInspectionHook";
+  private static final String TAG = "BipanJavaAppInspection";
 
   private Object originalPM;
   private String selfPackageName = "unknown";
@@ -44,6 +44,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   private static final Set<String> TRUSTED_PACKAGES = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms",
+      "com.android.settings",
       "com.android.webview"));
 
   private static final Set<String> FEATURE_STRIP_LIST = new HashSet<>(Arrays.asList(
@@ -571,7 +572,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       case "setComponentEnabledSetting": {
         if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
           ComponentName cn = (ComponentName) args[0];
-          
+
           if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
             Log.i(TAG, "Neutered setComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
             return null;
@@ -583,10 +584,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       case "getComponentEnabledSetting": {
         if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
           ComponentName cn = (ComponentName) args[0];
-          
+
           if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
             Log.i(TAG, "Spoofed value of getComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
-            return 0;
+            return 1; // COMPONENT_ENABLED_STATE_ENABLED
           }
           return method.invoke(originalPM, args);
         }

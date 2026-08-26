@@ -15,11 +15,10 @@ import java.util.Map;
  * SSDP/UPnP and similar methods). The approach is two-fold:
  * 
  * - Intercept MediaRouter
- * 
  * - Intercept NSD Service
  */
 public class AntiNetworkDiscoveryHook implements BaseHook {
-  private static final String TAG = "BipanAntiNetworkDiscoveryHook";
+  private static final String TAG = "BipanJavaNetDiscovery";
 
   @Override
   public void install(Context context) throws Exception {

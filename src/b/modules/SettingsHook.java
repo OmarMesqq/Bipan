@@ -26,7 +26,7 @@ import android.provider.Settings.Global;;
  * - Wait for debugger
  */
 public class SettingsHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "BipanSettingsHook";
+  private static final String TAG = "BipanJavaSettings";
   private Object originalProvider;
 
   private static final String RANDOM_ANDROID_ID = generateRandomId();

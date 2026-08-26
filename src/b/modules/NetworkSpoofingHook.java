@@ -33,7 +33,7 @@ import b.J;
  * - Hardcodes `VALIDATED` for connections i.e. not behind captive portal
  */
 public class NetworkSpoofingHook implements BaseHook {
-  private static final String TAG = "BipanNetworkSpoofingHook";
+  private static final String TAG = "BipanJavaNetwork";
 
   /**
    * Non-system apps can't use the `LOCAL_MAC_ADDRESS` permission,
@@ -132,7 +132,7 @@ public class NetworkSpoofingHook implements BaseHook {
         try {
           spoofLinkProperties((LinkProperties) result);
         } catch (SecurityException e) {
-          Log.d(TAG, "connHandler: SecurityException (no ACCESS_WIFI_STATE): skipping LinkProperties spoof");
+          Log.i(TAG, "connHandler: SecurityException (no ACCESS_WIFI_STATE): skipping LinkProperties spoof");
         } catch (Exception e) {
           Log.e(TAG, "connHandler: unknown exception. Aborting!", e);
           throw new OutOfMemoryError();

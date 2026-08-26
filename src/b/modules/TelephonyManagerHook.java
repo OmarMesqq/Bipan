@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.lang.reflect.Constructor;
 
 public class TelephonyManagerHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "BipanTelephonyHook";
+  private static final String TAG = "BipanJavaTelephony";
 
   private Object originalITelephony;
   private TelephonyManager realTm;

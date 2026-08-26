@@ -22,7 +22,7 @@ import java.lang.reflect.InvocationHandler;
  * 
  */
 public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler {
-  private static final String TAG = "BipanAntiScreenshotDetectionHook";
+  private static final String TAG = "BipanJavaScreenshot";
   private Object originalService;
 
   @Override
