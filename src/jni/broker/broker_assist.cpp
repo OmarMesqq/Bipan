@@ -10,7 +10,7 @@
 
 #include "logger/logger.hpp"
 
-#define TAG "BipanBrokerAssistant"
+#define TAG "BipanBrokerAssist"
 
 static constexpr int MAX_FRAMES_BROKER_ASSIST = 50;
 
@@ -34,57 +34,51 @@ static void print_backtrace();
 thread_local pid_t g_current_client_pid = -1;
 
 // Original dispositions, so they can be chained to create a tombstone
-static struct sigaction g_old_segv = {};
-static struct sigaction g_old_abrt = {};
+static struct sigaction g_old_segv_act = {};
+static struct sigaction g_old_abrt_act = {};
 
 static char g_altstack[SIGSTKSZ * 4];
 
-bool registerDebugSigHandlers() {
+bool registerAssistSigHandlers() {
   int ret = -1;
 
+  // Setup auxiliary stack
   stack_t ss = {};
   ss.ss_sp = g_altstack;
   ss.ss_size = sizeof(g_altstack);
   ss.ss_flags = 0;
-  if (sigaltstack(&ss, nullptr) != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaltstack failed (errno: %s)", strerror(errno));
-    // force use of altstack in case original stack is corrupted
+
+  ret = sigaltstack(&ss, nullptr);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaltstack failed (errno: %s)", strerror(errno));
     return false;
   }
 
-  struct sigaction segvAct = {};
-  segvAct.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
-  segvAct.sa_sigaction = &bipan_broker_signal_handler;
+  // Unified act for important signals
+  struct sigaction act = {};
+  act.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
+  act.sa_sigaction = &bipan_broker_signal_handler;
 
-  ret = sigemptyset(&segvAct.sa_mask);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(SIGSEGV) failed (errno: %s)", strerror(errno));
+  ret = sigemptyset(&act.sa_mask);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigemptyset failed (errno: %s)", strerror(errno));
     return false;
   }
 
-  int segvRegistration = sigaction(SIGSEGV, &segvAct, &g_old_segv);
-  if (segvRegistration != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
+  // Register the actual signal handlers for their corresponding signals
+  ret = sigaction(SIGSEGV, &act, &g_old_segv_act);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
     return false;
   }
 
-  struct sigaction abrtAct = {};
-  abrtAct.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
-  abrtAct.sa_sigaction = &bipan_broker_signal_handler;
-
-  ret = sigemptyset(&abrtAct.sa_mask);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(SIGABRT) failed (errno: %s)", strerror(errno));
+  ret = sigaction(SIGABRT, &act, &g_old_abrt_act);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
     return false;
   }
 
-  int abrtRegistration = sigaction(SIGABRT, &abrtAct, &g_old_abrt);
-  if (abrtRegistration != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
-    return false;
-  }
-
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Debug handlers registered on altstack, size=%zu", sizeof(g_altstack));
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Assist handlers registered on altstack, size=%zu", sizeof(g_altstack));
   return true;
 }
 
@@ -93,12 +87,19 @@ static void bipan_broker_signal_handler(int sig, siginfo_t* info, void* void_con
   (void)void_context;
 
   if (sig == SIGABRT) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got SIGABRT!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGABRT");
   } else if (sig == SIGSEGV) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got SIGSEGV!");
+    if (info->si_code == SEGV_MAPERR) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of type SEGV_MAPERR");
+    } else if (info->si_code == SEGV_ACCERR) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of type SEGV_ACCERR");
+    } else {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of unknown type: %d", info->si_code);
+    }
   } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker got unexpected signal: %d", sig);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected signal: %d", sig);
   }
+
   print_backtrace();
   kill_current_client();
 }
@@ -108,7 +109,7 @@ static void kill_current_client() {
     return;
   }
 
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[!] Killing orphaned client pid=%d", g_current_client_pid);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker dead. Killing orphaned client pid=%d", g_current_client_pid);
   kill(g_current_client_pid, SIGKILL);
 }
 
@@ -142,16 +143,16 @@ static void print_backtrace() {
     Dl_info info;
     if (dladdr(frames[i], &info) && info.dli_sname) {
       uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_saddr;
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc %p %s (%s+0x%lx)",
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "#%02d pc %p %s (%s+0x%lx)",
                             i, frames[i],
                             info.dli_fname ? info.dli_fname : "?",
                             info.dli_sname,
                             (unsigned long)offset);
     } else if (dladdr(frames[i], &info) && info.dli_fname) {
       uintptr_t offset = (uintptr_t)frames[i] - (uintptr_t)info.dli_fbase;
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc 0x%lx %s", i, (unsigned long)offset, info.dli_fname);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "#%02d pc 0x%lx %s", i, (unsigned long)offset, info.dli_fname);
     } else {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "#%02d pc %p <unknown>", i, frames[i]);
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "#%02d pc %p <unknown>", i, frames[i]);
     }
   }
 }

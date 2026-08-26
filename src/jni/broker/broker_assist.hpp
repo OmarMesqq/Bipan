@@ -5,6 +5,6 @@
 
 extern thread_local pid_t g_current_client_pid;
 
-bool registerDebugSigHandlers();
+bool registerAssistSigHandlers();
 
 #endif

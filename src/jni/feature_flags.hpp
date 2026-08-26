@@ -52,10 +52,4 @@
  */
 // #define BROKER_UNWINDER_LOGGING
 
-/**
- * Devtime only: installs BipanBrokerAssitant to handle bad programming
- * (sorry) I may leave out in the Broker process.
- */
-// #define BROKER_DEBUG_BUILD
-
 #endif
