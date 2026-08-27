@@ -731,19 +731,6 @@ fun dumpDevProperties(): String {
     fun row(label: String, value: Any?) =
         sb.appendLine("%s\n%s\n".format("$label:", value ?: "<null>"))
 
-
-    section("CPU architecture") {
-        row("ro.odm.product.cpu.abilist32",         prop("ro.odm.product.cpu.abilist32"))
-        row("ro.product.cpu.abilist32",         prop("ro.product.cpu.abilist32"))
-        row("ro.system.product.cpu.abilist32",         prop("ro.system.product.cpu.abilist32"))
-        row("ro.vendor.product.cpu.abilist32",         prop("ro.vendor.product.cpu.abilist32"))
-        row("ro.odm.product.cpu.abilist",         prop("ro.odm.product.cpu.abilist"))
-        row("ro.product.cpu.abilist",         prop("ro.product.cpu.abilist"))
-        row("ro.system.product.cpu.abilist",         prop("ro.system.product.cpu.abilist"))
-        row("ro.vendor.product.cpu.abilist",         prop("ro.vendor.product.cpu.abilist"))
-        row("ro.zygote",         prop("ro.zygote"))
-    }
-
     section("Telephony and Radio - SELinux allowed") {
         row("gsm.version.baseband",              prop("gsm.version.baseband"))
         row("gsm.version.ril-impl",              prop("gsm.version.ril-impl"))
@@ -850,7 +837,6 @@ fun dumpTelephonyInfo(context: Context): String {
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
     val sb = StringBuilder()
 
-
     sb.appendLine("[LEGACY] phoneCount: ${telephonyManager.phoneCount}")
     sb.appendLine("[MODERN] activeModemCount: ${telephonyManager.activeModemCount}")
     sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
@@ -875,7 +861,7 @@ fun dumpTelephonyInfo(context: Context): String {
         sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
         sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
         sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
-    } catch (e: Exception) {
+    } catch (e: SecurityException) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpTelephonyInfo", "Exception: ", tr = e)
 
         sb.appendLine("Permission denied for grabbing some fields: ${e.message}")
