@@ -122,13 +122,10 @@ void registerSignalHandler() {
 
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
-  if (sig != SIGSYS) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Received signal %d != SIGSYS. Aborting!");
-    BIPAN_PANIC();
-  }
+  (void)sig;
 
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler. We're probably cooked. Aborting!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler! We're probably cooked. Aborting!");
     BIPAN_PANIC();
   }
   in_sigsys_handler = true;
@@ -137,7 +134,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int nr = info->si_syscall;
 
   if (ipc_mem == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Caught syscall %d but IPC mem not ready!", nr);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Caught syscall but IPC memory not ready yet!");
     BIPAN_PANIC();
   }
 
@@ -187,7 +184,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
     if (r != 0 || arg1 == 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr to scrub is null and/or native getsockname failed!");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr is null or native getsockname failed. Aborting for privacy.");
       BIPAN_PANIC();
     }
 
@@ -423,7 +420,10 @@ static inline void scrub_socket(struct sockaddr* s) {
 
     sin->sin_addr.s_addr = 0x01DE6F0A;  // 10.111.222.1
 
-    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv4 (getsockname) scrubbed");
+#ifdef IN_APP_DEBUG_LOGGING
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv4 (getsockname) scrubbed");
+#endif
+
   } else if (s->sa_family == AF_INET6) {
     struct sockaddr_in6* sin6 = (struct sockaddr_in6*)s;
 
@@ -432,7 +432,9 @@ static inline void scrub_socket(struct sockaddr* s) {
     sin6->sin6_addr.s6_addr[0] = 0xfd;
     sin6->sin6_addr.s6_addr[15] = 0x01;
 
-    // write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
+#ifdef IN_APP_DEBUG_LOGGING
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "IPv6 (getsockname) scrubbed");
+#endif
   }
 }
 
