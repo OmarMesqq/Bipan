@@ -162,25 +162,24 @@ fun dumpNetworkInfo(context: Context): String {
         val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
         val bssid = info.bssid
         val ssid = info.ssid
-        val linkSpeed = info.linkSpeed
-        val maxrx = info.maxSupportedRxLinkSpeedMbps
-        val mxtx = info.maxSupportedTxLinkSpeedMbps
-        val tx = info.txLinkSpeedMbps
-        val rx = info.rxLinkSpeedMbps
         val netid = info.networkId
 
         sb.append("IPv4 address: $ipv4Address\n")
         sb.append("BSSID: $bssid\n")
         sb.append("SSID: $ssid\n")
-        sb.append("Link speed: $linkSpeed Mbps\n")
-        sb.append("Max RX: $maxrx Mbps\n")
-        sb.append("Max TX: $mxtx Mbps\n")
-        sb.append("TX: $tx Mbps\n")
-        sb.append("RX: $rx Mbps\n")
         sb.append("Network ID: $netid\n")
     } catch (e: SecurityException) {
-        sb.append("WIFI_SERVICE Exception: ${e.message} | Cause's msg: ${e.cause?.message}\n")
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "WIFI_SERVICE Exception: ${e.message}", tr = e)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "WIFI_SERVICE Exception", tr = e)
+
+        sb.append("WIFI_SERVICE Exception:\n\n")
+        sb.append("Exception's message: ${e.message}\n\n")
+        e.suppressed.forEach { s ->
+            sb.append("Exception's suppressed: ${e.stackTrace.contentToString()}\n")
+        }
+
+        sb.append("Exception's stackTrace: ${e.stackTrace.contentToString()}\n\n")
+        sb.append("Exception's cause: ${e.cause}\n\n")
+        sb.append("Exception's cause message: ${e.cause?.message}\n\n")
     }
 
 
@@ -218,7 +217,7 @@ fun dumpNetworkInfo(context: Context): String {
     val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
 
     sb.append("TRANSPORT_VPN: $isVpnTransport\n")
-    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n")
+    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
 
     val activeNetwork = cm.activeNetwork
     if (activeNetwork == null) {
@@ -256,10 +255,11 @@ fun dumpNetworkInfo(context: Context): String {
             routes.forEach { r ->
                 sb.append("Route: $r\n")
             }
-            sb.append("mtu: $mtu\n")
-            sb.append("nat64prefix: $nat64prefix \n")
-            sb.append("privateDnsServerName: $privateDnsServerName\n")
-            sb.append("isPrivateDnsServerActive: $isPrivateDnsServerActive\n")
+
+            sb.append("MTU: $mtu\n")
+            sb.append("NAT64 Prefix: $nat64prefix \n")
+            sb.append("Is Private DNS Server active: $isPrivateDnsServerActive\n")
+            sb.append("Private DNS Server name: $privateDnsServerName\n")
         }
     }
 
@@ -354,6 +354,8 @@ private fun dumpBuildInfo(): String {
             SKU: ${Build.SKU}
             SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
             SOC_MODEL: ${Build.SOC_MODEL}
+            SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS.joinToString()}
+            SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
             SUPPORTED_CPU_ABIs: ${Build.SUPPORTED_ABIS?.joinToString()}
             CPU_ABI: ${Build.CPU_ABI}
             CPU_ABI2: ${Build.CPU_ABI2}
@@ -415,7 +417,6 @@ fun dumpQueryIntentActivities(context: Context): String {
     allApps.take(amountToShow).forEach { info ->
         sb.appendLine(info.activityInfo.packageName)
     }
-
 
     return sb.toString()
 }
@@ -688,61 +689,6 @@ fun getSomeSystemFeatures(ctx: Context): String {
     return sb.toString()
 }
 
-// TODO: why isn't Bipan catching this?
-fun getMemoryInfo(context: Context): String {
-    val sb = StringBuilder()
-    val am  = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val info = ActivityManager.MemoryInfo()
-    am.getMemoryInfo(info)
-
-    sb.appendLine("=== [/proc/meminfo] ===")
-    val memInfoPath = "/proc/meminfo"
-    try {
-        sb.append(deferredMemInfo.getCompleted())
-    } catch (e: IOException) {
-        sb.appendLine("Failed to read $memInfoPath: ${e.message}")
-    }
-
-    sb.appendLine("=== [/proc/meminfo_extra] ===")
-    val memInfoExtraPath = "/proc/meminfo_extra"
-    try {
-        sb.append(deferredMemInfoExtra.getCompleted())
-    } catch (e: IOException) {
-        sb.appendLine("Failed to read $memInfoExtraPath: ${e.message}")
-    }
-
-    sb.appendLine("=== [ActivityManager MemoryInfo] ===")
-    sb.appendLine("totalMem:         ${info.totalMem  / 1024 / 1024} MB")
-    sb.appendLine("availMem:         ${info.availMem  / 1024 / 1024} MB")
-    sb.appendLine("threshold:        ${info.threshold / 1024 / 1024} MB")
-    sb.appendLine("lowMemory:        ${info.lowMemory}")
-
-    return sb.toString()
-  
-}
-
-// TODO: why isn't Bipan catching this?
-fun dumpCpuInfo() : String {
-    val sb = StringBuilder()
-
-    sb.appendLine("=== [Android Runtime info] ===")
-
-    val jvmNproc = Runtime.getRuntime().availableProcessors()
-    sb.appendLine(" Available processors to the JVM: $jvmNproc\n")
-
-    sb.appendLine("=== [/proc/cpuinfo] ===")
-
-    val cpuInfoPath = "/proc/cpuinfo"
-    try {
-        sb.append(deferredCpuInfo.getCompleted())
-    } catch (e: IOException) {
-        sb.appendLine("Failed to read $cpuInfoPath: ${e.message}")
-    }
-
-    return sb.toString()
-}
-
-
 fun getSystemProps(): String {
     val arch = System.getProperty("os.arch")
     val name = System.getProperty("os.name")
@@ -813,6 +759,19 @@ fun dumpDevProperties(): String {
     }
     fun row(label: String, value: Any?) =
         sb.appendLine("%s\n%s\n".format("$label:", value ?: "<null>"))
+
+
+    section("CPU architecture") {
+        row("ro.odm.product.cpu.abilist32",         prop("ro.odm.product.cpu.abilist32"))
+        row("ro.product.cpu.abilist32",         prop("ro.product.cpu.abilist32"))
+        row("ro.system.product.cpu.abilist32",         prop("ro.system.product.cpu.abilist32"))
+        row("ro.vendor.product.cpu.abilist32",         prop("ro.vendor.product.cpu.abilist32"))
+        row("ro.odm.product.cpu.abilist",         prop("ro.odm.product.cpu.abilist"))
+        row("ro.product.cpu.abilist",         prop("ro.product.cpu.abilist"))
+        row("ro.system.product.cpu.abilist",         prop("ro.system.product.cpu.abilist"))
+        row("ro.vendor.product.cpu.abilist",         prop("ro.vendor.product.cpu.abilist"))
+        row("ro.zygote",         prop("ro.zygote"))
+    }
 
     section("Telephony and Radio - SELinux allowed") {
         row("gsm.version.baseband",              prop("gsm.version.baseband"))
