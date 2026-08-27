@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -83,6 +84,7 @@ fun dumpJavaSensorInfo(ctx: Context): String {
 }
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+@Suppress("DEPRECATION")
 fun dumpInstallerInfo(ctx: Context): String {
     val pm = ctx.packageManager
     val packageName = ctx.packageName
@@ -102,7 +104,6 @@ fun dumpInstallerInfo(ctx: Context): String {
         else -> "Unknown Value: ${info.packageSource}"
     }
 
-    @Suppress("DEPRECATION")
     val legacyInstaller = pm.getInstallerPackageName(packageName)
 
     return """
@@ -118,6 +119,7 @@ fun dumpInstallerInfo(ctx: Context): String {
 
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+@Suppress("DEPRECATION")
 fun dumpNetworkInfo(context: Context): String {
     val sb = StringBuilder()
 
@@ -134,7 +136,6 @@ fun dumpNetworkInfo(context: Context): String {
     try {
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
-        @Suppress("DEPRECATION")
         val info = wifiManager.connectionInfo
 
         val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
@@ -283,6 +284,7 @@ private fun formatInterfaceDetails(intf: NetworkInterface): String {
     return details.toString()
 }
 
+@Suppress("DEPRECATION")
 private fun formatNetworkInfo(ni: NetworkInfo?) : String {
     if (ni == null) {
         return "Provided NetworkInfo is null"
@@ -307,6 +309,7 @@ private fun formatNetworkInfo(ni: NetworkInfo?) : String {
     return sb.toString()
 }
 
+@Suppress("DEPRECATION")
 private fun dumpBuildInfo(): String {
     return """
             BOARD: ${Build.BOARD}
@@ -392,7 +395,65 @@ fun dumpQueryIntentActivities(context: Context): String {
     return sb.toString()
 }
 
+fun launchGmsIntents(context: Context) : String {
+    val sb = StringBuilder()
+    val pm = context.packageManager
+
+    val bindToBillingSvcIntnt = Intent()
+    bindToBillingSvcIntnt.setAction("com.android.vending.billing.InAppBillingService.BIND")
+    bindToBillingSvcIntnt.setPackage("com.android.vending")
+
+    val getInstallReferrerIntnt = Intent()
+    getInstallReferrerIntnt.setAction("com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
+    getInstallReferrerIntnt.component = ComponentName(
+        "com.android.vending",
+        "com.google.android.finsky.externalreferrer.GetInstallReferrerService"
+    )
+
+    val billSvcActivities = pm.queryIntentActivities(bindToBillingSvcIntnt, 0)
+
+    if (billSvcActivities.isEmpty()) {
+        sb.appendLine("No Activities for com.android.vending.billing.InAppBillingService.BIND\n")
+    } else {
+        sb.appendLine("Activities that perform com.android.vending.billing.InAppBillingService.BIND")
+        billSvcActivities.forEach { a ->
+
+            sb.appendLine("Package Name: ${a.resolvePackageName}")
+            sb.appendLine("Intent Filter: ${a.filter}")
+            sb.appendLine("Non-localized label: ${a.nonLocalizedLabel}")
+            sb.appendLine("Is default: ${a.isDefault}")
+            sb.appendLine("Java Class: ${a.javaClass}")
+            sb.appendLine("Activity Info: ${a.activityInfo}")
+            sb.appendLine("Service Info: ${a.serviceInfo}")
+            sb.appendLine("Provider Info: ${a.providerInfo}")
+        }
+        sb.append("\n")
+    }
+
+    val installReferrerActivities = pm.queryIntentActivities(getInstallReferrerIntnt, 0)
+    if (installReferrerActivities.isEmpty()) {
+        sb.appendLine("No Activities for com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
+    } else {
+        sb.appendLine("Activities that perform com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
+        installReferrerActivities.forEach { a ->
+
+            sb.appendLine("Package Name: ${a.resolvePackageName}")
+            sb.appendLine("Intent Filter: ${a.filter}")
+            sb.appendLine("Non-localized label: ${a.nonLocalizedLabel}")
+            sb.appendLine("Is default: ${a.isDefault}")
+            sb.appendLine("Java Class: ${a.javaClass}")
+            sb.appendLine("Activity Info: ${a.activityInfo}")
+            sb.appendLine("Service Info: ${a.serviceInfo}")
+            sb.appendLine("Provider Info: ${a.providerInfo}")
+        }
+        sb.append("\n")
+    }
+
+    return sb.toString()
+}
+
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+@Suppress("DEPRECATION")
 fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     val pm = context.packageManager
     val sb = StringBuilder()
@@ -505,9 +566,8 @@ fun dumpGetInstalledPackages(context: Context): String {
 }
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-fun dumpGetApplicationInfo(context: Context) : String {
+fun dumpGetApplicationInfo(context: Context, packageName: String) : String {
     val pm = context.packageManager
-    val packageName = "com.android.webview"
 
     val res = try {
         val appInfo = pm.getApplicationInfo(packageName, 0)
@@ -538,6 +598,7 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
 }
 
 @RequiresApi(Build.VERSION_CODES.BAKLAVA)
+@Suppress("DEPRECATION")
 fun getSomeSystemFeatures(ctx: Context): String {
     val pm = ctx.packageManager
     val sb = StringBuilder()
@@ -700,10 +761,10 @@ fun dumpMediaDrmId() : String {
     val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
 
     val wvDrm = MediaDrm(widevineUUID)
-    val mivevineId = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    val widevineId = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
     wvDrm.close()
     val md: MessageDigest = MessageDigest.getInstance("SHA-256")
-    md.update(mivevineId)
+    md.update(widevineId)
 
     return md.digest().toHexString()
 }
@@ -833,6 +894,7 @@ fun dumpDevProperties(): String {
 }
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+@Suppress("DEPRECATION")
 fun dumpTelephonyInfo(context: Context): String {
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
     val sb = StringBuilder()

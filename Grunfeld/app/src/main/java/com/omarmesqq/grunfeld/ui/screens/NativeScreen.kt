@@ -46,7 +46,6 @@ fun NativeScreen() {
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
-    var procSelfStatusReport by remember { mutableStateOf("/proc/self/status not read yet") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
 
@@ -57,7 +56,6 @@ fun NativeScreen() {
     var statxInfo by remember { mutableStateOf("Files not stated") }
 
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
-    var hooksInfo by remember { mutableStateOf("hooks not inspected yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
@@ -95,6 +93,31 @@ fun NativeScreen() {
                 text = "Native info",
                 style = MaterialTheme.typography.headlineMedium
             )
+
+            SectionHeader("BUILD AND SETTINGS INFO")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                ReportTextWithCopy(NativeLibWrapper.getDeviceData(context), "")
+            }
+
+            SectionHeader("SENSORS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
+                    Button(
+                        onClick = { sensorReport = NativeLibWrapper.testSensors() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Probe Sensors using native code")
+                    }
+                }
+            }
 
             SectionHeader("ACCESS FAMILY")
             Card(
@@ -257,7 +280,7 @@ fun NativeScreen() {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
                     ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
-                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dl_iterate_phdrTest() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dlIteratePhdrTest() }, modifier = Modifier.fillMaxWidth()) {
                         Text("dl_iterate_phdr()")
                     }
                 }
@@ -275,22 +298,6 @@ fun NativeScreen() {
                     ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
                     Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
                         Text("read /proc/self/task")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Processes' status ", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfStatusReport, "/proc/self/status not read yet")
-                    Button(onClick = { procSelfStatusReport = NativeLibWrapper.queryProcStatus() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/status")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Inspect libraries for hooks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(hooksInfo, "hooks not inspected yet")
-                    Button(onClick = { hooksInfo = NativeLibWrapper.inspectHooks() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Study function prologues for hooks")
                     }
                 }
 
@@ -334,31 +341,6 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("sigprocmask SIGSYS")
-                    }
-                }
-            }
-
-            SectionHeader("BUILD AND SETTINGS INFO")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                ReportTextWithCopy(NativeLibWrapper.getDeviceData(context), "")
-            }
-
-            SectionHeader("SENSORS")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
-                    Button(
-                        onClick = { sensorReport = NativeLibWrapper.testSensors() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Probe Sensors using native code")
                     }
                 }
             }

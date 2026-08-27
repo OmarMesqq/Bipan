@@ -44,6 +44,7 @@ import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
+import com.omarmesqq.grunfeld.utils.launchGmsIntents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,13 +71,11 @@ fun JavaInfoScreen() {
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
     var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
-    var memInfo by remember { mutableStateOf("Memory not queried") }
-    var cpuInfo by remember { mutableStateOf("CPU info not queried") }
-
     var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
+    var gmsIntentsInfo by remember { mutableStateOf("GMS Intents not sent yet") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
@@ -134,8 +133,49 @@ fun JavaInfoScreen() {
 
         SectionHeader("PACKAGE MANAGER")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Get installer info for self (Grunfeld)", style = MaterialTheme.typography.titleMedium)
 
+            Text(text = "Launch some GMS Intents", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(gmsIntentsInfo, "GMS Intents not sent yet")
+            Button(
+                onClick = {
+                    gmsIntentsInfo = launchGmsIntents(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("launchGmsIntents()")
+            }
+
+
+
+            Text(text = "Get Package Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
+            Button(
+                onClick = {
+                    getPackageInfoStatus = dumpGetPackageInfo(
+                        context,
+                        "com.android.settings"
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getPackageInfo(Settings)")
+            }
+
+            Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
+            ReportTextWithCopy(applicationInfoForSelf, "Get Application info not queried")
+            Button(
+                onClick = {
+                    applicationInfoForSelf = dumpGetApplicationInfo(
+                        context,
+                        "com.android.webview"
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("getApplicationInfo(Webview)")
+            }
+
+            Text(text = "Get installer info for Grunfeld", style = MaterialTheme.typography.titleMedium)
             ReportTextWithCopy(installerInfo, "Installer info not queried")
             Button(
                 onClick = {
@@ -147,7 +187,6 @@ fun JavaInfoScreen() {
             }
 
             Text(text = "Query Intent Activities", style = MaterialTheme.typography.titleMedium)
-
             ReportTextWithCopy(dumpQueryIntentActivities, "Query Intent Activities not tested")
             Button(
                 onClick = {
@@ -158,20 +197,8 @@ fun JavaInfoScreen() {
                 Text("dumpQueryIntentActivities()")
             }
 
-            Text(text = "Get Package Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
-
-            ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
-            Button(
-                onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.android.settings")
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getPackageInfo(Settings)")
-            }
 
             Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
-
             ReportTextWithCopy(getInstalledApplicationsInfo, "Installed applications not queried")
             Button(
                 onClick = {
@@ -183,7 +210,6 @@ fun JavaInfoScreen() {
             }
 
             Text(text = "Get Installed Packages", style = MaterialTheme.typography.titleMedium)
-
             ReportTextWithCopy(getInstalledPackagesInfo, "Installed applications not queried")
             Button(
                 onClick = {
@@ -194,20 +220,7 @@ fun JavaInfoScreen() {
                 Text("getInstalledPackages()")
             }
 
-            Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
-
-            ReportTextWithCopy(applicationInfoForSelf, "Get Application info not queried")
-            Button(
-                onClick = {
-                    applicationInfoForSelf = dumpGetApplicationInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getApplicationInfo(System's Webview)")
-            }
-
             Text(text = "Get ALL available system features", style = MaterialTheme.typography.titleMedium)
-
             ReportTextWithCopy(getSystemAvailableFeaturesInfo, "getSystemAvailableFeatures not queried")
             Button(
                 onClick = {
