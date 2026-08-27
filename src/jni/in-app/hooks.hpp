@@ -269,6 +269,20 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // packagemanager_config_prop
     {"ro.control_privapp_permissions", "enforce"},
 
+
+    {"ro.odm.product.cpu.abilist32", ""},
+    {"ro.product.cpu.abilist32", ""},
+    {"ro.system.product.cpu.abilist32", ""},
+    {"ro.vendor.product.cpu.abilist32", ""},
+
+    {"ro.odm.product.cpu.abilist", "arm64-v8a"},
+    {"ro.product.cpu.abilist", "arm64-v8a"},
+    {"ro.system.product.cpu.abilist", "arm64-v8a"},
+    {"ro.vendor.product.cpu.abilist", "arm64-v8a"},
+
+    {"ro.zygote", "zygote64"},
+ 
+
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {

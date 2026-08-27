@@ -304,13 +304,13 @@ class Bipan : public zygisk::ModuleBase {
 
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "setField: failed to find field: %s", fieldName);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "setField: failed to find field: %s", fieldName);
       return;
     }
 
     jstring newStr = env->NewStringUTF(value);
     if (newStr == nullptr) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "setField: failed create new Java String for value: %s", value);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "setField: failed create new Java String for value: %s", value);
       return;
     }
 
@@ -331,6 +331,9 @@ class Bipan : public zygisk::ModuleBase {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Could not find android.os.Build!");
       return;
     }
+
+    setField(buildClass, "CPU_ABI", "arm64-v8a");
+    setField(buildClass, "CPU_ABI2", "");
 
     setField(buildClass, "BOARD", "husky");
     setField(buildClass, "BOOTLOADER", "ripcurrent-15.0-12455211");
