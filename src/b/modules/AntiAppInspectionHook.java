@@ -324,8 +324,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             return method.invoke(originalPM, args);
           }
 
-          Log.i(TAG, "Blinded: queryIntentActivities");
-          Log.d(TAG, "queryIntentActivities intent: " + dumpIntent(intent));
+          Log.i(TAG, "queryIntentActivities: blinded Intent: " + dumpIntent(intent));
         }
         return emptyParceledListSlice();
       }
@@ -522,7 +521,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
             return emptyParceledListSlice();
           }
-          Log.d(TAG, "queryIntentServices: intent: " + dumpIntent(intent));
+          Log.w(TAG, "queryIntentServices: Allowing Intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
       }
@@ -564,7 +563,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SIM_FULL");
             return emptyParceledListSlice();
           }
-          Log.d(TAG, "queryIntentReceivers: intent: " + dumpIntent(intent));
+          Log.w(TAG, "queryIntentReceivers: Allowing Intent: " + dumpIntent(intent));
         }
         return method.invoke(originalPM, args);
       }
