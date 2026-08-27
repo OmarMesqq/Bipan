@@ -543,6 +543,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Log.i(TAG, "Blinded: queryIntentReceivers Meta's GET_PHONE_ID");
             return emptyParceledListSlice();
           }
+          if ("com.facebook.rti.fbns.intent.RECEIVE ".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Meta's FBNS receivers");
+            return emptyParceledListSlice();
+          }
           if ("android.provider.Telephony.SMS_DELIVER".equals(action)) {
             Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SMS_DELIVER");
             return emptyParceledListSlice();
