@@ -309,7 +309,7 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"ro.ril.def_network_after_check_tdscdma", ""},
     {"gsm.sim.state", "READY"},
     {"gsm.sim.operator.alpha", "Vivo"},
-    {"gsm.sim.eventList", ""},  // TODO
+    {"gsm.sim.eventList", ""},
     {"gsm.current.phone-type", "1"},
     {"gsm.network.type", "LTE"},
     {"gsm.operator.alpha", "Vivo"},

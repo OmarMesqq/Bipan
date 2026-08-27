@@ -15,12 +15,10 @@ object NativeLibWrapper {
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
-    external fun queryProcStatus():String
     external fun getifaddrs():String
     external fun getallfds():String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
-    external fun inspectHooks(): String
-    external fun dl_iterate_phdrTest(): String
+    external fun dlIteratePhdrTest(): String
     external fun testProcSelfTask(): String
     external fun testForkExec(progname: String): String
     external fun scanProcSelfMaps(): String

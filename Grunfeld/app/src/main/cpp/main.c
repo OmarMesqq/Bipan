@@ -44,7 +44,6 @@ static const char* fam_to_str(int fam);
 static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
-static inline void dump(void *p, int n, char* report);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
@@ -597,11 +596,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env,
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dl_1iterate_1phdrTest(JNIEnv *env, jobject thiz) {
-    char* report = (char*) calloc(50000, sizeof(char));
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
+    char *report = (char *) calloc(50000, sizeof(char));
     if (!report) {
         return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
     }
+
     dl_iterate_phdr(dlIteratePhdrCallback, report);
 
     jstring result = (*env)->NewStringUTF(env, report);
@@ -820,59 +820,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
     return (*env)->NewStringUTF(env, successBuf);
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_inspectHooks(JNIEnv *env, jobject thiz) {
-    char finalReport[MAX_REPORT_SIZE] = {0};
-    char entry[256];
-    int bytesToInspect = 28;
-
-    snprintf(entry, sizeof(entry), "dlopen at %p. First %d bytes:\n\n", (void *) dlopen, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) dlopen, bytesToInspect, finalReport);
-
-    // TODO: android_dlopen_ext
-
-    snprintf(entry, sizeof(entry), "\ndl_iterate_phdr at %p. First %d bytes:\n\n", (void *) dl_iterate_phdr, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) dl_iterate_phdr, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "__system_property_get at %p. First %d bytes:\n\n", (void *) __system_property_get, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) __system_property_get, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "\n__system_property_read_callback at %p. First %d bytes:\n\n", (void *) __system_property_read_callback, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) __system_property_read_callback, bytesToInspect, finalReport);
-
-
-    snprintf(entry, sizeof(entry), "\nASensorManager_getInstance at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstance, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) ASensorManager_getInstance, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "\nASensorManager_getInstanceForPackage at %p. First %d bytes:\n\n", (void *) ASensorManager_getInstanceForPackage, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) ASensorManager_getInstanceForPackage, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "\nASensorManager_getSensorList at %p. First %d bytes:\n\n", (void *) ASensorManager_getSensorList, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) ASensorManager_getSensorList, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "\nASensorManager_getDefaultSensor at %p. First %d bytes:\n\n", (void *) ASensorManager_getDefaultSensor, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) ASensorManager_getDefaultSensor, bytesToInspect, finalReport);
-
-    snprintf(entry, sizeof(entry), "\nASensorManager_createEventQueue at %p. First %d bytes:\n\n", (void *) ASensorManager_createEventQueue, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) ASensorManager_createEventQueue, bytesToInspect, finalReport);
-
-
-    // Not hooked
-    snprintf(entry, sizeof(entry), "\n__system_property_find at %p. First %d bytes:\n\n", (void *) __system_property_find, bytesToInspect);
-    strcat(finalReport, entry);
-    dump((void*) __system_property_find, bytesToInspect, finalReport);
-
-    return (*env)->NewStringUTF(env, finalReport);
-}
 
 /**
  * TODO: xref with fdinfo?
@@ -1272,51 +1219,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     }
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_queryProcStatus(JNIEnv* env, jobject thiz) {
-    FILE* fp = fopen("/proc/self/status", "r");
-    if (fp == NULL) {
-        return (*env)->NewStringUTF(env, "Unable to open /proc/self/status");
-    }
-
-    char report[2048] = {0};
-    char line[256] = {0};
-
-    // Define the prefixes of the relevant lines you want to keep
-    const char* relevant_prefixes[] = {
-            "Name:",
-            "State:",
-            "Pid:",
-            "PPid:",
-            "TracerPid:",
-            "Threads:",
-            "NoNewPrivs:",
-            "Seccomp:",
-            "Cpus_allowed_list:"
-    };
-    int num_prefixes = sizeof(relevant_prefixes) / sizeof(relevant_prefixes[0]);
-
-    // Read the status file line by line
-    while (fgets(line, sizeof(line), fp)) {
-        for (int i = 0; i < num_prefixes; i++) {
-            if (strncmp(line, relevant_prefixes[i], strlen(relevant_prefixes[i])) == 0) {
-                // Ensure buffer has enough space
-                if (strlen(report) + strlen(line) < sizeof(report) - 1) {
-                    strcat(report, line);
-                } else {
-                    // Truncate if we exceed the buffer
-                    break;
-                }
-                break;
-            }
-        }
-    }
-
-    fclose(fp);
-
-    // Return the filtered report to the JVM
-    return (*env)->NewStringUTF(env, report);
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
@@ -1709,8 +1611,6 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
     strcat(report, entry);
 }
 
-
-
 static const char* proto_to_str(int proto) {
     switch (proto) {
         case TCP: return "TCP";
@@ -1748,68 +1648,24 @@ static void get_sys_prop(const char* key, char* out_val, size_t max_len, const c
     }
 }
 
-static inline void dump(void *p, int n, char *report) {
-    char entry[64] = {0};
-    unsigned char *p1 = p;
-    while (n--) {
-        if (n % 4 == 0) {
-            snprintf(entry, sizeof(entry), "%02x\n", *p1);
-        }
-        else {
-            snprintf(entry, sizeof(entry), "%02x ", *p1);
-        }
-        strcat(report, entry);
-        p1++;
-    }
-}
-
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data) {
-    char *type;
-    int p_type;
+    char* report = (char *) data;
 
-    char entry[PATH_MAX] = {0};
-    if (
-            strstr(info->dlpi_name, "memfd") ||
-            strstr(info->dlpi_name, "zygisk")
-            ) {
-        snprintf(entry, sizeof(entry), "%s (%d segments)\n", info->dlpi_name, info->dlpi_phnum);
-        strcat((char*)data, entry);
+    char line[512] ={0};
+
+    if (strstr(info->dlpi_name, "memfd") || strstr(info->dlpi_name, "zygisk")) {
+        snprintf(line, sizeof(line),"%s\n",info->dlpi_name);
     }
 
+    // Bounds check
+    size_t currentLen = strlen(report);
+    size_t lineLen = strlen(line);
+    size_t capacity = 50000;
 
-    for (size_t j = 0; j < info->dlpi_phnum; j++) {
-        if (
-                strstr(info->dlpi_name, "memfd") ||
-                strstr(info->dlpi_name, "zygisk")
-                ) {
-        p_type = info->dlpi_phdr[j].p_type;
-
-        type = (p_type == PT_LOAD) ? "PT_LOAD" :
-               (p_type == PT_DYNAMIC) ? "PT_DYNAMIC" :
-               (p_type == PT_INTERP) ? "PT_INTERP" :
-               (p_type == PT_NOTE) ? "PT_NOTE" :
-                   (p_type == PT_INTERP) ? "PT_INTERP" :
-               (p_type == PT_PHDR) ? "PT_PHDR" :
-               (p_type == PT_TLS) ? "PT_TLS" :
-               (p_type == PT_GNU_EH_FRAME) ? "PT_GNU_EH_FRAME" :
-               (p_type == PT_GNU_STACK) ? "PT_GNU_STACK" :
-               (p_type == PT_GNU_RELRO) ? "PT_GNU_RELRO" : NULL;
-
-//            snprintf(entry, sizeof(entry), "    %2zu: [%14p; memsz:%7jx] flags: %#jx; ",  j,
-//                     (void *) (info->dlpi_addr + info->dlpi_phdr[j].p_vaddr),
-//                     (uintmax_t) info->dlpi_phdr[j].p_memsz,
-//                     (uintmax_t) info->dlpi_phdr[j].p_flags);
-//            strcat((char*)data, entry);
-
-        if (type != NULL) {
-            snprintf(entry, sizeof(entry), "%s\n", type);
-        }
-        else {
-            snprintf(entry, sizeof(entry), "[other (%#x)]\n", p_type);
-        }
-        strcat((char*)data, entry);
-        }
+    if (currentLen + lineLen + 1 < capacity) {
+        strcat(report, line);
     }
+
     return 0;
 }
 
