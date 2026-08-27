@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -23,14 +22,12 @@ import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.ObjectDumper.dumpSomeObject
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.BufferedReader
-import java.io.File
 import java.io.InputStreamReader
 import java.lang.reflect.Method
 import java.net.NetworkInterface
@@ -57,23 +54,6 @@ val deferredIfaces = GlobalScope.async {
     }
     return@async sb.toString()
 }
-
-// Maybe I could join all of these?
-val deferredMemInfo = GlobalScope.async {
-    val memInfoPath = "/proc/meminfo"
-    File(memInfoPath).readText(Charsets.UTF_8)
-}
-
-val deferredMemInfoExtra = GlobalScope.async {
-    val memInfoPath = "/proc/meminfo_extra"
-    File(memInfoPath).readText(Charsets.UTF_8)
-}
-
-val deferredCpuInfo = GlobalScope.async {
-    val memInfoPath = "/proc/cpuinfo"
-    File(memInfoPath).readText(Charsets.UTF_8)
-}
-
 
 fun DumpJavaInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
@@ -866,7 +846,6 @@ fun dumpDevProperties(): String {
 }
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-@RequiresPermission(allOf = [Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
 fun dumpTelephonyInfo(context: Context): String {
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
     val sb = StringBuilder()
@@ -875,10 +854,6 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("[LEGACY] phoneCount: ${telephonyManager.phoneCount}")
     sb.appendLine("[MODERN] activeModemCount: ${telephonyManager.activeModemCount}")
     sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
-    sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
-
-    sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
-    sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
 
     sb.appendLine("carrierIdFromSimMccMnc: ${telephonyManager.carrierIdFromSimMccMnc}")
     sb.appendLine("networkOperator: ${telephonyManager.networkOperator}")
@@ -891,11 +866,21 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}\n")
 
-    sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
-    sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
-
-    sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
+
+    try {
+        sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
+        sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
+        sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
+        sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
+        sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
+        sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
+    } catch (e: Exception) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpTelephonyInfo", "Exception: ", tr = e)
+
+        sb.appendLine("Permission denied for grabbing some fields: ${e.message}")
+        sb.appendLine("Stacktrace: ${e.stackTrace.contentToString()}")
+    }
 
     return sb.toString()
 }

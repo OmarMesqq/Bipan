@@ -14,7 +14,7 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 #define LOGF(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#define MAX_FRAMES 120
+#define MAX_FRAMES 20
 
 typedef struct {
     void** frames;
@@ -79,6 +79,14 @@ void athenaInit(JNIEnv* env) {
     }
 
     LOGI("Athena initialized successfully!");
+}
+
+void requestNativeBacktrace(void) {
+    print_native_backtrace();
+}
+
+void requestJavaBacktrace(void) {
+    print_java_backtrace(g_jniEnv);
 }
 
 

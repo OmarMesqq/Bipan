@@ -231,38 +231,6 @@ fun JavaInfoScreen() {
             }
         }
 
-//        SectionHeader("HARDWARE")
-//        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-//            Button(
-//                onClick = {
-//                    memInfo = getMemoryInfo(context)
-//                },
-//                modifier = Modifier.fillMaxWidth()
-//            ) {
-//                Text("MEMORY INFO")
-//            }
-//
-//            Text(
-//                text = memInfo,
-//                style = MaterialTheme.typography.bodyMedium
-//            )
-//
-//
-//            Button(
-//                onClick = {
-//                    cpuInfo = dumpCpuInfo()
-//                },
-//                modifier = Modifier.fillMaxWidth()
-//            ) {
-//                Text("CPU INFO")
-//            }
-//
-//            Text(
-//                text = cpuInfo,
-//                style = MaterialTheme.typography.bodyMedium
-//            )
-//        }
-
 
 
         SectionHeader("SYSTEM PROPERTIES")

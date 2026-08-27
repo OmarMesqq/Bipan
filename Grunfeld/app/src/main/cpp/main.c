@@ -53,10 +53,12 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("__attribute__((constructor))");
+//    requestNativeBacktrace();
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad");
+//    requestNativeBacktrace();
 
     JNIEnv* env = NULL;
     jint result = (*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6);
@@ -66,6 +68,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     }
 
     athenaInit(env);
+//    requestJavaBacktrace();
     return JNI_VERSION_1_6;
 }
 
