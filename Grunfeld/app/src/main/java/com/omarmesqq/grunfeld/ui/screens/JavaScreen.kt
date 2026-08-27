@@ -165,11 +165,11 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
             Button(
                 onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.topjohnwu.magisk")
+                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.android.vending")
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getPackageInfo(\"Magisk\")")
+                Text("getPackageInfo(Play Store)")
             }
 
             Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
@@ -205,7 +205,7 @@ fun JavaInfoScreen() {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getApplicationInfo(\"WhatsApp\")")
+                Text("getApplicationInfo(System's Webview)")
             }
 
             Text(text = "Get ALL available system features", style = MaterialTheme.typography.titleMedium)
