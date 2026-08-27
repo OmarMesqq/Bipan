@@ -355,6 +355,8 @@ private fun dumpBuildInfo(): String {
             SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
             SOC_MODEL: ${Build.SOC_MODEL}
             SUPPORTED_CPU_ABIs: ${Build.SUPPORTED_ABIS?.joinToString()}
+            CPU_ABI: ${Build.CPU_ABI}
+            CPU_ABI2: ${Build.CPU_ABI2}
             TAGS: ${Build.TAGS}
             TIME: ${Build.TIME}
             TYPE: ${Build.TYPE}
