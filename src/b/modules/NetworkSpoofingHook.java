@@ -132,7 +132,8 @@ public class NetworkSpoofingHook implements BaseHook {
         try {
           spoofLinkProperties((LinkProperties) result);
         } catch (SecurityException e) {
-          Log.i(TAG, "connHandler: SecurityException (no ACCESS_WIFI_STATE): skipping LinkProperties spoof");
+          Log.d(TAG, "connHandler: SecurityException during LinkProperties spoof. Returning dummy LP object");
+          result = new LinkProperties();
         } catch (Exception e) {
           Log.e(TAG, "connHandler: unknown exception. Aborting!", e);
           throw new OutOfMemoryError();
@@ -195,9 +196,8 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalWifiService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.w(TAG,
-            "wifiHandler: Underlying call to " + method.getName() + " failed. Cause's msg: " + cause.getMessage());
-        throw cause;
+        Log.d(TAG, "wifiHandler: " + method.getName() + " call failed. Cause's msg: " + cause.getMessage());
+        throw new SecurityException();
       }
 
       if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
@@ -354,6 +354,8 @@ public class NetworkSpoofingHook implements BaseHook {
         lp.setMtu(1500);
         lp.setDhcpServerAddress(null);
         lp.setDnsServers(dnsServers);
+        spoofPrivateDnsInLp(lp);
+
         return;
       }
 
@@ -402,8 +404,9 @@ public class NetworkSpoofingHook implements BaseHook {
       lp.setInterfaceName(WIFI_IFACE_NAME);
       lp.setMtu(1500);
       lp.setDhcpServerAddress(null);
-
       lp.setDnsServers(dnsServers);
+      spoofPrivateDnsInLp(lp);
+
     } catch (InvocationTargetException e) {
       throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
@@ -469,6 +472,20 @@ public class NetworkSpoofingHook implements BaseHook {
       Log.e(TAG, "setField(" + name + ") - NoSuchFieldException. Message: " + e.getMessage());
     } catch (Exception e) {
       Log.e(TAG, "setField(" + name + "). Unknown exception: ", e);
+      throw new OutOfMemoryError();
+    }
+  }
+
+  private void spoofPrivateDnsInLp(LinkProperties lp) {
+    try {
+      Method setUsePrivateDns = LinkProperties.class.getMethod("setUsePrivateDns", boolean.class);
+      setUsePrivateDns.invoke(lp, false);
+
+      Method setPrivateDnsServerName = LinkProperties.class.getMethod(
+          "setPrivateDnsServerName", String.class);
+      setPrivateDnsServerName.invoke(lp, new Object[] { null });
+    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+      Log.e(TAG, "Failed to spoof private DNS: ", e);
       throw new OutOfMemoryError();
     }
   }
