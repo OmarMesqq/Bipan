@@ -165,7 +165,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ril.sw_ver2", ""},
 
     {"nfc.initialized", "false"},
-    {"persist.sys.locale", "en-US"},
     {"ro.product.locale", "en-US"},
 
     {"ro.config.alarm_alert", "Hassium.ogg"},
@@ -206,6 +205,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"init.svc.vaultkeeper", ""},
     {"init.svc.vendor_flash_recovery", ""},
     {"init.svc.adb_root", ""},
+    {"service.adb.root", ""},
 
     // soc_prop
     {"ro.soc.manufacturer", "Google"},
