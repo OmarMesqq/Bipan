@@ -73,8 +73,6 @@ fun NativeScreen() {
         "/system/etc",
         "/system/etc/hosts",
 
-        "/data/anr",
-
         "/system/lib",
         "/system/lib/libzygisk.so",
 
