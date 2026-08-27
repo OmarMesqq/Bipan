@@ -332,6 +332,7 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
+    spoofAbisAs64BitOnly();
     setField(buildClass, "BOARD", "husky");
     setField(buildClass, "BOOTLOADER", "ripcurrent-15.0-12455211");
     setField(buildClass, "BRAND", "google");
@@ -407,6 +408,76 @@ class Bipan : public zygisk::ModuleBase {
     // Zygisk populates fnPtr with the original function pointer after hooking
     orig_clampGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[0].fnPtr);
     orig_clearGrowthLimit = reinterpret_cast<void (*)(JNIEnv*, jobject)>(runtime_methods[1].fnPtr);
+  }
+
+  jobjectArray makeStringArray(const char* const* strings, size_t count) {
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (!stringClass) return nullptr;
+
+    jobjectArray array = env->NewObjectArray((jsize)count, stringClass, nullptr);
+    if (!array) {
+      env->DeleteLocalRef(stringClass);
+      return nullptr;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+      jstring str = env->NewStringUTF(strings[i]);
+      env->SetObjectArrayElement(array, (jsize)i, str);
+      env->DeleteLocalRef(str);
+    }
+
+    env->DeleteLocalRef(stringClass);
+    return array;
+  }
+
+  // Helper to set a static final String[] field (bypasses final)
+  bool setStaticStringArrayField(jclass clazz, const char* fieldName,
+                                 const char* const* values, size_t count) {
+    jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "[Ljava/lang/String;");
+    if (!fieldId) {
+      env->ExceptionClear();
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Field %s not found or wrong type", fieldName);
+      return false;
+    }
+
+    jobjectArray array = makeStringArray(values, count);
+    if (!array) return false;
+
+    // On modern ART the field may still be final.
+    // Setting it via JNI usually works for these particular Build fields
+    // because they are not aggressively protected like some others.
+    env->SetStaticObjectField(clazz, fieldId, array);
+    env->DeleteLocalRef(array);
+
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Failed to set static field %s", fieldName);
+      return false;
+    }
+    return true;
+  }
+
+  void spoofAbisAs64BitOnly() {
+    jclass buildClass = env->FindClass("android/os/Build");
+    if (!buildClass) {
+      env->ExceptionClear();
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Could not find android.os.Build!");
+      return;
+    }
+
+    // 64-bit only
+    const char* abis64[] = {"arm64-v8a"};
+    const char* empty[] = {};  // truly empty array (preferred)
+    // or: const char* empty[] = { "" }; // some old code expects a single empty string
+
+    bool ok1 = setStaticStringArrayField(buildClass, "SUPPORTED_ABIS", abis64, 1);
+    bool ok2 = setStaticStringArrayField(buildClass, "SUPPORTED_32_BIT_ABIS", empty, 0);
+
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG,
+                          "ABI spoof: SUPPORTED_ABIS=%d, SUPPORTED_32_BIT_ABIS=%d",
+                          ok1, ok2);
+
+    env->DeleteLocalRef(buildClass);
   }
 };
 
