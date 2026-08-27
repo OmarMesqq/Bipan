@@ -29,7 +29,6 @@ import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
-import com.omarmesqq.grunfeld.utils.dumpCpuInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
@@ -43,7 +42,6 @@ import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
-import com.omarmesqq.grunfeld.utils.getMemoryInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
 import kotlinx.coroutines.Dispatchers
@@ -165,11 +163,11 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
             Button(
                 onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.android.vending")
+                    getPackageInfoStatus = dumpGetPackageInfo(context, "com.android.settings")
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getPackageInfo(Play Store)")
+                Text("getPackageInfo(Settings)")
             }
 
             Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)

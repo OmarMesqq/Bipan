@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewOutcomeReceiver
@@ -19,12 +18,6 @@ import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.DumpStackTraceAt
-import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
-import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
-import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
-import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import java.util.concurrent.Executors
 
 
@@ -59,26 +52,26 @@ class MainApplication: Application() {
         }
 
         // Pre-warm Chromium engine using bleeding edge API
-//        val executor = Executors.newSingleThreadExecutor()
-//        val config = WebViewStartUpConfig.Builder(executor).build()
-//
-//        WebViewCompat.startUpWebView(
-//            this,
-//            config,
-//            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
-//                override fun onResult(result: WebViewStartUpResult) {
-//                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"Chromium engine successfully pre-warmed in the \"background\"")
-//                }
-//
-//                override fun onError(error: WebViewStartupException) {
-//                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error, shouldToast = true)
-//                }
-//            }
-//        )
+        val executor = Executors.newSingleThreadExecutor()
+        val config = WebViewStartUpConfig.Builder(executor).build()
+
+        WebViewCompat.startUpWebView(
+            this,
+            config,
+            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
+                override fun onResult(result: WebViewStartUpResult) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"Chromium engine pre-warmed")
+                }
+
+                override fun onError(error: WebViewStartupException) {
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error, shouldToast = true)
+                }
+            }
+        )
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "CRITICAL_ERROR: Uncaught exception in ${thread.name}", tr= throwable, shouldToast = true)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "[!] UNCAUGHT_EXCEPTION: ${throwable.message} in thread ${thread.name}", tr= throwable, shouldToast = true)
             defaultHandler?.uncaughtException(thread, throwable)
         }
         configRepository = GrunfeldConfigs(this)
