@@ -119,9 +119,9 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalConnService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.w(TAG, "connHandler: InvocationTargetException: Underlying call to " + method.getName()
-            + " failed. Cause's msg: " + cause.getMessage());
-        throw cause;
+        Log.d(TAG, "connHandler: " + method.getName() + " call failed", cause);
+        Throwable cleanTr = J.cleanThrowable(cause);
+        throw cleanTr;
       }
 
       if ("getNetworkCapabilities".equals(method.getName())) {
@@ -131,12 +131,11 @@ public class NetworkSpoofingHook implements BaseHook {
       } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
         try {
           spoofLinkProperties((LinkProperties) result);
-        } catch (SecurityException e) {
-          Log.w(TAG, "connHandler: SecurityException during LinkProperties spoof");
-          throw new OutOfMemoryError();
         } catch (Exception e) {
-          Log.e(TAG, "connHandler: unknown exception. Aborting!", e);
-          throw new OutOfMemoryError();
+          Log.d(TAG, "connHandler: spoofLinkProperties failed", e);
+          OutOfMemoryError oom = new OutOfMemoryError();
+          Throwable cleanTr = J.cleanThrowable(oom);
+          throw cleanTr;
         }
       } else if ("getAllNetworks".equals(method.getName())) {
         // Log.i(TAG, "Neutered getAllNetworks");
@@ -197,7 +196,8 @@ public class NetworkSpoofingHook implements BaseHook {
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
         Log.d(TAG, "wifiHandler: " + method.getName() + " call failed", cause);
-        throw cause;
+        Throwable cleanTr = J.cleanThrowable(cause);
+        throw cleanTr;
       }
 
       if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {

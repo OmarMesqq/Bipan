@@ -108,8 +108,7 @@ bool shouldSpoofExistence(const char* pathname) {
   if (
       // starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
       // starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
-      starts_with(pathname, "/proc/meminfo_extra") ||
-      starts_with(pathname, "/data/anr")) {
+      starts_with(pathname, "/proc/meminfo_extra")) {
     return true;
   }
 
@@ -260,7 +259,6 @@ struct stat* fixHostsFileStat(const char* pathname, int flags) {
     statbufHosts.st_size = 46;
     statbufHosts.st_blocks = 8;
     statbufHosts.st_dev = statbufEtc.st_dev;
-    statbufHosts.st_ino = statbufEtc.st_ino;
     statbufHosts.st_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
     statbufHosts.st_atim = statbufEtc.st_atim;
     statbufHosts.st_mtim = statbufEtc.st_mtim;
@@ -290,7 +288,6 @@ struct stat* fixHostsFileStat(const char* pathname, int flags) {
     statbufHosts.st_size = 46;
     statbufHosts.st_blocks = 8;
     statbufHosts.st_dev = statbufSystemEtc.st_dev;
-    statbufHosts.st_ino = statbufSystemEtc.st_ino;
     statbufHosts.st_mode = S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
     statbufHosts.st_atim = statbufSystemEtc.st_atim;
     statbufHosts.st_mtim = statbufSystemEtc.st_mtim;

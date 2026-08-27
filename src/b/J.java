@@ -18,6 +18,7 @@ import android.os.Bundle;
 import android.app.Application;
 import java.lang.OutOfMemoryError;
 import android.app.Activity;
+import java.util.regex.Pattern;
 
 /**
  * Entrypoint of BipanJava
@@ -234,6 +235,60 @@ public class J {
       if (pic != null) {
         smdf.setBoolean(pic, true);
       }
+    }
+  }
+
+  public static Throwable cleanThrowable(Throwable tr) {
+    if (tr == null) {
+      return null;
+    }
+
+    List<Pattern> noiseClassPatterns = List.of(
+        Pattern.compile("^java\\.lang\\.reflect\\..*"),
+        Pattern.compile("^\\$Proxy\\d+$"));
+
+    List<Pattern> noiseFilePatterns = List.of(
+        Pattern.compile("^SourceFile$"),
+        Pattern.compile("^Unknown Source$"));
+
+    clean_stack_trace_recursive(tr, noiseClassPatterns, noiseFilePatterns, new HashSet<>());
+    return tr;
+  }
+
+  private static void clean_stack_trace_recursive(
+      Throwable tr,
+      List<Pattern> noiseClassPatterns,
+      List<Pattern> noiseFilePatterns,
+      Set<Throwable> seen) {
+    if (tr == null || !seen.add(tr)) {
+      return; // avoid infinite loops on cyclic causes
+    }
+
+    StackTraceElement[] original = tr.getStackTrace();
+    List<StackTraceElement> filtered = new ArrayList<>(original.length);
+
+    for (StackTraceElement element : original) {
+      String className = element.getClassName();
+      String fileName = element.getFileName();
+
+      boolean isNoise = noiseClassPatterns.stream().anyMatch(p -> p.matcher(className).matches())
+          || (fileName != null
+              && noiseFilePatterns.stream().anyMatch(p -> p.matcher(fileName).matches()));
+
+      if (!isNoise) {
+        filtered.add(element);
+      }
+    }
+
+    if (filtered.isEmpty() && original.length > 0) {
+      filtered.add(original[0]);
+    }
+
+    tr.setStackTrace(filtered.toArray(new StackTraceElement[0]));
+
+    clean_stack_trace_recursive(tr.getCause(), noiseClassPatterns, noiseFilePatterns, seen);
+    for (Throwable suppressed : tr.getSuppressed()) {
+      clean_stack_trace_recursive(suppressed, noiseClassPatterns, noiseFilePatterns, seen);
     }
   }
 
