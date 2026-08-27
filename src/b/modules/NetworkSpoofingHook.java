@@ -58,12 +58,8 @@ public class NetworkSpoofingHook implements BaseHook {
   private static Object cmProxy;
   private static Object wifiProxy;
 
-  private static String selfPackageName;
-
   @Override
   public void install(Context context) throws Exception {
-    selfPackageName = context.getPackageName();
-
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);

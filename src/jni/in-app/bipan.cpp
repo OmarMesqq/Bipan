@@ -430,9 +430,8 @@ class Bipan : public zygisk::ModuleBase {
     return array;
   }
 
-  // Helper to set a static final String[] field (bypasses final)
-  bool setStaticStringArrayField(jclass clazz, const char* fieldName,
-                                 const char* const* values, size_t count) {
+  // Sets a static final String[] field, bypassing `final`
+  bool setStaticStringArrayField(jclass clazz, const char* fieldName, const char* const* values, size_t count) {
     jfieldID fieldId = env->GetStaticFieldID(clazz, fieldName, "[Ljava/lang/String;");
     if (!fieldId) {
       env->ExceptionClear();
@@ -441,11 +440,10 @@ class Bipan : public zygisk::ModuleBase {
     }
 
     jobjectArray array = makeStringArray(values, count);
-    if (!array) return false;
+    if (!array) {
+      return false;
+    }
 
-    // On modern ART the field may still be final.
-    // Setting it via JNI usually works for these particular Build fields
-    // because they are not aggressively protected like some others.
     env->SetStaticObjectField(clazz, fieldId, array);
     env->DeleteLocalRef(array);
 
@@ -465,17 +463,15 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    // 64-bit only
     const char* abis64[] = {"arm64-v8a"};
-    const char* empty[] = {};  // truly empty array (preferred)
-    // or: const char* empty[] = { "" }; // some old code expects a single empty string
+    const char* empty[] = {};
 
     bool ok1 = setStaticStringArrayField(buildClass, "SUPPORTED_ABIS", abis64, 1);
     bool ok2 = setStaticStringArrayField(buildClass, "SUPPORTED_32_BIT_ABIS", empty, 0);
 
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG,
-                          "ABI spoof: SUPPORTED_ABIS=%d, SUPPORTED_32_BIT_ABIS=%d",
-                          ok1, ok2);
+    if (!ok1 || !ok2) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set some CPU ABI JNI field");
+    }
 
     env->DeleteLocalRef(buildClass);
   }
