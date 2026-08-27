@@ -132,8 +132,8 @@ public class NetworkSpoofingHook implements BaseHook {
         try {
           spoofLinkProperties((LinkProperties) result);
         } catch (SecurityException e) {
-          Log.d(TAG, "connHandler: SecurityException during LinkProperties spoof. Returning dummy LP object");
-          result = new LinkProperties();
+          Log.w(TAG, "connHandler: SecurityException during LinkProperties spoof");
+          throw new OutOfMemoryError();
         } catch (Exception e) {
           Log.e(TAG, "connHandler: unknown exception. Aborting!", e);
           throw new OutOfMemoryError();
@@ -196,8 +196,8 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalWifiService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.d(TAG, "wifiHandler: " + method.getName() + " call failed. Cause's msg: " + cause.getMessage());
-        throw new SecurityException();
+        Log.d(TAG, "wifiHandler: " + method.getName() + " call failed", cause);
+        throw cause;
       }
 
       if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
@@ -293,20 +293,14 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofLinkProperties(LinkProperties lp) throws Throwable {
     try {
-      Class<?> iWifiManagerClz = Class.forName("android.net.wifi.IWifiManager");
-      Method getConnectionInfoMethod = iWifiManagerClz.getMethod("getConnectionInfo", String.class, String.class);
-      WifiInfo wi = (WifiInfo) getConnectionInfoMethod.invoke(wifiProxy, selfPackageName, null);
-
-      Field networkIdField = wi.getClass().getDeclaredField("mNetworkId");
-      networkIdField.setAccessible(true);
-      int networkId = (int) networkIdField.get(wi);
-
       ArrayList<InetAddress> dnsServers = new ArrayList<>();
       dnsServers.add(InetAddress.getByName("1.1.1.1"));
       dnsServers.add(InetAddress.getByName("1.0.0.1"));
 
-      // No permission, not connected or we are on mobile
-      if (networkId == -1) {
+      String currentIface = lp.getInterfaceName();
+
+      // We are on mobile
+      if (currentIface.contains("rmnet")) {
         Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
         field.setAccessible(true);
 

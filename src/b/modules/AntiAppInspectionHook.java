@@ -20,6 +20,8 @@ import android.content.pm.FeatureInfo;
 import java.util.ArrayList;
 import java.util.List;
 import b.J;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 
 /**
  * Single IPackageManager proxy:
@@ -345,7 +347,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          return method.invoke(originalPM, args);
+          PackageInfo pi = (PackageInfo) method.invoke(originalPM, args);
+          return pi;
         }
 
         Log.i(TAG, "Blinded getPackageInfo for: " + pkg);
@@ -358,7 +361,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             : null;
 
         if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-          return method.invoke(originalPM, args);
+          ApplicationInfo ai = (ApplicationInfo) method.invoke(originalPM, args);
+          return ai;
         }
 
         Log.i(TAG, "Blinded: getApplicationInfo for: " + pkg);
