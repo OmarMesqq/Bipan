@@ -332,9 +332,6 @@ class Bipan : public zygisk::ModuleBase {
       return;
     }
 
-    setField(buildClass, "CPU_ABI", "arm64-v8a");
-    setField(buildClass, "CPU_ABI2", "");
-
     setField(buildClass, "BOARD", "husky");
     setField(buildClass, "BOOTLOADER", "ripcurrent-15.0-12455211");
     setField(buildClass, "BRAND", "google");
