@@ -3,7 +3,6 @@ package com.omarmesqq.grunfeld.utils
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -27,6 +26,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
 import androidx.core.net.toUri
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.utils.ObjectDumper.dumpSomeObject
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
@@ -38,8 +38,6 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
-import java.lang.reflect.Proxy
-
 
 /**
  * Does PTR lookups internally and I shouldn't (nor can)
@@ -151,34 +149,40 @@ fun dumpNetworkInfo(context: Context): String {
         sb.append(ifaces)
     } catch (e: Exception) {
         sb.append("Failed to get interfaces: ${e.message}\n")
-        // avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
     }
 
     sb.append("\n[WIFI MANAGER INFO]\n")
-    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    try {
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 
-    @Suppress("DEPRECATION")
-    val info = wifiManager.connectionInfo
+        @Suppress("DEPRECATION")
+        val info = wifiManager.connectionInfo
 
-    val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
-    val bssid = info.bssid
-    val ssid = info.ssid
-    val linkSpeed = info.linkSpeed
-    val maxrx = info.maxSupportedRxLinkSpeedMbps
-    val mxtx = info.maxSupportedTxLinkSpeedMbps
-    val tx = info.txLinkSpeedMbps
-    val rx = info.rxLinkSpeedMbps
-    val netid = info.networkId
+        val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
+        val bssid = info.bssid
+        val ssid = info.ssid
+        val linkSpeed = info.linkSpeed
+        val maxrx = info.maxSupportedRxLinkSpeedMbps
+        val mxtx = info.maxSupportedTxLinkSpeedMbps
+        val tx = info.txLinkSpeedMbps
+        val rx = info.rxLinkSpeedMbps
+        val netid = info.networkId
 
-    sb.append("IPv4 address: $ipv4Address\n")
-    sb.append("BSSID: $bssid\n")
-    sb.append("SSID: $ssid\n")
-    sb.append("Link speed: $linkSpeed Mbps\n")
-    sb.append("Max RX: $maxrx Mbps\n")
-    sb.append("Max TX: $mxtx Mbps\n")
-    sb.append("TX: $tx Mbps\n")
-    sb.append("RX: $rx Mbps\n")
-    sb.append("Network ID: $netid\n")
+        sb.append("IPv4 address: $ipv4Address\n")
+        sb.append("BSSID: $bssid\n")
+        sb.append("SSID: $ssid\n")
+        sb.append("Link speed: $linkSpeed Mbps\n")
+        sb.append("Max RX: $maxrx Mbps\n")
+        sb.append("Max TX: $mxtx Mbps\n")
+        sb.append("TX: $tx Mbps\n")
+        sb.append("RX: $rx Mbps\n")
+        sb.append("Network ID: $netid\n")
+    } catch (e: SecurityException) {
+        sb.append("WIFI_SERVICE Exception: ${e.message} | Cause's msg: ${e.cause?.message}\n")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "WIFI_SERVICE Exception: ${e.message}", tr = e)
+    }
+
 
     sb.append("\n[LINK PROPERTIES INFO (via ConnectivityManager)]\n\n")
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -231,6 +235,8 @@ fun dumpNetworkInfo(context: Context): String {
             val nat64prefix = linkProperties.nat64Prefix
             val routes = linkProperties.routes
             val mtu = linkProperties.mtu
+            val privateDnsServerName = linkProperties.privateDnsServerName
+            val isPrivateDnsServerActive = linkProperties.isPrivateDnsActive
 
             sb.append("DHCP Server: ${dhcpServerAdddr?.hostAddress ?: "No DHCP server"} \n")
             dnsServers.forEach {
@@ -252,6 +258,8 @@ fun dumpNetworkInfo(context: Context): String {
             }
             sb.append("mtu: $mtu\n")
             sb.append("nat64prefix: $nat64prefix \n")
+            sb.append("privateDnsServerName: $privateDnsServerName\n")
+            sb.append("isPrivateDnsServerActive: $isPrivateDnsServerActive\n")
         }
     }
 
@@ -410,6 +418,7 @@ fun dumpQueryIntentActivities(context: Context): String {
     return sb.toString()
 }
 
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     val pm = context.packageManager
     val sb = StringBuilder()
@@ -420,7 +429,10 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
                     PackageManager.GET_SERVICES or
                     PackageManager.GET_RECEIVERS or
                     PackageManager.GET_PROVIDERS or
-                    PackageManager.GET_SIGNING_CERTIFICATES
+                    PackageManager.GET_SIGNING_CERTIFICATES or
+                    PackageManager.GET_META_DATA or
+                    PackageManager.GET_URI_PERMISSION_PATTERNS or
+                    PackageManager.GET_INTENT_FILTERS
             )
 
     val info: PackageInfo = try {
@@ -429,42 +441,29 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
         return "Package not found: $targetPackage"
     }
 
-    // Basic info
     sb.appendLine("=== $targetPackage ===")
     sb.appendLine("Version: ${info.versionName} (${info.longVersionCode})")
     sb.appendLine("Installed: ${java.util.Date(info.firstInstallTime)}")
     sb.appendLine("Updated:   ${java.util.Date(info.lastUpdateTime)}")
     sb.appendLine("UID: ${info.applicationInfo?.uid}")
 
-    // Permissions
-    sb.appendLine("\n-- Declared Permissions --")
-    info.requestedPermissions?.forEach { perm ->
-        val granted = (info.requestedPermissionsFlags
-            ?.getOrNull(info.requestedPermissions!!.indexOf(perm))
-            ?: 0) and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0
-        sb.appendLine("  [${ if (granted) "GRANTED" else "DENIED " }] $perm")
-    }
+    val appInfoFlags = info.applicationInfo?.flags ?: 0
+    val isSystemApp = (appInfoFlags and ApplicationInfo.FLAG_SYSTEM) != 0
+    val isUpdatedSystemApp = (appInfoFlags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
-    // Components
-    sb.appendLine("\n-- Activities --")
-    info.activities?.forEach { sb.appendLine("  ${it.name}") }
+    sb.appendLine("isSystemApp: $isSystemApp")
+    sb.appendLine("isUpdatedSystemApp: $isUpdatedSystemApp")
 
-    sb.appendLine("\n-- Services --")
-    info.services?.forEach { sb.appendLine("  ${it.name}") }
+    sb.appendLine("isAppMetadataVerified: ${info.isAppMetadataVerified}")
+    sb.appendLine("metaData: ${info.applicationInfo?.metaData}")
+    sb.appendLine("appComponentFactory: ${info.applicationInfo?.appComponentFactory}")
+    sb.appendLine("backupAgentName: ${info.applicationInfo?.backupAgentName}")
+    sb.appendLine("category: ${info.applicationInfo?.category}")
+    sb.appendLine("className: ${info.applicationInfo?.className}")
 
-    sb.appendLine("\n-- Receivers --")
-    info.receivers?.forEach { sb.appendLine("  ${it.name}") }
-
-    sb.appendLine("\n-- Providers --")
-    info.providers?.forEach { sb.appendLine("  ${it.name}") }
-
-    // Signing certs
-    sb.appendLine("\n-- Signing Certificates --")
-    info.signingInfo?.apkContentsSigners?.forEach { sig ->
-        val md = MessageDigest.getInstance("SHA-256")
-        val fingerprint = md.digest(sig.toByteArray())
-            .joinToString(":") { "%02X".format(it) }
-        sb.appendLine("  SHA-256: $fingerprint")
+    if (info.applicationInfo != null) {
+        val label = pm.getApplicationLabel(info.applicationInfo!!)
+        sb.appendLine("label: $label")
     }
 
     return sb.toString()
@@ -534,7 +533,7 @@ fun dumpGetInstalledPackages(context: Context): String {
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpGetApplicationInfo(context: Context) : String {
     val pm = context.packageManager
-    val packageName = "com.whatsapp"
+    val packageName = "com.android.webview"
 
     val res = try {
         val appInfo = pm.getApplicationInfo(packageName, 0)
