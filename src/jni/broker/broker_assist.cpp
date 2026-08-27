@@ -2,12 +2,13 @@
 
 #include <dlfcn.h>
 #include <signal.h>
-#include <unistd.h>
+#include <sys/syscall.h>
 #include <unwind.h>
 
 #include <cerrno>
 #include <cstring>
 
+#include "common_utils.hpp"
 #include "logger/logger.hpp"
 
 #define TAG "BipanBrokerAssist"
@@ -36,6 +37,8 @@ thread_local pid_t g_current_client_pid = -1;
 // Original dispositions, so they can be chained to create a tombstone
 static struct sigaction g_old_segv_act = {};
 static struct sigaction g_old_abrt_act = {};
+static struct sigaction g_old_bus_act = {};
+static struct sigaction g_old_ill_act = {};
 
 static char g_altstack[SIGSTKSZ * 4];
 
@@ -78,30 +81,64 @@ bool registerAssistSigHandlers() {
     return false;
   }
 
+  ret = sigaction(SIGBUS, &act, &g_old_bus_act);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGBUS) failed (errno: %s)", strerror(errno));
+    return false;
+  }
+
+  ret = sigaction(SIGILL, &act, &g_old_ill_act);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGILL) failed (errno: %s)", strerror(errno));
+    return false;
+  }
+
   write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Assist handlers registered on altstack, size=%zu", sizeof(g_altstack));
   return true;
 }
 
+/**
+ * TODO:
+ * - think of something which allows `write_to_logcat_async` to be AS-safe with
+ * diagnostic information (`%`)
+ * - Backtrace printing should be before `kill_current_client`, but for now the 
+ * priority is eliminating the deadlock
+ */
 static void bipan_broker_signal_handler(int sig, siginfo_t* info, void* void_context) {
   (void)info;
   (void)void_context;
 
-  if (sig == SIGABRT) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGABRT");
-  } else if (sig == SIGSEGV) {
-    if (info->si_code == SEGV_MAPERR) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of type SEGV_MAPERR");
-    } else if (info->si_code == SEGV_ACCERR) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of type SEGV_ACCERR");
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got segfault of unknown type: %d", info->si_code);
+  switch (sig) {
+    case SIGABRT: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGABRT");
+      break;
     }
-  } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got unexpected signal: %d", sig);
+    case SIGSEGV: {
+      if (info->si_code == SEGV_MAPERR) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGSEGV of type SEGV_MAPERR");
+      } else if (info->si_code == SEGV_ACCERR) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGSEGV of type SEGV_ACCERR");
+      } else {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGSEGV of unknown type");
+      }
+      break;
+    }
+    case SIGBUS: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGBUS");
+      break;
+    }
+    case SIGILL: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Broker got SIGILL");
+      break;
+    }
+    default: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] Broker unknown signal");
+      break;
+    }
   }
 
-  print_backtrace();
   kill_current_client();
+  print_backtrace();
 }
 
 static void kill_current_client() {
@@ -109,8 +146,8 @@ static void kill_current_client() {
     return;
   }
 
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker dead. Killing orphaned client pid=%d", g_current_client_pid);
-  kill(g_current_client_pid, SIGKILL);
+  write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker dead. Killing orphaned client");
+  arm64_raw_syscall(__NR_kill, g_current_client_pid, SIGKILL, 0, 0, 0, 0);
 }
 
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
@@ -135,6 +172,10 @@ static int capture_backtrace(void** out_frames, int max_frames) {
   return state.count;
 }
 
+/**
+ * TODO: extensive use of `unwind.h`and `dlfcn.h` exports.
+ * Definitely NOT AS-safe.
+ */
 static void print_backtrace() {
   void* frames[MAX_FRAMES_BROKER_ASSIST];
   int count = capture_backtrace(frames, MAX_FRAMES_BROKER_ASSIST);
