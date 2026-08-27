@@ -2,7 +2,6 @@ package com.omarmesqq.grunfeld.utils
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -32,7 +31,6 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.BufferedReader
 import java.io.File
-import java.io.IOException
 import java.io.InputStreamReader
 import java.lang.reflect.Method
 import java.net.NetworkInterface
@@ -148,8 +146,8 @@ fun dumpNetworkInfo(context: Context): String {
         val ifaces = deferredIfaces.getCompleted()
         sb.append(ifaces)
     } catch (e: Exception) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "getNetworkInterfaces Exception", tr = e)
         sb.append("Failed to get interfaces: ${e.message}\n")
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "Exception", tr = e)
     }
 
     sb.append("\n[WIFI MANAGER INFO]\n")
@@ -171,15 +169,8 @@ fun dumpNetworkInfo(context: Context): String {
     } catch (e: SecurityException) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "WIFI_SERVICE Exception", tr = e)
 
-        sb.append("WIFI_SERVICE Exception:\n\n")
-        sb.append("Exception's message: ${e.message}\n\n")
-        e.suppressed.forEach { s ->
-            sb.append("Exception's suppressed: ${e.stackTrace.contentToString()}\n")
-        }
-
+        sb.append("WIFI_SERVICE Exception. Message: ${e.message}\n\n")
         sb.append("Exception's stackTrace: ${e.stackTrace.contentToString()}\n\n")
-        sb.append("Exception's cause: ${e.cause}\n\n")
-        sb.append("Exception's cause message: ${e.cause?.message}\n\n")
     }
 
 
@@ -356,7 +347,7 @@ private fun dumpBuildInfo(): String {
             SOC_MODEL: ${Build.SOC_MODEL}
             SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS.joinToString()}
             SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
-            SUPPORTED_CPU_ABIs: ${Build.SUPPORTED_ABIS?.joinToString()}
+            SUPPORTED_ABIS: ${Build.SUPPORTED_ABIS?.joinToString()}
             CPU_ABI: ${Build.CPU_ABI}
             CPU_ABI2: ${Build.CPU_ABI2}
             TAGS: ${Build.TAGS}
