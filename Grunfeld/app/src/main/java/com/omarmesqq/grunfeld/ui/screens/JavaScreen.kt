@@ -44,7 +44,6 @@ import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.getSystemProps
-import com.omarmesqq.grunfeld.utils.launchGmsIntents
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,7 +74,6 @@ fun JavaInfoScreen() {
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
-    var gmsIntentsInfo by remember { mutableStateOf("GMS Intents not sent yet") }
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
@@ -133,19 +131,6 @@ fun JavaInfoScreen() {
 
         SectionHeader("PACKAGE MANAGER")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-
-            Text(text = "Launch some GMS Intents", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(gmsIntentsInfo, "GMS Intents not sent yet")
-            Button(
-                onClick = {
-                    gmsIntentsInfo = launchGmsIntents(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("launchGmsIntents()")
-            }
-
-
 
             Text(text = "Get Package Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
             ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")

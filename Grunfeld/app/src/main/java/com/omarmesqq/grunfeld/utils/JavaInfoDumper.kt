@@ -395,63 +395,6 @@ fun dumpQueryIntentActivities(context: Context): String {
     return sb.toString()
 }
 
-fun launchGmsIntents(context: Context) : String {
-    val sb = StringBuilder()
-    val pm = context.packageManager
-
-    val bindToBillingSvcIntnt = Intent()
-    bindToBillingSvcIntnt.setAction("com.android.vending.billing.InAppBillingService.BIND")
-    bindToBillingSvcIntnt.setPackage("com.android.vending")
-
-    val getInstallReferrerIntnt = Intent()
-    getInstallReferrerIntnt.setAction("com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
-    getInstallReferrerIntnt.component = ComponentName(
-        "com.android.vending",
-        "com.google.android.finsky.externalreferrer.GetInstallReferrerService"
-    )
-
-    val billSvcActivities = pm.queryIntentActivities(bindToBillingSvcIntnt, 0)
-
-    if (billSvcActivities.isEmpty()) {
-        sb.appendLine("No Activities for com.android.vending.billing.InAppBillingService.BIND\n")
-    } else {
-        sb.appendLine("Activities that perform com.android.vending.billing.InAppBillingService.BIND")
-        billSvcActivities.forEach { a ->
-
-            sb.appendLine("Package Name: ${a.resolvePackageName}")
-            sb.appendLine("Intent Filter: ${a.filter}")
-            sb.appendLine("Non-localized label: ${a.nonLocalizedLabel}")
-            sb.appendLine("Is default: ${a.isDefault}")
-            sb.appendLine("Java Class: ${a.javaClass}")
-            sb.appendLine("Activity Info: ${a.activityInfo}")
-            sb.appendLine("Service Info: ${a.serviceInfo}")
-            sb.appendLine("Provider Info: ${a.providerInfo}")
-        }
-        sb.append("\n")
-    }
-
-    val installReferrerActivities = pm.queryIntentActivities(getInstallReferrerIntnt, 0)
-    if (installReferrerActivities.isEmpty()) {
-        sb.appendLine("No Activities for com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
-    } else {
-        sb.appendLine("Activities that perform com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
-        installReferrerActivities.forEach { a ->
-
-            sb.appendLine("Package Name: ${a.resolvePackageName}")
-            sb.appendLine("Intent Filter: ${a.filter}")
-            sb.appendLine("Non-localized label: ${a.nonLocalizedLabel}")
-            sb.appendLine("Is default: ${a.isDefault}")
-            sb.appendLine("Java Class: ${a.javaClass}")
-            sb.appendLine("Activity Info: ${a.activityInfo}")
-            sb.appendLine("Service Info: ${a.serviceInfo}")
-            sb.appendLine("Provider Info: ${a.providerInfo}")
-        }
-        sb.append("\n")
-    }
-
-    return sb.toString()
-}
-
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
 fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
