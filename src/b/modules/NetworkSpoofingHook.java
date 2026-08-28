@@ -115,7 +115,7 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalConnService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.d(TAG, "connHandler: " + method.getName() + " call failed", cause);
+        // Log.d(TAG, "connHandler: " + method.getName() + " call failed", cause);
         Throwable cleanTr = J.cleanThrowable(cause);
         throw cleanTr;
       }
@@ -128,7 +128,7 @@ public class NetworkSpoofingHook implements BaseHook {
         try {
           spoofLinkProperties((LinkProperties) result);
         } catch (Exception e) {
-          Log.d(TAG, "connHandler: spoofLinkProperties failed", e);
+          // Log.d(TAG, "connHandler: spoofLinkProperties failed", e);
           OutOfMemoryError oom = new OutOfMemoryError();
           Throwable cleanTr = J.cleanThrowable(oom);
           throw cleanTr;
@@ -191,7 +191,7 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalWifiService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.d(TAG, "wifiHandler: " + method.getName() + " call failed", cause);
+        // Log.d(TAG, "wifiHandler: " + method.getName() + " call failed", cause);
         Throwable cleanTr = J.cleanThrowable(cause);
         throw cleanTr;
       }
