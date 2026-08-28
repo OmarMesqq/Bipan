@@ -202,7 +202,7 @@ public class J {
     Log.i(TAG, "All modules loaded successfully :)");
   }
 
-  public static void patchConnectivityManager(Context context) {
+  private static void patchConnectivityManager(Context context) {
     if (scmp == null) {
       return;
     }
@@ -222,7 +222,7 @@ public class J {
     }
   }
 
-  public static void patchPackageManager(PackageManager pm) throws Exception {
+  private static void patchPackageManager(PackageManager pm) throws Exception {
     if (pm == null || spmp == null || smpm == null) {
       throw new Exception(TAG + "'PackageManager', 's_pmProxy', and/or 's_mPMField' are null");
     }
