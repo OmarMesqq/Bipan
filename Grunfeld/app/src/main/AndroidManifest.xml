@@ -4,7 +4,7 @@
 
     <!-- WAN, LAN, connection info: Internet whatnots -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" /> -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Orwellian screen perms -->
@@ -40,6 +40,11 @@
                 android:name="com.android.vending.billing.InAppBillingService.BIND">
             </action>
         </intent>
+        <intent>
+            <action
+                android:name="com.google.android.gsf.GOOGLE_APPS_LOCATION_SETTINGS">
+            </action>
+        </intent>
     </queries>
 
     <application
@@ -48,7 +53,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:gwpAsanMode="always"
-        android:zygotePreloadName="com.omarmesqq.grunfeld.GrunfeldZygotePreloaded"
         android:theme="@style/Theme.Grunfeld"
         android:extractNativeLibs="false"
         android:name=".MainApplication">
