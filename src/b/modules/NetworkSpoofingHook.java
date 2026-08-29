@@ -171,7 +171,7 @@ public class NetworkSpoofingHook implements BaseHook {
             : method.invoke(realBinder, args));
 
     cache.put("connectivity", proxyBinder);
-    J.scmp = cmProxy;
+    J.s_cmProxy = cmProxy;
   }
 
   private void setupWifiSpoofing(Method getService, Map<String, IBinder> cache) throws Exception {
