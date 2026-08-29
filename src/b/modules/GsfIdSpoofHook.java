@@ -40,20 +40,20 @@ public class GsfIdSpoofHook implements BaseHook {
   public void install(Context context) throws Exception {
     ContentResolver resolver = context.getContentResolver();
     if (resolver == null) {
-      Log.e(TAG, "ContentResolver is null");
+      // Log.d(TAG, "ContentResolver is null");
       return;
     }
 
     // Keep the client open so the provider stays in ActivityThread.mProviderMap
     ContentProviderClient client = resolver.acquireUnstableContentProviderClient(GSF_AUTHORITY);
     if (client == null) {
-      Log.e(TAG, "Could not acquire GSF ContentProviderClient");
+      // Log.d(TAG, "Could not acquire GSF ContentProviderClient");
       return;
     }
 
     Object realProvider = extractIContentProvider(client);
     if (realProvider == null) {
-      Log.e(TAG, "Failed to extract IContentProvider");
+      // Log.d(TAG, "Failed to extract IContentProvider");
       client.close();
       return;
     }
@@ -85,17 +85,11 @@ public class GsfIdSpoofHook implements BaseHook {
             try {
               return method.invoke(realProvider, args);
             } catch (InvocationTargetException e) {
-              Log.e(TAG,
-                  "install().newProxyInstance.InvocationHandler.invoke() got InvocationTargetException:", e);
-
               Throwable cause = e.getCause() != null ? e.getCause() : e;
-
-              Log.e(TAG,
-                  "install().newProxyInstance.InvocationHandler.invoke() InvocationTargetException cause:", cause);
+              Log.e(TAG, "install().InvocationHandler got InvocationTargetException. Cause:", cause);
               throw cause;
             } catch (Exception e) {
-              Log.e(TAG,
-                  "install().newProxyInstance.InvocationHandler.invoke() Exception:", e);
+              Log.e(TAG, "install().InvocationHandler got unknown Exception:", e);
               throw e;
             }
           }
@@ -106,11 +100,8 @@ public class GsfIdSpoofHook implements BaseHook {
     patchActivityManagerSingleton(); // primary
     installActivityManagerProxy();
 
-    // Do NOT close the client – keeps the map entry alive
-    // (small intentional leak for the lifetime of the process)
-
-    Log.i(TAG, "GSF ID spoof installed, id=" +
-        Long.toHexString(Long.parseLong(SPOOFED_ID)));
+    // Log.d(TAG, "GSF ID spoof installed, id=" +
+    // Long.toHexString(Long.parseLong(SPOOFED_ID)));
   }
 
   private static Cursor trySpoof(Object[] args) {
@@ -154,8 +145,8 @@ public class GsfIdSpoofHook implements BaseHook {
 
     MatrixCursor c = new MatrixCursor(new String[] { "key", "value" });
     c.addRow(new Object[] { GSF_KEY, SPOOFED_ID });
-    Log.d(TAG, "Spoofed GSF android_id → " +
-        Long.toHexString(Long.parseLong(SPOOFED_ID)));
+
+    Log.i(TAG, "Spoofed GSF android_id → " + Long.toHexString(Long.parseLong(SPOOFED_ID)));
     return c;
   }
 
@@ -176,17 +167,19 @@ public class GsfIdSpoofHook implements BaseHook {
   private static boolean injectProviderProxy(Object proxy) throws Exception {
     Object activityThread = getActivityThread();
     if (activityThread == null) {
-      Log.e(TAG, "ActivityThread is null");
+      // Log.d(TAG, "ActivityThread is null");
       return false;
     }
 
     Field mapField = findField(activityThread.getClass(), "mProviderMap");
-    if (mapField == null)
+    if (mapField == null) {
       return false;
+    }
     mapField.setAccessible(true);
     Object providerMap = mapField.get(activityThread);
-    if (providerMap == null)
+    if (providerMap == null) {
       return false;
+    }
 
     Method sizeMethod = providerMap.getClass().getMethod("size");
     Method keyAtMethod = providerMap.getClass().getMethod("keyAt", int.class);
@@ -197,23 +190,26 @@ public class GsfIdSpoofHook implements BaseHook {
     for (int i = 0; i < size; i++) {
       Object key = keyAtMethod.invoke(providerMap, i);
       Object record = valueAtMethod.invoke(providerMap, i);
-      if (key == null || record == null)
+      if (key == null || record == null) {
         continue;
+      }
 
       String auth = extractAuthority(key);
-      if (auth == null || !GSF_AUTHORITY.equals(auth))
+      if (auth == null || !GSF_AUTHORITY.equals(auth)) {
         continue;
+      }
 
       Field providerField = findField(record.getClass(), "mProvider");
-      if (providerField == null)
+      if (providerField == null) {
         continue;
+      }
       providerField.setAccessible(true);
 
       Object old = providerField.get(record);
       if (old != proxy) {
         providerField.set(record, proxy);
-        Log.i(TAG, "Replaced IContentProvider for " + auth +
-            " (old=" + (old != null ? old.getClass().getName() : "null") + ")");
+        // Log.d(TAG, "Replaced IContentProvider for " + auth + " (old=" + (old != null
+        // ? old.getClass().getName() : "null") + ")");
       }
       found = true;
     }
@@ -223,20 +219,23 @@ public class GsfIdSpoofHook implements BaseHook {
   private static void forceAcquireAndInject() {
     try {
       Object at = getActivityThread();
-      if (at == null)
+      if (at == null) {
         return;
+      }
       Method getApp = at.getClass().getMethod("getApplication");
       Object app = getApp.invoke(at);
-      if (!(app instanceof Context))
+      if (!(app instanceof Context)) {
         return;
+      }
 
       ContentResolver cr = ((Context) app).getContentResolver();
       ContentProviderClient client = cr.acquireUnstableContentProviderClient(GSF_AUTHORITY);
-      if (client == null)
+      if (client == null) {
         return;
-      // leave open (same intentional leak as install)
+      }
+
       injectProviderProxy(sGsfProxy);
-      Log.i(TAG, "forceAcquireAndInject: re-acquired GSF provider");
+      // Log.d(TAG, "forceAcquireAndInject: re-acquired GSF provider");
     } catch (Throwable t) {
       Log.e(TAG, "forceAcquireAndInject failed", t);
     }
@@ -275,8 +274,9 @@ public class GsfIdSpoofHook implements BaseHook {
       Method current = atClass.getDeclaredMethod("currentActivityThread");
       current.setAccessible(true);
       Object at = current.invoke(null);
-      if (at != null)
+      if (at != null) {
         return at;
+      }
     } catch (Throwable ignored) {
     }
     try {
@@ -298,8 +298,9 @@ public class GsfIdSpoofHook implements BaseHook {
       try {
         f.setAccessible(true);
         Object v = f.get(providerKey);
-        if (v instanceof String)
+        if (v instanceof String) {
           return (String) v;
+        }
       } catch (Throwable ignored) {
         Log.e(TAG, "extractAuthority: Throwable:", ignored);
       }
@@ -314,7 +315,7 @@ public class GsfIdSpoofHook implements BaseHook {
         try {
           return c.getDeclaredField(name);
         } catch (NoSuchFieldException ignored) {
-
+          //
         } catch (Exception e) {
           Log.e(TAG, "findField: Exception:", e);
         }
@@ -335,8 +336,9 @@ public class GsfIdSpoofHook implements BaseHook {
     // "activity" is the classic name; some builds also use activity_task
     for (String svcName : new String[] { "activity", "activity_task" }) {
       IBinder realBinder = (IBinder) getService.invoke(null, svcName);
-      if (realBinder == null)
+      if (realBinder == null) {
         continue;
+      }
 
       // Resolve IActivityManager / IActivityTaskManager
       String stubName = svcName.equals("activity")
@@ -375,7 +377,7 @@ public class GsfIdSpoofHook implements BaseHook {
           });
 
       cache.put(svcName, proxyBinder);
-      Log.i(TAG, "Installed IActivityManager proxy on service: " + svcName);
+      // Log.d(TAG, "Installed IActivityManager proxy on service: " + svcName);
     }
   }
 
@@ -405,15 +407,17 @@ public class GsfIdSpoofHook implements BaseHook {
       }
 
       Field providerField = findField(holder.getClass(), "provider");
-      if (providerField == null)
+      if (providerField == null) {
         return;
+      }
       providerField.setAccessible(true);
       Object current = providerField.get(holder);
-      if (current == null || current == sGsfProxy)
+      if (current == null || current == sGsfProxy) {
         return;
+      }
       if (sGsfProxy != null) {
         providerField.set(holder, sGsfProxy);
-        Log.i(TAG, "Wrapped ContentProviderHolder.provider with GSF proxy");
+        // Log.d(TAG, "Wrapped ContentProviderHolder.provider with GSF proxy");
       }
     } catch (Throwable t) {
       Log.e(TAG, "wrapHolderIfGsf failed", t);
@@ -427,7 +431,7 @@ public class GsfIdSpoofHook implements BaseHook {
     singletonField.setAccessible(true);
     Object singleton = singletonField.get(null);
     if (singleton == null) {
-      Log.e(TAG, "IActivityManagerSingleton is null");
+      // Log.d(TAG, "IActivityManagerSingleton is null");
       return;
     }
 
@@ -438,7 +442,7 @@ public class GsfIdSpoofHook implements BaseHook {
       mInstanceField = findField(singleton.getClass().getSuperclass(), "mInstance");
     }
     if (mInstanceField == null) {
-      Log.e(TAG, "Singleton.mInstance not found");
+      // Log.d(TAG, "Singleton.mInstance not found");
       return;
     }
     mInstanceField.setAccessible(true);
@@ -450,11 +454,11 @@ public class GsfIdSpoofHook implements BaseHook {
       realAm = get.invoke(singleton);
     }
     if (realAm == null) {
-      Log.e(TAG, "Could not obtain IActivityManager instance");
+      // Log.d(TAG, "Could not obtain IActivityManager instance");
       return;
     }
     if (Proxy.isProxyClass(realAm.getClass())) {
-      Log.i(TAG, "IActivityManager already proxied");
+      // Log.d(TAG, "IActivityManager already proxied");
       return;
     }
 
@@ -473,6 +477,6 @@ public class GsfIdSpoofHook implements BaseHook {
         });
 
     mInstanceField.set(singleton, amProxy);
-    Log.i(TAG, "Patched ActivityManager.IActivityManagerSingleton");
+    // Log.d(TAG, "Patched ActivityManager.IActivityManagerSingleton");
   }
 }
