@@ -27,15 +27,15 @@ public class J {
   private static final String TAG = "BipanJava";
   private static final AtomicBoolean instrumentationHooked = new AtomicBoolean(false);
 
-  // ConnectivtyManager hook variables
-  public static volatile Object scmp = null; // s_cmProxy
+  // ConnectivtyManager
+  public static volatile Object s_cmProxy = null;
 
-  // Package Manager hook variables
-  public static volatile Field smpm = null; // s_mPMField
-  public static volatile Object spmp = null; // s_pmProxy
-  public static volatile Field smuf = null; // s_mUseField
-  public static volatile Field smcf = null; // s_mCacheField
-  public static volatile Field smdf = null; // s_mDisabledField
+  // Package Manager
+  public static volatile Field s_mPMField = null;
+  public static volatile Object s_pmProxy = null;
+  public static volatile Field s_mUseField = null;
+  public static volatile Field s_mCacheField = null;
+  public static volatile Field s_mDisabledField = null;
 
   // Spare GMS and Play Store from most hooks
   private static final Set<String> GLOBAL_ALLOW_LIST = new HashSet<>(Arrays.asList(
@@ -95,7 +95,7 @@ public class J {
         @Override
         public void callApplicationOnCreate(Application app) {
           // Hijack Application's ConnectivityManager
-          if (scmp != null) {
+          if (s_cmProxy != null) {
             try {
               patchConnectivityManager(app);
             } catch (Exception e) {
@@ -103,8 +103,9 @@ public class J {
             }
           }
 
+          // Hijack Application's ContextResolver for GSF
           GsfIdSpoofHook.reInject();
-          Log.d(TAG, "callApplicationOnCreate: reInjected GSF spoof in Application");
+          // Log.d(TAG, "callApplicationOnCreate: reInjected GSF spoof in Application");
 
           try {
             realInstr.getClass()
@@ -118,7 +119,7 @@ public class J {
         @Override
         public void callActivityOnCreate(Activity activity, Bundle icicle) {
           // Hijack Activity's PackageManager
-          if (smpm != null && spmp != null) {
+          if (s_mPMField != null && s_pmProxy != null) {
             try {
               patchPackageManager(activity.getPackageManager());
             } catch (Exception e) {
@@ -126,11 +127,12 @@ public class J {
             }
           }
 
+          // Hijack Activity's ContextResolver for GSF
           GsfIdSpoofHook.reInject();
-          Log.d(TAG, "callActivityOnCreate: reInjected GSF spoof in Activity");
+          // Log.d(TAG, "callActivityOnCreate: reInjected GSF spoof in Activity");
 
           // Hijack Activity's ConnectivityManager
-          if (scmp != null) {
+          if (s_cmProxy != null) {
             try {
               patchConnectivityManager(activity);
             } catch (Exception e) {
@@ -151,6 +153,7 @@ public class J {
 
         @Override
         public void callActivityOnResume(Activity activity) {
+          // Also hijack Application's Context's `cr` for GSF, once again
           GsfIdSpoofHook.reInject();
 
           try {
@@ -226,7 +229,7 @@ public class J {
   }
 
   private static void patchConnectivityManager(Context context) {
-    if (scmp == null) {
+    if (s_cmProxy == null) {
       return;
     }
     try {
@@ -236,7 +239,7 @@ public class J {
       for (Field f : cmClass.getDeclaredFields()) {
         if (iConnClz.isAssignableFrom(f.getType())) {
           f.setAccessible(true);
-          f.set(cm, scmp);
+          f.set(cm, s_cmProxy);
         }
       }
     } catch (Exception e) {
@@ -246,17 +249,17 @@ public class J {
   }
 
   private static void patchPackageManager(PackageManager pm) throws Exception {
-    if (pm == null || spmp == null || smpm == null) {
+    if (pm == null || s_pmProxy == null || s_mPMField == null) {
       throw new Exception(TAG + "'PackageManager', 's_pmProxy', and/or 's_mPMField' are null");
     }
-    smpm.set(pm, spmp);
-    if (smuf != null) {
-      smuf.setBoolean(pm, false);
+    s_mPMField.set(pm, s_pmProxy);
+    if (s_mUseField != null) {
+      s_mUseField.setBoolean(pm, false);
     }
-    if (smcf != null && smdf != null) {
-      Object pic = smcf.get(pm);
+    if (s_mCacheField != null && s_mDisabledField != null) {
+      Object pic = s_mCacheField.get(pm);
       if (pic != null) {
-        smdf.setBoolean(pic, true);
+        s_mDisabledField.setBoolean(pic, true);
       }
     }
   }

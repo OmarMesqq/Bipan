@@ -262,15 +262,15 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     try {
       Class<?> apmClass2 = Class.forName("android.app.ApplicationPackageManager");
       Class<?> picClass2 = Class.forName("android.app.PropertyInvalidatedCache");
-      J.spmp = pmProxy;
-      J.smpm = apmClass2.getDeclaredField("mPM");
-      J.smpm.setAccessible(true);
-      J.smuf = apmClass2.getDeclaredField("mUseSystemFeaturesCache");
-      J.smuf.setAccessible(true);
-      J.smcf = apmClass2.getDeclaredField("mHasSystemFeatureCache");
-      J.smcf.setAccessible(true);
-      J.smdf = picClass2.getDeclaredField("mDisabled");
-      J.smdf.setAccessible(true);
+      J.s_pmProxy = pmProxy;
+      J.s_mPMField = apmClass2.getDeclaredField("mPM");
+      J.s_mPMField.setAccessible(true);
+      J.s_mUseField = apmClass2.getDeclaredField("mUseSystemFeaturesCache");
+      J.s_mUseField.setAccessible(true);
+      J.s_mCacheField = apmClass2.getDeclaredField("mHasSystemFeatureCache");
+      J.s_mCacheField.setAccessible(true);
+      J.s_mDisabledField = picClass2.getDeclaredField("mDisabled");
+      J.s_mDisabledField.setAccessible(true);
     } catch (Exception e) {
       Log.e(TAG, "Failed to store static PM fields: " + e.getMessage());
     }

@@ -33,6 +33,7 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
+import java.lang.Long.toHexString
 
 /**
  * Does PTR lookups internally and I shouldn't (nor can)
@@ -687,7 +688,7 @@ fun dumpGsfId(ctx: Context) : String {
     val gsfId = try {
         cr!!.query(uri, null, null, params, null)!!.use { cursor ->
             check(cursor.moveToFirst() && cursor.columnCount >= 2)
-            java.lang.Long.toHexString(cursor.getString(1).toLong())
+            toHexString(cursor.getString(1).toLong())
         }
     } catch (e: Exception) {
         "Failed to get GSF ID: ${e.message}"
