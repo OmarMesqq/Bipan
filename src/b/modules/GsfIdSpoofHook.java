@@ -14,6 +14,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Map;
 import java.util.Random;
 import b.BaseHook;
 import java.lang.reflect.InvocationTargetException;
@@ -102,6 +103,8 @@ public class GsfIdSpoofHook implements BaseHook {
 
     sGsfProxy = proxy;
     injectProviderProxy(proxy);
+    patchActivityManagerSingleton(); // primary
+    installActivityManagerProxy();
 
     // Do NOT close the client – keeps the map entry alive
     // (small intentional leak for the lifetime of the process)
@@ -156,63 +159,86 @@ public class GsfIdSpoofHook implements BaseHook {
     return c;
   }
 
-  /**
-   * Public so J can call it from callApplicationOnCreate / callActivityOnCreate.
-   */
   public static void reInject() {
-    if (sGsfProxy != null) {
-      try {
-        injectProviderProxy(sGsfProxy);
-      } catch (Throwable t) {
-        Log.e(TAG, "reInject failed", t);
+    if (sGsfProxy == null) {
+      return;
+    }
+    try {
+      if (!injectProviderProxy(sGsfProxy)) {
+        // Entry gone or replaced with a real proxy – force a new acquire
+        forceAcquireAndInject();
       }
+    } catch (Throwable t) {
+      Log.e(TAG, "reInject failed", t);
     }
   }
 
-  private static void injectProviderProxy(Object proxy) throws Exception {
+  private static boolean injectProviderProxy(Object proxy) throws Exception {
     Object activityThread = getActivityThread();
     if (activityThread == null) {
       Log.e(TAG, "ActivityThread is null");
-      return;
+      return false;
     }
 
     Field mapField = findField(activityThread.getClass(), "mProviderMap");
-    if (mapField == null) {
-      Log.e(TAG, "injectProviderProxy: mProviderMap not found");
-      return;
-    }
+    if (mapField == null)
+      return false;
     mapField.setAccessible(true);
     Object providerMap = mapField.get(activityThread);
-    if (providerMap == null) {
-      Log.e(TAG, "injectProviderProxy: providerMap is null");
-      return;
-    }
+    if (providerMap == null)
+      return false;
 
     Method sizeMethod = providerMap.getClass().getMethod("size");
     Method keyAtMethod = providerMap.getClass().getMethod("keyAt", int.class);
     Method valueAtMethod = providerMap.getClass().getMethod("valueAt", int.class);
 
+    boolean found = false;
     int size = (Integer) sizeMethod.invoke(providerMap);
     for (int i = 0; i < size; i++) {
       Object key = keyAtMethod.invoke(providerMap, i);
       Object record = valueAtMethod.invoke(providerMap, i);
-      if (key == null || record == null) {
+      if (key == null || record == null)
         continue;
-      }
 
       String auth = extractAuthority(key);
-      if (auth == null || !GSF_AUTHORITY.equals(auth)) {
+      if (auth == null || !GSF_AUTHORITY.equals(auth))
         continue;
-      }
 
       Field providerField = findField(record.getClass(), "mProvider");
-      if (providerField != null) {
-        providerField.setAccessible(true);
-        Object old = providerField.get(record);
+      if (providerField == null)
+        continue;
+      providerField.setAccessible(true);
+
+      Object old = providerField.get(record);
+      if (old != proxy) {
         providerField.set(record, proxy);
         Log.i(TAG, "Replaced IContentProvider for " + auth +
             " (old=" + (old != null ? old.getClass().getName() : "null") + ")");
       }
+      found = true;
+    }
+    return found;
+  }
+
+  private static void forceAcquireAndInject() {
+    try {
+      Object at = getActivityThread();
+      if (at == null)
+        return;
+      Method getApp = at.getClass().getMethod("getApplication");
+      Object app = getApp.invoke(at);
+      if (!(app instanceof Context))
+        return;
+
+      ContentResolver cr = ((Context) app).getContentResolver();
+      ContentProviderClient client = cr.acquireUnstableContentProviderClient(GSF_AUTHORITY);
+      if (client == null)
+        return;
+      // leave open (same intentional leak as install)
+      injectProviderProxy(sGsfProxy);
+      Log.i(TAG, "forceAcquireAndInject: re-acquired GSF provider");
+    } catch (Throwable t) {
+      Log.e(TAG, "forceAcquireAndInject failed", t);
     }
   }
 
@@ -249,13 +275,9 @@ public class GsfIdSpoofHook implements BaseHook {
       Method current = atClass.getDeclaredMethod("currentActivityThread");
       current.setAccessible(true);
       Object at = current.invoke(null);
-      if (at != null) {
+      if (at != null)
         return at;
-      } else {
-        Log.e(TAG, "getActivityThread: currentActivityThread is null");
-      }
     } catch (Throwable ignored) {
-      Log.e(TAG, "getActivityThread: Throwable [1]:", ignored);
     }
     try {
       Class<?> atClass = Class.forName("android.app.ActivityThread");
@@ -263,7 +285,6 @@ public class GsfIdSpoofHook implements BaseHook {
       f.setAccessible(true);
       return f.get(null);
     } catch (Throwable ignored) {
-      Log.e(TAG, "getActivityThread: Throwable [2]:", ignored);
     }
     return null;
   }
@@ -293,7 +314,7 @@ public class GsfIdSpoofHook implements BaseHook {
         try {
           return c.getDeclaredField(name);
         } catch (NoSuchFieldException ignored) {
-          Log.e(TAG, "findField: NoSuchFieldException:", ignored);
+
         } catch (Exception e) {
           Log.e(TAG, "findField: Exception:", e);
         }
@@ -301,5 +322,157 @@ public class GsfIdSpoofHook implements BaseHook {
       }
     }
     return null;
+  }
+
+  private static void installActivityManagerProxy() throws Exception {
+    Class<?> sm = Class.forName("android.os.ServiceManager");
+    Method getService = sm.getDeclaredMethod("getService", String.class);
+    Field sCacheField = sm.getDeclaredField("sCache");
+    sCacheField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
+
+    // "activity" is the classic name; some builds also use activity_task
+    for (String svcName : new String[] { "activity", "activity_task" }) {
+      IBinder realBinder = (IBinder) getService.invoke(null, svcName);
+      if (realBinder == null)
+        continue;
+
+      // Resolve IActivityManager / IActivityTaskManager
+      String stubName = svcName.equals("activity")
+          ? "android.app.IActivityManager$Stub"
+          : "android.app.IActivityTaskManager$Stub";
+      String ifaceName = svcName.equals("activity")
+          ? "android.app.IActivityManager"
+          : "android.app.IActivityTaskManager";
+
+      Class<?> stubClz = Class.forName(stubName);
+      Method asInterface = stubClz.getDeclaredMethod("asInterface", IBinder.class);
+      final Object original = asInterface.invoke(null, realBinder);
+      Class<?> iface = Class.forName(ifaceName);
+
+      Object amProxy = Proxy.newProxyInstance(
+          iface.getClassLoader(),
+          new Class<?>[] { iface },
+          (proxy, method, args) -> {
+            Object result = method.invoke(original, args);
+
+            // Wrap any ContentProviderHolder that is for GSF
+            if (result != null && isGetContentProvider(method.getName())) {
+              wrapHolderIfGsf(result);
+            }
+            return result;
+          });
+
+      IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
+          IBinder.class.getClassLoader(),
+          new Class<?>[] { IBinder.class },
+          (p, method, args) -> {
+            if ("queryLocalInterface".equals(method.getName())) {
+              return amProxy;
+            }
+            return method.invoke(realBinder, args);
+          });
+
+      cache.put(svcName, proxyBinder);
+      Log.i(TAG, "Installed IActivityManager proxy on service: " + svcName);
+    }
+  }
+
+  private static boolean isGetContentProvider(String name) {
+    return "getContentProvider".equals(name)
+        || "getContentProviderExternal".equals(name)
+        || "getContentProviderExternalUnchecked".equals(name);
+  }
+
+  private static void wrapHolderIfGsf(Object holder) {
+    try {
+      // ContentProviderHolder.info.authority or .provider
+      Field infoField = findField(holder.getClass(), "info");
+      if (infoField != null) {
+        infoField.setAccessible(true);
+        Object info = infoField.get(holder); // ProviderInfo
+        if (info != null) {
+          Field authField = findField(info.getClass(), "authority");
+          if (authField != null) {
+            authField.setAccessible(true);
+            Object auth = authField.get(info);
+            if (auth instanceof String && !((String) auth).contains(GSF_AUTHORITY)) {
+              return; // not GSF
+            }
+          }
+        }
+      }
+
+      Field providerField = findField(holder.getClass(), "provider");
+      if (providerField == null)
+        return;
+      providerField.setAccessible(true);
+      Object current = providerField.get(holder);
+      if (current == null || current == sGsfProxy)
+        return;
+      if (sGsfProxy != null) {
+        providerField.set(holder, sGsfProxy);
+        Log.i(TAG, "Wrapped ContentProviderHolder.provider with GSF proxy");
+      }
+    } catch (Throwable t) {
+      Log.e(TAG, "wrapHolderIfGsf failed", t);
+    }
+  }
+
+  private static void patchActivityManagerSingleton() throws Exception {
+    // ActivityManager.IActivityManagerSingleton (API 26+)
+    Class<?> amClass = Class.forName("android.app.ActivityManager");
+    Field singletonField = amClass.getDeclaredField("IActivityManagerSingleton");
+    singletonField.setAccessible(true);
+    Object singleton = singletonField.get(null);
+    if (singleton == null) {
+      Log.e(TAG, "IActivityManagerSingleton is null");
+      return;
+    }
+
+    // android.util.Singleton<T> → mInstance
+    Field mInstanceField = findField(singleton.getClass(), "mInstance");
+    if (mInstanceField == null) {
+      // some builds: field is on superclass
+      mInstanceField = findField(singleton.getClass().getSuperclass(), "mInstance");
+    }
+    if (mInstanceField == null) {
+      Log.e(TAG, "Singleton.mInstance not found");
+      return;
+    }
+    mInstanceField.setAccessible(true);
+
+    Object realAm = mInstanceField.get(singleton);
+    if (realAm == null) {
+      // force create
+      Method get = singleton.getClass().getMethod("get");
+      realAm = get.invoke(singleton);
+    }
+    if (realAm == null) {
+      Log.e(TAG, "Could not obtain IActivityManager instance");
+      return;
+    }
+    if (Proxy.isProxyClass(realAm.getClass())) {
+      Log.i(TAG, "IActivityManager already proxied");
+      return;
+    }
+
+    Class<?> iface = Class.forName("android.app.IActivityManager");
+    final Object original = realAm;
+
+    Object amProxy = Proxy.newProxyInstance(
+        iface.getClassLoader(),
+        new Class<?>[] { iface },
+        (proxy, method, args) -> {
+          Object result = method.invoke(original, args);
+          if (result != null && isGetContentProvider(method.getName())) {
+            wrapHolderIfGsf(result);
+          }
+          return result;
+        });
+
+    mInstanceField.set(singleton, amProxy);
+    Log.i(TAG, "Patched ActivityManager.IActivityManagerSingleton");
   }
 }
