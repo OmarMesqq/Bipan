@@ -148,6 +148,19 @@ public class J {
             throw new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause().toString());
           }
         }
+
+        @Override
+        public void callActivityOnResume(Activity activity) {
+          GsfIdSpoofHook.reInject();
+
+          try {
+            realInstr.getClass()
+                .getMethod("callActivityOnResume", Activity.class)
+                .invoke(realInstr, activity);
+          } catch (Exception e) {
+            throw new OutOfMemoryError(TAG + " callActivityOnResume: " + e);
+          }
+        }
       };
 
       Field mThreadField = Instrumentation.class.getDeclaredField("mThread");
@@ -181,6 +194,7 @@ public class J {
 
     if (GLOBAL_ALLOW_LIST.contains(packageName)) {
       modules.add(new AntiNetworkDiscoveryHook());
+      modules.add(new SystemPropertiesHook());
     } else {
       /**
        * Isolated processes (Services to be more precise) are quite restricted
