@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#include <media/NdkMediaDrm.h>
 
 #include "socket_helper.h"
 #include "athena.h"
@@ -69,6 +70,60 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     athenaInit(env);
 //    requestJavaBacktrace();
     return JNI_VERSION_1_6;
+}
+
+/* Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed */
+static const uint8_t kWidevineUuid[16] = {
+        0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
+        0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
+};
+
+static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
+    static const char *hex = "0123456789abcdef";
+    size_t i, o = 0;
+    for (i = 0; i < len && o + 2 < out_cap; i++) {
+        out[o++] = hex[(in[i] >> 4) & 0xf];
+        out[o++] = hex[in[i] & 0xf];
+    }
+    out[o] = '\0';
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(
+        JNIEnv *env, jobject thiz) {
+
+    char report[1024];
+    report[0] = '\0';
+
+    AMediaDrm *drm = AMediaDrm_createByUUID(kWidevineUuid);
+    if (drm == NULL) {
+        snprintf(report, sizeof(report), "AMediaDrm_createByUUID failed");
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    AMediaDrmByteArray prop;
+    memset(&prop, 0, sizeof(prop));
+
+    media_status_t st = AMediaDrm_getPropertyByteArray(
+            drm,
+            PROPERTY_DEVICE_UNIQUE_ID,  // "deviceUniqueId"
+            &prop);
+
+    if (st != AMEDIA_OK || prop.ptr == NULL || prop.length == 0) {
+        snprintf(report, sizeof(report),
+                 "AMediaDrm_getPropertyByteArray failed status=%d len=%zu",
+                 (int)st, prop.length);
+        AMediaDrm_release(drm);
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    char hex[512] = {0};
+    bytes_to_hex(prop.ptr, prop.length, hex, sizeof(hex));
+
+    snprintf(report, sizeof(report),"%s",hex);
+
+    AMediaDrm_release(drm);
+    return (*env)->NewStringUTF(env, report);
 }
 
 

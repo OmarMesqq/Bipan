@@ -17,6 +17,7 @@ object NativeLibWrapper {
     external fun blockSigSys(): Boolean
     external fun getifaddrs():String
     external fun getallfds():String
+    external fun getMediaDrmIdNative(): String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun dlIteratePhdrTest(): String
     external fun testProcSelfTask(): String

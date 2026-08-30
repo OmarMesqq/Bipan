@@ -33,6 +33,7 @@ import android.os.Process
 fun NativeScreen() {
     val context = LocalContext.current
 
+    var drmIdReport by remember { mutableStateOf("Media DRM unique id not queried") }
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
 
@@ -100,6 +101,23 @@ fun NativeScreen() {
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 ReportTextWithCopy(NativeLibWrapper.getDeviceData(context), "")
+            }
+
+
+            SectionHeader("DRM ID")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReportTextWithCopy(drmIdReport, "Media DRM unique id not queried")
+                    Button(
+                        onClick = { drmIdReport = NativeLibWrapper.getMediaDrmIdNative() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Fetch Media DRM ID")
+                    }
+                }
             }
 
             SectionHeader("SENSORS")
