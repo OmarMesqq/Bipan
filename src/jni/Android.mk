@@ -57,7 +57,9 @@ include $(BUILD_STATIC_LIBRARY)
 # In-app static lib (injected code)
 include $(CLEAR_VARS)
 LOCAL_MODULE    := bipan-inapp
-LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,,$(wildcard $(LOCAL_PATH)/in-app/*.cpp))
+LOCAL_SRC_FILES := $(subst $(LOCAL_PATH)/,, \
+  $(wildcard $(LOCAL_PATH)/in-app/*.cpp) \
+  $(wildcard $(LOCAL_PATH)/in-app/*/*.cpp))
 LOCAL_CPPFLAGS  := $(BIPAN_CPPFLAGS)
 LOCAL_STATIC_LIBRARIES := dobby_static # link injected portion to Dobby
 include $(BUILD_STATIC_LIBRARY)

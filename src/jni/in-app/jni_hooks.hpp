@@ -6,9 +6,8 @@
 #ifndef JNI_HOOKS_HPP
 #define JNI_HOOKS_HPP
 
-#include <sys/random.h>
-
 #include "deps/zygisk.hpp"
+#include "drm/fake_id.hpp"
 #include "globals.hpp"
 #include "logger/logger.hpp"
 
@@ -52,25 +51,7 @@ jlong my_nativeCreate(JNIEnv* env, jclass clazz, jstring opPackageName) {
   return 0;
 }
 
-static constexpr size_t DRM_ID_BUF_SIZE = 16;
-static uint8_t kFakeId[DRM_ID_BUF_SIZE];
-static bool kFakeIdReady = false;
-
 static jbyteArray (*orig_getPropertyByteArray)(JNIEnv* env, jobject thiz, jstring property) = nullptr;
-
-static void ensureFakeId(void) {
-  if (kFakeIdReady) {
-    return;
-  }
-
-  ssize_t n = getrandom(kFakeId, sizeof(kFakeId), 0);
-  if (n != (ssize_t)sizeof(kFakeId)) {
-    // fallback to marking ready in case `getrandom` fails
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(DRM) getrandom failed. Creating pre-determined fake ID");
-    memset(kFakeId, 0xA5, sizeof(kFakeId));
-  }
-  kFakeIdReady = true;
-}
 
 jbyteArray my_getPropertyByteArray(JNIEnv* env, jobject thiz, jstring property) {
   if (property != nullptr) {
@@ -86,7 +67,7 @@ jbyteArray my_getPropertyByteArray(JNIEnv* env, jobject thiz, jstring property) 
       ensureFakeId();
       jbyteArray result = env->NewByteArray(DRM_ID_BUF_SIZE);
       if (result != nullptr) {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(DRM) Spoofed getPropertyByteArray(deviceUniqueId)");
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Java DRM) Spoofed getPropertyByteArray(deviceUniqueId)");
         env->SetByteArrayRegion(result, 0, DRM_ID_BUF_SIZE, reinterpret_cast<const jbyte*>(kFakeId));
       }
       return result;

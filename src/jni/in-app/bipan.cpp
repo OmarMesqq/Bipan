@@ -167,6 +167,7 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyDlIteratePhdrHook();
     registerDobbyNativeSensorsHooks();
     registerDobbyNativeSystemPropertiesHook();
+    registerDobbyDrmHook();
 
     preCacheIfaddrs();
     registerGetifaddrsHook();
