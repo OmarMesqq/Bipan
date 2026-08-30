@@ -18,6 +18,8 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import android.provider.Settings.Global
+import android.telephony.SubscriptionInfo
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import android.util.Log
@@ -29,11 +31,12 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.lang.Long.toHexString
+import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
-import java.lang.Long.toHexString
 
 /**
  * Does PTR lookups internally and I shouldn't (nor can)
@@ -713,7 +716,7 @@ fun dumpMediaDrmId() : String {
 }
 private fun ByteArray.toHexString(): String {
     return this.joinToString("") {
-        java.lang.String.format("%02x", it)
+        format("%02x", it)
     }
 }
 
@@ -840,8 +843,11 @@ fun dumpDevProperties(): String {
 @Suppress("DEPRECATION")
 fun dumpTelephonyInfo(context: Context): String {
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+    val subscriptionManager  = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+
     val sb = StringBuilder()
 
+    sb.appendLine("subscriptionId: ${telephonyManager.subscriptionId}")
     sb.appendLine("[LEGACY] phoneCount: ${telephonyManager.phoneCount}")
     sb.appendLine("[MODERN] activeModemCount: ${telephonyManager.activeModemCount}")
     sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
@@ -860,6 +866,48 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
 
     try {
+        val subscriptionInfoList: List<SubscriptionInfo>? = subscriptionManager.activeSubscriptionInfoList
+
+        subscriptionInfoList?.forEach { info ->
+            val subscriptionId = info.subscriptionId
+            val carrierName = info.carrierName
+            val displayName = info.displayName
+            val number = info.number
+            val cardId = info.cardId
+            val carrierId = info.carrierId
+            val countryIso = info.countryIso
+            val iccId = info.iccId
+            val isEmbedded = info.isEmbedded
+            val isOnlyNonTerrestrialNetwork = info.isOnlyNonTerrestrialNetwork
+            val isOpportunistic = info.isOpportunistic
+            val mcc = info.mcc
+            val mccString = info.mccString
+            val mnc = info.mnc
+            val mncString = info.mncString
+            val portIndex = info.portIndex
+            val simSlotIndex = info.simSlotIndex
+            val subscriptionType = info.subscriptionType
+
+            sb.appendLine("SubscriptionManager: cardId: $cardId")
+            sb.appendLine("SubscriptionManager: carrierId: $carrierId")
+            sb.appendLine("SubscriptionManager: countryIso: $countryIso")
+            sb.appendLine("SubscriptionManager: iccId: $iccId")
+            sb.appendLine("SubscriptionManager: isEmbedded: $isEmbedded")
+            sb.appendLine("SubscriptionManager: isOnlyNonTerrestrialNetwork: $isOnlyNonTerrestrialNetwork")
+            sb.appendLine("SubscriptionManager: isOpportunistic: $isOpportunistic")
+            sb.appendLine("SubscriptionManager: mcc: $mcc")
+            sb.appendLine("SubscriptionManager: mccString: $mccString")
+            sb.appendLine("SubscriptionManager: mnc: $mnc")
+            sb.appendLine("SubscriptionManager: mncString: $mncString")
+            sb.appendLine("SubscriptionManager: portIndex: $portIndex")
+            sb.appendLine("SubscriptionManager: simSlotIndex: $simSlotIndex")
+            sb.appendLine("SubscriptionManager: subscriptionType: $subscriptionType")
+            sb.appendLine("SubscriptionManager: subscriptionId: $subscriptionId")
+            sb.appendLine("SubscriptionManager: carrierName: $carrierName")
+            sb.appendLine("SubscriptionManager: displayName: $displayName")
+            sb.appendLine("SubscriptionManager: number: $number")
+        }
+
         sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
         sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
         sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
