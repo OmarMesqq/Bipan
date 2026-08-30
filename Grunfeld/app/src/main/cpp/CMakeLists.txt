@@ -57,4 +57,6 @@ else()
     )
 endif()
 
-target_link_libraries(grunfeld log android)
+find_library(mediandk-lib mediandk)
+
+target_link_libraries(grunfeld ${mediandk-lib} log android)

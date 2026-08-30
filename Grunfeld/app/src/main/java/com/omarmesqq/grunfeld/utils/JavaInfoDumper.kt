@@ -35,7 +35,6 @@ import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
-import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -703,16 +702,14 @@ fun dumpGsfId(ctx: Context) : String {
 fun dumpMediaDrmId() : String {
     val widevineUUidMostSigBits = -0x121074568629b532L
     val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
-
     val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
 
     val wvDrm = MediaDrm(widevineUUID)
-    val widevineId = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    val widevineIdRaw = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    val widevineId = widevineIdRaw.toHexString()
     wvDrm.close()
-    val md: MessageDigest = MessageDigest.getInstance("SHA-256")
-    md.update(widevineId)
 
-    return md.digest().toHexString()
+    return widevineId
 }
 private fun ByteArray.toHexString(): String {
     return this.joinToString("") {

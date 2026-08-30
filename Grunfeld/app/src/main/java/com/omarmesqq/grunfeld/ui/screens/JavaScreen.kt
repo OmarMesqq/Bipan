@@ -97,6 +97,36 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(buildAndSettingsInfo, "")
         }
 
+        SectionHeader("DEVICE IDENTIFIERS")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    gsfId = dumpGsfId(context)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get GSF ID")
+            }
+            Text(
+                text = gsfId,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Button(
+                onClick = {
+                    mediaDrmIdInfo = dumpMediaDrmId()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Media DRM ID")
+            }
+
+            Text(
+                text = mediaDrmIdInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
         SectionHeader("SENSORS")
         Column(
             modifier = Modifier.padding(16.dp),
@@ -229,7 +259,22 @@ fun JavaInfoScreen() {
             }
         }
 
-
+        SectionHeader("TELEPHONY")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    composableScope.launch {
+                        telephonyInfo = withContext(Dispatchers.IO) {
+                            dumpTelephonyInfo(context)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get Telephony info")
+            }
+            ReportTextWithCopy(telephonyInfo, "", MaterialTheme.typography.bodyMedium)
+        }
 
         SectionHeader("SYSTEM PROPERTIES")
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,54 +299,6 @@ fun JavaInfoScreen() {
                 Text("Dump prop contexts")
             }
             ReportTextWithCopy(devPropsInfo, "Dev properties not queried")
-        }
-
-        SectionHeader("DEVICE IDENTIFIERS")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    gsfId = dumpGsfId(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get GSF ID")
-            }
-            Text(
-                text = gsfId,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Button(
-                onClick = {
-                    mediaDrmIdInfo = dumpMediaDrmId()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get Media DRM ID")
-            }
-
-            Text(
-                text = mediaDrmIdInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-
-        SectionHeader("TELEPHONY")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    composableScope.launch {
-                        telephonyInfo = withContext(Dispatchers.IO) {
-                            dumpTelephonyInfo(context)
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get Telephony info")
-            }
-            ReportTextWithCopy(telephonyInfo, "", MaterialTheme.typography.bodyMedium)
         }
 
         SectionHeader("ANTI-TAMPER")
