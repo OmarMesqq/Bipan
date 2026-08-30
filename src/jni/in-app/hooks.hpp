@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <ifaddrs.h>
 #include <link.h>
+#include <media/NdkMediaDrm.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/syscall.h>
@@ -13,6 +14,7 @@
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "deps/zygisk.hpp"
+#include "drm/fake_id.hpp"
 #include "filter.hpp"
 #include "in-app/globals.hpp"
 #include "logger/logger.hpp"
@@ -269,7 +271,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // packagemanager_config_prop
     {"ro.control_privapp_permissions", "enforce"},
 
-
     {"ro.odm.product.cpu.abilist32", ""},
     {"ro.product.cpu.abilist32", ""},
     {"ro.system.product.cpu.abilist32", ""},
@@ -281,7 +282,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.vendor.product.cpu.abilist", "arm64-v8a"},
 
     {"ro.zygote", "zygote64"},
- 
 
 };
 
@@ -753,6 +753,49 @@ void registerDobbyNativeSystemPropertiesHook() {
 
   if ((getHook != 0) || (readcbHook != 0)) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook sysprop functions");
+  }
+}
+
+// https://android.googlesource.com/platform/frameworks/av/+/master/media/ndk/include/media/NdkMediaDrm.h#593
+static media_status_t (*orig_AMediaDrm_getPropertyByteArray)(
+    AMediaDrm* drm,
+    const char* propertyName,
+    AMediaDrmByteArray* propertyValue) = nullptr;
+
+static uint8_t gSpoofedPropBuf[DRM_ID_BUF_SIZE];
+static AMediaDrmByteArray gSpoofedProp;
+
+static media_status_t my_AMediaDrm_getPropertyByteArray(
+    AMediaDrm* drm,
+    const char* propertyName,
+    AMediaDrmByteArray* propertyValue) {
+  if (propertyName != nullptr &&
+      strcmp(propertyName, "deviceUniqueId") == 0 &&
+      propertyValue != nullptr) {
+    ensureFakeId();
+    memcpy(gSpoofedPropBuf, kFakeId, sizeof(kFakeId));
+    gSpoofedProp.ptr = gSpoofedPropBuf;
+    gSpoofedProp.length = sizeof(gSpoofedPropBuf);
+    *propertyValue = gSpoofedProp;
+
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(Native DRM) Spoofed AMediaDrm_getPropertyByteArray(deviceUniqueId)");
+    return AMEDIA_OK;
+  }
+
+  return orig_AMediaDrm_getPropertyByteArray(drm, propertyName, propertyValue);
+}
+
+void registerDobbyDrmHook(void) {
+  void* sym = dlsym(RTLD_DEFAULT, "AMediaDrm_getPropertyByteArray");
+  if (!sym) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve AMediaDrm_getPropertyByteArray!");
+    return;
+  }
+
+  int rc = DobbyHook(sym, (void*)my_AMediaDrm_getPropertyByteArray, (void**)&orig_AMediaDrm_getPropertyByteArray);
+  if (rc != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook AMediaDrm_getPropertyByteArray!");
+    return;
   }
 }
 
