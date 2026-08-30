@@ -320,7 +320,7 @@ class Bipan : public zygisk::ModuleBase {
 
   /**
    * 1. Spoofs `Build` fields
-   * 2. Hooks JNI sensors functions
+   * 2. Hooks sensors related functions and `MediaDrm`'s `getPropertyByteArray`
    * 3. Sets up the ART tripwires (`clampGrowthLimit`/`clearGrowthLimit`) for
    * applying seccomp and loading BipanJava modules
    */
@@ -398,6 +398,20 @@ class Bipan : public zygisk::ModuleBase {
         {"nativeCreate", "(Ljava/lang/String;)J", (void*)my_nativeCreate},
         {"nativeCreateDirectChannel", "(JIJIILandroid/hardware/HardwareBuffer;)I", (void*)my_nativeCreateDirectChannel}};
     api->hookJniNativeMethods(env, "android/hardware/SystemSensorManager", sensor_manager_methods, sensorManagerMethodsCount);
+
+    // DRM ID spoofing
+    JNINativeMethod methods[] = {
+        {"getPropertyByteArray",
+         "(Ljava/lang/String;)[B",
+         (void*)my_getPropertyByteArray}};
+
+    api->hookJniNativeMethods(
+        env,
+        "android/media/MediaDrm",
+        methods,
+        1);
+
+    orig_getPropertyByteArray = reinterpret_cast<decltype(orig_getPropertyByteArray)>(methods[0].fnPtr);
 
     // Tripwires for installing seccomp and hooking Instrumentation.onCreate()
     JNINativeMethod runtime_methods[] = {
