@@ -4,10 +4,13 @@ import android.content.Context;
 import android.os.IBinder;
 import android.util.Log;
 import b.BaseHook;
+import b.J;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
 
 /**
@@ -50,30 +53,43 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
     final Object originalMediaRouterService = asInterface.invoke(null, realMediaRouterBinder);
 
     InvocationHandler mediaRouterHandler = (proxy, method, args) -> {
-      String methodName = method.getName();
-      if (methodName.equals("registerClientAsUser") ||
-          methodName.equals("registerClientGroupId") ||
-          methodName.equals("requestSetVolume") ||
-          methodName.equals("requestUpdateVolume") ||
-          methodName.contains("setDiscoveryRequest") ||
-          methodName.equals("registerRouter2") ||
-          methodName.equals("setRouteListingPreference")) {
+      try {
+        String methodName = method.getName();
+        if (methodName.equals("registerClientAsUser") ||
+            methodName.equals("registerClientGroupId") ||
+            methodName.equals("requestSetVolume") ||
+            methodName.equals("requestUpdateVolume") ||
+            methodName.contains("setDiscoveryRequest") ||
+            methodName.equals("registerRouter2") ||
+            methodName.equals("setRouteListingPreference")) {
 
-        Log.i(TAG, "Neutering MediaRouter method: " + methodName);
+          Log.i(TAG, "Neutering MediaRouter method: " + methodName);
 
-        Class<?> returnType = method.getReturnType();
-        if (returnType == void.class) {
+          Class<?> returnType = method.getReturnType();
+          if (returnType == void.class) {
+            return null;
+          }
+          if (returnType == boolean.class) {
+            return false;
+          }
+          if (returnType == int.class || returnType == long.class) {
+            return 0;
+          }
           return null;
         }
-        if (returnType == boolean.class) {
-          return false;
-        }
-        if (returnType == int.class || returnType == long.class) {
-          return 0;
-        }
-        return null;
+        return method.invoke(originalMediaRouterService, args);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (UndeclaredThrowableException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (Exception e) {
+        Log.e(TAG, "invoke Exception:", e);
+        throw J.cleanThrowable(new OutOfMemoryError());
       }
-      return method.invoke(originalMediaRouterService, args);
     };
 
     Object mediaRouterProxy = Proxy.newProxyInstance(
@@ -102,40 +118,54 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
     final Object originalNsdService = asInterface.invoke(null, realNsdBinder);
 
     InvocationHandler nsdHandler = (proxy, method, args) -> {
-      String methodName = method.getName();
+      try {
+        String methodName = method.getName();
 
-      if ("connect".equals(methodName)) {
-        Object originalConnector = method.invoke(originalNsdService, args);
-        if (originalConnector != null) {
-          Class<?> connectorClz = Class.forName("android.net.connectivity.android.net.nsd.INsdServiceConnector");
+        if ("connect".equals(methodName)) {
+          Object originalConnector = method.invoke(originalNsdService, args);
+          if (originalConnector != null) {
+            Class<?> connectorClz = Class.forName("android.net.connectivity.android.net.nsd.INsdServiceConnector");
 
-          // NSD calls a second instance: 'INsdServiceConnector', so create a proxy for it
-          return Proxy.newProxyInstance(
-              connectorClz.getClassLoader(),
-              new Class[] { connectorClz },
-              (cProxy, cMethod, cArgs) -> {
-                String cMethodName = cMethod.getName();
-                if (cMethodName.contains("discoverServices") ||
-                    cMethodName.contains("registerService") ||
-                    cMethodName.contains("resolveService")) {
+            // NSD calls a second instance: 'INsdServiceConnector', so create a proxy for it
+            return Proxy.newProxyInstance(
+                connectorClz.getClassLoader(),
+                new Class[] { connectorClz },
+                (cProxy, cMethod, cArgs) -> {
+                  String cMethodName = cMethod.getName();
+                  if (cMethodName.contains("discoverServices") ||
+                      cMethodName.contains("registerService") ||
+                      cMethodName.contains("resolveService")) {
 
-                  Log.i(TAG, "Neutering NSD method: " + cMethodName);
+                    Log.i(TAG, "Neutering NSD method: " + cMethodName);
 
-                  Class<?> returnType = cMethod.getReturnType();
-                  if (returnType == void.class)
+                    Class<?> returnType = cMethod.getReturnType();
+                    if (returnType == void.class)
+                      return null;
+                    if (returnType == boolean.class)
+                      return true;
+                    if (returnType == int.class || returnType == long.class)
+                      return 0;
                     return null;
-                  if (returnType == boolean.class)
-                    return true;
-                  if (returnType == int.class || returnType == long.class)
-                    return 0;
-                  return null;
-                }
-                return cMethod.invoke(originalConnector, cArgs);
-              });
+                  }
+                  return cMethod.invoke(originalConnector, cArgs);
+                });
+          }
+          return null;
         }
-        return null;
+        return method.invoke(originalNsdService, args);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (UndeclaredThrowableException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (Exception e) {
+        Log.e(TAG, "invoke Exception:", e);
+        throw J.cleanThrowable(new OutOfMemoryError());
       }
-      return method.invoke(originalNsdService, args);
+
     };
 
     Object nsdProxy = Proxy.newProxyInstance(
