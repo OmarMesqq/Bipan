@@ -876,9 +876,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getifaddrs(JNIEnv *env, jobje
 }
 
 
-/**
- * TODO: xref with fdinfo?
- */
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobject thiz) {
     const char* path = "/proc/self/fd";

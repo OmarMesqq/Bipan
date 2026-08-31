@@ -236,14 +236,14 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   return SAFE;
 }
 
-void initializeUnwinder(pid_t pid) {
+void prefetchMaps(pid_t pid) {
   if (current_maps.empty()) {
     char proc_pid_maps_path[PATH_MAX] = {0};
     snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
 
     FILE* f = fopen(proc_pid_maps_path, "re");
     if (!f) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "initializeUnwinder: Failed to open remote's %s", proc_pid_maps_path);
+      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "prefetchMaps: Failed to open remote's %s", proc_pid_maps_path);
       return;
     }
     char line[PATH_MAX] = {0};
@@ -267,14 +267,14 @@ void initializeUnwinder(pid_t pid) {
 
       if (ret != 7 && ret != 8) {
 #ifdef BROKER_UNWINDER_LOGGING
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] initializeUnwinder: Skipping malformed maps line: %s", line);
+        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] prefetchMaps: Skipping malformed maps line: %s", line);
 #endif
         continue;
       }
 
       if (start >= end) {
 #ifdef BROKER_UNWINDER_LOGGING
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t[*] initializeUnwinder: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
+        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t[*] prefetchMaps: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
 #endif
         continue;
       }
@@ -307,12 +307,12 @@ void initializeUnwinder(pid_t pid) {
     }
 
     if (ferror(f)) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "initializeUnwinder: error while reading %s", proc_pid_maps_path);
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: error while reading %s", proc_pid_maps_path);
     }
     fclose(f);
 
     if (current_maps.empty()) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "initializeUnwinder: maps are still empty!");
+      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: maps are still empty!");
     } else {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "maps successfully prefetched (size: %d)", current_maps.size());
     }

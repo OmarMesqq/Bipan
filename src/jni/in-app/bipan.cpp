@@ -239,7 +239,7 @@ class Bipan : public zygisk::ModuleBase {
       env->CallStaticVoidMethod(payloadClass, installMethod);
       if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Could not .install() BipanJava!");
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's install threw!");
         BIPAN_PANIC();
       } else {
         write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");

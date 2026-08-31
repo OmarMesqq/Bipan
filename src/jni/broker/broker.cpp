@@ -140,7 +140,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
     epoll_ctl(epfd, EPOLL_CTL_ADD, pidfd, &ev);
   }
 
-  initializeUnwinder(ipc_mem->target_pid);
+  prefetchMaps(ipc_mem->target_pid);
   bool client_dead = false;
   while (!client_dead) {
     while (ipc_mem->status != REQUEST_SYSCALL) {
