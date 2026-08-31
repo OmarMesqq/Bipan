@@ -30,6 +30,6 @@ enum UNWIND_DECISION {
 };
 
 UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid);
-void initializeUnwinder(pid_t pid);
+void prefetchMaps(pid_t pid);
 
 #endif
