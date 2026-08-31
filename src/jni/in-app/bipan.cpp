@@ -40,7 +40,7 @@ static int g_broker_socket = -1;
 
 uintptr_t g_bipan_lib_start = 0;
 uintptr_t g_bipan_lib_end = 0;
-char g_package_name[256] = {0};
+char g_package_name[IPC_PACKAGE_NAME_BUF_SIZ] = {0};
 jclass g_bipan_java_class = nullptr;
 SharedIPC* ipc_mem = nullptr;
 
@@ -103,7 +103,7 @@ class Bipan : public zygisk::ModuleBase {
       BIPAN_PANIC();
     }
 
-    strncpy(g_package_name, raw_process_name, 255);
+    strncpy(g_package_name, raw_process_name, IPC_PACKAGE_NAME_BUF_SIZ - 1);
 
     g_broker_socket = api->connectCompanion();
     if (g_broker_socket < 0) {
@@ -139,7 +139,7 @@ class Bipan : public zygisk::ModuleBase {
     ipc_mem->status = IDLE;
     ipc_mem->lock = 0;
     ipc_mem->target_pid = getpid();
-    strncpy(ipc_mem->package_name, g_package_name, IPC_PACKAGE_NAME_SIZE - 1);
+    strncpy(ipc_mem->package_name, g_package_name, IPC_PACKAGE_NAME_BUF_SIZ - 1);
 
     // Send the Broker sock to the companion
     if (send_fd(g_broker_socket, memfd) == -1) {

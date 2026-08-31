@@ -18,7 +18,7 @@
 
 extern uintptr_t g_bipan_lib_start;
 extern uintptr_t g_bipan_lib_end;
-extern char g_package_name[256];
+extern char g_package_name[IPC_PACKAGE_NAME_BUF_SIZ];
 extern jclass g_bipan_java_class;
 
 // Shared IPC memory map between target app (injected code) and the Broker
