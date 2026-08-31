@@ -5,14 +5,17 @@ import android.os.Bundle;
 import android.util.Log;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Random;
 import java.util.Map;
 import b.BaseHook;
+import b.J;
 import android.provider.Settings.Secure;
 import android.provider.Settings.Global;;
 
@@ -39,64 +42,77 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    if ("call".equals(method.getName()) && args != null) {
-      String callingMethod = null;
-      String settingKey = null;
+    try {
+      if ("call".equals(method.getName()) && args != null) {
+        String callingMethod = null;
+        String settingKey = null;
 
-      for (int i = 0; i < args.length; i++) {
-        if (args[i] instanceof String) {
-          String str = (String) args[i];
-          if (str.startsWith("GET_")) {
-            callingMethod = str;
-            if (i + 1 < args.length && args[i + 1] instanceof String) {
-              settingKey = (String) args[i + 1];
+        for (int i = 0; i < args.length; i++) {
+          if (args[i] instanceof String) {
+            String str = (String) args[i];
+            if (str.startsWith("GET_")) {
+              callingMethod = str;
+              if (i + 1 < args.length && args[i + 1] instanceof String) {
+                settingKey = (String) args[i + 1];
+              }
+              break;
             }
-            break;
           }
         }
-      }
 
-      if (settingKey != null) {
-        if ("android_id".equals(settingKey)) {
-          if (SSAID_ALLOW_LIST.contains(currentPackageName)) {
-            Log.i(TAG, "Returning true SSAID for allowlisted app: " + currentPackageName);
-            return method.invoke(originalProvider, args);
-          }
-        }
-      }
-
-      if (callingMethod != null && settingKey != null) {
-        String fakeValue = null;
-        if ("GET_global".equals(callingMethod)) {
-          switch (settingKey) {
-            case "adb_enabled":
-            case "development_settings_enabled":
-            case "wait_for_debugger":
-              fakeValue = "0";
-              break;
-            case "boot_count":
-              fakeValue = FAKE_BOOT_COUNT;
-              break;
-          }
-        } else if ("GET_secure".equals(callingMethod)
-            && "android_id".equals(settingKey)) {
-          fakeValue = RANDOM_ANDROID_ID;
-        }
-
-        if (fakeValue != null) {
+        if (settingKey != null) {
           if ("android_id".equals(settingKey)) {
-            Log.i(TAG, "Spoofed SSAID (android_id): " + fakeValue);
-          } else {
-            Log.i(TAG, "Spoofed Settings field " + settingKey + ": " + fakeValue);
+            if (SSAID_ALLOW_LIST.contains(currentPackageName)) {
+              Log.i(TAG, "Returning true SSAID for allowlisted app: " + currentPackageName);
+              return method.invoke(originalProvider, args);
+            }
+          }
+        }
+
+        if (callingMethod != null && settingKey != null) {
+          String fakeValue = null;
+          if ("GET_global".equals(callingMethod)) {
+            switch (settingKey) {
+              case "adb_enabled":
+              case "development_settings_enabled":
+              case "wait_for_debugger":
+                fakeValue = "0";
+                break;
+              case "boot_count":
+                fakeValue = FAKE_BOOT_COUNT;
+                break;
+            }
+          } else if ("GET_secure".equals(callingMethod)
+              && "android_id".equals(settingKey)) {
+            fakeValue = RANDOM_ANDROID_ID;
           }
 
-          Bundle fakeResult = new Bundle();
-          fakeResult.putString("value", fakeValue);
-          return fakeResult;
+          if (fakeValue != null) {
+            if ("android_id".equals(settingKey)) {
+              Log.i(TAG, "Spoofed SSAID (android_id): " + fakeValue);
+            } else {
+              Log.i(TAG, "Spoofed Settings field " + settingKey + ": " + fakeValue);
+            }
+
+            Bundle fakeResult = new Bundle();
+            fakeResult.putString("value", fakeValue);
+            return fakeResult;
+          }
         }
       }
+      return method.invoke(originalProvider, args);
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+      throw J.cleanThrowable(cause);
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(cause);
+    } catch (Exception e) {
+      Log.e(TAG, "invoke Exception:", e);
+      throw J.cleanThrowable(new OutOfMemoryError());
     }
-    return method.invoke(originalProvider, args);
   }
 
   @Override
