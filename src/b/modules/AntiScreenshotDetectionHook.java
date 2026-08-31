@@ -5,11 +5,14 @@ import android.os.IBinder;
 import android.util.Log;
 import android.view.WindowManager;
 import b.BaseHook;
+import b.J;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  * Prevents target app from detecting and/or blocking when you take screenshot
@@ -153,13 +156,26 @@ public class AntiScreenshotDetectionHook implements BaseHook, InvocationHandler 
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    String methodName = method.getName();
+    try {
+      String methodName = method.getName();
 
-    if (methodName.equals("registerScreenCaptureObserver")) {
-      Log.i(TAG, "Blocked screenshot detection method: " + methodName);
-      return null;
+      if (methodName.equals("registerScreenCaptureObserver")) {
+        Log.i(TAG, "Blocked screenshot detection method: " + methodName);
+        return null;
+      }
+
+      return method.invoke(originalService, args);
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+      throw J.cleanThrowable(cause);
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(cause);
+    } catch (Exception e) {
+      Log.e(TAG, "invoke Exception:", e);
+      throw J.cleanThrowable(new OutOfMemoryError());
     }
-
-    return method.invoke(originalService, args);
   }
 }
