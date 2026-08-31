@@ -59,28 +59,31 @@ public class J {
       Class<?> atClz = Class.forName("android.app.ActivityThread");
       Object at = atClz.getMethod("currentActivityThread").invoke(null);
       if (at == null) {
-        throw new Exception("hookInstrumentation: ActivityThread is null!");
+        throw cleanThrowable(new Exception("hookInstrumentation: ActivityThread is null!"));
       }
 
       Field mInstrField = atClz.getDeclaredField("mInstrumentation");
       mInstrField.setAccessible(true);
       final Object realInstr = mInstrField.get(at);
       if (realInstr == null) {
-        throw new Exception("hookInstrumentation: mInstrumentation is null!");
+        throw cleanThrowable(new Exception("hookInstrumentation: mInstrumentation is null!"));
       }
 
       Instrumentation hooked = new Instrumentation() {
         @Override
         public void onCreate(Bundle args) {
           try {
-            Context ctx = (Context) Class.forName("android.app.ActivityThread").getMethod("currentApplication")
+            Context ctx = (Context) Class.forName("android.app.ActivityThread")
+                .getMethod("currentApplication")
                 .invoke(null);
+
             if (ctx == null) {
-              throw new OutOfMemoryError(TAG + " [!] Context still null during Instrumentation.onCreate!");
+              throw cleanThrowable(
+                  new OutOfMemoryError(TAG + " [!] Context still null during Instrumentation.onCreate!"));
             }
             loadModules(ctx);
-          } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause().toString());
+          } catch (Throwable e) {
+            throw cleanThrowable(new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause()));
           }
 
           try {
@@ -88,7 +91,7 @@ public class J {
                 .getMethod("onCreate", Bundle.class)
                 .invoke(realInstr, args);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause().toString());
+            throw cleanThrowable(new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause()));
           }
         }
 
@@ -98,21 +101,25 @@ public class J {
           if (s_cmProxy != null) {
             try {
               patchConnectivityManager(app);
-            } catch (Exception e) {
-              throw new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause().toString());
+            } catch (Throwable e) {
+              throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
             }
           }
 
           // Hijack Application's ContextResolver for GSF
-          GsfIdSpoofHook.reInject();
-          // Log.d(TAG, "callApplicationOnCreate: reInjected GSF spoof in Application");
+          try {
+            GsfIdSpoofHook.reInject();
+            // Log.d(TAG, "callApplicationOnCreate: reInjected GSF spoof in Application");
+          } catch (Exception e) {
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
+          }
 
           try {
             realInstr.getClass()
                 .getMethod("callApplicationOnCreate", Application.class)
                 .invoke(realInstr, app);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause().toString());
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
           }
         }
 
@@ -122,21 +129,25 @@ public class J {
           if (s_mPMField != null && s_pmProxy != null) {
             try {
               patchPackageManager(activity.getPackageManager());
-            } catch (Exception e) {
-              throw new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause().toString());
+            } catch (Throwable e) {
+              throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
             }
           }
 
           // Hijack Activity's ContextResolver for GSF
-          GsfIdSpoofHook.reInject();
-          // Log.d(TAG, "callActivityOnCreate: reInjected GSF spoof in Activity");
+          try {
+            GsfIdSpoofHook.reInject();
+            // Log.d(TAG, "callActivityOnCreate: reInjected GSF spoof in Activity");
+          } catch (Exception e) {
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
+          }
 
           // Hijack Activity's ConnectivityManager
           if (s_cmProxy != null) {
             try {
               patchConnectivityManager(activity);
-            } catch (Exception e) {
-              throw new OutOfMemoryError(TAG + "callActivityOnCreate e: " + e.getCause().toString());
+            } catch (Throwable e) {
+              throw cleanThrowable(new OutOfMemoryError(TAG + "callActivityOnCreate e: " + e.getCause()));
             }
           }
 
@@ -147,21 +158,25 @@ public class J {
                     Bundle.class)
                 .invoke(realInstr, activity, icicle);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause().toString());
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
           }
         }
 
         @Override
         public void callActivityOnResume(Activity activity) {
           // Also hijack Application's Context's `cr` for GSF, once again
-          GsfIdSpoofHook.reInject();
+          try {
+            GsfIdSpoofHook.reInject();
+          } catch (Exception e) {
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnResume: " + e));
+          }
 
           try {
             realInstr.getClass()
                 .getMethod("callActivityOnResume", Activity.class)
                 .invoke(realInstr, activity);
           } catch (Exception e) {
-            throw new OutOfMemoryError(TAG + " callActivityOnResume: " + e);
+            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnResume: " + e));
           }
         }
       };
@@ -174,7 +189,7 @@ public class J {
       mInstrField.set(at, hooked);
     } catch (Exception e) {
       Log.e(TAG, "hookInstrumentation failed: ", e);
-      throw e;
+      throw cleanThrowable(e);
     }
   }
 
@@ -183,15 +198,11 @@ public class J {
    * unseals ART VM at postAppSpecialize so modules access and modify
    * hidden/restricted APIs
    */
-  public static void i() {
-    try {
-      unseal();
-    } catch (Exception e) {
-      throw new OutOfMemoryError(TAG + "install exception: " + e.getCause().toString());
-    }
+  public static void i() throws Throwable {
+    unseal();
   }
 
-  private static void loadModules(Context context) throws Exception {
+  private static void loadModules(Context context) throws Throwable {
     String packageName = context.getPackageName();
     List<BaseHook> modules = new ArrayList<>();
 
@@ -228,29 +239,24 @@ public class J {
     Log.i(TAG, "All modules loaded successfully :)");
   }
 
-  private static void patchConnectivityManager(Context context) {
+  private static void patchConnectivityManager(Context context) throws Throwable {
     if (s_cmProxy == null) {
-      return;
+      throw cleanThrowable(new Exception(TAG + "s_cmProxy is null"));
     }
-    try {
-      ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-      Class<?> cmClass = ConnectivityManager.class;
-      Class<?> iConnClz = Class.forName("android.net.IConnectivityManager");
-      for (Field f : cmClass.getDeclaredFields()) {
-        if (iConnClz.isAssignableFrom(f.getType())) {
-          f.setAccessible(true);
-          f.set(cm, s_cmProxy);
-        }
+    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+    Class<?> cmClass = ConnectivityManager.class;
+    Class<?> iConnClz = Class.forName("android.net.IConnectivityManager");
+    for (Field f : cmClass.getDeclaredFields()) {
+      if (iConnClz.isAssignableFrom(f.getType())) {
+        f.setAccessible(true);
+        f.set(cm, s_cmProxy);
       }
-    } catch (Exception e) {
-      Log.e(TAG, "Failed to patch CM", e);
-      throw new OutOfMemoryError();
     }
   }
 
-  private static void patchPackageManager(PackageManager pm) throws Exception {
+  private static void patchPackageManager(PackageManager pm) throws Throwable {
     if (pm == null || s_pmProxy == null || s_mPMField == null) {
-      throw new Exception(TAG + "'PackageManager', 's_pmProxy', and/or 's_mPMField' are null");
+      throw cleanThrowable(new Exception(TAG + "PM fields are null"));
     }
     s_mPMField.set(pm, s_pmProxy);
     if (s_mUseField != null) {
@@ -264,7 +270,7 @@ public class J {
     }
   }
 
-  public static Throwable cleanThrowable(Throwable tr) {
+  public static <T extends Throwable> T cleanThrowable(T tr) {
     if (tr == null) {
       return null;
     }
@@ -318,7 +324,7 @@ public class J {
     }
   }
 
-  private static void unseal() throws Exception {
+  private static void unseal() throws Throwable {
     try {
       Method getDeclaredMethod = Class.class.getDeclaredMethod(
           "getDeclaredMethod", String.class, Class[].class);
@@ -351,12 +357,12 @@ public class J {
         Log.i(TAG, "ART VM unsealed (Modern approach)");
       } catch (Throwable e2) {
         Log.e(TAG, "Fatal: Could not unseal VM", e2);
-        throw e2;
+        throw cleanThrowable(e2);
       }
     }
   }
 
-  private static boolean isIsolatedProcess() {
+  private static boolean isIsolatedProcess() throws Throwable {
     try {
       Class<?> processClass = Class.forName("android.os.Process");
       Method isIsolated = processClass.getDeclaredMethod("isIsolated");
@@ -371,7 +377,7 @@ public class J {
       return isolated;
     } catch (Exception e) {
       Log.e(TAG, "isIsolatedProcess exception!", e);
-      return false;
+      throw cleanThrowable(new OutOfMemoryError());
     }
   }
 }
