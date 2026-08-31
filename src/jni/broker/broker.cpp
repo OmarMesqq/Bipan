@@ -225,7 +225,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         } else if (is_maps(path_payload) || is_smaps(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
-          char real_path[256];
+          char real_path[IPC_STRING_STRUCT_BUF_SIZ];
           if (strncmp(path_payload, "/proc/self/", 11) == 0) {
             snprintf(real_path, sizeof(real_path), "/proc/%d/%s", ipc_mem->target_pid, path_payload + 11);
           } else {
@@ -292,10 +292,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_faccessat: {
-        // int dirfd = (int)ipc_mem->arg0;
         const char* path = ipc_mem->string_payload;
-        // int mode = (int)ipc_mem->arg2;
-        // int flags = (int)ipc_mem->arg3;
 
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path)) {
@@ -311,6 +308,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
 #ifdef BROKER_DEBUG_LOGGING
+        int dirfd = (int)ipc_mem->arg0;
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
         }
@@ -390,9 +388,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         break;
       }
       case __NR_newfstatat: {
-#ifdef BROKER_DEBUG_LOGGING
-        int fd = (int)ipc_mem->arg0;
-#endif
         const char* path = ipc_mem->string_payload;
         int flags = (int)ipc_mem->arg3;
 
@@ -426,6 +421,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
 #ifdef BROKER_DEBUG_LOGGING
+        int fd = (int)ipc_mem->arg0;
         if (shouldLog(path)) {
           write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
         }
