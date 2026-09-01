@@ -132,7 +132,7 @@ static void bipan_broker_signal_handler(int sig, siginfo_t* info, void* void_con
       break;
     }
     default: {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] Broker unknown signal");
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] Broker got unknown signal");
       break;
     }
   }

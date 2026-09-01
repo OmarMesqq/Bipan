@@ -183,16 +183,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
       if (is_trusted == SAFE) {
         trusted_pcs.insert(pc);
-#ifdef BROKER_DEBUG_LOGGING
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC %p deemed trusty. Allowing natively and caching.", (void*)pc);
-#endif
-
         goto standard_exit;
       } else {
         malicious_pcs.insert(pc);
-#ifdef BROKER_DEBUG_LOGGING
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "PC %p deemed malicious. Applying policies and caching.", (void*)pc);
-#endif
       }
     }
 
@@ -219,7 +212,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->action = ACTION_USE_RET;
           break;
         } else if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed", path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) does not exist...", path_payload);
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
@@ -278,7 +271,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           close(root_fd);  // Cleanup daemon's ref of target's pre_fd
           close(fake_fd);  // Cleanup daemon's own fake fd
 
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed", path_payload);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed with fd %d", path_payload, target_fd);
           // Tell target to use the fd it already has
           ipc_mem->ret = target_fd;
           ipc_mem->action = ACTION_USE_RET;
@@ -286,7 +279,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 #ifdef BROKER_DEBUG_LOGGING
         if (shouldLog(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Allowing untrusted openat(%s)", path_payload);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Allowing untrusted openat(%s)", path_payload);
         }
 #endif
         break;
