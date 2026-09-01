@@ -51,15 +51,18 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
 static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
 
+static const long BOGUS_SYSCALL = 0xB050517;
+static const int  BOGUS_SYSCALL_EXPECTED_RET = 21;
+
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("__attribute__((constructor))");
-//    requestNativeBacktrace();
+    // requestNativeBacktrace();
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad");
-//    requestNativeBacktrace();
+    // requestNativeBacktrace();
 
     JNIEnv* env = NULL;
     jint result = (*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6);
@@ -69,28 +72,32 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     }
 
     athenaInit(env);
-//    requestJavaBacktrace();
+    // requestJavaBacktrace();
     return JNI_VERSION_1_6;
 }
 
-
-
-
-/* Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed */
-static const uint8_t kWidevineUuid[16] = {
-        0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
-        0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
-};
-
-static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
-    static const char *hex = "0123456789abcdef";
-    size_t i, o = 0;
-    for (i = 0; i < len && o + 2 < out_cap; i++) {
-        out[o++] = hex[(in[i] >> 4) & 0xf];
-        out[o++] = hex[in[i] & 0xf];
-    }
-    out[o] = '\0';
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {
+    raise(SIGSEGV);
 }
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseAbrt(JNIEnv *env, jobject thiz) {
+    raise(SIGABRT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseTrap(JNIEnv *env, jobject thiz) {
+    raise(SIGTRAP);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobject thiz) {
+    raise(SIGQUIT);
+}
+
+
+
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
@@ -124,6 +131,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
     return (*env)->NewStringUTF(env, report);
 }
 
+/* Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed */
+static const uint8_t kWidevineUuid[16] = {
+        0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
+        0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
+};
+
+static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
+    static const char *hex = "0123456789abcdef";
+    size_t i, o = 0;
+    for (i = 0; i < len && o + 2 < out_cap; i++) {
+        out[o++] = hex[(in[i] >> 4) & 0xf];
+        out[o++] = hex[in[i] & 0xf];
+    }
+    out[o] = '\0';
+}
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(
         JNIEnv *env, jobject thiz) {
@@ -642,49 +664,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
     return (*env)->NewStringUTF(env, finalReport);
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testProcSelfTask(JNIEnv *env, jobject thiz) {
-    DIR *dir = opendir("/proc/self/task");
-    if (!dir) {
-        return (*env)->NewStringUTF(env, "Failed to open /proc/self/task");
-    }
 
-    char result[4096] = {0};
-    size_t offset = 0;
-
-    struct dirent *entry;
-    unsigned int threadCount = 0;
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip . and ..
-        if (entry->d_name[0] == '.') continue;
-
-        threadCount++;
-        // Read /proc/self/task/<tid>/comm
-        char comm_path[64] = {0};
-        snprintf(comm_path, sizeof(comm_path), "/proc/self/task/%s/comm", entry->d_name);
-
-        int comm_fd = open(comm_path, O_RDONLY);
-        if (comm_fd < 0) {
-            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Failed to open comm fd for thread at %s\n",comm_path);
-            continue;
-        }
-
-        char thread_name[64] = {0};
-        ssize_t n = read(comm_fd, thread_name, sizeof(thread_name) - 1);
-        close(comm_fd);
-
-        if (n > 0) {
-            // Strip trailing newline
-            if (thread_name[n - 1] == '\n') thread_name[n - 1] = '\0';
-
-            offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "%s\n",thread_name);
-        }
-    }
-    offset += (size_t) snprintf(result + offset, sizeof(result) - offset, "Found %d threads\n", threadCount);
-
-    closedir(dir);
-    return (*env)->NewStringUTF(env, result[0] ? result : "No threads found");
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
@@ -1289,7 +1269,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
     ss.ss_size = sizeof(g_altstack);
     ss.ss_flags = 0;
     ret = sigaltstack(&ss, NULL);
-  if (ret != 0) {
+    if (ret != 0) {
         LOGE("sigaltstack failed (errno: %s)", strerror(errno));
         return JNI_FALSE;
     }
@@ -1308,7 +1288,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
     ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sigsysAct, 0, 8, 0, 0);
     if (ret != 0) {
         LOGE("sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
-      return JNI_FALSE;
+        return JNI_FALSE;
   }
 
   return JNI_TRUE;
@@ -1447,21 +1427,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
 
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv *env, jobject thiz) {
-    long bogusSyscall = 0xB050517;
-    long ret = -10;
+    long ret = 0;
 
     // attempt with inline asm first
-    ret = arm64_raw_syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
-    if (ret != 21) {
-        return JNI_TRUE;
-    }
-    // fallback to bionic wrapper
-    ret = syscall(bogusSyscall, 0, 0, 0, 0, 0, 0);
-    if (ret != 21) {
-        return JNI_TRUE;
+    ret = arm64_raw_syscall(BOGUS_SYSCALL, 0, 0, 0, 0, 0, 0);
+    if (ret != BOGUS_SYSCALL_EXPECTED_RET) {
+        return JNI_FALSE;
     }
 
-    return JNI_FALSE;
+    // fallback to bionic wrapper
+    ret = syscall(BOGUS_SYSCALL, 0, 0, 0, 0, 0, 0);
+    if (ret != BOGUS_SYSCALL_EXPECTED_RET) {
+        return JNI_FALSE;
+    }
+
+    return JNI_TRUE;
 }
 
 
@@ -1743,13 +1723,10 @@ static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context
     ucontext_t* ctx = (ucontext_t*)void_context;
     int nr = info->si_syscall;
 
-    if (nr == 0xB050517) {
-        ctx->uc_mcontext.regs[0] = 21;
+    if (nr == BOGUS_SYSCALL) {
+        ctx->uc_mcontext.regs[0] = BOGUS_SYSCALL_EXPECTED_RET;
     }
     ctx->uc_mcontext.regs[0] = (__u64) -1;
-
-    LOGI("Grunfeld's handler dying....");
-    _exit(-1);
 }
 
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {

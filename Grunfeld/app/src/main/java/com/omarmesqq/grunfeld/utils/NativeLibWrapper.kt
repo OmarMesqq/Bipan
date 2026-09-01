@@ -20,7 +20,6 @@ object NativeLibWrapper {
     external fun getMediaDrmIdNative(): String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun dlIteratePhdrTest(): String
-    external fun testProcSelfTask(): String
     external fun testStatfsToHosts(): String
     external fun testForkExec(progname: String): String
     external fun scanProcSelfMaps(): String
@@ -30,4 +29,8 @@ object NativeLibWrapper {
     external fun testFstat(filenames: Array<String>): String
     external fun testNewfstatat(filenames: Array<String>): String
     external fun testStatx(filenames: Array<String>): String
+    external fun raiseSegv()
+    external fun raiseAbrt()
+    external fun raiseTrap()
+    external fun raiseQuit()
 }
