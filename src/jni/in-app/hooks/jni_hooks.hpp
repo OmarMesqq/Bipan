@@ -7,8 +7,8 @@
 #define JNI_HOOKS_HPP
 
 #include "deps/zygisk.hpp"
-#include "drm/fake_id.hpp"
-#include "globals.hpp"
+#include "drm_hook.hpp"
+#include "../globals.hpp"
 #include "logger/logger.hpp"
 
 jint my_nativeEnableSensor(JNIEnv* env, jclass clazz, jlong eventQueuePtr, jint handle, jint rateUs, jint maxBatchReportLatencyUs) {
