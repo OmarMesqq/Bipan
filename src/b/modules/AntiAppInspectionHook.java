@@ -8,10 +8,8 @@ import android.util.Log;
 import b.BaseHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
@@ -289,364 +287,324 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    try {
-      switch (method.getName()) {
-        case "getInstallerPackageName": {
-          String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
-              ? (String) args[0]
-              : "unknown";
-          Log.i(TAG, "Spoofed Legacy installer read for: " + targetPkg +
-              (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
-          return "com.android.vending";
-        }
+    switch (method.getName()) {
+      // Installer spoofing
+      case "getInstallerPackageName": {
+        String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : "unknown";
+        Log.i(TAG, "Spoofed Legacy installer read for: " + targetPkg +
+            (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
+        return "com.android.vending";
+      }
 
-        case "getInstallSourceInfo": {
-          String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
-              ? (String) args[0]
-              : "unknown";
-          Log.i(TAG, "Spoofed Modern install source read for: " + targetPkg +
-              (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
-          return createFakeInstallSourceInfo();
-        }
+      case "getInstallSourceInfo": {
+        String targetPkg = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : "unknown";
+        Log.i(TAG, "Spoofed Modern install source read for: " + targetPkg +
+            (targetPkg.equals(selfPackageName) ? " (Self)" : " (External Scan)"));
+        return createFakeInstallSourceInfo();
+      }
 
-        case "queryIntentActivities": {
-          if (args != null && args.length > 0 && args[0] instanceof Intent) {
-            Intent intent = (Intent) args[0];
+      case "queryIntentActivities": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
 
-            // Allow self-targeted queries (component or package matches self)
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
-            if (isSelfQuery) {
-              return method.invoke(originalPM, args);
-            }
-
-            Log.i(TAG, "queryIntentActivities: blinded Intent: " + dumpIntent(intent));
+          // Allow self-targeted queries (component or package matches self)
+          boolean isSelfQuery = false;
+          if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+            isSelfQuery = true;
           }
-          return emptyParceledListSlice();
-        }
-
-        case "queryIntentReceivers": {
-          if (args != null && args.length > 0 && args[0] instanceof Intent) {
-            Intent intent = (Intent) args[0];
-            String action = intent.getAction();
-
-            if ("android.intent.action.BOOT_COMPLETED".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers BOOT_COMPLETED");
-              return emptyParceledListSlice();
-            }
-            if ("android.intent.action.BADGE_COUNT_UPDATE".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers BADGE_COUNT_UPDATE");
-              return emptyParceledListSlice();
-            }
-            if ("com.facebook.GET_PHONE_ID".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers Meta's GET_PHONE_ID");
-              return emptyParceledListSlice();
-            }
-            if ("com.facebook.rti.fbns.intent.RECEIVE ".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers Meta's FBNS receivers");
-              return emptyParceledListSlice();
-            }
-            if ("android.provider.Telephony.SMS_DELIVER".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SMS_DELIVER");
-              return emptyParceledListSlice();
-            }
-            if ("android.provider.Telephony.WAP_PUSH_DELIVER".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers Telephony.WAP_PUSH_DELIVER");
-              return emptyParceledListSlice();
-            }
-            if ("android.provider.action.DEFAULT_SMS_PACKAGE_CHANGED".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers DEFAULT_SMS_PACKAGE_CHANGED");
-              return emptyParceledListSlice();
-            }
-            if ("android.provider.action.EXTERNAL_PROVIDER_CHANGE".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers EXTERNAL_PROVIDER_CHANGE");
-              return emptyParceledListSlice();
-            }
-            if ("android.provider.Telephony.SIM_FULL".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SIM_FULL");
-              return emptyParceledListSlice();
-            }
-            Log.w(TAG, "queryIntentReceivers: Allowing Intent: " + dumpIntent(intent));
+          if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+            isSelfQuery = true;
           }
-          return method.invoke(originalPM, args);
-        }
 
-        case "queryIntentServices": {
-          if (args != null && args.length > 0 && args[0] instanceof Intent) {
-            Intent intent = (Intent) args[0];
-            String action = intent.getAction();
-            if ("com.facebook.usdid.CROSS_SIGN_SERVICE".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentServices Meta's USDID cross-sign service");
-              return emptyParceledListSlice();
-            }
-            if ("com.whatsapp.wfl.OPERATION".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentServices Meta's WhatsApp wfl operation");
-              return emptyParceledListSlice();
-            }
-            if ("android.intent.action.RESPOND_VIA_MESSAGE".equals(action)) {
-              Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
-              return emptyParceledListSlice();
-            }
-            Log.w(TAG, "queryIntentServices: Allowing Intent: " + dumpIntent(intent));
-          }
-          return method.invoke(originalPM, args);
-        }
-
-        case "queryIntentContentProviders": {
-          if (args != null && args.length > 0 && args[0] instanceof Intent) {
-            Intent intent = (Intent) args[0];
-            Log.w(TAG, "queryIntentContentProviders: Allowing Intent: " + dumpIntent(intent));
-          }
-          return method.invoke(originalPM, args);
-        }
-
-        case "getInstalledApplications": {
-          Log.i(TAG, "Blinded: getInstalledApplications");
-          return emptyParceledListSlice();
-        }
-
-        case "getInstalledPackages": {
-          Log.i(TAG, "Blinded: getInstalledPackages");
-          return emptyParceledListSlice();
-        }
-
-        case "getPackageInfo": {
-          String pkg = (args != null && args.length > 0 && args[0] instanceof String)
-              ? (String) args[0]
-              : null;
-
-          if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          if (isSelfQuery) {
             return method.invoke(originalPM, args);
           }
 
-          Log.i(TAG, "Blinded getPackageInfo for: " + pkg);
-          return null;
+          Log.i(TAG, "queryIntentActivities: blinded Intent: " + dumpIntent(intent));
         }
+        return emptyParceledListSlice();
+      }
 
-        case "getApplicationInfo": {
-          String pkg = (args != null && args.length > 0 && args[0] instanceof String)
-              ? (String) args[0]
-              : null;
+      case "getInstalledApplications": {
+        Log.i(TAG, "Blinded: getInstalledApplications");
+        return emptyParceledListSlice();
+      }
 
-          if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-            return method.invoke(originalPM, args);
-          }
+      case "getInstalledPackages": {
+        Log.i(TAG, "Blinded: getInstalledPackages");
+        return emptyParceledListSlice();
+      }
 
-          Log.i(TAG, "Blinded: getApplicationInfo for: " + pkg);
-          return null;
-        }
+      case "getPackageInfo": {
+        String pkg = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : null;
 
-        case "getActivityInfo": {
-          String pkg = null;
-          if (args != null && args.length > 0 && args[0] != null) {
-            try {
-              pkg = (String) args[0].getClass()
-                  .getMethod("getPackageName")
-                  .invoke(args[0]);
-            } catch (Exception e) {
-              Log.e(TAG, "getActivityInfo: failed to extract package from ComponentName");
-            }
-          }
-
-          if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-            return method.invoke(originalPM, args);
-          }
-
-          Log.i(TAG, "Blinded: getActivityInfo for: " + pkg);
-          return null;
-        }
-
-        case "getServiceInfo": {
-          String pkg = null;
-          if (args != null && args.length > 0 && args[0] != null) {
-            try {
-              pkg = (String) args[0].getClass()
-                  .getMethod("getPackageName")
-                  .invoke(args[0]);
-            } catch (Exception e) {
-              Log.e(TAG, "getServiceInfo: failed to extract package from ComponentName");
-            }
-          }
-
-          if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
-            return method.invoke(originalPM, args);
-          }
-
-          Log.i(TAG, "Blinded: getServiceInfo for: " + pkg);
-          return null;
-        }
-
-        case "getPackageArchiveInfo": {
-          Log.i(TAG, "Blinded: getPackageArchiveInfo");
-          return emptyParceledListSlice();
-        }
-        case "getPackagesHoldingPermissions": {
-          Log.i(TAG, "Blinded: getPackagesHoldingPermissions");
-          return emptyParceledListSlice();
-        }
-        case "getPreferredPackages": {
-          Log.i(TAG, "Blinded: getPreferredPackages");
-          return emptyParceledListSlice();
-        }
-        case "getPreferredActivities": {
-          Log.i(TAG, "Blinded: getPreferredActivities");
-          return emptyParceledListSlice();
-        }
-        case "getProperty": {
-          Log.i(TAG, "Blinded: getProperty");
-          return emptyParceledListSlice();
-        }
-        case "queryIntentActivityOptions": {
-          Log.i(TAG, "Blinded: queryIntentActivityOptions");
-          return emptyParceledListSlice();
-        }
-        case "resolveActivity": {
-          if (args != null && args.length > 0 && args[0] instanceof Intent) {
-            Intent intent = (Intent) args[0];
-            boolean isSelf = (intent.getComponent() != null
-                && selfPackageName.equals(intent.getComponent().getPackageName()))
-                || selfPackageName.equals(intent.getPackage());
-            if (isSelf) {
-              return method.invoke(originalPM, args);
-            }
-          }
-          Log.i(TAG, "Blinded: resolveActivity");
-          return null;
-        }
-        case "getTargetSdkVersion": {
-          Log.i(TAG, "Blinded: getTargetSdkVersion");
-          return 36;
-        }
-
-        case "hasSystemFeature": {
-          String feature = (args != null && args.length > 0 && args[0] instanceof String)
-              ? (String) args[0]
-              : null;
-
-          if (feature != null && FEATURE_STRIP_LIST.contains(feature)) {
-            Log.i(TAG, "hasSystemFeature: Trimmed system feature: " + feature);
-            return false;
-          }
-
-          if (feature != null && FEATURE_ADD_LIST.contains(feature)) {
-            Log.i(TAG, "hasSystemFeature: Added system feature: " + feature);
-            return true;
-          }
-
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
           return method.invoke(originalPM, args);
         }
 
-        case "getSystemAvailableFeatures": {
+        Log.i(TAG, "Blinded getPackageInfo for: " + pkg);
+        return null;
+      }
+
+      case "getApplicationInfo": {
+        String pkg = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : null;
+
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          return method.invoke(originalPM, args);
+        }
+
+        Log.i(TAG, "Blinded: getApplicationInfo for: " + pkg);
+        return null;
+      }
+
+      case "getActivityInfo": {
+        String pkg = null;
+        if (args != null && args.length > 0 && args[0] != null) {
+          // ComponentName is a public class, getPackageName() is accessible
           try {
-            Object result = method.invoke(originalPM, args);
-            if (result == null) {
-              return null;
-            }
-
-            Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
-            Method getList = sliceClass.getMethod("getList");
-            @SuppressWarnings("unchecked")
-            List<FeatureInfo> realFeatures = (List<FeatureInfo>) getList.invoke(result);
-
-            if (realFeatures == null) {
-              return result;
-            }
-
-            List<FeatureInfo> filtered = new ArrayList<>();
-            for (FeatureInfo fi : realFeatures) {
-              if (fi.name != null && FEATURE_STRIP_LIST.contains(fi.name)) {
-                continue;
-              }
-              filtered.add(fi);
-            }
-
-            for (String feat : FEATURE_ADD_LIST) {
-              FeatureInfo fi = new FeatureInfo();
-
-              // reflect on fresh instance to set the name, which is what matters i guess...
-              Field nameField = FeatureInfo.class.getDeclaredField("name");
-              nameField.setAccessible(true);
-              nameField.set(fi, feat);
-
-              filtered.add(fi);
-            }
-
-            Log.i(TAG, "Filtered getSystemAvailableFeatures");
-            return sliceClass
-                .getConstructor(List.class)
-                .newInstance(filtered);
-
+            pkg = (String) args[0].getClass()
+                .getMethod("getPackageName")
+                .invoke(args[0]);
           } catch (Exception e) {
-            Log.e(TAG, "getSystemAvailableFeatures filter failed", e);
-            return null;
+            Log.e(TAG, "getActivityInfo: failed to extract package from ComponentName");
           }
         }
 
-        case "notifyPackagesReplacedReceived": {
-          if (args != null && args.length > 0 && args[0] instanceof String[]) {
-            String[] packages = (String[]) args[0];
-            for (String pkg : packages) {
-              Log.d(TAG, "notifyPackagesReplacedReceived (neutered): " + pkg);
-            }
-          }
-          return null;
+        if (selfPackageName.equals(pkg) || TRUSTED_PACKAGES.contains(pkg)) {
+          return method.invoke(originalPM, args);
         }
 
-        case "isSafeMode": {
+        Log.i(TAG, "Blinded: getActivityInfo for: " + pkg);
+        return null;
+      }
+      case "getPackageArchiveInfo": {
+        Log.i(TAG, "Blinded: getPackageArchiveInfo");
+        return emptyParceledListSlice();
+      }
+      case "getPackagesHoldingPermissions": {
+        Log.i(TAG, "Blinded: getPackagesHoldingPermissions");
+        return emptyParceledListSlice();
+      }
+      case "getPreferredPackages": {
+        Log.i(TAG, "Blinded: getPreferredPackages");
+        return emptyParceledListSlice();
+      }
+      case "getPreferredActivities": {
+        Log.i(TAG, "Blinded: getPreferredActivities");
+        return emptyParceledListSlice();
+      }
+      case "getProperty": {
+        Log.i(TAG, "Blinded: getProperty");
+        return emptyParceledListSlice();
+      }
+      case "queryIntentActivityOptions": {
+        Log.i(TAG, "Blinded: queryIntentActivityOptions");
+        return emptyParceledListSlice();
+      }
+      case "resolveActivity": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          boolean isSelf = (intent.getComponent() != null
+              && selfPackageName.equals(intent.getComponent().getPackageName()))
+              || selfPackageName.equals(intent.getPackage());
+          if (isSelf) {
+            return method.invoke(originalPM, args);
+          }
+        }
+        Log.i(TAG, "Blinded: resolveActivity");
+        return null;
+      }
+      case "getTargetSdkVersion": {
+        Log.i(TAG, "Blinded: getTargetSdkVersion");
+        return 36;
+      }
+
+      case "hasSystemFeature": {
+        String feature = (args != null && args.length > 0 && args[0] instanceof String)
+            ? (String) args[0]
+            : null;
+
+        if (feature != null && FEATURE_STRIP_LIST.contains(feature)) {
+          Log.i(TAG, "hasSystemFeature: Trimmed system feature: " + feature);
           return false;
         }
 
-        case "setComponentEnabledSetting": {
-          if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
-            ComponentName cn = (ComponentName) args[0];
-
-            if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
-              Log.i(TAG, "Neutered setComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
-              return null;
-            }
-            return method.invoke(originalPM, args);
-          }
+        if (feature != null && FEATURE_ADD_LIST.contains(feature)) {
+          Log.i(TAG, "hasSystemFeature: Added system feature: " + feature);
+          return true;
         }
 
-        case "getComponentEnabledSetting": {
-          if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
-            ComponentName cn = (ComponentName) args[0];
+        return method.invoke(originalPM, args);
+      }
 
-            if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
-              Log.i(TAG, "Spoofed value of getComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
-              return 1; // COMPONENT_ENABLED_STATE_ENABLED
-            }
-            return method.invoke(originalPM, args);
-          }
-        }
-
-        default: {
+      case "getSystemAvailableFeatures": {
+        try {
           Object result = method.invoke(originalPM, args);
-          // Log.w(TAG, "Allowing PM method: " + method.getName());
-          return result;
+          if (result == null) {
+            return null;
+          }
+
+          Class<?> sliceClass = Class.forName("android.content.pm.ParceledListSlice");
+          Method getList = sliceClass.getMethod("getList");
+          @SuppressWarnings("unchecked")
+          List<FeatureInfo> realFeatures = (List<FeatureInfo>) getList.invoke(result);
+
+          if (realFeatures == null) {
+            return result;
+          }
+
+          List<FeatureInfo> filtered = new ArrayList<>();
+          for (FeatureInfo fi : realFeatures) {
+            if (fi.name != null && FEATURE_STRIP_LIST.contains(fi.name)) {
+              continue;
+            }
+            filtered.add(fi);
+          }
+
+          for (String feat : FEATURE_ADD_LIST) {
+            FeatureInfo fi = new FeatureInfo();
+
+            // reflect on fresh instance to set the name, which is what matters i guess...
+            Field nameField = FeatureInfo.class.getDeclaredField("name");
+            nameField.setAccessible(true);
+            nameField.set(fi, feat);
+
+            filtered.add(fi);
+          }
+
+          Log.i(TAG, "Filtered getSystemAvailableFeatures");
+          return sliceClass
+              .getConstructor(List.class)
+              .newInstance(filtered);
+
+        } catch (Exception e) {
+          Log.e(TAG, "getSystemAvailableFeatures filter failed", e);
+          return null;
         }
       }
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
-      throw J.cleanThrowable(cause);
-    } catch (UndeclaredThrowableException e) {
-      Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
-      throw J.cleanThrowable(cause);
-    } catch (Exception e) {
-      Log.e(TAG, "invoke Exception:", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+
+      case "notifyPackagesReplacedReceived": {
+        if (args != null && args.length > 0 && args[0] instanceof String[]) {
+          String[] packages = (String[]) args[0];
+          for (String pkg : packages) {
+            Log.d(TAG, "notifyPackagesReplacedReceived (neutered): " + pkg);
+          }
+        }
+        return null;
+      }
+
+      case "isSafeMode": {
+        return false;
+      }
+
+      case "queryIntentServices": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          String action = intent.getAction();
+          if ("com.facebook.usdid.CROSS_SIGN_SERVICE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices Meta's USDID cross-sign service");
+            return emptyParceledListSlice();
+          }
+          if ("com.whatsapp.wfl.OPERATION".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices Meta's WhatsApp wfl operation");
+            return emptyParceledListSlice();
+          }
+          if ("android.intent.action.RESPOND_VIA_MESSAGE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
+            return emptyParceledListSlice();
+          }
+          Log.w(TAG, "queryIntentServices: Allowing Intent: " + dumpIntent(intent));
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "queryIntentReceivers": {
+        if (args != null && args.length > 0 && args[0] instanceof Intent) {
+          Intent intent = (Intent) args[0];
+          String action = intent.getAction();
+
+          if ("android.intent.action.BOOT_COMPLETED".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers BOOT_COMPLETED");
+            return emptyParceledListSlice();
+          }
+          if ("android.intent.action.BADGE_COUNT_UPDATE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers BADGE_COUNT_UPDATE");
+            return emptyParceledListSlice();
+          }
+          if ("com.facebook.GET_PHONE_ID".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Meta's GET_PHONE_ID");
+            return emptyParceledListSlice();
+          }
+          if ("com.facebook.rti.fbns.intent.RECEIVE ".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Meta's FBNS receivers");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.SMS_DELIVER".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SMS_DELIVER");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.WAP_PUSH_DELIVER".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.WAP_PUSH_DELIVER");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.action.DEFAULT_SMS_PACKAGE_CHANGED".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers DEFAULT_SMS_PACKAGE_CHANGED");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.action.EXTERNAL_PROVIDER_CHANGE".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers EXTERNAL_PROVIDER_CHANGE");
+            return emptyParceledListSlice();
+          }
+          if ("android.provider.Telephony.SIM_FULL".equals(action)) {
+            Log.i(TAG, "Blinded: queryIntentReceivers Telephony.SIM_FULL");
+            return emptyParceledListSlice();
+          }
+          Log.w(TAG, "queryIntentReceivers: Allowing Intent: " + dumpIntent(intent));
+        }
+        return method.invoke(originalPM, args);
+      }
+
+      case "setComponentEnabledSetting": {
+        if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
+          ComponentName cn = (ComponentName) args[0];
+
+          if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
+            Log.i(TAG, "Neutered setComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
+            return null;
+          }
+          return method.invoke(originalPM, args);
+        }
+      }
+
+      case "getComponentEnabledSetting": {
+        if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
+          ComponentName cn = (ComponentName) args[0];
+
+          if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
+            Log.i(TAG, "Spoofed value of getComponentEnabledSetting for boot-aware component (RescheduleReceiver)");
+            return 1; // COMPONENT_ENABLED_STATE_ENABLED
+          }
+          return method.invoke(originalPM, args);
+        }
+      }
+
+      default: {
+        Object result = method.invoke(originalPM, args);
+        // Log.w(TAG, "Allowing PM method: " + method.getName());
+        return result;
+      }
     }
   }
 
-  private Object createFakeInstallSourceInfo() throws Throwable {
+  private Object createFakeInstallSourceInfo() throws Exception {
     Class<?> infoClz = Class.forName("android.content.pm.InstallSourceInfo");
 
     Field unsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
@@ -665,10 +623,14 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     return info;
   }
 
-  private void setHiddenField(Object obj, String name, Object value) throws Throwable {
-    Field field = obj.getClass().getDeclaredField(name);
-    field.setAccessible(true);
-    field.set(obj, value);
+  private void setHiddenField(Object obj, String name, Object value) {
+    try {
+      Field field = obj.getClass().getDeclaredField(name);
+      field.setAccessible(true);
+      field.set(obj, value);
+    } catch (Exception e) {
+      Log.e(TAG, "failed to set field: " + name);
+    }
   }
 
   private String dumpIntent(Intent intent) {

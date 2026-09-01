@@ -14,12 +14,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
 import java.util.Random;
 import b.BaseHook;
-import b.J;
-
 import java.lang.reflect.InvocationTargetException;
 
 public class GsfIdSpoofHook implements BaseHook {
@@ -36,7 +33,8 @@ public class GsfIdSpoofHook implements BaseHook {
     SPOOFED_ID = Long.toString(id);
   }
 
-  private static volatile Object sGsfProxy = null;
+  /** Kept so J can re-apply the map injection on Application / Activity. */
+  public static volatile Object sGsfProxy = null;
 
   @Override
   public void install(Context context) throws Exception {
@@ -68,33 +66,31 @@ public class GsfIdSpoofHook implements BaseHook {
         new Class<?>[] { iface },
         new InvocationHandler() {
           @Override
-          public Object invoke(Object p, Method method, Object[] args) throws Throwable {
+          public Object invoke(Object p, Method method, Object[] args)
+              throws Throwable {
+            String name = method.getName();
+
+            // Keep Binder identity so the system does not drop us
+            if ("asBinder".equals(name)) {
+              return realBinder;
+            }
+
+            if ("query".equals(name)) {
+              Cursor spoofed = trySpoof(args);
+              if (spoofed != null) {
+                return spoofed;
+              }
+            }
+
             try {
-              String name = method.getName();
-
-              // Keep Binder identity so the system does not drop us
-              if ("asBinder".equals(name)) {
-                return realBinder;
-              }
-
-              if ("query".equals(name)) {
-                Cursor spoofed = trySpoof(args);
-                if (spoofed != null) {
-                  return spoofed;
-                }
-              }
               return method.invoke(realProvider, args);
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "GsfProxy InvocationTargetException: cause:", cause);
-              throw J.cleanThrowable(cause);
-            } catch (UndeclaredThrowableException e) {
-              Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "GsfProxy UndeclaredThrowableException: cause:", cause);
-              throw J.cleanThrowable(cause);
+              Log.e(TAG, "install().InvocationHandler got InvocationTargetException. Cause:", cause);
+              throw cause;
             } catch (Exception e) {
-              Log.e(TAG, "GsfProxy Exception:", e);
-              throw J.cleanThrowable(new OutOfMemoryError());
+              Log.e(TAG, "install().InvocationHandler got unknown Exception:", e);
+              throw e;
             }
           }
         });
@@ -154,13 +150,17 @@ public class GsfIdSpoofHook implements BaseHook {
     return c;
   }
 
-  public static void reInject() throws Exception {
+  public static void reInject() {
     if (sGsfProxy == null) {
       return;
     }
-    if (!injectProviderProxy(sGsfProxy)) {
-      // Entry gone or replaced with a real proxy – force a new acquire
-      forceAcquireAndInject();
+    try {
+      if (!injectProviderProxy(sGsfProxy)) {
+        // Entry gone or replaced with a real proxy – force a new acquire
+        forceAcquireAndInject();
+      }
+    } catch (Throwable t) {
+      Log.e(TAG, "reInject failed", t);
     }
   }
 
@@ -357,49 +357,23 @@ public class GsfIdSpoofHook implements BaseHook {
           iface.getClassLoader(),
           new Class<?>[] { iface },
           (proxy, method, args) -> {
-            try {
-              Object result = method.invoke(original, args);
+            Object result = method.invoke(original, args);
 
-              // Wrap any ContentProviderHolder that is for GSF
-              if (result != null && isGetContentProvider(method.getName())) {
-                wrapHolderIfGsf(result);
-              }
-              return result;
-            } catch (InvocationTargetException e) {
-              Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "amProxy InvocationTargetException: cause:", cause);
-              throw J.cleanThrowable(cause);
-            } catch (UndeclaredThrowableException e) {
-              Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "amProxy UndeclaredThrowableException: cause:", cause);
-              throw J.cleanThrowable(cause);
-            } catch (Exception e) {
-              Log.e(TAG, "amProxy Exception:", e);
-              throw J.cleanThrowable(new OutOfMemoryError());
+            // Wrap any ContentProviderHolder that is for GSF
+            if (result != null && isGetContentProvider(method.getName())) {
+              wrapHolderIfGsf(result);
             }
+            return result;
           });
 
       IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
           IBinder.class.getClassLoader(),
           new Class<?>[] { IBinder.class },
           (p, method, args) -> {
-            try {
-              if ("queryLocalInterface".equals(method.getName())) {
-                return amProxy;
-              }
-              return method.invoke(realBinder, args);
-            } catch (InvocationTargetException e) {
-              Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "proxyBinder InvocationTargetException: cause:", cause);
-              throw J.cleanThrowable(cause);
-            } catch (UndeclaredThrowableException e) {
-              Throwable cause = e.getCause() != null ? e.getCause() : e;
-              Log.e(TAG, "proxyBinder UndeclaredThrowableException: cause:", cause);
-              throw J.cleanThrowable(cause);
-            } catch (Exception e) {
-              Log.e(TAG, "proxyBinder Exception:", e);
-              throw J.cleanThrowable(new OutOfMemoryError());
+            if ("queryLocalInterface".equals(method.getName())) {
+              return amProxy;
             }
+            return method.invoke(realBinder, args);
           });
 
       cache.put(svcName, proxyBinder);
@@ -495,24 +469,11 @@ public class GsfIdSpoofHook implements BaseHook {
         iface.getClassLoader(),
         new Class<?>[] { iface },
         (proxy, method, args) -> {
-          try {
-            Object result = method.invoke(original, args);
-            if (result != null && isGetContentProvider(method.getName())) {
-              wrapHolderIfGsf(result);
-            }
-            return result;
-          } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            Log.e(TAG, "patchActivityManagerSingleton InvocationTargetException: cause:", cause);
-            throw J.cleanThrowable(cause);
-          } catch (UndeclaredThrowableException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            Log.e(TAG, "patchActivityManagerSingleton UndeclaredThrowableException: cause:", cause);
-            throw J.cleanThrowable(cause);
-          } catch (Exception e) {
-            Log.e(TAG, "patchActivityManagerSingleton Exception:", e);
-            throw J.cleanThrowable(new OutOfMemoryError());
+          Object result = method.invoke(original, args);
+          if (result != null && isGetContentProvider(method.getName())) {
+            wrapHolderIfGsf(result);
           }
+          return result;
         });
 
     mInstanceField.set(singleton, amProxy);

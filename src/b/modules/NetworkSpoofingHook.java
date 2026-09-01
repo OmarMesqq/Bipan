@@ -21,7 +21,6 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetAddress;
 import java.util.Map;
 import java.util.ArrayList;
@@ -96,12 +95,12 @@ public class NetworkSpoofingHook implements BaseHook {
               @Override
               public void handleMessage(Message msg) {
                 Message safeCopy = Message.obtain(msg);
+                patchAsyncMessage(safeCopy);
                 try {
-                  patchAsyncMessage(safeCopy);
                   originalMessenger.send(safeCopy);
-                } catch (Throwable tr) {
-                  Log.e(TAG, "interceptorHandler tr: ", tr);
-                  throw (Error) J.cleanThrowable(new OutOfMemoryError());
+                } catch (Exception e) {
+                  Log.e(TAG, "Failed to forward message", e);
+                  throw new OutOfMemoryError();
                 }
               }
             };
@@ -111,53 +110,56 @@ public class NetworkSpoofingHook implements BaseHook {
       }
 
       // synchronous returns
+      Object result;
       try {
-        Object result;
         result = method.invoke(originalConnService, args);
-        if ("getNetworkCapabilities".equals(method.getName())) {
-          // Log.i(TAG, "Neutered getNetworkCapabilities");
-          NetworkCapabilities nc = (NetworkCapabilities) result;
-          applyVpnSpoof(nc);
-        } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
-          spoofLinkProperties((LinkProperties) result);
-        } else if ("getAllNetworks".equals(method.getName())) {
-          // Log.i(TAG, "Neutered getAllNetworks");
-          return new Network[0];
-        } else if ("getAllNetworkInfo".equals(method.getName())) {
-          // Log.i(TAG, "Neutered getAllNetworkInfo");
-          return new NetworkInfo[0];
-        } else if ("getBoundNetworkForProcess".equals(method.getName())) {
-          // Log.i(TAG, "Neutered getBoundNetworkForProcess");
-          return new NetworkInfo(0, 0, "DUMMY", "");
-        } else if ("getActiveNetworkInfo".equals(method.getName())) {
-          if (result != null) {
-            NetworkInfo ni = (NetworkInfo) result;
-            ni.setDetailedState(
-                NetworkInfo.DetailedState.CONNECTED,
-                null, // reason
-                null // extraInfo
-            );
-
-            // If VPN, we abort
-            if ("VPN".equals(ni.getTypeName())) {
-              throw J.cleanThrowable(new OutOfMemoryError());
-            }
-            return ni;
-          }
-        }
-        return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
-        throw J.cleanThrowable(cause);
-      } catch (UndeclaredThrowableException e) {
-        Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
-        throw J.cleanThrowable(cause);
-      } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
-        throw J.cleanThrowable(new OutOfMemoryError());
+        // Log.d(TAG, "connHandler: " + method.getName() + " call failed", cause);
+        Throwable cleanTr = J.cleanThrowable(cause);
+        throw cleanTr;
       }
+
+      if ("getNetworkCapabilities".equals(method.getName())) {
+        // Log.i(TAG, "Neutered getNetworkCapabilities");
+        NetworkCapabilities nc = (NetworkCapabilities) result;
+        applyVpnSpoof(nc);
+      } else if ("getLinkProperties".equals(method.getName()) && result instanceof LinkProperties) {
+        try {
+          spoofLinkProperties((LinkProperties) result);
+        } catch (Exception e) {
+          // Log.d(TAG, "connHandler: spoofLinkProperties failed", e);
+          OutOfMemoryError oom = new OutOfMemoryError();
+          Throwable cleanTr = J.cleanThrowable(oom);
+          throw cleanTr;
+        }
+      } else if ("getAllNetworks".equals(method.getName())) {
+        // Log.i(TAG, "Neutered getAllNetworks");
+        return new Network[0];
+      } else if ("getAllNetworkInfo".equals(method.getName())) {
+        // Log.i(TAG, "Neutered getAllNetworkInfo");
+        return new NetworkInfo[0];
+      } else if ("getBoundNetworkForProcess".equals(method.getName())) {
+        // Log.i(TAG, "Neutered getBoundNetworkForProcess");
+        return new NetworkInfo(0, 0, "DUMMY", "");
+      } else if ("getActiveNetworkInfo".equals(method.getName())) {
+        if (result != null) {
+          NetworkInfo ni = (NetworkInfo) result;
+          ni.setDetailedState(
+              NetworkInfo.DetailedState.CONNECTED,
+              null, // reason
+              null // extraInfo
+          );
+
+          // If VPN, we abort
+          if ("VPN".equals(ni.getTypeName())) {
+            throw new OutOfMemoryError();
+          }
+          return ni;
+        }
+      }
+
+      return result;
     };
 
     cmProxy = Proxy.newProxyInstance(iConnManagerClz.getClassLoader(), new Class[] { iConnManagerClz },
@@ -184,25 +186,20 @@ public class NetworkSpoofingHook implements BaseHook {
     final Object originalWifiService = asInterface.invoke(null, realBinder);
 
     InvocationHandler wifiHandler = (proxy, method, args) -> {
+      Object result;
       try {
-        Object result;
         result = method.invoke(originalWifiService, args);
-        if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
-          spoofWifiInfo((WifiInfo) result);
-        }
-        return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
-        throw J.cleanThrowable(cause);
-      } catch (UndeclaredThrowableException e) {
-        Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
-        throw J.cleanThrowable(cause);
-      } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
-        throw J.cleanThrowable(new OutOfMemoryError());
+        // Log.d(TAG, "wifiHandler: " + method.getName() + " call failed", cause);
+        Throwable cleanTr = J.cleanThrowable(cause);
+        throw cleanTr;
       }
+
+      if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
+        spoofWifiInfo((WifiInfo) result);
+      }
+      return result;
     };
 
     wifiProxy = Proxy.newProxyInstance(iWifiManagerClz.getClassLoader(), new Class[] { iWifiManagerClz },
@@ -216,7 +213,7 @@ public class NetworkSpoofingHook implements BaseHook {
     cache.put("wifi", proxyBinder);
   }
 
-  private void patchAsyncMessage(Message msg) throws Throwable {
+  private void patchAsyncMessage(Message msg) {
     if (msg == null) {
       return;
     }
@@ -236,7 +233,7 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       } catch (Throwable t) {
         Log.e(TAG, "Failed to patch async message [1]", t);
-        throw J.cleanThrowable(new OutOfMemoryError());
+        throw new OutOfMemoryError();
       }
     }
 
@@ -255,7 +252,7 @@ public class NetworkSpoofingHook implements BaseHook {
         }
       } catch (Throwable t) {
         Log.e(TAG, "Failed to patch async message [1]", t);
-        throw J.cleanThrowable(new OutOfMemoryError());
+        throw new OutOfMemoryError();
       }
     }
   }
@@ -286,7 +283,7 @@ public class NetworkSpoofingHook implements BaseHook {
 
     } catch (Exception e) {
       Log.e(TAG, "Failed to apply VPN spoof", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 
@@ -295,6 +292,62 @@ public class NetworkSpoofingHook implements BaseHook {
       ArrayList<InetAddress> dnsServers = new ArrayList<>();
       dnsServers.add(InetAddress.getByName("1.1.1.1"));
       dnsServers.add(InetAddress.getByName("1.0.0.1"));
+
+      String currentIface = lp.getInterfaceName();
+
+      // We are on mobile
+      if (currentIface.contains("rmnet")) {
+        Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
+        field.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        ArrayList<LinkAddress> list = (ArrayList<LinkAddress>) field.get(lp);
+        list.clear();
+
+        InetAddress fakeIp = InetAddress.getByName(FAKE_IP);
+        Constructor<LinkAddress> ctor = LinkAddress.class.getDeclaredConstructor(InetAddress.class, int.class);
+        ctor.setAccessible(true);
+        list.add(ctor.newInstance(fakeIp, 24));
+
+        Field routesField = LinkProperties.class.getDeclaredField("mRoutes");
+        routesField.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        ArrayList<Object> routes = (ArrayList<Object>) routesField.get(lp);
+        routes.clear();
+
+        Class<?> routeInfoClass = Class.forName("android.net.RouteInfo");
+        Class<?> ipPrefixClass = Class.forName("android.net.IpPrefix");
+
+        // IpPrefix(InetAddress address, int prefixLength)
+        Constructor<?> ipPrefixCtor = ipPrefixClass.getDeclaredConstructor(InetAddress.class, int.class);
+        ipPrefixCtor.setAccessible(true);
+
+        // RouteInfo(IpPrefix destination, InetAddress gateway, String iface)
+        Constructor<?> routeCtor = routeInfoClass.getDeclaredConstructor(ipPrefixClass, InetAddress.class,
+            String.class);
+        routeCtor.setAccessible(true);
+
+        InetAddress subnetAddr = InetAddress.getByName("10.111.222.0");
+        InetAddress gatewayAddr = InetAddress.getByName(FAKE_IP);
+        InetAddress anyAddr = InetAddress.getByName("0.0.0.0");
+
+        // Subnet route: 10.111.222.0/24 directly connected
+        Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
+        routes.add(routeCtor.newInstance(subnetPrefix, null, CELLULAR_IFACE_NAME));
+
+        // Default route: 0.0.0.0/0 via gateway
+        Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
+        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, CELLULAR_IFACE_NAME));
+
+        lp.setInterfaceName(CELLULAR_IFACE_NAME);
+        lp.setMtu(1500);
+        lp.setDhcpServerAddress(null);
+        lp.setDnsServers(dnsServers);
+        spoofPrivateDnsInLp(lp);
+
+        return;
+      }
 
       Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
       field.setAccessible(true);
@@ -332,31 +385,23 @@ public class NetworkSpoofingHook implements BaseHook {
 
       // Subnet route: 10.111.222.0/24 directly connected
       Object subnetPrefix = ipPrefixCtor.newInstance(subnetAddr, 24);
+      routes.add(routeCtor.newInstance(subnetPrefix, null, WIFI_IFACE_NAME));
 
+      // Default route: 0.0.0.0/0 via gateway
+      Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
+      routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, WIFI_IFACE_NAME));
+
+      lp.setInterfaceName(WIFI_IFACE_NAME);
       lp.setMtu(1500);
       lp.setDhcpServerAddress(null);
       lp.setDnsServers(dnsServers);
       spoofPrivateDnsInLp(lp);
 
-      String currentIface = lp.getInterfaceName();
-      // Default route: 0.0.0.0/0 via gateway
-      Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
-
-      if (currentIface.contains("rmnet")) { // mobile
-        routes.add(routeCtor.newInstance(subnetPrefix, null, CELLULAR_IFACE_NAME));
-        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, CELLULAR_IFACE_NAME));
-        lp.setInterfaceName(CELLULAR_IFACE_NAME);
-      } else { // assuming Wi-Fi
-        routes.add(routeCtor.newInstance(subnetPrefix, null, WIFI_IFACE_NAME));
-        routes.add(routeCtor.newInstance(defaultPrefix, gatewayAddr, WIFI_IFACE_NAME));
-        lp.setInterfaceName(WIFI_IFACE_NAME);
-      }
-
     } catch (InvocationTargetException e) {
       throw e.getCause() != null ? e.getCause() : e;
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof LinkProperties", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 
@@ -371,7 +416,12 @@ public class NetworkSpoofingHook implements BaseHook {
       if (networkId == -1) {
         InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
         setField(info, "mIpAddress", zeroIp);
+        setField(info, "mLinkSpeed", -1);
         setField(info, "mBSSID", null);
+        setField(info, "mMaxSupportedRxLinkSpeed", 0);
+        setField(info, "mMaxSupportedTxLinkSpeed", 0);
+        setField(info, "mTxLinkSpeed", -1);
+        setField(info, "mRxLinkSpeed", -1);
         spoofSsid(info);
         return;
       }
@@ -379,12 +429,12 @@ public class NetworkSpoofingHook implements BaseHook {
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
 
       setField(info, "mIpAddress", fakeIp);
-      setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       setField(info, "mNetworkId", 4);
+      setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       spoofSsid(info);
     } catch (Exception e) {
       Log.e(TAG, "spoofWifiInfo: Unknown exception", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 
@@ -399,7 +449,7 @@ public class NetworkSpoofingHook implements BaseHook {
       setField(info, "mWifiSsid", fakeSsid);
     } catch (Exception e) {
       Log.e(TAG, "spoofSsid: Unknown exception: ", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 
@@ -412,7 +462,7 @@ public class NetworkSpoofingHook implements BaseHook {
       Log.e(TAG, "setField(" + name + ") - NoSuchFieldException. Message: " + e.getMessage());
     } catch (Exception e) {
       Log.e(TAG, "setField(" + name + "). Unknown exception: ", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 
@@ -426,7 +476,7 @@ public class NetworkSpoofingHook implements BaseHook {
       setPrivateDnsServerName.invoke(lp, new Object[] { null });
     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
       Log.e(TAG, "Failed to spoof private DNS: ", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+      throw new OutOfMemoryError();
     }
   }
 }
