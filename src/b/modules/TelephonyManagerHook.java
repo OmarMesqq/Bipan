@@ -6,13 +6,10 @@ import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import b.BaseHook;
-import b.J;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -36,28 +33,30 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
       "com.whatsapp",
       "com.instagram.android"));
 
-  private Object createEmptyCellIdentity() throws Throwable {
-    Class<?> cellIdentityGsmClass = Class.forName("android.telephony.CellIdentityGsm");
+  private Object createEmptyCellIdentity() throws Exception {
+    try {
+      Class<?> cellIdentityGsmClass = Class.forName("android.telephony.CellIdentityGsm");
 
-    for (Constructor<?> ctor : cellIdentityGsmClass.getDeclaredConstructors()) {
-      ctor.setAccessible(true);
-      Class<?>[] params = ctor.getParameterTypes();
-
-      if (params.length == 0) {
-        return ctor.newInstance();
-      } else if (params.length == 4
-          && params[0] == int.class && params[1] == int.class
-          && params[2] == int.class && params[3] == int.class) {
-        return ctor.newInstance(
-            Integer.MAX_VALUE, Integer.MAX_VALUE,
-            Integer.MAX_VALUE, Integer.MAX_VALUE);
-      } else {
-        Log.e(TAG, "createEmptyCellIdentity: exhausted ctor params length possibilities");
-        throw J.cleanThrowable(new OutOfMemoryError());
+      for (Constructor<?> ctor : cellIdentityGsmClass.getDeclaredConstructors()) {
+        ctor.setAccessible(true);
+        Class<?>[] params = ctor.getParameterTypes();
+        try {
+          if (params.length == 0) {
+            return ctor.newInstance();
+          } else if (params.length == 4
+              && params[0] == int.class && params[1] == int.class
+              && params[2] == int.class && params[3] == int.class) {
+            return ctor.newInstance(
+                Integer.MAX_VALUE, Integer.MAX_VALUE,
+                Integer.MAX_VALUE, Integer.MAX_VALUE);
+          }
+        } catch (Exception ignored) {
+        }
       }
+    } catch (Exception e) {
+      Log.e(TAG, "Exception while creating an empty CellIdentity: " + e.getMessage() + ". Will return 'null'!");
     }
-    Log.e(TAG, "createEmptyCellIdentity: no ctors found!");
-    throw J.cleanThrowable(new OutOfMemoryError());
+    return null;
   }
 
   @Override
@@ -116,146 +115,130 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-    try {
-      switch (method.getName()) {
-        case "getNetworkOperatorName":
-        case "getNetworkOperatorNameForDisplay":
-        case "getSimOperatorName":
-        case "getSimOperatorNameForPhone":
-        case "getSimOperatorNameForSubscription":
-        case "getSubscriptionCarrierName": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return CARRIER_NAME;
+    switch (method.getName()) {
+
+      case "getNetworkOperatorName":
+      case "getNetworkOperatorNameForDisplay":
+      case "getSimOperatorName":
+      case "getSimOperatorNameForPhone":
+      case "getSimOperatorNameForSubscription":
+      case "getSubscriptionCarrierName":
+        Log.i(TAG, "Neutered " + method.getName());
+        return CARRIER_NAME;
+
+      case "getNetworkCountryIso":
+      case "getNetworkCountryIsoForPhone":
+      case "getSimCountryIso":
+      case "getSimCountryIsoForPhone":
+      case "getSimCountryIsoForSubscription":
+        Log.i(TAG, "Neutered " + method.getName());
+        return SIM_ISO_COUNTRY_CODE;
+
+      case "getSimOperator":
+      case "getSimOperatorNumeric":
+      case "getSimOperatorForSubscription":
+        Log.i(TAG, "Neutered " + method.getName());
+        return MCCMNC_TUPLE;
+
+      case "getPhoneCount":
+      case "getActiveModemCount":
+      case "getSupportedModemCount":
+        Log.i(TAG, "Neutered " + method.getName());
+        return MODEM_COUNT;
+
+      case "isMultiSimEnabled":
+        Log.i(TAG, "Neutered " + method.getName());
+        return false;
+
+      case "isMultiSimSupported":
+        Log.i(TAG, "Neutered " + method.getName());
+        return TelephonyManager.MULTISIM_NOT_SUPPORTED_BY_HARDWARE;
+
+      case "getAllCellInfo":
+        Log.i(TAG, "Neutered " + method.getName());
+        return new ArrayList<>();
+
+      case "getCellLocation":
+        Log.i(TAG, "Neutered " + method.getName());
+        return createEmptyCellIdentity();
+
+      case "getServiceState":
+      case "getServiceStateForSlot": {
+        Log.i(TAG, "Neutered " + method.getName());
+        return new ServiceState();
+      }
+
+      case "getVisualVoicemailPackageName":
+        Log.i(TAG, "Neutered " + method.getName());
+        return "com.google.android.dialer";
+
+      case "getCarrierPrivilegeStatus":
+        Class<?> tm = Class.forName("android.telephony.TelephonyManager");
+        Field carrierPrivilegeStatusNoAccessField = tm.getDeclaredField("CARRIER_PRIVILEGE_STATUS_NO_ACCESS");
+        carrierPrivilegeStatusNoAccessField.setAccessible(true);
+        int CARRIER_PRIVILEGE_STATUS_NO_ACCESS = (int) carrierPrivilegeStatusNoAccessField.get(null);
+
+        Log.i(TAG, "Neutered " + method.getName());
+        return CARRIER_PRIVILEGE_STATUS_NO_ACCESS;
+
+      case "getSimCarrierId":
+      case "getSimSpecificCarrierId":
+      case "getSubscriptionCarrierId":
+      case "getSubscriptionSpecificCarrierId":
+        Log.i(TAG, "Neutered " + method.getName());
+        return CARRIER_ID;
+
+      /**
+       * If app doesn't have `READ_PHONE_STATE`, returns null.
+       * However if we don't intercept a system throws `SecurityException`, thus
+       * we need to return early here as to not "confuse" the Proxy
+       * and make it return `UndeclaredThrowableException` which most apps don't
+       * handle
+       * 
+       * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/services/Telephony/src/com/android/phone/PhoneInterfaceManager.java;l=8049
+       */
+      case "getDeviceId":
+      case "getDeviceIdWithFeature":
+        Log.i(TAG, "Neutered " + method.getName());
+        return null;
+
+      case "getMmsUserAgent":
+      case "getMmsUAProfUrl": {
+        return "";
+      }
+
+      case "hasIccCardUsingSlotIndex": {
+        int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
+        Log.i(TAG, "Neutered hasIccCardUsingSlotIndex slot=" + slotIndex);
+        return slotIndex == 0; // single SIM, slot 0 only
+      }
+      case "getDataNetworkTypeForSubscriber": {
+        Log.i(TAG, "Neutered getDataNetworkTypeForSubscriber");
+        return TelephonyManager.NETWORK_TYPE_LTE;
+      }
+      case "getSimStateForSlotIndex": {
+        int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
+        Log.i(TAG, "Neutered getSimStateForSlotIndex slot=" + slotIndex);
+        if (slotIndex == 0) {
+          return TelephonyManager.SIM_STATE_READY;
         }
+        return TelephonyManager.SIM_STATE_UNKNOWN;
+      }
 
-        case "getNetworkCountryIso":
-        case "getNetworkCountryIsoForPhone":
-        case "getSimCountryIso":
-        case "getSimCountryIsoForPhone":
-        case "getSimCountryIsoForSubscription": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return SIM_ISO_COUNTRY_CODE;
-        }
-
-        case "getSimOperator":
-        case "getSimOperatorNumeric":
-        case "getSimOperatorForSubscription": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return MCCMNC_TUPLE;
-        }
-
-        case "getPhoneCount":
-        case "getActiveModemCount":
-        case "getSupportedModemCount": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return MODEM_COUNT;
-        }
-
-        case "isMultiSimEnabled": {
-          Log.i(TAG, "Neutered isMultiSimEnabled");
-          return false;
-        }
-
-        case "isMultiSimSupported": {
-          Log.i(TAG, "Neutered isMultiSimSupported");
-          return TelephonyManager.MULTISIM_NOT_SUPPORTED_BY_HARDWARE;
-        }
-
-        case "getAllCellInfo": {
-          Log.i(TAG, "Neutered getAllCellInfo");
-          return new ArrayList<>();
-        }
-
-        case "getCellLocation": {
-          Log.i(TAG, "Neutered getCellLocation");
-          return createEmptyCellIdentity();
-        }
-
-        case "getServiceState":
-        case "getServiceStateForSlot": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return new ServiceState();
-        }
-
-        case "getVisualVoicemailPackageName": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return "com.google.android.dialer";
-        }
-
-        case "getCarrierPrivilegeStatus": {
-          Class<?> tm = Class.forName("android.telephony.TelephonyManager");
-          Field carrierPrivilegeStatusNoAccessField = tm.getDeclaredField("CARRIER_PRIVILEGE_STATUS_NO_ACCESS");
-          carrierPrivilegeStatusNoAccessField.setAccessible(true);
-          int CARRIER_PRIVILEGE_STATUS_NO_ACCESS = (int) carrierPrivilegeStatusNoAccessField.get(null);
-
-          Log.i(TAG, "Neutered " + method.getName());
-          return CARRIER_PRIVILEGE_STATUS_NO_ACCESS;
-        }
-
-        case "getSimCarrierId":
-        case "getSimSpecificCarrierId":
-        case "getSubscriptionCarrierId":
-        case "getSubscriptionSpecificCarrierId": {
-          Log.i(TAG, "Neutered " + method.getName());
+      case "getCarrierIdFromMccMnc": {
+        String mccmnc = (args != null && args.length > 1 && args[1] instanceof String)
+            ? (String) args[1]
+            : "";
+        Log.i(TAG, "Neutered getCarrierIdFromMccMnc mccmnc=" + mccmnc);
+        if (MCCMNC_TUPLE.equals(mccmnc)) {
           return CARRIER_ID;
         }
-
-        case "getDeviceId":
-        case "getDeviceIdWithFeature": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return null;
-        }
-
-        case "getMmsUserAgent":
-        case "getMmsUAProfUrl": {
-          return "";
-        }
-
-        case "hasIccCardUsingSlotIndex": {
-          int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
-          Log.i(TAG, "Neutered hasIccCardUsingSlotIndex slot=" + slotIndex);
-          return slotIndex == 0; // single SIM, slot 0 only
-        }
-        case "getDataNetworkTypeForSubscriber": {
-          Log.i(TAG, "Neutered getDataNetworkTypeForSubscriber");
-          return TelephonyManager.NETWORK_TYPE_LTE;
-        }
-        case "getSimStateForSlotIndex": {
-          int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
-          Log.i(TAG, "Neutered getSimStateForSlotIndex slot=" + slotIndex);
-          if (slotIndex == 0) {
-            return TelephonyManager.SIM_STATE_READY;
-          }
-          return TelephonyManager.SIM_STATE_UNKNOWN;
-        }
-
-        case "getCarrierIdFromMccMnc": {
-          String mccmnc = (args != null && args.length > 1 && args[1] instanceof String)
-              ? (String) args[1]
-              : "";
-          Log.i(TAG, "Neutered getCarrierIdFromMccMnc mccmnc=" + mccmnc);
-          if (MCCMNC_TUPLE.equals(mccmnc)) {
-            return CARRIER_ID;
-          }
-          return TelephonyManager.UNKNOWN_CARRIER_ID;
-        }
-
-        default: {
-          Log.w(TAG, "Allowing Telephony method through: " + method.getName());
-          return method.invoke(originalITelephony, args);
-        }
+        return TelephonyManager.UNKNOWN_CARRIER_ID;
       }
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
-      throw J.cleanThrowable(cause);
-    } catch (UndeclaredThrowableException e) {
-      Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
-      throw J.cleanThrowable(cause);
-    } catch (Exception e) {
-      Log.e(TAG, "Exception: ", e);
-      throw J.cleanThrowable(new OutOfMemoryError());
+
+      default:
+        Log.w(TAG, "Allowing Telephony method through: " + method.getName());
+        return method.invoke(originalITelephony, args);
     }
   }
 }
