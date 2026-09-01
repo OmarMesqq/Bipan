@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <linux/memfd.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 
@@ -27,9 +28,12 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
 static int capture_backtrace(void** out_frames, int max_frames);
 static void print_backtrace();
 
+static struct sigaction old_sys = {};
 static struct sigaction old_segv = {};
 static struct sigaction old_abrt = {};
+static struct sigaction old_trap = {};
 static struct sigaction old_quit = {};
+static char g_altstack[SIGSTKSZ * 4];
 
 static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_context);
 #endif
@@ -54,34 +58,92 @@ struct kernel_sigaction {
 };
 
 void registerSignalHandler() {
-  struct kernel_sigaction sa_SYS = {};
-  sa_SYS.sa_handler = sigsys_handler;
-  sa_SYS.sa_flags = SA_SIGINFO;
-  long ret = 0;
+  long ret = -1;
 
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
-    BIPAN_PANIC();
-  }
+  // struct kernel_sigaction sa_SYS = {};
+  // sa_SYS.sa_handler = sigsys_handler;
+  // sa_SYS.sa_flags = SA_SIGINFO;
+
+  // ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
+  // if (ret != 0) {
+  //   write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
+  //   BIPAN_PANIC();
+  // }
 
 #ifdef IN_APP_ADDITIONAL_HANDLERS
-  struct kernel_sigaction sa_SEGV = {};
-  sa_SEGV.sa_handler = bipan_additional_sig_handler;
-  sa_SEGV.sa_flags = SA_SIGINFO;
+  // Setup auxiliary stack
+  stack_t ss = {};
+  ss.ss_sp = g_altstack;
+  ss.ss_size = sizeof(g_altstack);
+  ss.ss_flags = 0;
 
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSEGV, (long)&sa_SEGV, 0, 8, 0, 0);
+  ret = sigaltstack(&ss, nullptr);
   if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror((int)ret));
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaltstack failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
+
+  // Single act for SIGSYS
+  struct sigaction actSys = {};
+  actSys.sa_flags = SA_SIGINFO | SA_ONSTACK;
+  actSys.sa_sigaction = &sigsys_handler;
+
+  ret = sigemptyset(&actSys.sa_mask);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigemptyset(SIGSYS) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGSYS, &actSys, &old_sys);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  // Unified act for important signals
+  struct sigaction act = {};
+  act.sa_flags = SA_SIGINFO | SA_ONSTACK;
+  act.sa_sigaction = &bipan_additional_sig_handler;
+
+  ret = sigemptyset(&act.sa_mask);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigemptyset for additional signals failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  // Register the actual signal handlers for their corresponding signals
+  ret = sigaction(SIGSEGV, &act, &old_segv);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGABRT, &act, &old_abrt);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGTRAP, &act, &old_trap);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGTRAP) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  ret = sigaction(SIGQUIT, &act, &old_quit);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGQUIT) failed (errno: %s)", strerror(errno));
+    BIPAN_PANIC();
+  }
+
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "In-app additional handlers installed on altstack, size=%zu", sizeof(g_altstack));
+
 #endif
 }
 #else
-#include <signal.h>
 void registerSignalHandler() {
   struct sigaction act = {
-      .sa_flags = SA_SIGINFO | SA_NODEFER,
+      .sa_flags = SA_SIGINFO,
       .sa_sigaction = &sigsys_handler};
 
   int ret = sigaction(SIGSYS, &act, nullptr);
@@ -122,21 +184,15 @@ void registerSignalHandler() {
 
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
-  (void)sig;
-
   if (in_sigsys_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler! We're probably cooked. Aborting!");
     BIPAN_PANIC();
   }
   in_sigsys_handler = true;
 
+  (void)sig;
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
-
-  if (ipc_mem == nullptr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Caught syscall but IPC memory not ready yet!");
-    BIPAN_PANIC();
-  }
 
   long arg0 = (long)ctx->uc_mcontext.regs[0];
   long arg1 = (long)ctx->uc_mcontext.regs[1];
@@ -167,10 +223,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   if (nr == __NR_getsockname) {
-    long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
-    if (r != 0 || arg1 == 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sockaddr is null or native getsockname failed. Aborting for privacy.");
+    if (nativeRet != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Native (getsockname) failed. Ret: %d", (int)nativeRet);
+      BIPAN_PANIC();
+    }
+    if (arg1 == 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(getsockname): sockaddr is null. Aborting for privacy.");
       BIPAN_PANIC();
     }
 
@@ -178,7 +238,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     scrub_socket(s);
 
     in_sigsys_handler = false;
-    ctx->uc_mcontext.regs[0] = (__u64)r;
+    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
     return;
   }
 
@@ -191,8 +251,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       return;
     }
 
-    long r = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = (__u64)r;
+    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
     in_sigsys_handler = false;
     return;
   }
@@ -427,31 +487,44 @@ static inline void scrub_socket(struct sockaddr* s) {
 #ifdef IN_APP_ADDITIONAL_HANDLERS
 static thread_local bool inside_additional_handler = false;
 static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_context) {
-  if (sig == SIGABRT) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGABRT!");
-  } else if (sig == SIGSEGV) {
-    if (info->si_code == SEGV_MAPERR) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGSEGV SEGV_MAPERR");
-    } else if (info->si_code == SEGV_ACCERR) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGSEGV SEGV_ACCERR");
-    } else {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Injected app got unknown SIGSEGV(%d)", info->si_code);
-    }
-  } else if (sig == SIGQUIT) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Injected app got SIGQUIT!");
-  } else {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Injected app got unknown signal: (%d). Aborting!", sig);
-    BIPAN_PANIC();
-  }
-
   if (inside_additional_handler) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed additional signal handler. Aborting!");
     BIPAN_PANIC();
   }
   inside_additional_handler = true;
 
-  ucontext_t* ctx = (ucontext_t*)void_context;
+  switch (sig) {
+    case SIGABRT: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGABRT");
+      break;
+    }
+    case SIGSEGV: {
+      if (info->si_code == SEGV_MAPERR) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGSEGV of type SEGV_MAPERR");
+      } else if (info->si_code == SEGV_ACCERR) {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGSEGV of type SEGV_ACCERR");
+      } else {
+        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGSEGV of unknown type");
+      }
+      break;
+    }
+    case SIGTRAP: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGTRAP");
+      break;
+    }
+    case SIGQUIT: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] App got SIGQUIT");
+      break;
+    }
+    default: {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!!!] App got unknown signal");
+      break;
+    }
+  }
 
+  (void)info;
+  (void)void_context;
+  ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
   __u64 faultAddr = ctx->uc_mcontext.fault_address;
 
@@ -477,6 +550,7 @@ static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_co
                         "pc=%p | lr=%p | fp=%p | sp=%p",
                         pc, lr, fp, sp);
 
+  // TODO: just like in Broker Assistant, this isn't AS-safe                      
   print_backtrace();
   BIPAN_PANIC();
 }

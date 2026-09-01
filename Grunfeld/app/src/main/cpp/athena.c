@@ -4,9 +4,9 @@
 #include <dlfcn.h>
 #include <jni.h>
 #include <errno.h>
-#include <unistd.h>
 #include <string.h>
 #include <android/log.h>
+#include <sys/syscall.h>
 
 #define TAG "Athena"
 
@@ -27,10 +27,13 @@ static int capture_backtrace(void** out_frames, int max_frames);
 static void print_native_backtrace(void);
 static void print_java_backtrace(JNIEnv *env);
 static void athena_sig_handler(int sig, siginfo_t* info, void* void_context);
+static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
 static char g_altstack[SIGSTKSZ * 4];
 static struct sigaction g_old_segv_act = {0}; // SIGSEGV
 static struct sigaction g_old_abrt_act = {0}; // SIGABRT
+static struct sigaction g_old_trap_act = {0}; // SIGTRAP
+static struct sigaction g_old_quit_act = {0}; // SIGQUIT
 static JNIEnv* g_jniEnv = NULL;
 
 
@@ -56,7 +59,7 @@ void athenaInit(JNIEnv* env) {
 
     // Unified act for important signals
     struct sigaction act = {0};
-    act.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
+    act.sa_flags = SA_SIGINFO | SA_ONSTACK;
     act.sa_sigaction = &athena_sig_handler;
 
     ret = sigemptyset(&act.sa_mask);
@@ -75,6 +78,18 @@ void athenaInit(JNIEnv* env) {
     ret = sigaction(SIGABRT, &act, &g_old_abrt_act);
     if (ret != 0) {
         LOGE("sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
+        return;
+    }
+
+    ret = sigaction(SIGTRAP, &act, &g_old_trap_act);
+    if (ret != 0) {
+        LOGE("sigaction(SIGTRAP) failed (errno: %s)", strerror(errno));
+        return;
+    }
+
+    ret = sigaction(SIGQUIT, &act, &g_old_quit_act);
+    if (ret != 0) {
+        LOGE("sigaction(SIGQUIT) failed (errno: %s)", strerror(errno));
         return;
     }
 
@@ -164,21 +179,66 @@ static void print_java_backtrace(JNIEnv *env) {
 }
 
 static void athena_sig_handler(int sig, siginfo_t* info, void* void_context) {
-    if (sig == SIGABRT) {
-        LOGE("App got SIGABRT!");
-    } else if (sig == SIGSEGV) {
-        if (info->si_code == SEGV_MAPERR) {
-            LOGE("App got SIGSEGV SEGV_MAPERR");
-        } else if (info->si_code == SEGV_ACCERR) {
-            LOGE("App got SIGSEGV SEGV_ACCERR");
-        } else {
-            LOGE("App got unknown SIGSEGV(%d)", info->si_code);
+    switch (sig) {
+        case SIGABRT: {
+            LOGE("App got SIGABRT!");
+            break;
         }
-    } else {
-        LOGF("App got unknown signal: %d", sig);
+        case SIGSEGV: {
+            switch (info->si_code) {
+                case SEGV_MAPERR: {
+                    LOGE("App got SIGSEGV SEGV_MAPERR");
+                    break;
+                }
+                case SEGV_ACCERR: {
+                    LOGE("App got SIGSEGV SEGV_ACCERR");
+                    break;
+                }
+                default: {
+                    LOGE("App got unknown SIGSEGV");
+                    break;
+                }
+            }
+            break;
+        }
+        case SIGTRAP: {
+            LOGE("App got SIGTRAP");
+            break;
+        }
+        case SIGQUIT: {
+            LOGE("App got SIGQUIT");
+            break;
+        }
+        default: {
+            LOGF("App got unknown signal!");
+            break;
+        }
     }
     
+    // TODO: not AS-safe
     print_native_backtrace();
-    print_java_backtrace(g_jniEnv);
-    _exit(-1);
+    // print_java_backtrace(g_jniEnv);
+    arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0);
 }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wregister"
+__attribute__((always_inline))  static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+    register long x8 __asm__("x8") = sysno;
+    register long x0 __asm__("x0") = a0;
+    register long x1 __asm__("x1") = a1;
+    register long x2 __asm__("x2") = a2;
+    register long x3 __asm__("x3") = a3;
+    register long x4 __asm__("x4") = a4;
+    register long x5 __asm__("x5") = a5;
+
+    __asm__ volatile(
+            "svc #0\n"
+            : "+r"(x0)
+            : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+            : "memory", "cc"
+            );
+
+    return x0;
+}
+#pragma clang diagnostic pop
