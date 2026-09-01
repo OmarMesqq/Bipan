@@ -13,9 +13,10 @@
 #include "common_utils.hpp"
 #include "deps/zygisk.hpp"
 #include "feature_flags.hpp"
-#include "hooks.hpp"
+#include "hooks/native_hooks.hpp"
+#include "hooks/jni_hooks.hpp"
 #include "ipc_communication.hpp"
-#include "jni_hooks.hpp"
+
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
 
