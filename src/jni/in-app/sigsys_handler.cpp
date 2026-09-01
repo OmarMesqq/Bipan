@@ -62,6 +62,7 @@ void registerSignalHandler() {
 
   // struct kernel_sigaction sa_SYS = {};
   // sa_SYS.sa_handler = sigsys_handler;
+  // TODO: maybe this guy benefits from altstack too
   // sa_SYS.sa_flags = SA_SIGINFO;
 
   // ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
@@ -85,6 +86,7 @@ void registerSignalHandler() {
 
   // Single act for SIGSYS
   struct sigaction actSys = {};
+  // Pass SA_NODEFER during development to catch recursions
   actSys.sa_flags = SA_SIGINFO | SA_ONSTACK;
   actSys.sa_sigaction = &sigsys_handler;
 
@@ -197,12 +199,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int sigCode = info->si_code;
 
   if (sigCode == SYS_SECCOMP) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                          "[!!!] SIGSYS handler got a violation from a seccomp filter! nr: %d | abi: %u",
-                          nr,
-                          abi);
-    in_sigsys_handler = false;
-    BIPAN_PANIC();
+    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Violation from a seccomp filter. nr: %d | abi: %u", nr, abi);
+  } else {
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Violation from user dispatch. nr: %d | abi: %u", nr, abi);
   }
 
   long arg0 = (long)ctx->uc_mcontext.regs[0];
@@ -222,6 +221,21 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_statx) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statx): replying not implemented");
     ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    in_sigsys_handler = false;
+    return;
+  }
+
+  if (nr == __NR_statfs) {
+    const char* path = (const char*)arg0;
+    if (path && isHostsFile(path)) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) to hosts file: replying not implemented");
+      ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+      in_sigsys_handler = false;
+      return;
+    }
+
+    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
     in_sigsys_handler = false;
     return;
   }
@@ -248,6 +262,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_socket) {
     // 1st arg is the "domain" of the socket
+    // TODO: probably android doesn't allow using NETLINK for private routes
     if (arg0 == AF_NETLINK) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Blocked AF_NETLINK socket");
       ctx->uc_mcontext.regs[0] = (__u64)-EAFNOSUPPORT;
