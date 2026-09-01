@@ -1,5 +1,5 @@
-#ifndef FAKE_ID_HPP
-#define FAKE_ID_HPP
+#ifndef DRM_HOOK_HPP
+#define DRM_HOOK_HPP
 
 #include <cstddef>
 #include <cstdint>

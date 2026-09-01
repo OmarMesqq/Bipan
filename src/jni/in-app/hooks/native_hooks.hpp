@@ -1,5 +1,5 @@
-#ifndef HOOKS_HPP
-#define HOOKS_HPP
+#ifndef NATIVE_HOOKS_HPP
+#define NATIVE_HOOKS_HPP
 
 #include <dlfcn.h>
 #include <ifaddrs.h>
@@ -14,8 +14,8 @@
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "deps/zygisk.hpp"
-#include "drm/fake_id.hpp"
-#include "filter.hpp"
+#include "drm_hook.hpp"
+#include "../filter.hpp"
 #include "in-app/globals.hpp"
 #include "logger/logger.hpp"
 
