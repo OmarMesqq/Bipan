@@ -57,6 +57,7 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
     // Dropdown State
     var expanded by remember { mutableStateOf(false) }
     val predefinedSites = listOf(
+        "https://i2dk.com/",
         "https://start.duckduckgo.com/",
         "https://deviceinfo.me/",
         "https://browserleaks.com/",
