@@ -303,7 +303,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #ifdef BROKER_DEBUG_LOGGING
         int dirfd = (int)ipc_mem->arg0;
         if (shouldLog(path)) {
-          write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
+          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
         }
 #endif
         break;

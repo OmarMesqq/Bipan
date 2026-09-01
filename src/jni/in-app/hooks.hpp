@@ -178,6 +178,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.kernel.version", "6.6"},
 
     {"init.svc.adbd", "stopped"},
+    {"debug.debuggerd.wait_for_debugger", ""},
 
     {"bluetooth.device.default_name", "Pixel 8 Pro"},
     {"ro.boot.ap_serial", ""},
@@ -225,7 +226,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.selinux", "enforcing"},
     {"ro.boot.warranty_bit", ""},
     {"ro.boot.verifiedbootstate", "green"},
-    
+
     // ?
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"ro.boot.em.did", ""},
