@@ -55,6 +55,7 @@ fun NativeScreen() {
     var fstatInfo by remember { mutableStateOf("Files not stated") }
     var newfstatatInfo by remember { mutableStateOf("Files not stated") }
     var statxInfo by remember { mutableStateOf("Files not stated") }
+    var statfsHostsInfo by remember { mutableStateOf("") }
 
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
@@ -201,6 +202,20 @@ fun NativeScreen() {
 
                     ) {
                         Text("statx()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("statfs to hosts file(s)")
+                    ReportTextWithCopy(statfsHostsInfo, "")
+                    Button(
+                        onClick = {
+                            statfsHostsInfo = NativeLibWrapper.testStatfsToHosts()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("statfs(hosts)")
                     }
                 }
             }

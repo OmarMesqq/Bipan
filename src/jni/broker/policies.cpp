@@ -96,6 +96,7 @@ bool shouldLog(const char* pathname) {
         strstr(pathname, "/comm") ||
         strstr(pathname, "/stat") ||
         strstr(pathname, "/pagemap") ||
+        strstr(pathname, "/clear_refs") ||
         strstr(pathname, "/smaps_rollup") ||
         strstr(pathname, "/auxv") ||
         strstr(pathname, "/cpuinfo") ||

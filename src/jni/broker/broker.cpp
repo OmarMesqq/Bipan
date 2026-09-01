@@ -53,7 +53,6 @@ static inline bool client_is_dead(int epfd, int sock, int pidfd);
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags);
 static char* extract_real_path_from_memfd(const char* memfdPath);
 static char* assemble_proc_pid_fd(pid_t pid, int fd);
-static inline bool is_hosts_file(const char* pathname);
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid);
 static void set_broker_proctitle(const char* pkgName);
 
@@ -351,7 +350,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             break;
           }
 
-          if (is_hosts_file(actualPath)) {
+          if (isHostsFile(actualPath)) {
             struct stat* fixedStatBuf = fixHostsFileStat(actualPath, 0);
             if (!fixedStatBuf) {
               free(actualPath);
@@ -397,7 +396,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         }
 
         // for absolute path lookups
-        if (is_hosts_file(path)) {
+        if (isHostsFile(path)) {
           struct stat* fixedStatBuf = fixHostsFileStat(path, flags);
           if (!fixedStatBuf) {
             write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(newfstatat): failed to fix hosts!");
@@ -1064,12 +1063,6 @@ static char* assemble_proc_pid_fd(pid_t pid, int fd) {
 
   snprintf(proc_pid_fd_path, PATH_MAX, "/proc/%d/fd/%d", pid, fd);
   return proc_pid_fd_path;
-}
-
-static inline bool is_hosts_file(const char* pathname) {
-  return (
-      (strcmp(pathname, "/etc/hosts") == 0) ||
-      (strcmp(pathname, "/system/etc/hosts") == 0));
 }
 
 static inline bool looks_like_proc_fd(const char* pathname, pid_t pid) {

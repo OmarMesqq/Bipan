@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <link.h>
+#include <sys/vfs.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
@@ -72,6 +73,9 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
+
+
+
 /* Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed */
 static const uint8_t kWidevineUuid[16] = {
         0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
@@ -86,6 +90,38 @@ static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_ca
         out[o++] = hex[in[i] & 0xf];
     }
     out[o] = '\0';
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
+    char report[1024] = {0};
+    char entry[256] = {0};
+
+    struct statfs b1 = {0};
+    struct statfs b2 = {0};
+
+    int ret = 0;
+
+    ret = statfs("/system/etc/hosts", &b1);
+    if (ret != 0) {
+        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) failed. errno: %s\n", strerror(errno));
+        strcat(report, entry);
+    } else {
+        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) succeeded :/\n");
+        strcat(report, entry);
+    }
+
+    ret = statfs("/etc/hosts", &b2);
+    if (ret != 0) {
+        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) failed. errno: %s\n", strerror(errno));
+        strcat(report, entry);
+    } else {
+        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) succeeded :/\n");
+        strcat(report, entry);
+    }
+
+
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
