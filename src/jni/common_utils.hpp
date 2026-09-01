@@ -3,6 +3,8 @@
 
 #include <cstring>
 
+#include "as_safe_string.hpp"
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 
@@ -29,6 +31,12 @@ __attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0
 }
 
 #pragma clang diagnostic pop
+
+inline bool isHostsFile(const char* pathname) {
+  return (
+      (local_strcmp(pathname, "/etc/hosts") == 0) ||
+      (local_strcmp(pathname, "/system/etc/hosts") == 0));
+}
 
 /**
  * NOT async-signal safe function to check if first arg
