@@ -176,8 +176,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // default_prop
     {"ro.com.google.clientidbase", "android-google"},
     {"ro.kernel.version", "6.6"},
-    // {"ro.support_one_handed_mode", "false"},
-    // {"persist.wm.extensions.enabled", "false"},
 
     {"init.svc.adbd", "stopped"},
 
@@ -215,6 +213,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
 
     // system_prop
     {"persist.sys.usb.config", ""},
+    {"sys.usb.config", ""},
     {"sys.lineage_settings_system_version", ""},
 
     // bootloader_prop
@@ -226,6 +225,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.selinux", "enforcing"},
     {"ro.boot.warranty_bit", ""},
     {"ro.boot.verifiedbootstate", "green"},
+    
     // ?
     {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
     {"ro.boot.em.did", ""},
@@ -256,11 +256,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.cp_reserved_mem", ""},
     {"ro.boot.recovery_offset", ""},
     {"ro.revision", ""},
-
-    // exported_default_prop
-    // {"ro.hardware.egl", "adreno"},
-    // {"ro.hardware.vulkan", "adreno"},
-    // {"ro.board.platform", "husky"},
 
     // locale_prop
     {"persist.sys.locale", "en-US"},

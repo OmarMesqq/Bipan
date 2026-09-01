@@ -58,8 +58,20 @@ bool shouldLog(const char* pathname) {
       starts_with(pathname, "/data/misc/profiles/") ||
       starts_with(pathname, "/data/misc/shared_relro") ||
       starts_with(pathname, "/product/app/webview") ||
+      starts_with(pathname, "/sys/devices/system/cpu") ||
+      starts_with(pathname, "/proc/sys/kernel/random/boot_id") ||
+      starts_with(pathname, "/system/fonts") ||
+      starts_with(pathname, "/vendor/fonts") ||
+      starts_with(pathname, "/odm/lib64/hw") ||
+      starts_with(pathname, "/product/fonts") ||
       starts_with(pathname, "/apex/com.android") ||
       starts_with(pathname, "/mnt/expand")) {
+    return false;
+  }
+
+  if (
+      starts_with(pathname, "/vendor/lib64/egl") ||
+      starts_with(pathname, "/vendor/lib64/hw")) {
     return false;
   }
 
@@ -69,6 +81,8 @@ bool shouldLog(const char* pathname) {
       starts_with(pathname, "/dev/random") ||
       starts_with(pathname, "/dev/hwbinder") ||
       starts_with(pathname, "/dev/binder") ||
+      starts_with(pathname, "/dev/ion") ||
+      starts_with(pathname, "/dev/dma") ||
       starts_with(pathname, "/dev/mali") ||
       starts_with(pathname, "/dev/zero") ||
       starts_with(pathname, "/dev/null")) {
@@ -79,7 +93,13 @@ bool shouldLog(const char* pathname) {
   if (starts_with(pathname, "/proc/")) {
     if (strstr(pathname, "/cmdline") ||
         strstr(pathname, "/oom") ||
-        strstr(pathname, "/comm")) {
+        strstr(pathname, "/comm") ||
+        strstr(pathname, "/stat") ||
+        strstr(pathname, "/pagemap") ||
+        strstr(pathname, "/smaps_rollup") ||
+        strstr(pathname, "/auxv") ||
+        strstr(pathname, "/cpuinfo") ||
+        strstr(pathname, "/meminfo")) {
       return false;
     }
   }
