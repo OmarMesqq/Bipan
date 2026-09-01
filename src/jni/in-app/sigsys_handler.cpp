@@ -185,7 +185,7 @@ void registerSignalHandler() {
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (in_sigsys_handler) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler! We're probably cooked. Aborting!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Recursed SIGSYS handler!");
     BIPAN_PANIC();
   }
   in_sigsys_handler = true;
@@ -193,6 +193,17 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   (void)sig;
   ucontext_t* ctx = (ucontext_t*)void_context;
   int nr = info->si_syscall;
+  unsigned abi = info->si_arch;
+  int sigCode = info->si_code;
+
+  if (sigCode == SYS_SECCOMP) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
+                          "[!!!] SIGSYS handler got a violation from a seccomp filter! nr: %d | abi: %u",
+                          nr,
+                          abi);
+    in_sigsys_handler = false;
+    BIPAN_PANIC();
+  }
 
   long arg0 = (long)ctx->uc_mcontext.regs[0];
   long arg1 = (long)ctx->uc_mcontext.regs[1];
@@ -225,17 +236,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_getsockname) {
     long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
-    if (nativeRet != 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Native (getsockname) failed. Ret: %d", (int)nativeRet);
-      BIPAN_PANIC();
+    if (nativeRet == 0) {
+      struct sockaddr* s = (struct sockaddr*)arg1;
+      scrub_socket(s);
     }
-    if (arg1 == 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(getsockname): sockaddr is null. Aborting for privacy.");
-      BIPAN_PANIC();
-    }
-
-    struct sockaddr* s = (struct sockaddr*)arg1;
-    scrub_socket(s);
 
     in_sigsys_handler = false;
     ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
@@ -459,7 +463,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 }
 
 static inline void scrub_socket(struct sockaddr* s) {
-  if (!s) return;
+  if (!s) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "scrub_socket: got null sockaddr struct!");
+    return;
+  }
 
   if (s->sa_family == AF_INET) {
     struct sockaddr_in* sin = (struct sockaddr_in*)s;
@@ -550,7 +557,7 @@ static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_co
                         "pc=%p | lr=%p | fp=%p | sp=%p",
                         pc, lr, fp, sp);
 
-  // TODO: just like in Broker Assistant, this isn't AS-safe                      
+  // TODO: just like in Broker Assistant, this isn't AS-safe
   print_backtrace();
   BIPAN_PANIC();
 }
