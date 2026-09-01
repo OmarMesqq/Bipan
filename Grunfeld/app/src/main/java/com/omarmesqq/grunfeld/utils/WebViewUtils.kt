@@ -43,6 +43,7 @@ object WebViewUtils {
             setGeolocationEnabled(false)
             setSupportZoom(false)
             mixedContentMode = MIXED_CONTENT_NEVER_ALLOW
+            userAgentString = "Grunfeld/1.7.0"
         }
 
         webView.webViewClient = object : WebViewClient() {

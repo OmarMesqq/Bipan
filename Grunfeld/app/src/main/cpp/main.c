@@ -97,8 +97,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobjec
 }
 
 
-
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
     char report[1024] = {0};
@@ -111,16 +109,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
 
     ret = statfs("/system/etc/hosts", &b1);
     if (ret != 0) {
-        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) failed. errno: %s\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) failed.\nerrno: %s\n\n", strerror(errno));
         strcat(report, entry);
     } else {
-        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) succeeded :/\n");
+        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) succeeded :/\n\n");
         strcat(report, entry);
     }
 
     ret = statfs("/etc/hosts", &b2);
     if (ret != 0) {
-        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) failed. errno: %s\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) failed.\nerrno: %s\n", strerror(errno));
         strcat(report, entry);
     } else {
         snprintf(entry, sizeof(entry), "statfs(/etc/hosts) succeeded :/\n");
@@ -1174,7 +1172,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
-        char ip[INET_ADDRSTRLEN];
+        char ip[INET_ADDRSTRLEN] = {0};
         inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
         snprintf(entry, sizeof(entry), "socket IP: %s\n", ip);
     } else {
