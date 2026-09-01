@@ -42,7 +42,7 @@
 
 static const char* proto_to_str(int proto);
 static const char* fam_to_str(int fam);
-static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context);
+static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
 static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
@@ -1241,14 +1241,37 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
     return (*env)->NewStringUTF(env, result_str);
 }
 
+// TODO: maybe try with our kernel struct to bypass ART
+static char g_altstack[SIGSTKSZ * 4];
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* env, jobject thiz) {
-  struct sigaction sa = {0};
-  sa.sa_sigaction = sigsys_log_handler;
-  sa.sa_flags = SA_SIGINFO;
+    long ret = -1;
 
-  long ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa, 0, 8, 0, 0);
+    // Altstack setup
+    stack_t ss = {0};
+    ss.ss_sp = g_altstack;
+    ss.ss_size = sizeof(g_altstack);
+    ss.ss_flags = 0;
+    ret = sigaltstack(&ss, NULL);
   if (ret != 0) {
+        LOGE("sigaltstack failed (errno: %s)", strerror(errno));
+        return JNI_FALSE;
+    }
+
+    struct sigaction sigsysAct = {0};
+    sigsysAct.sa_sigaction = grunfeld_sigsys_handler;
+    sigsysAct.sa_flags = SA_SIGINFO | SA_ONSTACK;
+
+    // Act "cleansing"
+    ret = sigemptyset(&sigsysAct.sa_mask);
+    if (ret != 0) {
+        LOGE("sigemptyset failed (errno: %s)", strerror(errno));
+        return JNI_FALSE;
+    }
+    // Actual SIGSYS registration
+    ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sigsysAct, 0, 8, 0, 0);
+    if (ret != 0) {
+        LOGE("sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
       return JNI_FALSE;
   }
 
@@ -1680,7 +1703,7 @@ static const char* fam_to_str(int fam) {
     }
 }
 
-static void sigsys_log_handler(int sig, siginfo_t* info, void* void_context) {
+static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     ucontext_t* ctx = (ucontext_t*)void_context;
     int nr = info->si_syscall;
 

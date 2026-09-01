@@ -59,7 +59,7 @@ bool registerAssistSigHandlers() {
 
   // Unified act for important signals
   struct sigaction act = {};
-  act.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
+  act.sa_flags = SA_SIGINFO | SA_ONSTACK;
   act.sa_sigaction = &bipan_broker_signal_handler;
 
   ret = sigemptyset(&act.sa_mask);
