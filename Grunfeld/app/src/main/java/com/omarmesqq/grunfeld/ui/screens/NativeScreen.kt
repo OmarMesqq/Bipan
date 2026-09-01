@@ -58,7 +58,6 @@ fun NativeScreen() {
     var statfsHostsInfo by remember { mutableStateOf("") }
 
     var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
-    var procSelfTaskInfo by remember { mutableStateOf("/proc/self/task not inspected yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
     var procSelfSmapsInfo by remember { mutableStateOf("/proc/self/smaps not studied yet") }
@@ -118,6 +117,99 @@ fun NativeScreen() {
                     ) {
                         Text("Fetch Media DRM ID")
                     }
+                }
+            }
+
+            SectionHeader("SIGNAL HANDLING")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { NativeLibWrapper.raiseSegv() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("raise(SIGSEGV)")
+                    }
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { NativeLibWrapper.raiseAbrt() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("raise(SIGABRT)")
+                    }
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { NativeLibWrapper.raiseTrap() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("raise(SIGTRAP)")
+                    }
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { NativeLibWrapper.raiseQuit() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("raise(SIGQUIT)")
+                    }
+                }
+            }
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                Button(
+                    onClick = {
+                        val installed = NativeLibWrapper.installSigsysHandler()
+                        if (!installed) {
+                            signalHandlerStatus = "Failed to install handler"
+                            return@Button
+                        }
+
+                        val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
+                        signalHandlerStatus = if (actionCaptured) {
+                            "Installed and captured!"
+                        } else {
+                            "Installed, but failed to capture trigger"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sigaction SIGSYS")
+                }
+            }
+
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                Button(
+                    onClick = {
+                        val success = NativeLibWrapper.blockSigSys()
+                        sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("sigprocmask SIGSYS")
                 }
             }
 
@@ -327,53 +419,10 @@ fun NativeScreen() {
                 }
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Show program's threads", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfTaskInfo, "/proc/self/task not read yet")
-                    Button(onClick = { procSelfTaskInfo = NativeLibWrapper.testProcSelfTask() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("read /proc/self/task")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CodeTitle("fork()/exec()")
                     ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
                     Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
                         Text("Create a child process and inspect its result")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                    Button(
-                        onClick = {
-                            val installed = NativeLibWrapper.installSigsysHandler()
-                            if (!installed) {
-                                signalHandlerStatus = "Failed to install handler"
-                                return@Button
-                            }
-                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
-                            signalHandlerStatus = if (actionCaptured) "Installed and captured!" else "Installed, but failed to capture trigger"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("sigaction SIGSYS")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                    Button(
-                        onClick = {
-                            val success = NativeLibWrapper.blockSigSys()
-                            sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("sigprocmask SIGSYS")
                     }
                 }
             }
