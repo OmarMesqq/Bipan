@@ -60,16 +60,16 @@ struct kernel_sigaction {
 void registerSignalHandler() {
   long ret = -1;
 
-  // struct kernel_sigaction sa_SYS = {};
-  // sa_SYS.sa_handler = sigsys_handler;
+  struct kernel_sigaction sa_SYS = {};
+  sa_SYS.sa_handler = sigsys_handler;
   // TODO: maybe this guy benefits from altstack too
-  // sa_SYS.sa_flags = SA_SIGINFO;
+  sa_SYS.sa_flags = SA_SIGINFO;
 
-  // ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
-  // if (ret != 0) {
-  //   write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
-  //   BIPAN_PANIC();
-  // }
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
+    BIPAN_PANIC();
+  }
 
 #ifdef IN_APP_ADDITIONAL_HANDLERS
   // Setup auxiliary stack
@@ -210,6 +210,59 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   long arg3 = (long)ctx->uc_mcontext.regs[3];
   long arg4 = (long)ctx->uc_mcontext.regs[4];
   long arg5 = (long)ctx->uc_mcontext.regs[5];
+
+  if (nr == __NR_rt_sigaction) {
+    int signal = (int)arg0;
+    const struct sigaction* act = (const struct sigaction*)arg1;
+    const struct sigaction* oldact = (const struct sigaction*)arg2;
+
+    const char* actStr = (act == nullptr) ? "NULL" : "Valid";
+    const char* oldactStr = (oldact == nullptr) ? "NULL" : "Valid";
+
+    switch (signal) {
+      case SIGSYS: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSYS) spoofed-> act: %s | oldact: %s", actStr, oldactStr);
+        ctx->uc_mcontext.regs[0] = 0;
+        in_sigsys_handler = false;
+        return;
+      }
+      case SIGABRT: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGABRT)-> act: %s | oldact: %s", actStr, oldactStr);
+        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+        in_sigsys_handler = false;
+        return;
+      }
+      case SIGTRAP: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGTRAP)-> act: %s | oldact: %s", actStr, oldactStr);
+        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+        in_sigsys_handler = false;
+        return;
+      }
+      case SIGSEGV: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSEGV)-> act: %s | oldact: %s", actStr, oldactStr);
+        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+        in_sigsys_handler = false;
+        return;
+      }
+      case SIGQUIT: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGQUIT)-> act: %s | oldact: %s", actStr, oldactStr);
+        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+        in_sigsys_handler = false;
+        return;
+      }
+      default: {
+        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(%d)-> act: %s | oldact: %s", signal, actStr, oldactStr);
+        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+        in_sigsys_handler = false;
+        return;
+      }
+    }
+  }
 
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
@@ -414,8 +467,17 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     if (pre_fd >= 0) {
       arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
+                          "(SIGSYS handler) ACTION_EXIT_PROCESS(%s) BEFORE IPC unlock",
+                          (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
+
     ipc_mem->status = IDLE;
     unlock_ipc();
+
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
+                          "(SIGSYS handler) ACTION_EXIT_PROCESS(%s) AFTER IPC unlock",
+                          (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
 
     in_sigsys_handler = false;
 
@@ -428,6 +490,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // fork/exec family handling:
     // clear reentrancy flag and IPC lock before the exec'ing
     if (nr == __NR_execve || nr == __NR_execveat) {
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
+                            "(SIGSYS handler) ACTION_EXECUTE_NATIVE - execve(%s) BEFORE IPC unlock",
+                            (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
       in_sigsys_handler = false;
       ipc_mem->status = IDLE;
       unlock_ipc();
@@ -439,6 +504,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // so we restore the state so that the cleanup
     // code at the bottom doesn't double-unlock
     if (nr == __NR_execve || nr == __NR_execveat) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
+                            "(SIGSYS handler) ACTION_EXECUTE_NATIVE - execve(%s) failed!",
+                            (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
       lock_ipc();
       in_sigsys_handler = true;
     }

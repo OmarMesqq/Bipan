@@ -1,21 +1,24 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.net.http.SslError
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
-import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
+import android.webkit.WebSettings.MENU_ITEM_PROCESS_TEXT
 import android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
 import android.webkit.WebStorage
 import android.webkit.WebView
+import android.webkit.WebView.clearClientCertPreferences
+import android.webkit.WebView.setWebContentsDebuggingEnabled
 import android.webkit.WebViewClient
 import androidx.compose.runtime.MutableState
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 
 private const val TAG = "WebViewUtils"
+private const val UA = "Grunfeld/${BuildConfig.VERSION_NAME}"
 
 object WebViewUtils {
     fun configureSettings(
@@ -24,6 +27,8 @@ object WebViewUtils {
         isLoading: MutableState<Boolean>,
         urlText: MutableState<String>
     ) {
+        setWebContentsDebuggingEnabled(false)
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, false)
@@ -33,6 +38,7 @@ object WebViewUtils {
 
         webView.settings.apply {
             javaScriptEnabled = true
+            isAlgorithmicDarkeningAllowed = true
             domStorageEnabled = false
             javaScriptCanOpenWindowsAutomatically = false
             safeBrowsingEnabled = false
@@ -43,7 +49,15 @@ object WebViewUtils {
             setGeolocationEnabled(false)
             setSupportZoom(false)
             mixedContentMode = MIXED_CONTENT_NEVER_ALLOW
-            userAgentString = "Grunfeld/1.7.0"
+            userAgentString = UA
+            offscreenPreRaster = false
+            disabledActionModeMenuItems = MENU_ITEM_PROCESS_TEXT
+            cacheMode = LOAD_CACHE_ELSE_NETWORK
+
+            saveFormData = false
+            databaseEnabled = false
+            allowUniversalAccessFromFileURLs = false
+            allowFileAccessFromFileURLs = false
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -85,24 +99,12 @@ object WebViewUtils {
                     return WebResourceResponse("image/png", "UTF-8", null)
                 }
 
-                // Stop Cookie Consent banner
+                // Stop Cookie Consent banner from deviceinfo[.].me
                 if (url.contains("cookieconsent-js.js")) {
                     return WebResourceResponse("text/plain", "utf-8", null)
                 }
 
                 return null
-            }
-            override fun onReceivedSslError(
-                view: WebView?,
-                handler: SslErrorHandler?,
-                error: SslError?
-            ) {
-                if (BuildConfig.DEBUG) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "onReceivedSslError: $error")
-                     handler?.proceed()
-                } else {
-                    super.onReceivedSslError(view, handler, error)
-                }
             }
         }
 
@@ -125,6 +127,8 @@ object WebViewUtils {
             clearCache(true)
             clearHistory()
             clearFormData()
+            clearSslPreferences()
+            clearClientCertPreferences(null)
         }
     }
 
