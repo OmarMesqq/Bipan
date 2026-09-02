@@ -393,6 +393,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
               Log.i(TAG, "Blinded: queryIntentServices RESPOND_VIA_MESSAGE");
               return emptyParceledListSlice();
             }
+            if ("android.adservices.MEASUREMENT_SERVICE".equals(action)) {
+              Log.i(TAG, "Blinded: queryIntentServices adservices.MEASUREMENT_SERVICE");
+              return emptyParceledListSlice();
+            }
             Log.w(TAG, "queryIntentServices: Allowing Intent: " + dumpIntent(intent));
           }
           return method.invoke(originalPM, args);
@@ -628,7 +632,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Object result = method.invoke(originalPM, args);
-          // Log.w(TAG, "Allowing PM method: " + method.getName());
+          Log.w(TAG, "Allowing PM method: " + method.getName());
           return result;
         }
       }
