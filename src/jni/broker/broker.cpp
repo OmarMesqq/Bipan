@@ -300,9 +300,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
 #ifdef BROKER_DEBUG_LOGGING
-        int dirfd = (int)ipc_mem->arg0;
         if (shouldLog(path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
+          int dirfd = (int)ipc_mem->arg0;
+          bool isRelativeLookup = (dirfd == AT_FDCWD);
+          if (isRelativeLookup) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: AT_FDCWD) allowed", path);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
+          }
         }
 #endif
         break;
@@ -413,9 +418,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
 
 #ifdef BROKER_DEBUG_LOGGING
-        int fd = (int)ipc_mem->arg0;
         if (shouldLog(path)) {
-          write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
+          int fd = (int)ipc_mem->arg0;
+          bool isRelativeLookup = (fd == AT_FDCWD);
+          if (isRelativeLookup) {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: AT_FDCWD) allowed", path);
+          } else {
+            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "newfstatat(%s) (fd: %d) allowed", path, fd);
+          }
         }
 #endif
         break;
