@@ -237,85 +237,72 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
 }
 
 void prefetchMaps(pid_t pid) {
-  if (current_maps.empty()) {
-    char proc_pid_maps_path[PATH_MAX] = {0};
-    snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
+  if (!current_maps.empty()) {
+    return;
+  }
 
-    FILE* f = fopen(proc_pid_maps_path, "re");
-    if (!f) {
-      write_to_logcat_async(ANDROID_LOG_WARN, TAG, "prefetchMaps: Failed to open remote's %s", proc_pid_maps_path);
-      return;
+  char proc_pid_maps_path[PATH_MAX] = {0};
+  snprintf(proc_pid_maps_path, sizeof(proc_pid_maps_path), "/proc/%d/maps", pid);
+
+  FILE* f = fopen(proc_pid_maps_path, "re");
+  if (!f) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: Failed to open remote's %s", proc_pid_maps_path);
+    return;
+  }
+
+  char line[PATH_MAX] = {0};
+  while (fgets(line, sizeof(line), f)) {
+    if (!isxdigit(static_cast<unsigned char>(line[0]))) {
+      continue;
     }
-    char line[PATH_MAX] = {0};
-    while (fgets(line, sizeof(line), f)) {
-      if (!isxdigit(line[0])) {
-        continue;
-      }
 
-      uintptr_t start = 0;
-      uintptr_t end = 0;
-      uintptr_t offset = 0;
-      char perms[5] = {0};
-      char devMajor[8] = {0};
-      char devMinor[8] = {0};
-      size_t libInode = 0;
-      char libName[PATH_MAX] = {0};
+    uintptr_t start = 0, end = 0, offset = 0;
+    char perms[5] = {0};
+    unsigned dev_major = 0, dev_minor = 0;
+    unsigned long inode = 0;
 
-      int ret = sscanf(line,
-                       "%lx-%lx %4s %lx %7[^:]:%7s %zu %s",
-                       &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
+    int n = sscanf(line, "%lx-%lx %4s %lx %x:%x %lu",
+                   &start, &end, perms, &offset, &dev_major, &dev_minor, &inode);
+    if (n < 7 || start >= end) {
+      continue;
+    }
 
-      if (ret != 7 && ret != 8) {
-#ifdef BROKER_UNWINDER_LOGGING
-        write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t[*] prefetchMaps: Skipping malformed maps line: %s", line);
-#endif
-        continue;
-      }
-
-      if (start >= end) {
-#ifdef BROKER_UNWINDER_LOGGING
-        write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t[*] prefetchMaps: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
-#endif
-        continue;
-      }
-
-      std::string lib_path(libName);
-
-      // Empty lib/malformed libname fallback 1
-      if (lib_path.empty()) {
-        lib_path = UNKNOWN_LIB_FRAME_NAME;
-        current_maps.push_back({start, end, offset, lib_path});
+    char* path = line;
+    for (int i = 0; i < 6; i++) {
+      path = strchr(path, ' ');
+      if (!path) {
         break;
       }
-
-      // Extract the path
-      // 1st attempt: look for '/' or '[' (for [stack], [vdso], etc)
-      char* path_start = strchr(line, '/');
-      if (!path_start) {
-        // 2nd attempt: '[' (for things like [stack], [vdso], etc)
-        path_start = strchr(line, '[');
+      while (*path == ' ') {
+        path++;
       }
-
-      // Empty lib/malformed libname fallback 2
-      if (!path_start) {
-        lib_path = UNKNOWN_LIB_FRAME_NAME;
-        current_maps.push_back({start, end, offset, lib_path});
-        break;
-      }
-
-      current_maps.push_back({start, end, offset, std::string(path_start)});
     }
 
-    if (ferror(f)) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: error while reading %s", proc_pid_maps_path);
-    }
-    fclose(f);
-
-    if (current_maps.empty()) {
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: maps are still empty!");
+    std::string lib_path;
+    if (path && *path) {
+      char* nl = strchr(path, '\n');
+      if (nl) {
+        *nl = '\0';
+      }
+      lib_path = path;
     } else {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "maps successfully prefetched (size: %d)", current_maps.size());
+      lib_path = UNKNOWN_LIB_FRAME_NAME;
     }
+
+    // Always push every valid mapping
+    current_maps.push_back({start, end, offset, lib_path});
+  }
+
+  if (ferror(f)) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: error while reading %s", proc_pid_maps_path);
+  }
+  fclose(f);
+
+  if (current_maps.empty()) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "prefetchMaps: maps are still empty!");
+  } else {
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG,
+                          "maps successfully prefetched (size: %zu)", current_maps.size());
   }
 }
 
@@ -433,144 +420,90 @@ static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name
  * Otherwise, opens it and tries again
  */
 static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, pid_t pid) {
-  LIB_IN_MAPS_RET found = NOT_FOUND;
-
-  // Step 1: Check if Program Counter is in currently cached maps
+  // 1. Happy path: PC in existing cache
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
       strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
+      info->dli_fbase = m.start;
+      info->dli_offset = (pc - m.start) + m.offset;
       return FOUND;
     }
   }
 
-  // Step 2 (expected): cache missed: something was loaded -> refresh maps and try again
+  // 2. Cache miss: rebuild full list
   current_maps.clear();
 
   char proc_pid_maps_path[PATH_MAX] = {0};
-  snprintf(proc_pid_maps_path, PATH_MAX, "/proc/%d/maps", pid);
+  snprintf(proc_pid_maps_path, sizeof(proc_pid_maps_path), "/proc/%d/maps", pid);
 
   FILE* f = fopen(proc_pid_maps_path, "re");
   if (!f) {
-    write_to_logcat_async(ANDROID_LOG_WARN, TAG, "\tfind_lib_name_in_maps: Failed to open remote's %s", proc_pid_maps_path);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "find_lib_name_in_maps: Failed to open %s", proc_pid_maps_path);
     return FAILED;
   }
 
   char line[PATH_MAX] = {0};
   while (fgets(line, sizeof(line), f)) {
-    if (!isxdigit(line[0])) {
-#ifdef BROKER_UNWINDER_LOGGING
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
-#endif
+    if (!isxdigit(static_cast<unsigned char>(line[0]))) {
       continue;
     }
 
-    uintptr_t start = 0;
-    uintptr_t end = 0;
-    uintptr_t offset = 0;
+    uintptr_t start = 0, end = 0, offset = 0;
     char perms[5] = {0};
-    char devMajor[8] = {0};
-    char devMinor[8] = {0};
-    size_t libInode = 0;
-    char libName[PATH_MAX] = {0};
+    unsigned dev_major = 0, dev_minor = 0;
+    unsigned long inode = 0;
 
-    // Standard `maps` format: start-end perms offset dev inode path
-    int ret = sscanf(line,
-                     "%lx-%lx %4s %lx %7[^:]:%7s %zu %s",
-                     &start, &end, perms, &offset, devMajor, devMinor, &libInode, libName);
-
-    if (ret != 7 && ret != 8) {
-#ifdef BROKER_UNWINDER_LOGGING
-      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "\t\t[*] find_lib_name_in_maps: Skipping malformed maps line: %s", line);
-#endif
+    int n = sscanf(line, "%lx-%lx %4s %lx %x:%x %lu",
+                   &start, &end, perms, &offset, &dev_major, &dev_minor, &inode);
+    if (n < 7 || start >= end) {
       continue;
     }
 
-    if (start >= end) {
-#ifdef BROKER_UNWINDER_LOGGING
-      write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "\t\t[*] find_lib_name_in_maps: Error in maps line %s: start(%p) >= end(%p) ", line, (void*)start, (void*)end);
-#endif
-      continue;
-    }
-
-    std::string lib_path(libName);
-
-    // The PC is within this lib's range!
-    if (pc >= start && pc < end) {
-      info->dli_fbase = start;
-
-      // Offset calculation: (Actual Addr - Map Start) + File Offset
-      info->dli_offset = (pc - start) + offset;
-
-      // Empty lib/malformed libname fallback 1
-      if (lib_path.empty()) {
-        lib_path = UNKNOWN_LIB_FRAME_NAME;
-        strncpy(info->dli_fname, lib_path.c_str(), lib_path.size());
-        found = FOUND;
-
-        // Update cache
-        current_maps.push_back({start, end, offset, lib_path});
+    char* path = line;
+    for (int i = 0; i < 6; i++) {
+      path = strchr(path, ' ');
+      if (!path) {
         break;
       }
-
-      // Extract the path
-      // 1st attempt: look for '/' or '[' (for [stack], [vdso], etc)
-      char* path_start = strchr(line, '/');
-      if (!path_start) {
-        // 2nd attempt: '[' (for things like [stack], [vdso], etc)
-        path_start = strchr(line, '[');
+      while (*path == ' ') {
+        path++;
       }
-
-      // Empty lib/malformed libname fallback 2
-      if (!path_start) {
-        strcpy(info->dli_fname, UNKNOWN_LIB_FRAME_NAME);
-        found = FOUND;
-
-        // Update cache
-        current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
-        break;
-      }
-
-      // Strip the trailing newline fgets() leaves in `line` — without this,
-      // dli_fname ends up with an embedded '\n', which breaks open() on the
-      // resulting path (ENOENT) even though the path looks correct when logged.
-      char* newline = strchr(path_start, '\n');
-      if (newline) {
-        *newline = '\0';
-      }
-
-      strncpy(info->dli_fname, path_start, sizeof(info->dli_fname) - 1);
-      found = FOUND;
-
-      // Update cache
-      current_maps.push_back({start, end, offset, std::string(info->dli_fname)});
-      break;
     }
 
-    // If it's not, keep on looping...
-  }
+    std::string lib_path;
+    if (path && *path) {
+      char* nl = strchr(path, '\n');
+      if (nl) {
+        *nl = '\0';
+      }
+      lib_path = path;
+    } else {
+      lib_path = UNKNOWN_LIB_FRAME_NAME;
+    }
 
-  if (ferror(f)) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Error while reading %s", proc_pid_maps_path);
+    // Always push every valid mapping
+    current_maps.push_back({start, end, offset, lib_path});
   }
   fclose(f);
 
-  if (current_maps.empty()) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "find_lib_name_in_maps: No maps found for PID %d", pid);
-  }
-
-  // Final step: Check PC again in fresh maps
+  // 3. Search the full list
   for (const auto& m : current_maps) {
     if (pc >= m.start && pc < m.end) {
       strncpy(info->dli_fname, m.libName.c_str(), sizeof(info->dli_fname) - 1);
-      found = FOUND;
-      return found;
+      info->dli_fbase = m.start;
+      info->dli_offset = (pc - m.start) + m.offset;
+      return FOUND;
     }
   }
 
-#ifdef BROKER_UNWINDER_LOGGING
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "find_lib_name_in_maps: Ultimate fallthrough. Failed to find.");
-#endif
-  return found;
+  if (current_maps.empty()) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "find_lib_name_in_maps: could not parse any maps for PID %d", pid);
+  } else {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
+                          "find_lib_name_in_maps: PC %p not covered by any mapping (maps size %zu)",
+                          (void*)pc, current_maps.size());
+  }
+  return NOT_FOUND;
 }
 
 static inline bool is_trusted_lib(const char* lib_path) {
