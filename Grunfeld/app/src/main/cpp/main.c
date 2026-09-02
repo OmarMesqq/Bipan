@@ -72,7 +72,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     }
 
     athenaInit(env);
-    // requestJavaBacktrace();
     return JNI_VERSION_1_6;
 }
 

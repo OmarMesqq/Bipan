@@ -217,7 +217,6 @@ static void athena_sig_handler(int sig, siginfo_t* info, void* void_context) {
     
     // TODO: not AS-safe
     print_native_backtrace();
-    // print_java_backtrace(g_jniEnv);
     arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0);
 }
 
