@@ -51,9 +51,9 @@ typedef struct {
   // Paths
   char string_payload[IPC_STRING_STRUCT_BUF_SIZ];
   // Binary data structs (e.g. `sockaddr`s)
-  uint8_t struct_payload[IPC_STRING_STRUCT_BUF_SIZ];
+  uint8_t struct_payload[IPC_PACKAGE_NAME_BUF_SIZ];
   // Data returned by Broker for syscalls like `uname` and `readlinkat`
-  uint8_t out_buffer[IPC_STRING_STRUCT_BUF_SIZ];
+  uint8_t out_buffer[PATH_MAX];
 
   int action;
   long ret;  // return value provided by kernel
