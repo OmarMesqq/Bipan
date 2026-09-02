@@ -60,8 +60,15 @@ bool shouldLog(const char* pathname) {
       starts_with(pathname, "/product/app/webview") ||
       starts_with(pathname, "/sys/devices/system/cpu") ||
       starts_with(pathname, "/proc/sys/kernel/random/boot_id") ||
+      starts_with(pathname, "/data/misc/user/0/cacerts-") ||
       starts_with(pathname, "/system/fonts") ||
       starts_with(pathname, "/vendor/fonts") ||
+      starts_with(pathname, "/data/misc/keychain") ||
+      starts_with(pathname, "/data/local/debug/vulkan") ||
+      starts_with(pathname, "/vendor/etc/mali_platform.config") ||
+      starts_with(pathname, "/system/etc/llndk.libraries.txt") ||
+      starts_with(pathname, "/system/lib64/libwebview") ||
+      starts_with(pathname, "/data/local/chrome-trace-config.json") ||
       starts_with(pathname, "/odm/lib64/hw") ||
       starts_with(pathname, "/product/fonts") ||
       starts_with(pathname, "/apex/com.android") ||
@@ -94,6 +101,7 @@ bool shouldLog(const char* pathname) {
     if (strstr(pathname, "/cmdline") ||
         strstr(pathname, "/oom") ||
         strstr(pathname, "/comm") ||
+        strstr(pathname, "/task") ||
         strstr(pathname, "/stat") ||
         strstr(pathname, "/pagemap") ||
         strstr(pathname, "/clear_refs") ||
@@ -126,10 +134,7 @@ bool shouldLog(const char* pathname) {
 }
 
 bool shouldSpoofExistence(const char* pathname) {
-  if (
-      // starts_with(pathname, "/data/misc/user/0/cacerts-added") ||
-      // starts_with(pathname, "/data/misc/user/0/cacerts-removed") ||
-      starts_with(pathname, "/proc/meminfo_extra")) {
+  if (starts_with(pathname, "/proc/meminfo_extra")) {
     return true;
   }
 
