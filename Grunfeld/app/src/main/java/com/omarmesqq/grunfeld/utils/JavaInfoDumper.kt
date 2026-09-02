@@ -948,19 +948,6 @@ fun readLogcatWithProcessBuilder(): String {
     return sb.toString()
 }
 
-fun DumpStackTraceAt(tr: Throwable, th: Thread) : String {
-    val sb = StringBuilder()
-
-    val trMsg = Log.getStackTraceString(tr)
-    sb.appendLine("Throwable Stack Trace Msg: $trMsg")
-
-    val threadName = th.name
-    val threadStackTrace = th.stackTrace
-    sb.appendLine("Thread $threadName Stack Trace: ${stackToString(threadStackTrace)}")
-
-    return sb.toString()
-}
-
 private fun stackToString(frames: Array<StackTraceElement>): String {
     return frames.joinToString("\n") { "at $it" }
 }

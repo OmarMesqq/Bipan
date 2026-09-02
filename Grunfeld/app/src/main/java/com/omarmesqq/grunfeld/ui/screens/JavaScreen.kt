@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import android.app.Activity
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
@@ -25,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.DumpJavaInfo
@@ -77,7 +75,6 @@ fun JavaInfoScreen() {
     var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
 
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
-    var stackTraceInfo by remember { mutableStateOf("Stack trace info not queried") }
 
     Column(
         modifier = Modifier
@@ -299,21 +296,6 @@ fun JavaInfoScreen() {
                 Text("Dump prop contexts")
             }
             ReportTextWithCopy(devPropsInfo, "Dev properties not queried")
-        }
-
-        SectionHeader("ANTI-TAMPER")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    val activity = context as? Activity
-                    val app = activity?.application as MainApplication
-                    stackTraceInfo = app.baseCtxStackTrace
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Dump early application's stack trace")
-            }
-            ReportTextWithCopy(stackTraceInfo, "", MaterialTheme.typography.bodyMedium)
         }
     }
 }
