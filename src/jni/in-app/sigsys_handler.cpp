@@ -15,6 +15,8 @@
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline void scrub_socket(struct sockaddr* s);
+static char g_altstack[SIGSTKSZ * 4];
+
 #ifdef IN_APP_ADDITIONAL_HANDLERS
 #include <dlfcn.h>
 #include <sys/mman.h>
@@ -33,7 +35,6 @@ static struct sigaction old_segv = {};
 static struct sigaction old_abrt = {};
 static struct sigaction old_trap = {};
 static struct sigaction old_quit = {};
-static char g_altstack[SIGSTKSZ * 4];
 
 static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_context);
 #endif
@@ -49,29 +50,9 @@ __attribute__((always_inline)) static inline long long ns_now(void) {
 }
 #endif
 
-#ifdef IN_APP_RAW_SIGNAL_REGISTRATION
-struct kernel_sigaction {
-  void (*sa_handler)(int, siginfo_t*, void*);
-  unsigned long sa_flags;
-  void (*sa_restorer)(void);
-  uint64_t sa_mask;
-};
-
 void registerSignalHandler() {
   long ret = -1;
 
-  struct kernel_sigaction sa_SYS = {};
-  sa_SYS.sa_handler = sigsys_handler;
-  // TODO: maybe this guy benefits from altstack too
-  sa_SYS.sa_flags = SA_SIGINFO;
-
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
-    BIPAN_PANIC();
-  }
-
-#ifdef IN_APP_ADDITIONAL_HANDLERS
   // Setup auxiliary stack
   stack_t ss = {};
   ss.ss_sp = g_altstack;
@@ -84,7 +65,25 @@ void registerSignalHandler() {
     BIPAN_PANIC();
   }
 
-  // Single act for SIGSYS
+#ifdef IN_APP_RAW_SIGNAL_REGISTRATION
+  struct kernel_sigaction {
+    void (*sa_handler)(int, siginfo_t*, void*);
+    unsigned long sa_flags;
+    void (*sa_restorer)(void);
+    uint64_t sa_mask;
+  };
+
+  struct kernel_sigaction sa_SYS = {};
+  sa_SYS.sa_handler = sigsys_handler;
+  // Pass SA_NODEFER during development to catch recursions
+  sa_SYS.sa_flags = SA_SIGINFO | SA_ONSTACK;
+
+  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
+  if (ret != 0) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
+    BIPAN_PANIC();
+  }
+#else
   struct sigaction actSys = {};
   // Pass SA_NODEFER during development to catch recursions
   actSys.sa_flags = SA_SIGINFO | SA_ONSTACK;
@@ -101,7 +100,9 @@ void registerSignalHandler() {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
     BIPAN_PANIC();
   }
+#endif
 
+#ifdef IN_APP_ADDITIONAL_HANDLERS
   // Unified act for important signals
   struct sigaction act = {};
   act.sa_flags = SA_SIGINFO | SA_ONSTACK;
@@ -139,50 +140,8 @@ void registerSignalHandler() {
   }
 
   write_to_logcat_async(ANDROID_LOG_INFO, TAG, "In-app additional handlers installed on altstack, size=%zu", sizeof(g_altstack));
-
 #endif
 }
-#else
-void registerSignalHandler() {
-  struct sigaction act = {
-      .sa_flags = SA_SIGINFO,
-      .sa_sigaction = &sigsys_handler};
-
-  int ret = sigaction(SIGSYS, &act, nullptr);
-  if (ret != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
-    BIPAN_PANIC();
-  }
-#ifdef IN_APP_ADDITIONAL_HANDLERS
-  struct sigaction additionalAct = {
-      .sa_flags = SA_SIGINFO,
-      .sa_sigaction = &bipan_additional_sig_handler};
-
-  ret = sigemptyset(&additionalAct.sa_mask);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigemptyset(additional signals) failed (errno: %s)", strerror(errno));
-    BIPAN_PANIC();
-  }
-
-  ret = sigaction(SIGABRT, &additionalAct, &old_abrt);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
-    BIPAN_PANIC();
-  }
-  ret = sigaction(SIGSEGV, &additionalAct, &old_segv);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
-    BIPAN_PANIC();
-  }
-
-  ret = sigaction(SIGQUIT, &additionalAct, &old_quit);
-  if (ret == -1) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGQUIT) failed (errno: %s)", strerror(errno));
-    BIPAN_PANIC();
-  }
-#endif
-}
-#endif
 
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
@@ -197,12 +156,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   int nr = info->si_syscall;
   unsigned abi = info->si_arch;
   int sigCode = info->si_code;
-
-  if (sigCode == SYS_SECCOMP) {
-    // write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Violation from a seccomp filter. nr: %d | abi: %u", nr, abi);
-  } else {
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Violation from user dispatch. nr: %d | abi: %u", nr, abi);
-  }
+  (void)sigCode;
+  (void)abi;
 
   long arg0 = (long)ctx->uc_mcontext.regs[0];
   long arg1 = (long)ctx->uc_mcontext.regs[1];
@@ -213,55 +168,15 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_rt_sigaction) {
     int signal = (int)arg0;
-    const struct sigaction* act = (const struct sigaction*)arg1;
-    const struct sigaction* oldact = (const struct sigaction*)arg2;
-
-    const char* actStr = (act == nullptr) ? "NULL" : "Valid";
-    const char* oldactStr = (oldact == nullptr) ? "NULL" : "Valid";
-
-    switch (signal) {
-      case SIGSYS: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSYS) spoofed-> act: %s | oldact: %s", actStr, oldactStr);
-        ctx->uc_mcontext.regs[0] = 0;
-        in_sigsys_handler = false;
-        return;
-      }
-      case SIGABRT: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGABRT)-> act: %s | oldact: %s", actStr, oldactStr);
-        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
-        in_sigsys_handler = false;
-        return;
-      }
-      case SIGTRAP: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGTRAP)-> act: %s | oldact: %s", actStr, oldactStr);
-        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
-        in_sigsys_handler = false;
-        return;
-      }
-      case SIGSEGV: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSEGV)-> act: %s | oldact: %s", actStr, oldactStr);
-        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
-        in_sigsys_handler = false;
-        return;
-      }
-      case SIGQUIT: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGQUIT)-> act: %s | oldact: %s", actStr, oldactStr);
-        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
-        in_sigsys_handler = false;
-        return;
-      }
-      default: {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(%d)-> act: %s | oldact: %s", signal, actStr, oldactStr);
-        long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-        ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
-        in_sigsys_handler = false;
-        return;
-      }
+    if (signal == SIGSYS) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSYS) spoofed");
+      ctx->uc_mcontext.regs[0] = 0;
+    } else {
+      long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+      ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
     }
+    in_sigsys_handler = false;
+    return;
   }
 
   if (nr == __NR_listen) {
