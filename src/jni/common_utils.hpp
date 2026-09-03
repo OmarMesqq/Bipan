@@ -8,10 +8,12 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 
+#if defined(__aarch64__)
+
 /**
- * Executes a raw system call on ARM64
+ * Executes a raw system call on ARM64 (AArch64 EABI: syscall# in x8, args in x0-x5)
  */
-__attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+__attribute__((always_inline)) inline long raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
   register long x8 __asm__("x8") = sysno;
   register long x0 __asm__("x0") = a0;
   register long x1 __asm__("x1") = a1;
@@ -22,13 +24,39 @@ __attribute__((always_inline)) inline long arm64_raw_syscall(long sysno, long a0
 
   __asm__ volatile(
       "svc #0\n"
-      : "+r"(x0)                                              // Output: x0 will contain the return value
-      : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)  // Inputs
-      : "memory", "cc"                                        // Clobbers: memory and condition codes might change
-  );
+      : "+r"(x0)
+      : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+      : "memory", "cc");
 
   return x0;
 }
+
+#elif defined(__arm__)
+
+/**
+ * Executes a raw system call on ARM32 (EABI: syscall# in r7, args in r0-r5)
+ */
+__attribute__((always_inline)) inline long raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
+  register long r7 __asm__("r7") = sysno;
+  register long r0 __asm__("r0") = a0;
+  register long r1 __asm__("r1") = a1;
+  register long r2 __asm__("r2") = a2;
+  register long r3 __asm__("r3") = a3;
+  register long r4 __asm__("r4") = a4;
+  register long r5 __asm__("r5") = a5;
+
+  __asm__ volatile(
+      "svc #0\n"
+      : "+r"(r0)
+      : "r"(r7), "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r5)
+      : "memory", "cc");
+
+  return r0;
+}
+
+#else
+#error "raw_syscall: unsupported architecture"
+#endif
 
 #pragma clang diagnostic pop
 
