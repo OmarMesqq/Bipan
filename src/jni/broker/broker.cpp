@@ -965,7 +965,7 @@ static inline bool client_is_dead(int epfd, int sock, int pidfd) {
  * says it's an 'undeclared identifier'
  */
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
-  return (int)arm64_raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
+  return (int)raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);
 }
 
 // HEAP ALLOCATION:
