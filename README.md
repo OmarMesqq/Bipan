@@ -50,7 +50,7 @@ user-added CAs are shielded by Bipan.
 
 [2] This obviously breaks apps which may use this for good reasons such setting up a hotspot or a NAS-like server.
 
-To learn how Bipan does this refer to [this blog post](https://i2dk.com/essays/todo)
+To learn how Bipan does this refer to [this blog post (TO-DO)](https://i2dk.com/essays/todo)
 
 
 ## Usage
@@ -95,6 +95,56 @@ any sort of modification to the app's memory.
 5. Run the `build_module.sh` script
 6. The module's flashable zip will be at the project's root with the name `bipan.zip`
 
+### (Optional) Building Dobby
+Bipan leverages Dobby, an inline hooking framework, for, well, exactly that.
+This repo already includes Dobby's static libraries for Android 32 and 64 bits, but if you don't trust me or want full control you can build it yourself. Be ready for a journey though. It is a complicated lib.
+
+
+1. Clone Dobby in a sibling folder to Bipan
+```sh
+git clone https://github.com/jmpews/Dobby.git
+```
+
+2. Checkout a commit someone found out makes compilation work
+```sh
+cd Dobby
+git checkout 0932d69c320e786672361ab53825ba8f4245e9d3
+```
+
+3. Build 32-bit:
+```sh
+mkdir build-android-arm32 && cd build-android-arm32
+
+
+cmake .. \
+   -DCMAKE_TOOLCHAIN_FILE=$NDK_HOME/build/cmake/android.toolchain.cmake \
+   -DANDROID_ABI=armeabi-v7a \
+   -DANDROID_PLATFORM=android-21 \
+   -DDOBBY_DEBUG=OFF
+
+make
+
+```
+
+4. Build 64-bit:
+```sh
+mkdir build-android-arm64 && cd build-android-arm64
+
+cmake .. \
+   -DCMAKE_TOOLCHAIN_FILE=$NDK_HOME/build/cmake/android.toolchain.cmake \
+   -DANDROID_ABI=arm64-v8a \
+   -DANDROID_PLATFORM=android-21 \
+   -DDOBBY_DEBUG=OFF
+
+make
+
+```
+
+5. Copy the artifacts to Bipan
+```sh
+cp Dobby/build-android-arm32/libdobby.a Bipan/src/jni/deps/libdobby-32.a
+cp Dobby/build-android-arm64/libdobby.a Bipan/src/jni/deps/libdobby-64.a
+```
 
 ## Testing (does this work?)
 At the project's root you will find a folder named `Grunfeld`
