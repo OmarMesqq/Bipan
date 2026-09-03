@@ -75,7 +75,7 @@ inline bool isHostsFile(const char* pathname) {
  * NOT async-signal safe function to check if first arg
  * (`str`) has the string `prefix` as its leading chars
  */
-inline bool starts_with(const char* str, const char* prefix) {
+inline bool startsWith(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
