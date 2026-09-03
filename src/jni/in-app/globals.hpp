@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <unordered_set>
+#include <sys/syscall.h>
 
 #include "ipc_communication.hpp"
 
