@@ -37,7 +37,7 @@ bool initializeLogger() {
     return true;
   }
 
-  int fd = (int)arm64_raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
+  int fd = (int)raw_syscall(__NR_socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     return false;
   }
@@ -47,8 +47,8 @@ bool initializeLogger() {
   addr.sun_family = AF_UNIX;
   local_strncpy(addr.sun_path, LOGCAT_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
-  if (arm64_raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
-    arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+  if (raw_syscall(__NR_connect, fd, (long)&addr, sizeof(addr), 0, 0, 0) < 0) {
+    raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
     return false;
   }
 
@@ -64,7 +64,7 @@ bool destroyLogger() {
     return true;
   }
 
-  int ret = (int)arm64_raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
+  int ret = (int)raw_syscall(__NR_close, fd, 0, 0, 0, 0, 0);
   if (ret != 0) {
     return false;
   }
@@ -115,9 +115,9 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   }
 
   struct timespec now;
-  arm64_raw_syscall(__NR_clock_gettime, CLOCK_REALTIME, (long)&now, 0, 0, 0, 0);
+  raw_syscall(__NR_clock_gettime, CLOCK_REALTIME, (long)&now, 0, 0, 0, 0);
 
-  uint16_t tid = (uint16_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+  uint16_t tid = (uint16_t)raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
 
   struct log_header header;
   header.id = 0;  // MAIN
@@ -141,5 +141,5 @@ static inline void write_to_logcat_raw(android_LogPriority prio, const char* tag
   vec[3].iov_len = local_strlen(msg) + 1;
 
   // Atomic write to socket
-  arm64_raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
+  raw_syscall(__NR_writev, g_log_fd, (long)vec, 4, 0, 0, 0);
 }

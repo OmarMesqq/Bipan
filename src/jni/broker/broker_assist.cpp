@@ -147,7 +147,7 @@ static void kill_current_client() {
   }
 
   write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Broker dead. Killing orphaned client");
-  arm64_raw_syscall(__NR_kill, g_current_client_pid, SIGKILL, 0, 0, 0, 0);
+  raw_syscall(__NR_kill, g_current_client_pid, SIGKILL, 0, 0, 0, 0);
 }
 
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
