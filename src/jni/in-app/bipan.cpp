@@ -1,5 +1,5 @@
 #include <android/dlext.h>
-#include <android/sensor.h>
+#include <link.h>
 #include <stdint.h>
 #include <sys/mman.h>
 #include <sys/random.h>
@@ -13,10 +13,13 @@
 #include "common_utils.hpp"
 #include "deps/zygisk.hpp"
 #include "feature_flags.hpp"
-#include "hooks/native_hooks.hpp"
 #include "hooks/jni_hooks.hpp"
+#include "hooks/native/dl_iterate.hpp"
+#include "hooks/native/drm.hpp"
+#include "hooks/native/getifaddrs.hpp"
+#include "hooks/native/getprop.hpp"
+#include "hooks/native/sensors.hpp"
 #include "ipc_communication.hpp"
-
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
 
@@ -169,8 +172,6 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyNativeSensorsHooks();
     registerDobbyNativeSystemPropertiesHook();
     registerDobbyDrmHook();
-
-    preCacheIfaddrs();
     registerGetifaddrsHook();
 
     // Unseal the VM
