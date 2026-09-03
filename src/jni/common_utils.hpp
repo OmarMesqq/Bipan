@@ -35,9 +35,11 @@ __attribute__((always_inline)) inline long raw_syscall(long sysno, long a0, long
 
 /**
  * Executes a raw system call on ARM32 (EABI: syscall# in r7, args in r0-r5)
+ * Note: r7 is the Thumb frame-pointer register in debug builds, so it cannot
+ * be bound directly via `register long r7 __asm__("r7")` — it must be loaded
+ * inside the asm block and declared as a clobber instead.
  */
 __attribute__((always_inline)) inline long raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5) {
-  register long r7 __asm__("r7") = sysno;
   register long r0 __asm__("r0") = a0;
   register long r1 __asm__("r1") = a1;
   register long r2 __asm__("r2") = a2;
@@ -46,9 +48,12 @@ __attribute__((always_inline)) inline long raw_syscall(long sysno, long a0, long
   register long r5 __asm__("r5") = a5;
 
   __asm__ volatile(
+      "push {r7}\n"
+      "mov r7, %[sysno]\n"
       "svc #0\n"
+      "pop {r7}\n"
       : "+r"(r0)
-      : "r"(r7), "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r5)
+      : [sysno] "r"(sysno), "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r5)
       : "memory", "cc");
 
   return r0;
