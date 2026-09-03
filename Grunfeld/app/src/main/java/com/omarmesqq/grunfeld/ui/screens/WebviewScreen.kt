@@ -61,6 +61,7 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
         "https://start.duckduckgo.com/",
         "https://deviceinfo.me/",
         "https://browserleaks.com/",
+        "https://panopticlick.org",
         "https://www.cloudflare.com/ssl/encrypted-sni/",
         "https://cloudflare-quic.com/",
         "https://one.one.one.one/help",
