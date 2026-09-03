@@ -3,7 +3,12 @@ LOCAL_PATH := $(call my-dir)
 # Forward declare prebuilt static Dobby (.a) to Make
 include $(CLEAR_VARS)
 LOCAL_MODULE := dobby_static
-LOCAL_SRC_FILES := deps/libdobby.a
+
+ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
+    LOCAL_SRC_FILES := deps/libdobby-64.a
+else ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
+    LOCAL_SRC_FILES := deps/libdobby-32.a
+endif
 include $(PREBUILT_STATIC_LIBRARY)
 
 ifeq ($(BIPAN_DEBUG), 1)
