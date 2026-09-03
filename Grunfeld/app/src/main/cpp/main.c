@@ -277,8 +277,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
         int mode3 = R_OK; // exists and has read
 
         int flags1 = AT_EACCESS; // performs access using effective UID and GID
-        int flags2 = AT_SYMLINK_NOFOLLOW; // if symlink, return info about symlink
-        int flags3 = AT_SYMLINK_NOFOLLOW | AT_EACCESS;
 
 
         ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode2, flags1, 0, 0);
@@ -337,8 +335,8 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
         }
 
         int fd = (int) arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
-        if (fd == -1) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s)", cstr);
+        if (fd < 0) {
+            snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s). errno: %s", cstr, RAW_SYSCALL_TO_ERRNO(fd));
             (*env)->ReleaseStringUTFChars(env, jstr, cstr);
             (*env)->DeleteLocalRef(env, jstr);
             return (*env)->NewStringUTF(env, errorBuffer);
@@ -632,13 +630,16 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
     close(pipefd[1]); // Close writing end in parent
 
     char outputBuffer[1024] = {0};
-    ssize_t totalRead = 0;
+    size_t totalRead = 0;
 
     // Read output from child
-    ssize_t n;
+    ssize_t n = -1;
     while ((n = read(pipefd[0], outputBuffer + totalRead, sizeof(outputBuffer) - totalRead - 1)) > 0) {
-        totalRead += n;
-        if (totalRead >= sizeof(outputBuffer) - 1) break;
+        // here inside its definitely positive, gonna cast
+        totalRead += (size_t) n;
+        if (totalRead >= sizeof(outputBuffer) - 1) {
+            break;
+        }
     }
     close(pipefd[0]);
 
@@ -942,7 +943,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
     char entry[512] = {0};
     char errorBuffer[128] = {0};
     int fd = -1;
-    size_t used = 0;
     char symlinkPath[PATH_MAX] = {0};
 
     for (int i = 0; i < len; i++) {
@@ -1105,9 +1105,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobje
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSocket(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-
     SockFactoryRes* res = CreateSocket(Netlink, Raw, 0, 0, 0, NetlinkRoute);
     if (!res) {
         return (*env)->NewStringUTF(env, "Failed to create socket!\n");

@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.ComponentEnabledSetting;
 import android.content.pm.FeatureInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -402,12 +403,70 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           return method.invoke(originalPM, args);
         }
 
-        case "queryIntentContentProviders": {
+        case "resolveService": {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
-            Log.w(TAG, "queryIntentContentProviders: Allowing Intent: " + dumpIntent(intent));
+
+            boolean isSelfQuery = false;
+            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+              isSelfQuery = true;
+            }
+            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+              isSelfQuery = true;
+            }
+
+            if (isSelfQuery) {
+              return method.invoke(originalPM, args);
+            }
+
+            boolean isSafeQuery = false;
+            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
+              isSafeQuery = true;
+            }
+            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
+              isSafeQuery = true;
+            }
+
+            if (isSafeQuery) {
+              return method.invoke(originalPM, args);
+            }
+
+            Log.i(TAG, "resolveService: Blocked Intent: " + dumpIntent(intent));
+            return null;
           }
-          return method.invoke(originalPM, args);
+        }
+
+        case "resolveIntent": {
+          if (args != null && args.length > 0 && args[0] instanceof Intent) {
+            Intent intent = (Intent) args[0];
+
+            boolean isSelfQuery = false;
+            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+              isSelfQuery = true;
+            }
+            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+              isSelfQuery = true;
+            }
+
+            if (isSelfQuery) {
+              return method.invoke(originalPM, args);
+            }
+
+            boolean isSafeQuery = false;
+            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
+              isSafeQuery = true;
+            }
+            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
+              isSafeQuery = true;
+            }
+
+            if (isSafeQuery) {
+              return method.invoke(originalPM, args);
+            }
+
+            Log.i(TAG, "resolveIntent: Blocked Intent: " + dumpIntent(intent));
+            return null;
+          }
         }
 
         case "getInstalledApplications": {
@@ -618,6 +677,27 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           }
         }
 
+        case "setComponentEnabledSettings": {
+          if (args != null && args.length > 0) {
+            try {
+              @SuppressWarnings("unchecked")
+              List<ComponentEnabledSetting> cnes = (List<ComponentEnabledSetting>) args[0];
+
+              for (ComponentEnabledSetting cen : cnes) {
+                ComponentName cn = cen.getComponentName();
+                if (cn.toString().contains("androidx.work.impl.background.systemalarm.RescheduleReceiver")) {
+                  Log.i(TAG, "Neutered setComponentEnabledSettings for boot-aware component (RescheduleReceiver)");
+                  return null;
+                }
+                Log.w(TAG, "setComponentEnabledSettings: Allowing for ComponentName: " + cn.toString());
+              }
+              return method.invoke(originalPM, args);
+            } catch (Throwable ignored) {
+              return method.invoke(originalPM, args);
+            }
+          }
+        }
+
         case "getComponentEnabledSetting": {
           if (args != null && args.length > 0 && args[0] instanceof ComponentName) {
             ComponentName cn = (ComponentName) args[0];
@@ -632,7 +712,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Object result = method.invoke(originalPM, args);
-          Log.w(TAG, "Allowing PM method: " + method.getName());
+          // Log.w(TAG, "Allowing PM method: " + method.getName());
           return result;
         }
       }
