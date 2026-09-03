@@ -5,7 +5,6 @@
 #include <cstring>
 
 #include "../../../logger/logger.hpp"
-#include "../drm_hook.hpp"
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"

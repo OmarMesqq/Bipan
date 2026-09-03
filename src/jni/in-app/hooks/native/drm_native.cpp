@@ -1,4 +1,4 @@
-#include "drm.hpp"
+#include "drm_native.hpp"
 
 #include <dlfcn.h>
 #include <media/NdkMediaDrm.h>
@@ -6,7 +6,7 @@
 #include <cstring>
 
 #include "../../../logger/logger.hpp"
-#include "../drm_hook.hpp"
+#include "../common/drm_common.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"
 
@@ -34,7 +34,6 @@ void registerDobbyDrmHook(void) {
     return;
   }
 }
-
 
 // Hooks below
 static media_status_t my_AMediaDrm_getPropertyByteArray(AMediaDrm* drm, const char* propertyName, AMediaDrmByteArray* propertyValue) {

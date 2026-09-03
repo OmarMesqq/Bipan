@@ -1,11 +1,11 @@
-#include "drm_hook.hpp"
+#include "drm_common.hpp"
 
 #include <sys/random.h>
 
 #include <cstring>
 
-#include "../../logger/logger.hpp"
-#include "../globals.hpp"
+#include "../../../logger/logger.hpp"
+#include "in-app/globals.hpp"
 
 uint8_t kFakeId[DRM_ID_BUF_SIZE];
 bool kFakeIdReady = false;

@@ -1,5 +1,5 @@
-#ifndef DRM_HOOK_HPP
-#define DRM_HOOK_HPP
+#ifndef DRM_COMMON_HPP
+#define DRM_COMMON_HPP
 
 #include <cstddef>
 #include <cstdint>
