@@ -143,6 +143,34 @@ void registerSignalHandler() {
 #endif
 }
 
+#if defined(__aarch64__)
+
+#define BP_REG_R0 regs[0]
+#define BP_REG_R1 regs[1]
+#define BP_REG_R2 regs[2]
+#define BP_REG_R3 regs[3]
+#define BP_REG_R4 regs[4]
+#define BP_REG_R5 regs[5]
+#define BP_REG_R29 regs[29]
+#define BP_REG_R30 regs[30]
+#define BP_REG_PC pc
+
+#elif defined(__arm__)
+
+#define BP_REG_R0 arm_r0
+#define BP_REG_R1 arm_r1
+#define BP_REG_R2 arm_r2
+#define BP_REG_R3 arm_r3
+#define BP_REG_R4 arm_r4
+#define BP_REG_R5 arm_r5
+#define BP_REG_R29 arm_fp
+#define BP_REG_R30 arm_lr
+#define BP_REG_PC arm_pc
+
+#else
+#error "sigsys_handler: unsupported architecture"
+#endif
+
 static thread_local bool in_sigsys_handler = false;
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (in_sigsys_handler) {
@@ -159,21 +187,21 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   (void)sigCode;
   (void)abi;
 
-  long arg0 = (long)ctx->uc_mcontext.regs[0];
-  long arg1 = (long)ctx->uc_mcontext.regs[1];
-  long arg2 = (long)ctx->uc_mcontext.regs[2];
-  long arg3 = (long)ctx->uc_mcontext.regs[3];
-  long arg4 = (long)ctx->uc_mcontext.regs[4];
-  long arg5 = (long)ctx->uc_mcontext.regs[5];
+  long arg0 = (long)ctx->uc_mcontext.BP_REG_R0;
+  long arg1 = (long)ctx->uc_mcontext.BP_REG_R1;
+  long arg2 = (long)ctx->uc_mcontext.BP_REG_R2;
+  long arg3 = (long)ctx->uc_mcontext.BP_REG_R3;
+  long arg4 = (long)ctx->uc_mcontext.BP_REG_R4;
+  long arg5 = (long)ctx->uc_mcontext.BP_REG_R5;
 
   if (nr == __NR_rt_sigaction) {
     int signal = (int)arg0;
     if (signal == SIGSYS) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "sigaction(SIGSYS) spoofed");
-      ctx->uc_mcontext.regs[0] = 0;
+      ctx->uc_mcontext.BP_REG_R0 = 0;
     } else {
-      long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-      ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+      long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+      ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
     }
     in_sigsys_handler = false;
     return;
@@ -181,14 +209,14 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_listen) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(listen) spoofed to success");
-    ctx->uc_mcontext.regs[0] = 0;
+    ctx->uc_mcontext.BP_REG_R0 = 0;
     in_sigsys_handler = false;
     return;
   }
 
   if (nr == __NR_statx) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statx): replying not implemented");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
     in_sigsys_handler = false;
     return;
   }
@@ -197,20 +225,20 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     const char* path = (const char*)arg0;
     if (path && isHostsFile(path)) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) to hosts file: replying not implemented");
-      ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+      ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
       in_sigsys_handler = false;
       return;
     }
 
-    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+    long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
     in_sigsys_handler = false;
     return;
   }
 
   if (nr == __NR_sendmmsg) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(sendmmsg): replying not implemented");
-    ctx->uc_mcontext.regs[0] = (__u64)-ENOSYS;
+    ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
     in_sigsys_handler = false;
     return;
   }
@@ -224,7 +252,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     }
 
     in_sigsys_handler = false;
-    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+    ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
     return;
   }
 
@@ -233,13 +261,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // TODO: probably android doesn't allow using NETLINK for private routes
     if (arg0 == AF_NETLINK) {
       write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Blocked AF_NETLINK socket");
-      ctx->uc_mcontext.regs[0] = (__u64)-EAFNOSUPPORT;
+      ctx->uc_mcontext.BP_REG_R0 = (__u64)-EAFNOSUPPORT;
       in_sigsys_handler = false;
       return;
     }
 
-    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.regs[0] = (__u64)nativeRet;
+    long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
     in_sigsys_handler = false;
     return;
   }
@@ -264,10 +292,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
                         (double)afterIpcLock / 1e6);
 #endif
 
-  ipc_mem->stack_trace[0] = ctx->uc_mcontext.regs[30];  // Link Register (x30)
-  ipc_mem->caller_pc = ctx->uc_mcontext.pc;             // Program counter at time of trap
-  ipc_mem->caller_fp = ctx->uc_mcontext.regs[29];       // Frame Pointer (x29)
-  ipc_mem->target_pid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  ipc_mem->stack_trace[0] = ctx->uc_mcontext.BP_REG_R30;  // Link Register (x30)
+  ipc_mem->caller_pc = ctx->uc_mcontext.BP_REG_PC;        // Program counter at time of trap
+  ipc_mem->caller_fp = ctx->uc_mcontext.BP_REG_R29;       // Frame Pointer (x29)
+  ipc_mem->target_pid = (pid_t)raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   ipc_mem->nr = nr;
   ipc_mem->arg0 = arg0;
   ipc_mem->arg1 = arg1;
@@ -289,13 +317,23 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     pre_fd = (int)raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_faccessat ||
-             nr == __NR_newfstatat ||
-             nr == __NR_inotify_add_watch ||
-             nr == __NR_readlinkat) {
+  }
+#if defined(__aarch64__)
+  else if (nr == __NR_faccessat ||
+           nr == __NR_newfstatat ||
+           nr == __NR_inotify_add_watch ||
+           nr == __NR_readlinkat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
-  } else if (nr == __NR_execve ||
-             nr == __NR_execveat) {
+  }
+#else
+  else if (nr == __NR_faccessat ||
+           nr == __NR_inotify_add_watch ||
+           nr == __NR_readlinkat) {
+    local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
+  }
+#endif
+  else if (nr == __NR_execve ||
+           nr == __NR_execveat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg0, 255);
   }
 
@@ -443,10 +481,12 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       size_t copy_len = local_strnlen((char*)ipc_mem->out_buffer, bufsiz - 1);
       local_memcpy(buf, ipc_mem->out_buffer, copy_len);
     }
+#if defined(__aarch64__)
     if (nr == __NR_newfstatat && result == 0) {
       struct stat* buf = (struct stat*)ipc_mem->arg2;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
     }
+#endif
     if (nr == __NR_fstat && result == 0) {
       struct stat* buf = (struct stat*)ipc_mem->arg1;
       local_memcpy(buf, ipc_mem->out_buffer, sizeof(struct stat));
@@ -456,7 +496,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   ipc_mem->status = IDLE;
   unlock_ipc();
 
-  ctx->uc_mcontext.regs[0] = (__u64)result;
+  ctx->uc_mcontext.BP_REG_R0 = (__u64)result;
   in_sigsys_handler = false;
 }
 
@@ -533,16 +573,16 @@ static void bipan_additional_sig_handler(int sig, siginfo_t* info, void* void_co
   int nr = info->si_syscall;
   __u64 faultAddr = ctx->uc_mcontext.fault_address;
 
-  long x0 = (long)ctx->uc_mcontext.regs[0];
-  long x1 = (long)ctx->uc_mcontext.regs[1];
-  long x2 = (long)ctx->uc_mcontext.regs[2];
-  long x3 = (long)ctx->uc_mcontext.regs[3];
-  long x4 = (long)ctx->uc_mcontext.regs[4];
-  long x5 = (long)ctx->uc_mcontext.regs[5];
+  long x0 = (long)ctx->uc_mcontext.BP_REG_R0;
+  long x1 = (long)ctx->uc_mcontext.BP_REG_R1;
+  long x2 = (long)ctx->uc_mcontext.BP_REG_R2;
+  long x3 = (long)ctx->uc_mcontext.BP_REG_R3;
+  long x4 = (long)ctx->uc_mcontext.BP_REG_R4;
+  long x5 = (long)ctx->uc_mcontext.BP_REG_R5;
 
-  __u64 pc = ctx->uc_mcontext.pc;
-  __u64 lr = ctx->uc_mcontext.regs[30];
-  __u64 fp = ctx->uc_mcontext.regs[29];
+  __u64 pc = ctx->uc_mcontext.BP_REG_PC;
+  __u64 lr = ctx->uc_mcontext.BP_REG_R30;
+  __u64 fp = ctx->uc_mcontext.BP_REG_R29;
   __u64 sp = ctx->uc_mcontext.sp;
 
   write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Syscall that triggered segfault: %d | Fault addr: %p", nr, faultAddr);
