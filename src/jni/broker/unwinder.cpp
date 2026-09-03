@@ -508,23 +508,23 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
 
 static inline bool is_trusted_lib(const char* lib_path) {
   return (
-      starts_with(lib_path, "/apex") ||
-      starts_with(lib_path, "/vendor") ||
-      starts_with(lib_path, "/system") ||
-      starts_with(lib_path, "/product") ||
-      starts_with(lib_path, "/data/resource-cache") ||
-      starts_with(lib_path, "/dev") ||
-      starts_with(lib_path, "/metadata") ||
-      starts_with(lib_path, "[vdso]") ||
-      starts_with(lib_path, "[vvar]") ||
-      starts_with(lib_path, "[anon:dalvik-") ||
-      starts_with(lib_path, "[anon:bionic") ||
-      starts_with(lib_path, "[anon:cfi") ||
-      starts_with(lib_path, "[stack]") ||
-      starts_with(lib_path, "[anon:cfi") ||
-      starts_with(lib_path, "[anon:linker_alloc]") ||
-      starts_with(lib_path, "/system/lib64/libzygisk.so") ||
-      starts_with(lib_path, "/memfd:jit-cache (deleted)")  // TODO: ourselves
+      startsWith(lib_path, "/apex") ||
+      startsWith(lib_path, "/vendor") ||
+      startsWith(lib_path, "/system") ||
+      startsWith(lib_path, "/product") ||
+      startsWith(lib_path, "/data/resource-cache") ||
+      startsWith(lib_path, "/dev") ||
+      startsWith(lib_path, "/metadata") ||
+      startsWith(lib_path, "[vdso]") ||
+      startsWith(lib_path, "[vvar]") ||
+      startsWith(lib_path, "[anon:dalvik-") ||
+      startsWith(lib_path, "[anon:bionic") ||
+      startsWith(lib_path, "[anon:cfi") ||
+      startsWith(lib_path, "[stack]") ||
+      startsWith(lib_path, "[anon:cfi") ||
+      startsWith(lib_path, "[anon:linker_alloc]") ||
+      startsWith(lib_path, "/system/lib64/libzygisk.so") ||
+      startsWith(lib_path, "/memfd:jit-cache (deleted)")  // TODO: ourselves
   );
 }
 
@@ -534,8 +534,8 @@ static inline bool should_passthrough(const char* libPath) {
   }
 
   if (
-      starts_with(libPath, "/system/lib64/libzygisk.so") ||
-      starts_with(libPath, "/memfd:jit-cache (deleted)")) {
+      startsWith(libPath, "/system/lib64/libzygisk.so") ||
+      startsWith(libPath, "/memfd:jit-cache (deleted)")) {
     return true;
   }
   return false;
