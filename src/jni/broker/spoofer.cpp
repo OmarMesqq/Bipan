@@ -41,7 +41,7 @@ int create_spoofed_file(const char* fake_content) {
     return -1;
   }
 
-  int fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fd = (int)raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
     return fd;
@@ -61,7 +61,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: memfd_create failed");
     close(real_fd);
@@ -115,7 +115,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  int fake_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: memfd_create failed");
     close(real_fd);

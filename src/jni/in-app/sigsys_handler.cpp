@@ -78,7 +78,7 @@ void registerSignalHandler() {
   // Pass SA_NODEFER during development to catch recursions
   sa_SYS.sa_flags = SA_SIGINFO | SA_ONSTACK;
 
-  ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
+  ret = raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] sigaction(SIGSYS) failed (errno: %s)", strerror((int)ret));
     BIPAN_PANIC();
@@ -216,7 +216,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
   if (nr == __NR_getsockname) {
-    long nativeRet = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
     if (nativeRet == 0) {
       struct sockaddr* s = (struct sockaddr*)arg1;
@@ -245,10 +245,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   }
 
 #ifdef IN_APP_PERF_ANALYSIS
-  pid_t injectedPid = (pid_t)arm64_raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
+  pid_t injectedPid = (pid_t)raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   char injectedThName[16] = {0};
-  arm64_raw_syscall(__NR_prctl, PR_GET_NAME, (long)injectedThName, 0, 0, 0, 0);
-  pid_t injectedTid = (pid_t)arm64_raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
+  raw_syscall(__NR_prctl, PR_GET_NAME, (long)injectedThName, 0, 0, 0, 0);
+  pid_t injectedTid = (pid_t)raw_syscall(__NR_gettid, 0, 0, 0, 0, 0, 0);
   long long beforeIpcLock = ns_now();
 #endif
 
@@ -286,7 +286,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   // Serialization of strings
   if (nr == __NR_openat) {
-    pre_fd = (int)arm64_raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
+    pre_fd = (int)raw_syscall(__NR_memfd_create, (long)arg1, MFD_CLOEXEC, 0, 0, 0, 0);
     ipc_mem->arg5 = pre_fd;
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   } else if (nr == __NR_faccessat ||
@@ -338,7 +338,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       local_memset(&temp_addr, 0, sizeof(temp_addr));
 
       // getpeername gives us the destination IP of a connected socket
-      if (arm64_raw_syscall(__NR_getpeername, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
+      if (raw_syscall(__NR_getpeername, sockfd, (long)&temp_addr, (long)&temp_len, 0, 0, 0) == 0) {
         sock_ptr = (long)&temp_addr;
         sock_len = temp_len;
       }
@@ -380,7 +380,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   // Route action based on Broker policy decision
   if (action == ACTION_EXIT_PROCESS) {
     if (pre_fd >= 0) {
-      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+      raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
@@ -396,10 +396,10 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
     in_sigsys_handler = false;
 
-    arm64_raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
+    raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
-      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+      raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
     // fork/exec family handling:
@@ -413,7 +413,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       unlock_ipc();
     }
 
-    result = arm64_raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
+    result = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
 
     // if exec actually fails, we reach here,
     // so we restore the state so that the cleanup
@@ -428,7 +428,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   } else if (action == ACTION_USE_RET) {
     if (pre_fd >= 0 && ipc_mem->ret != pre_fd) {
       // Cleanup if Broker rejected
-      arm64_raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
+      raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
     result = ipc_mem->ret;

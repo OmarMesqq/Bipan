@@ -55,6 +55,7 @@ cd ..
 cd module
 mkdir -p zygisk
 cp ../src/libs/arm64-v8a/libbipan.so zygisk/arm64-v8a.so
+cp ../src/libs/armeabi-v7a/libbipan.so zygisk/armeabi-v7a.so
 
 if [[ "${1:-}" == "debug" ]]; then
   echo ""
@@ -68,6 +69,14 @@ else
       -R .note.gnu.build-id \
       -R .note.android.ident \
       ./zygisk/arm64-v8a.so
+
+    $NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objcopy \
+      -R .eh_frame \
+      -R .eh_frame_hdr \
+      -R .gcc_except_table \
+      -R .note.gnu.build-id \
+      -R .note.android.ident \
+      ./zygisk/armeabi-v7a.so
   else
     $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy \
       -R .eh_frame \
@@ -76,6 +85,14 @@ else
       -R .note.gnu.build-id \
       -R .note.android.ident \
       ./zygisk/arm64-v8a.so
+
+      $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objcopy \
+      -R .eh_frame \
+      -R .eh_frame_hdr \
+      -R .gcc_except_table \
+      -R .note.gnu.build-id \
+      -R .note.android.ident \
+      ./zygisk/armeabi-v7a.so
   fi
 
   echo ""

@@ -9,7 +9,7 @@
 #include "ipc_communication.hpp"
 
 #define TAG "BipanInApp"
-#define BIPAN_PANIC() arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
+#define BIPAN_PANIC() raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0)
 
 /**
  * The globals declared below are defined in Bipan's entrypoint
