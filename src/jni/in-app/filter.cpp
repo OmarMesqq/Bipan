@@ -16,6 +16,7 @@
 #include "logger/logger.hpp"
 
 void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
+#if defined(__LP64__)
   // Break 64-bit bounds into 32-bit chunks
   uint32_t start_hi = (uint32_t)(lib_start >> 32);
   uint32_t start_lo = (uint32_t)(lib_start & 0xFFFFFFFF);
@@ -26,6 +27,15 @@ void applySeccomp(uintptr_t lib_start, uintptr_t lib_end) {
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Library crosses 4GB boundary, PC-relative seccomp will probably fail!");
     BIPAN_PANIC();
   }
+#else
+  // On 32-bit ARM, PC/uintptr_t is only 32 bits. The kernel still reports
+  // seccomp_data.instruction_pointer as a 64-bit field but zero-extends the
+  // real 32-bit PC into it — so the correct "high 32 bits" comparison value
+  // is always zero, never a shifted lib_start (which is UB)
+  uint32_t start_hi = 0;
+  uint32_t start_lo = (uint32_t)lib_start;
+  uint32_t end_lo = (uint32_t)lib_end;
+#endif
 
   struct sock_filter trapFilter[] = {
       // Load high 32 bits of PC (Little Endian: offset + 4)
