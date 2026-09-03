@@ -1001,8 +1001,8 @@ static inline bool looks_like_proc_fd(const char* pathname, pid_t pid) {
   snprintf(proc_pid, PATH_MAX, "/proc/%d", pid);
 
   if (
-      (starts_with(pathname, "/proc/self") ||
-       starts_with(pathname, proc_pid)) &&
+      (startsWith(pathname, "/proc/self") ||
+       startsWith(pathname, proc_pid)) &&
       strstr(pathname, "/fd/")) {
     return true;
   }
