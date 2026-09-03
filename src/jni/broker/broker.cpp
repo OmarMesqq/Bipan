@@ -384,6 +384,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_EXECUTE_NATIVE;
         break;
       }
+#if defined(__aarch64__)
       case __NR_newfstatat: {
         const char* path = ipc_mem->string_payload;
         int flags = (int)ipc_mem->arg3;
@@ -430,6 +431,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
         break;
       }
+#endif
       case __NR_bind: {
         bool should_block = false;
 
