@@ -293,8 +293,8 @@ public class NetworkSpoofingHook implements BaseHook {
   private void spoofLinkProperties(LinkProperties lp) throws Throwable {
     try {
       ArrayList<InetAddress> dnsServers = new ArrayList<>();
-      dnsServers.add(InetAddress.getByName("1.1.1.1"));
-      dnsServers.add(InetAddress.getByName("1.0.0.1"));
+      dnsServers.add(InetAddress.getByName("8.8.8.8"));
+      dnsServers.add(InetAddress.getByName("8.8.4.4"));
 
       Field field = LinkProperties.class.getDeclaredField("mLinkAddresses");
       field.setAccessible(true);
