@@ -1,4 +1,4 @@
-#include "sensors.hpp"
+#include "sensors_native.hpp"
 
 #include <android/sensor.h>
 #include <dlfcn.h>
