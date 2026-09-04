@@ -94,6 +94,7 @@ object WebViewUtils {
                 val url = request.url?.toString() ?: ""
                 val path = request.url?.path?.lowercase() ?: ""
 
+                // Stop favicons
                 if (path.contains("favicon") || path.contains("apple-touch-icon")) {
                     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Neutering favicon/icon fetch: ${request.url}")
                     return WebResourceResponse("image/png", "UTF-8", null)
@@ -133,6 +134,7 @@ object WebViewUtils {
     }
 
 
+    // Auto click detect all and scroll to sensors sections in deviceinfo[.].me
     private fun detectAllDeviceInfoProps(webView: WebView) {
         val js = """
     (function() {
