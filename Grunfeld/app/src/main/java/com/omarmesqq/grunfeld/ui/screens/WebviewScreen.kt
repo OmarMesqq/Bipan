@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld.ui.screens
 
 import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType.Companion.PrimaryEditable
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,20 +41,83 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
+import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import com.omarmesqq.grunfeld.viewmodel.WebViewModel
+import java.lang.ref.WeakReference
 
+private const val TAG = "WebviewScreen"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
+fun WebviewScreen(wvVM: WebViewModel = viewModel()) {
     val context = LocalContext.current
-    val webView = webViewModel.getOrCreateWebView(context)
+    var wvWeakRef: WeakReference<WebView> = WeakReference(wvVM.getOrCreateWebView(context))
+    var webView: WebView? = wvWeakRef.get()
+    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "WV at top: ${webView.hashCode()}")
+
+    LifecycleEventEffect(Lifecycle.Event.ON_CREATE) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_CREATE")
+        wvVM.lifecycle = Lifecycle.State.STARTED
+        wvVM.wvmOnPause()
+        if (wvVM.isWebViewPendingRecovery) {
+            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
+            webView = wvWeakRef.get()
+            wvVM.isWebViewPendingRecovery = false
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_START")
+        wvVM.lifecycle = Lifecycle.State.STARTED
+        wvVM.wvmOnPause()
+        if (wvVM.isWebViewPendingRecovery) {
+            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
+            webView = wvWeakRef.get()
+            wvVM.isWebViewPendingRecovery = false
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_RESUME")
+        wvVM.lifecycle = Lifecycle.State.RESUMED
+        wvVM.wvmOnResume()
+        if (wvVM.isWebViewPendingRecovery) {
+            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
+            webView = wvWeakRef.get()
+            wvVM.isWebViewPendingRecovery = false
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_PAUSE")
+        wvVM.lifecycle = Lifecycle.State.CREATED
+        wvVM.wvmOnPause()
+        if (wvVM.isWebViewPendingRecovery) {
+            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
+            webView = wvWeakRef.get()
+            wvVM.isWebViewPendingRecovery = false
+        }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_STOP")
+        wvVM.lifecycle = Lifecycle.State.CREATED
+        wvVM.wvmOnStop()
+        if (wvVM.isWebViewPendingRecovery) {
+            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
+            webView = wvWeakRef.get()
+            wvVM.isWebViewPendingRecovery = false
+        }
+    }
+
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
-    val isLoading by webViewModel.isLoading
-    val urlText by webViewModel.urlText
+    val isLoading by wvVM.isLoading
+    val urlText by wvVM.urlText
 
     // Dropdown State
     var expanded by remember { mutableStateOf(false) }
@@ -76,7 +141,16 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
         webView?.goBack()
     }
 
-    if (webView != null) {
+    if (webView == null) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "WV null")
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Failed to initialize WebView :(", color = MaterialTheme.colorScheme.error)
+        }
+    } else {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "WV valid: ${webView.hashCode()}")
         Column(modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
@@ -88,9 +162,9 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
             ) {
                 OutlinedTextField(
                     value = urlText,
-                    onValueChange = { webViewModel.urlText.value = it },
+                    onValueChange = { wvVM.urlText.value = it },
                     modifier = Modifier
-                        .menuAnchor()
+                         .menuAnchor(PrimaryEditable, true)
                         .fillMaxWidth(),
                     label = { Text("Type or Select URL") },
                     singleLine = true,
@@ -99,7 +173,7 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
                         onSearch = {
-                            webViewModel.navigateToUrl(urlText)
+                            wvVM.navigateToUrl(urlText)
                             keyboardController?.hide()
                             focusManager.clearFocus()
                             expanded = false
@@ -115,8 +189,8 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
                         DropdownMenuItem(
                             text = { Text(site) },
                             onClick = {
-                                webViewModel.urlText.value = site
-                                webViewModel.navigateToUrl(site)
+                                wvVM.urlText.value = site
+                                wvVM.navigateToUrl(site)
                                 expanded = false
                                 focusManager.clearFocus()
                             },
@@ -141,40 +215,35 @@ fun WebviewScreen(webViewModel: WebViewModel = viewModel()) {
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                    AndroidView(
-                        factory = {
-                            // Re-parenting logic
-                            (webView.parent as? ViewGroup)?.removeView(webView)
-                            webView
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                AndroidView(
+                    factory = {
+                        // Re-parenting logic
+                        (webView!!.parent as? ViewGroup)?.removeView(webView)
+                        webView as WebView
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(18.dp)
-                        .size(56.dp) // Total button size
+                        .size(56.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF6200EE))
-                        .clickable { webViewModel.clearAndReset() },
+                        .clickable {
+                            wvVM.clearAndReset()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Clear Session",
                         tint = Color.Black,
-                        modifier = Modifier.size(24.dp) // Icon size
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
-        }
-    } else {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Failed to initialize WebView", color = MaterialTheme.colorScheme.error)
         }
     }
 }

@@ -790,11 +790,14 @@ fun dumpSensitiveInfoWithRuntime():String {
         val arr1 = arrayOf("which", "su")
         val pr1 =  Runtime.getRuntime().exec(arr1)
         val bufRdr1 = BufferedReader(InputStreamReader(pr1.inputStream))
-        sb.appendLine(bufRdr1.readLine())
+        sb.appendLine("which su: ${bufRdr1.readLine()}")
 
+        sb.appendLine("----- getprop -----")
         val inputStream = Runtime.getRuntime().exec("getprop").inputStream
         val bufRdr2 = BufferedReader(InputStreamReader(inputStream))
-        sb.appendLine(bufRdr2.readLine())
+        bufRdr2.forEachLine { line ->
+            sb.appendLine(line)
+        }
 
     } catch (tr: Throwable) {
         sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")

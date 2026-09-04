@@ -29,6 +29,7 @@ import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.Persistence.wipeWebviewTraces
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
 import kotlinx.coroutines.flow.collectLatest
@@ -111,5 +112,11 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         unregisterScreenCaptureCallback(screenCaptureCallback)
         windowManager.removeScreenRecordingCallback(screenRecordCallback)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onDestroy")
+        wipeWebviewTraces(this)
     }
 }
