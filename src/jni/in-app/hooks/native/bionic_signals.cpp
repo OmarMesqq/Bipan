@@ -14,12 +14,11 @@
 
 #define BIONIC_SIGNAL_SYM_1 "sigaction"
 #define BIONIC_SIGNAL_SYM_2 "signal"
-#define BIONIC_SIGNAL_SYM_3 "bsd_signal"
-#define BIONIC_SIGNAL_SYM_4 "sigprocmask"
-#define BIONIC_SIGNAL_SYM_5 "pthread_sigmask"
-#define BIONIC_SIGNAL_SYM_6 "sigsuspend"
-#define BIONIC_SIGNAL_SYM_7 "signalfd"
-#define BIONIC_METHODS_COUNT 7
+#define BIONIC_SIGNAL_SYM_3 "sigprocmask"
+#define BIONIC_SIGNAL_SYM_4 "pthread_sigmask"
+#define BIONIC_SIGNAL_SYM_5 "sigsuspend"
+#define BIONIC_SIGNAL_SYM_6 "signalfd"
+#define BIONIC_METHODS_COUNT 6
 
 // Original functions
 static int (*orig_sigaction)(int, const struct sigaction*, struct sigaction*) = nullptr;
@@ -41,41 +40,38 @@ static int hook_pthread_sigmask(int how, const sigset_t* set, sigset_t* oldset);
 static void dump_sigset(const sigset_t* set, char* out, size_t out_size);
 
 void registerDobbyBionicSignalHooks(void) {
-  const int bionicSignalMethodsCount = 7;
-
   const char* symbols[] = {
       BIONIC_SIGNAL_SYM_1,
       BIONIC_SIGNAL_SYM_2,
+      BIONIC_SIGNAL_SYM_3,
       BIONIC_SIGNAL_SYM_4,
       BIONIC_SIGNAL_SYM_5,
       BIONIC_SIGNAL_SYM_6,
-      BIONIC_SIGNAL_SYM_7,
-
   };
 
   void* hooks[] = {
       (void*)hook_sigaction,
       (void*)hook_signal,
-      (void*)hook_signalfd,
       (void*)hook_sigprocmask,
-      (void*)hook_sigsuspend,
       (void*)hook_pthread_sigmask,
+      (void*)hook_sigsuspend,
+      (void*)hook_signalfd,
   };
 
   void** originals[] = {
       (void**)&orig_sigaction,
       (void**)&orig_signal,
-      (void**)&orig_signalfd,
       (void**)&orig_sigprocmask,
-      (void**)&orig_sigsuspend,
       (void**)&orig_pthread_sigmask,
+      (void**)&orig_sigsuspend,
+      (void**)&orig_signalfd,
   };
 
-  for (int i = 0; i < bionicSignalMethodsCount; i++) {
+  for (int i = 0; i < BIONIC_METHODS_COUNT; i++) {
     void* addr = dlsym(RTLD_DEFAULT, symbols[i]);
     if (!addr) {
       write_to_logcat_async(ANDROID_LOG_FATAL, SIGNALS_TAG, "[!] Failed to resolve: %s", symbols[i]);
-      continue;
+      BIPAN_PANIC();
     }
 
     int rc = DobbyHook(addr, hooks[i], originals[i]);
@@ -93,7 +89,7 @@ static int hook_sigaction(int signum, const struct sigaction* act, struct sigact
   if (signum == SIGSYS) {
     write_to_logcat_async(ANDROID_LOG_DEBUG, SIGNALS_TAG, "[sigaction] for SIGSYS!");
   }
-  if (act) {  // cheap non-zero check before formatting, optional
+  if (act) {
     char maskbuf[256] = {0};
     dump_sigset(&act->sa_mask, maskbuf, sizeof(maskbuf));
     write_to_logcat_async(ANDROID_LOG_DEBUG, SIGNALS_TAG, "[sigaction] sig=%d mask=%s", signum, maskbuf);

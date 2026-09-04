@@ -20,6 +20,7 @@
 #include <dlfcn.h>
 #include <sys/wait.h>
 #include <media/NdkMediaDrm.h>
+#include <linux/tcp.h>
 
 #include "socket_helper.h"
 #include "athena.h"
@@ -50,6 +51,7 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
 static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
+static void investigate_one_fd(int sockfd, const char *linktarget, char *report, size_t report_size, size_t *used);
 
 static const long BOGUS_SYSCALL = 0xB050517;
 static const int  BOGUS_SYSCALL_EXPECTED_RET = 21;
@@ -65,6 +67,49 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad");
     // requestNativeBacktrace();
     return JNI_VERSION_1_6;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_investigateSocket(JNIEnv *env, jobject thiz) {
+    const char *path = "/proc/self/fd";
+    static char report[16384];
+    size_t used = 0;
+    report[0] = '\0';
+
+    DIR* dir = opendir(path);
+    if (dir == NULL) {
+        return (*env)->NewStringUTF(env, "Failed to open /proc/self/fd");
+    }
+
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_name[0] == '.') continue;
+
+        char linkpath[PATH_MAX];
+        int ret = snprintf(linkpath, sizeof(linkpath), "%s/%s", path, ent->d_name);
+        if (ret < 0 || (size_t)ret >= sizeof(linkpath)) continue;
+
+        char target[PATH_MAX] = {0};
+        ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
+        if (len < 0) continue;
+        target[len] = '\0';
+
+        // Only care about sockets: link target looks like "socket:[12345]"
+        if (strncmp(target, "socket:[", 8) != 0) continue;
+
+        // The fd itself is the directory entry name, e.g. "47"
+        char *endptr = NULL;
+        long fdnum = strtol(ent->d_name, &endptr, 10);
+        if (endptr == ent->d_name || *endptr != '\0' || fdnum < 0 || fdnum > INT_MAX) continue;
+
+        // Skip our own dir fd
+        if ((int)fdnum == dirfd(dir)) continue;
+
+        investigate_one_fd((int)fdnum, target, report, sizeof(report), &used);
+    }
+
+    closedir(dir);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT void JNICALL
@@ -906,7 +951,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobjec
         }
 
         // Read symlink target
-        char target[PATH_MAX];
+        char target[PATH_MAX] = {0};
         ssize_t len = readlink(linkpath, target, sizeof(target) - 1);
         if (len < 0) {
             continue;
@@ -1709,6 +1754,113 @@ static const char* fam_to_str(int fam) {
         default:   return "UNKNOWN_FAM";
     }
 }
+
+static void investigate_one_fd(int sockfd, const char *linktarget, char *report, size_t report_size, size_t *used) {
+    char entry[512];
+    int n;
+
+    n = snprintf(entry, sizeof(entry), "=== fd %d (%s) ===\n", sockfd, linktarget);
+    if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+
+    int flags = fcntl(sockfd, F_GETFL);
+    if (flags != -1) {
+        n = snprintf(entry, sizeof(entry), "fcntl flags: 0x%x (nonblock=%s)\n",
+                     flags, (flags & O_NONBLOCK) ? "yes" : "no");
+    } else {
+        n = snprintf(entry, sizeof(entry), "fcntl: failed (%s)\n", strerror(errno));
+    }
+    if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+
+    int val;
+    socklen_t vlen = sizeof(val);
+
+    if (getsockopt(sockfd, SOL_SOCKET, SO_DOMAIN, &val, &vlen) == 0) {
+        n = snprintf(entry, sizeof(entry), "SO_DOMAIN: %d (%s)\n", val,
+                     val == AF_INET ? "AF_INET" : val == AF_INET6 ? "AF_INET6" :
+                                                  val == AF_UNIX ? "AF_UNIX" : "other");
+        if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+    }
+
+    vlen = sizeof(val);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_TYPE, &val, &vlen) == 0) {
+        n = snprintf(entry, sizeof(entry), "SO_TYPE: %d (%s)\n", val,
+                     val == SOCK_STREAM ? "SOCK_STREAM" :
+                     val == SOCK_DGRAM ? "SOCK_DGRAM" : "other");
+        if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+    }
+
+    vlen = sizeof(val);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_PROTOCOL, &val, &vlen) == 0) {
+        n = snprintf(entry, sizeof(entry), "SO_PROTOCOL: %d\n", val);
+        if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+    }
+
+    vlen = sizeof(val);
+    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &val, &vlen) == 0) {
+        n = snprintf(entry, sizeof(entry), "SO_ERROR: %d (%s)\n", val, strerror(val));
+        if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+    }
+
+    struct sockaddr_storage addr;
+    socklen_t addrlen = sizeof(addr);
+    if (getsockname(sockfd, (struct sockaddr *)&addr, &addrlen) == 0) {
+        char ipstr[INET6_ADDRSTRLEN] = {0};
+        int port = 0;
+        if (addr.ss_family == AF_INET) {
+            struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+            inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
+            port = ntohs(s->sin_port);
+            n = snprintf(entry, sizeof(entry), "Local addr: %s:%d\n", ipstr, port);
+        } else if (addr.ss_family == AF_INET6) {
+            struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+            inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof(ipstr));
+            port = ntohs(s->sin6_port);
+            n = snprintf(entry, sizeof(entry), "Local addr: [%s]:%d\n", ipstr, port);
+        } else {
+            n = snprintf(entry, sizeof(entry), "Local addr: (family %d, non-IP)\n", addr.ss_family);
+        }
+    } else {
+        n = snprintf(entry, sizeof(entry), "getsockname: failed (%s)\n", strerror(errno));
+    }
+    if (n > 0 && (size_t)n < report_size - *used) {
+        memcpy(report + *used, entry, n); *used += n;
+    }
+
+    addrlen = sizeof(addr);
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addrlen) == 0) {
+        char ipstr[INET6_ADDRSTRLEN] = {0};
+        int port = 0;
+        if (addr.ss_family == AF_INET) {
+            struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+            inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
+            port = ntohs(s->sin_port);
+            n = snprintf(entry, sizeof(entry), "Peer addr: %s:%d\n", ipstr, port);
+        } else if (addr.ss_family == AF_INET6) {
+            struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+            inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof(ipstr));
+            port = ntohs(s->sin6_port);
+            n = snprintf(entry, sizeof(entry), "Peer addr: [%s]:%d\n", ipstr, port);
+        } else {
+            n = snprintf(entry, sizeof(entry), "Peer addr: (family %d, non-IP)\n", addr.ss_family);
+        }
+    } else {
+        n = snprintf(entry, sizeof(entry), "getpeername: not connected (%s)\n", strerror(errno));
+    }
+    if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+
+    struct tcp_info tcpi;
+    vlen = sizeof(tcpi);
+    if (getsockopt(sockfd, IPPROTO_TCP, TCP_INFO, &tcpi, &vlen) == 0) {
+        n = snprintf(entry, sizeof(entry),
+                     "TCP state: %u, rtt=%u us, retransmits=%u\n",
+                     tcpi.tcpi_state, tcpi.tcpi_rtt, tcpi.tcpi_retransmits);
+        if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+    }
+
+    n = snprintf(entry, sizeof(entry), "\n");
+    if (n > 0 && (size_t)n < report_size - *used) { memcpy(report + *used, entry, n); *used += n; }
+}
+
 
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     ucontext_t* ctx = (ucontext_t*)void_context;
