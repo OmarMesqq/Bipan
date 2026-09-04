@@ -7,6 +7,7 @@
 
 #include "../../../logger/logger.hpp"
 #include "../common/drm_common.hpp"
+#include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"
 
@@ -21,18 +22,23 @@ static AMediaDrmByteArray gSpoofedProp;
 // Hooks
 static media_status_t my_AMediaDrm_getPropertyByteArray(AMediaDrm* drm, const char* propertyName, AMediaDrmByteArray* propertyValue);
 
-void registerDobbyDrmHook(void) {
-  void* sym = dlsym(RTLD_DEFAULT, "AMediaDrm_getPropertyByteArray");
-  if (!sym) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve AMediaDrm_getPropertyByteArray!");
-    return;
+// Symbol names
+#define NATIVE_GET_PROP_BYTE_ARRAY_SYM "AMediaDrm_getPropertyByteArray"
+
+void registerDobbyDrmNativeHook(void) {
+  void* addr = dlsym(RTLD_DEFAULT, NATIVE_GET_PROP_BYTE_ARRAY_SYM);
+  if (!addr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve: %s", NATIVE_GET_PROP_BYTE_ARRAY_SYM);
+    BIPAN_PANIC();
   }
 
-  int rc = DobbyHook(sym, (void*)my_AMediaDrm_getPropertyByteArray, (void**)&orig_AMediaDrm_getPropertyByteArray);
+  int rc = DobbyHook(addr, (void*)my_AMediaDrm_getPropertyByteArray, (void**)&orig_AMediaDrm_getPropertyByteArray);
   if (rc != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook AMediaDrm_getPropertyByteArray!");
-    return;
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook: %s", NATIVE_GET_PROP_BYTE_ARRAY_SYM);
+    BIPAN_PANIC();
   }
+  __builtin___clear_cache((char*)addr, (char*)addr + 32);
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", NATIVE_GET_PROP_BYTE_ARRAY_SYM);
 }
 
 // Hooks below

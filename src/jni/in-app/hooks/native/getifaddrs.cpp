@@ -22,30 +22,43 @@ static void preCacheIfaddrs();
 static void my_freeifaddrs(struct ifaddrs* ifa);
 static int my_getifaddrs(struct ifaddrs** ifap);
 
-void registerGetifaddrsHook(void) {
+// Symbol names
+#define GETIFADDRS_SYM "getifaddrs"
+#define FREEIFADDRS_SYM "freeifaddrs"
+#define IFADDRS_METHODS_COUNT 2
+
+void registerDobbyGetifaddrsHooks(void) {
   preCacheIfaddrs();
-  void* sym = dlsym(RTLD_DEFAULT, "getifaddrs");
-  if (!sym) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: symbol not found (getifaddrs)");
-    return;
-  }
 
-  int r1 = DobbyHook(sym, reinterpret_cast<void*>(my_getifaddrs), reinterpret_cast<void**>(&orig_getifaddrs));
-  if (r1 != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: failed to hook getifaddrs");
-    return;
-  }
+  const char* symbols[] = {
+      GETIFADDRS_SYM,
+      FREEIFADDRS_SYM};
 
-  void* freeSym = dlsym(RTLD_DEFAULT, "freeifaddrs");
-  if (!freeSym) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: symbol not found (freeifaddrs)");
-    return;
-  }
+  void* hooks[] = {
+      (void*)my_getifaddrs,
+      (void*)my_freeifaddrs,
+  };
 
-  int r2 = DobbyHook(freeSym, reinterpret_cast<void*>(my_freeifaddrs), reinterpret_cast<void**>(&orig_freeifaddrs));
-  if (r2 != 0) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "registerGetifaddrsHook error: failed to hook freeifaddrs");
-    return;
+  void** originals[] = {
+      (void**)&orig_getifaddrs,
+      (void**)&orig_freeifaddrs,
+  };
+
+  for (int i = 0; i < IFADDRS_METHODS_COUNT; i++) {
+    void* addr = dlsym(RTLD_DEFAULT, symbols[i]);
+    if (!addr) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve: %s", symbols[i]);
+      BIPAN_PANIC();
+    }
+
+    int rc = DobbyHook(addr, hooks[i], originals[i]);
+    if (rc != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook: %s", symbols[i]);
+      BIPAN_PANIC();
+    }
+
+    __builtin___clear_cache((char*)addr, (char*)addr + 32);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", symbols[i]);
   }
 }
 

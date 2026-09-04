@@ -3,11 +3,12 @@
 #include <dlfcn.h>
 
 #include <cstdint>
-#include "../../../logger/logger.hpp"
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../../../logger/logger.hpp"
+#include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"
 
@@ -364,24 +365,45 @@ static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.whatsapp",
     "com.instagram.android"};
 
-void registerDobbyNativeSystemPropertiesHook(void) {
-  void* addr_get = dlsym(RTLD_DEFAULT, "__system_property_get");
-  void* addr_readcb = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
-  if (!addr_get || !addr_readcb) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve address(es) of sysprop function(s)");
-    return;
-  }
+// Symbol names
+#define PROP_GET_SYM "__system_property_get"
+#define PROP_READ_CB_SYM "__system_property_read_callback"
+#define GETPROP_METHOD_COUNT 2
 
-  int getHook = DobbyHook(addr_get, (void*)hook_system_property_get, (void**)&orig_system_property_get);
-  int readcbHook = DobbyHook(addr_readcb, (void*)hook_system_property_read_callback, (void**)&orig_system_property_read_callback);
+void registerDobbyNativeSysPropsHooks(void) {
+  const char* symbols[] = {
+      PROP_GET_SYM,
+      PROP_READ_CB_SYM};
 
-  if ((getHook != 0) || (readcbHook != 0)) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook sysprop functions");
+  void* hooks[] = {
+      (void*)hook_system_property_get,
+      (void*)hook_system_property_read_callback,
+  };
+
+  void** originals[] = {
+      (void**)&orig_system_property_get,
+      (void**)&orig_system_property_read_callback,
+  };
+
+  for (int i = 0; i < GETPROP_METHOD_COUNT; i++) {
+    void* addr = dlsym(RTLD_DEFAULT, symbols[i]);
+    if (!addr) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve: %s", symbols[i]);
+      BIPAN_PANIC();
+    }
+
+    int rc = DobbyHook(addr, hooks[i], originals[i]);
+    if (rc != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook: %s", symbols[i]);
+      BIPAN_PANIC();
+    }
+
+    __builtin___clear_cache((char*)addr, (char*)addr + 32);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", symbols[i]);
   }
 }
 
 // Hooks below
-
 static int hook_system_property_get(const char* name, char* value) {
   if (name != nullptr) {
     auto globalPropItPair = g_prop_overrides.find(name);
@@ -402,7 +424,6 @@ static int hook_system_property_get(const char* name, char* value) {
   return orig_system_property_get(name, value);
 }
 
-// For bionic's `__system_property_read_callback`
 struct PropCallbackCtx {
   void (*user_cb)(void* cookie, const char* name, const char* value, uint32_t serial);
   void* user_cookie;
