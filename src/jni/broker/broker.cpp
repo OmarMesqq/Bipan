@@ -78,11 +78,6 @@ static thread_local bool inside_remote_patcher = false;
  * according the Broker's policies here defined.
  */
 void startBroker(int sock, SharedIPC* ipc_mem) {
-  if (!initializeLogger()) {
-    close(sock);
-    return;
-  }
-
   pid_t client_pid = ipc_mem->target_pid;
 
   // Broker Assist setup
@@ -109,11 +104,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   // Create epoll watcher
   int epfd = epoll_create1(EPOLL_CLOEXEC);
   if (epfd < 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed!");
     // Will cause thread leak if we can't monitor the app, won't proceed
-    munmap(ipc_mem, sizeof(SharedIPC));
-    close(sock);
-    destroyLogger();
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] epoll_create1 failed! errno: %s", strerror(errno));
     return;
   }
   struct epoll_event ev{};
@@ -747,15 +739,12 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
   }
 
 dead_client_exit:
-  munmap(ipc_mem, sizeof(SharedIPC));
   if (pidfd >= 0) {
     close(pidfd);
   }
   close(epfd);
 
   write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d | TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
-  close(sock);
-  destroyLogger();
 }
 
 static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {

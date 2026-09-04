@@ -46,8 +46,10 @@ static void companion_handler(int sock) {
   CompanionCommand cmd;
 
   // Get the command ID from the client
-  if (read(sock, &cmd, sizeof(cmd)) <= 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to read CMD from target!");
+  ssize_t cmdBytes = read(sock, &cmd, sizeof(cmd));
+  if (cmdBytes <= 0) {
+    const char* reason = (cmdBytes == 0) ? "Got EOF" : strerror(errno);
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to 'read' CMD from app: (%s)", reason);
     destroyLogger();
     close(sock);
     return;
@@ -67,12 +69,14 @@ static void companion_handler(int sock) {
   }
 
   /**
-   * If we are asked to start a Broker, spin up a new process
-   * so we don't block Zygisk's threads on the potentially long-lived Broker
+   * At this point, only command to handle is the actual `CMD_START_BROKER`
+   * We are asked to start a Broker, so spin up a new process
+   * as not to block Zygisk's threads on the potentially long-lived Broker
    */
+
   pid_t mid_pid = fork();
   if (mid_pid < 0) {
-    initializeLogger();
+    // Zygisk's fork failed, bail out early
     write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 1st fork() (intermediate/zygiskd's child) failed: %s", strerror(errno));
     destroyLogger();
     close(sock);
@@ -80,71 +84,78 @@ static void companion_handler(int sock) {
   }
 
   if (mid_pid == 0) {
-    // Intermediate child (`zygiskd`'s child)
+    /**
+     * Zygisk's fork worked!
+     *
+     * We are inside the intermediate process:
+     * a direct child of `zygiskd`
+     */
 
-    // Double-fork idiom: fork again, then exit immediately so the
-    // grandchild gets reparented to init(1), which auto-reaps it on exit.
     pid_t grandchild_pid = fork();
     if (grandchild_pid < 0) {
-      initializeLogger();
+      // Zygisk's child fork failed, exit with error to unblock Zygisk thread below
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: 2nd fork() (reparented grandchild) failed: %s", strerror(errno));
-      destroyLogger();
-      close(sock);
       _exit(1);
     }
 
+    // Zygisk's child's fork worked!
+
     if (grandchild_pid > 0) {
-      // exit cleanly so actual `zygiskd` unblocks the `waitpid` outside this scope; below
-      destroyLogger();
-      close(sock);
+      // Here, we're still inside the child
+      // Exit cleanly so actual `zygiskd` unblocks the `waitpid` outside this scope: see below
       _exit(0);
     }
 
-    // Grandchild: the actual Broker process
-    initializeLogger();
+    // Finally, in the grandchild. We'll spawn the actual Broker process here
 
+    /**
+     * Create a new session. Basically, we'll the leader of a new process group.
+     *
+     * https://www.man7.org/linux/man-pages/man2/setsid.2.html
+     */
     pid_t sessionId = setsid();
     if (sessionId == -1) {
-      initializeLogger();
+      // Child (our parent) has already been reaped by Zygisk, nothing left to do now, just log and fail...
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: setsid failed %s", strerror(errno));
-      destroyLogger();
-      close(sock);
       _exit(1);
     }
-    initializeLogger();
 
     int memfd = recv_fd(sock);
     if (memfd < 0) {
+      // Child (our parent) has already been reaped by Zygisk, nothing left to do now, just log and fail...
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: failed to receive memfd from target!");
-      destroyLogger();
-      close(sock);
-      return;
+      _exit(1);
     }
 
+    // Cleanup file descriptor table keeping just the ones below
     close_unrelated_fds({sock, memfd, getLogcatFd(), STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO});
-    initializeLogger();
 
+    // Map the "equivalent" IPC shared memory region here, in the Broker
     SharedIPC* local_ipc_mem = (SharedIPC*)mmap(NULL, sizeof(SharedIPC), PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
     close(memfd);
     if (local_ipc_mem == MAP_FAILED) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] companion_handler: grandchild mmap failed!");
-      destroyLogger();
-      close(sock);
       _exit(1);
     }
 
     __sync_synchronize();
     startBroker(sock, local_ipc_mem);
 
+    // Grandchild's responsibility to close all ts
+    munmap(local_ipc_mem, sizeof(SharedIPC));
     destroyLogger();
     close(sock);
-    _exit(0);  // prevent fallthrough
+
+    _exit(0);  // Broker exited cleanly, prevent fallthrough
   }
 
-  // `zygiskd` resumes here
-  initializeLogger();
+  /**
+   * If everything above worked just as usual,
+   * Zygisk's thread responsible for the current app will resume execution here.
+   */
+
+  // Block it for a while until the first child exits after 2nd fork
   int status;
-  // Block Zygisk's thread for a while till first child exits after 2nd fork
   waitpid(mid_pid, &status, 0);
 
   // Session now belongs entirely to the grandchild; this thread is done with it.

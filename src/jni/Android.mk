@@ -12,17 +12,17 @@ endif
 include $(PREBUILT_STATIC_LIBRARY)
 
 ifeq ($(BIPAN_DEBUG), 1)
-	BIPAN_CPPFLAGS := -Og -g3 \
-		-Wall -Wextra \
+	BIPAN_CPPFLAGS := -Wall -Wextra \
 		-Wconversion -Wsign-conversion \
 		-Wdouble-promotion -Winline -Wshadow \
 		-fno-exceptions -fno-rtti \
 		-funwind-tables -fasynchronous-unwind-tables \
 		-fno-omit-frame-pointer -fstrict-overflow \
 		-fsanitize=undefined -fsanitize-trap=undefined
+		-fsanitize=thread -g -O2
 	
 	BIPAN_LDFLAGS := 
-	BIPAN_LDLIBS  := -lstdc++
+	BIPAN_LDLIBS  := -lstdc++ -fsanitize=thread
 $(info Building DEBUG variant...)
 else
 	BIPAN_CPPFLAGS := -O3 -Wall -Wextra \
