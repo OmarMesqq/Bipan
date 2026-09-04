@@ -421,20 +421,16 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
       raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
     }
 
-    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                          "(SIGSYS handler) ACTION_EXIT_PROCESS(%s) BEFORE IPC unlock",
-                          (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
-
     ipc_mem->status = IDLE;
     unlock_ipc();
 
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                          "(SIGSYS handler) ACTION_EXIT_PROCESS(%s) AFTER IPC unlock",
+                          "ACTION_EXIT_PROCESS(%s) before exit_group(0)",
                           (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
 
     in_sigsys_handler = false;
 
-    raw_syscall(__NR_exit, ipc_mem->ret, 0, 0, 0, 0, 0);
+    raw_syscall(__NR_exit_group, ipc_mem->ret, 0, 0, 0, 0, 0);
   } else if (action == ACTION_EXECUTE_NATIVE) {
     if (pre_fd >= 0) {
       raw_syscall(__NR_close, pre_fd, 0, 0, 0, 0, 0);
@@ -444,7 +440,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // clear reentrancy flag and IPC lock before the exec'ing
     if (nr == __NR_execve || nr == __NR_execveat) {
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
-                            "(SIGSYS handler) ACTION_EXECUTE_NATIVE - execve(%s) BEFORE IPC unlock",
+                            "ACTION_EXECUTE_NATIVE - execve(%s) BEFORE IPC unlock",
                             (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
       in_sigsys_handler = false;
       ipc_mem->status = IDLE;
@@ -458,7 +454,7 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // code at the bottom doesn't double-unlock
     if (nr == __NR_execve || nr == __NR_execveat) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG,
-                            "(SIGSYS handler) ACTION_EXECUTE_NATIVE - execve(%s) failed!",
+                            "ACTION_EXECUTE_NATIVE - execve(%s) failed! Re-locking IPC",
                             (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
       lock_ipc();
       in_sigsys_handler = true;

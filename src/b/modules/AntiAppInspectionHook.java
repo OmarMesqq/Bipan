@@ -47,7 +47,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   private static final Set<String> TRUSTED_PACKAGES = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms",
-      "com.android.settings",
       "com.android.webview"));
 
   private static final Set<String> FEATURE_STRIP_LIST = new HashSet<>(Arrays.asList(
