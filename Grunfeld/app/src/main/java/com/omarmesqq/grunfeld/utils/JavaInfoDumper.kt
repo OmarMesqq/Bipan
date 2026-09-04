@@ -104,7 +104,7 @@ fun dumpInstallerInfo(ctx: Context): String {
     val updateOwner = info.updateOwnerPackageName   // Package responsible for managing updates
 
     val packageSource = when (info.packageSource) {
-        PackageInstaller.PACKAGE_SOURCE_STORE -> "Some App Store"
+        PackageInstaller.PACKAGE_SOURCE_STORE -> "App Store"
         PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE -> "Local File"
         PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE -> "Downloaded File"
         PackageInstaller.PACKAGE_SOURCE_OTHER -> "Other"
@@ -440,7 +440,6 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     sb.appendLine("isSystemApp: $isSystemApp")
     sb.appendLine("isUpdatedSystemApp: $isUpdatedSystemApp")
 
-    sb.appendLine("isAppMetadataVerified: ${info.isAppMetadataVerified}")
     sb.appendLine("metaData: ${info.applicationInfo?.metaData}")
     sb.appendLine("appComponentFactory: ${info.applicationInfo?.appComponentFactory}")
     sb.appendLine("backupAgentName: ${info.applicationInfo?.backupAgentName}")

@@ -120,7 +120,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
     return (*env)->NewStringUTF(env, report);
 }
 
-/* Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed */
+// Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed
 static const uint8_t kWidevineUuid[16] = {
         0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
         0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
@@ -1273,7 +1273,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* 
     // Actual SIGSYS registration
     ret = arm64_raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sigsysAct, 0, 8, 0, 0);
     if (ret != 0) {
-        LOGE("sigaction(SIGSYS) failed (errno: %s)", strerror(errno));
+        LOGE("sigaction(SIGSYS) failed (errno: %s)", RAW_SYSCALL_TO_ERRNO(ret));
         return JNI_FALSE;
   }
 

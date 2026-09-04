@@ -26,6 +26,9 @@
 #include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
+#ifdef IN_APP_DEBUG_LOGGING
+#include "hooks/native/bionic_signals.cpp"
+#endif
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -177,6 +180,9 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyGetifaddrsHooks();
     registerDobbyNativeSysPropsHooks();
     registerDobbyNativeSensorsHooks();
+#ifdef IN_APP_DEBUG_LOGGING
+    registerDobbyBionicSignalHooks();
+#endif
 
     // Unseal the VM
     initBipanJava();
