@@ -62,6 +62,7 @@ fun NativeScreen() {
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
     var procSelfSmapsInfo by remember { mutableStateOf("/proc/self/smaps not studied yet") }
     var procMountPoints by remember { mutableStateOf("mounts not studied yet") }
+    var socketsInfo by remember { mutableStateOf("") }
 
     val pid = Process.myPid()
 
@@ -116,6 +117,154 @@ fun NativeScreen() {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Fetch Media DRM ID")
+                    }
+                }
+            }
+
+            SectionHeader("ANTI-TAMPER")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get info on sockets inside /proc/self/fd", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(socketsInfo, "")
+                    Button(
+                        onClick = {
+                            socketsInfo = NativeLibWrapper.investigateSocket()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("opendir(/proc/self/fd) && analyze [socket:")
+                    }
+                }
+
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study mount points", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procMountPoints, "mounts not studied yet")
+                    Button(
+                        onClick = {
+                            procMountPoints = NativeLibWrapper.scanMountNodes()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("scan mount points")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study /proc/self/maps", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfMapsInfo, "/proc/self/maps not studied yet")
+                    Button(
+                        onClick = {
+                            procSelfMapsInfo = NativeLibWrapper.scanProcSelfMaps()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open(/proc/self/maps)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Study /proc/self/smaps", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelfSmapsInfo, "/proc/self/smaps not studied yet")
+                    Button(
+                        onClick = {
+                            procSelfSmapsInfo = NativeLibWrapper.scanProcSelfSmaps()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("open(/proc/self/smaps)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
+                    Button(
+                        onClick = {
+                            val filenames = arrayOf(
+                                "/proc/self/maps",
+                                "/proc/$pid/maps",
+
+                                "/proc/self/smaps",
+                                "/proc/$pid/smaps",
+
+                                "/proc/self/status",
+                                "/proc/$pid/status",
+
+                                "/proc/self/mounts",
+                                "/proc/$pid/mounts",
+
+                                "/proc/self/mountstats",
+                                "/proc/$pid/mountstats",
+
+                                "/proc/self/mountinfo",
+                                "/proc/$pid/mountinfo",
+
+
+                                "/proc/mounts",
+                                "/proc/version",
+                                "/proc/sys/kernel/version",
+                                "/proc/sys/kernel/osrelease",
+                                "/proc/asound/version",
+                                "/etc/hosts",
+                                "/system/etc/hosts",
+                            )
+                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+
+                    ) {
+                        Text("readlink of some VFS nodes")
+                    }
+                }
+
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List suspicious shared objects in process", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
+                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dlIteratePhdrTest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("dl_iterate_phdr()")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
+                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
+                    }
+                }
+
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CodeTitle("fork()/exec()")
+                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
+                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Create a child process and inspect its result")
+                    }
+                }
+            }
+
+
+            SectionHeader("SENSORS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
+                    ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
+                    Button(
+                        onClick = { sensorReport = NativeLibWrapper.testSensors() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Probe Sensors using native code")
                     }
                 }
             }
@@ -213,23 +362,6 @@ fun NativeScreen() {
                 }
             }
 
-            SectionHeader("SENSORS")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Native Layer", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(sensorReport, "Sensors not tested at native layer yet")
-                    Button(
-                        onClick = { sensorReport = NativeLibWrapper.testSensors() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Probe Sensors using native code")
-                    }
-                }
-            }
-
             SectionHeader("ACCESS FAMILY")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -312,120 +444,7 @@ fun NativeScreen() {
                 }
             }
 
-            SectionHeader("ANTI-TAMPER")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Study mount points", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procMountPoints, "mounts not studied yet")
-                    Button(
-                        onClick = {
-                            procMountPoints = NativeLibWrapper.scanMountNodes()
-                        },
-                        modifier = Modifier.fillMaxWidth()
 
-                    ) {
-                        Text("scan mount points")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Study /proc/self/maps", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfMapsInfo, "/proc/self/maps not studied yet")
-                    Button(
-                        onClick = {
-                            procSelfMapsInfo = NativeLibWrapper.scanProcSelfMaps()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("open(/proc/self/maps)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Study /proc/self/smaps", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelfSmapsInfo, "/proc/self/smaps not studied yet")
-                    Button(
-                        onClick = {
-                            procSelfSmapsInfo = NativeLibWrapper.scanProcSelfSmaps()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("open(/proc/self/smaps)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                "/proc/self/maps",
-                                "/proc/$pid/maps",
-
-                                "/proc/self/smaps",
-                                "/proc/$pid/smaps",
-
-                                "/proc/self/status",
-                                "/proc/$pid/status",
-
-                                "/proc/self/mounts",
-                                "/proc/$pid/mounts",
-
-                                "/proc/self/mountstats",
-                                "/proc/$pid/mountstats",
-
-                                "/proc/self/mountinfo",
-                                "/proc/$pid/mountinfo",
-
-
-                                "/proc/mounts",
-                                "/proc/version",
-                                "/proc/sys/kernel/version",
-                                "/proc/sys/kernel/osrelease",
-                                "/proc/asound/version",
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                            )
-                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("readlink of some VFS nodes")
-                    }
-                }
-
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "List shared objects in process", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
-                    Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dlIteratePhdrTest() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("dl_iterate_phdr()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("fork()/exec()")
-                    ReportTextWithCopy(forkExecInfo, "fork/exec inspected yet")
-                    Button(onClick = { forkExecInfo = NativeLibWrapper.testForkExec("") }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Create a child process and inspect its result")
-                    }
-                }
-            }
 
             SectionHeader("SYSTEM INFO")
             Card(

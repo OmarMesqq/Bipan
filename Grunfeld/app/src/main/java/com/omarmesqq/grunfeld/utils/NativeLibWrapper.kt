@@ -33,4 +33,5 @@ object NativeLibWrapper {
     external fun raiseAbrt()
     external fun raiseTrap()
     external fun raiseQuit()
+    external fun investigateSocket(): String
 }
