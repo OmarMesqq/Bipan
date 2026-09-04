@@ -75,7 +75,7 @@ void registerSignalHandler() {
 
   struct kernel_sigaction sa_SYS = {};
   sa_SYS.sa_handler = sigsys_handler;
-  // Pass SA_NODEFER during development to catch recursions
+  // Remember to pass SA_NODEFER during development to catch recursions
   sa_SYS.sa_flags = SA_SIGINFO | SA_ONSTACK;
 
   ret = raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
@@ -85,7 +85,7 @@ void registerSignalHandler() {
   }
 #else
   struct sigaction actSys = {};
-  // Pass SA_NODEFER during development to catch recursions
+  // Remember to pass SA_NODEFER during development to catch recursions
   actSys.sa_flags = SA_SIGINFO | SA_ONSTACK;
   actSys.sa_sigaction = &sigsys_handler;
 
