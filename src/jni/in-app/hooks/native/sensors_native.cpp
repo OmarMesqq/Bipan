@@ -3,10 +3,10 @@
 #include <android/sensor.h>
 #include <dlfcn.h>
 
+#include "../../../logger/logger.hpp"
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"
-#include "../../../logger/logger.hpp"
 
 // Original functions
 static ASensorManager* (*orig_ASensorManager_getInstance)();
@@ -22,6 +22,13 @@ static ASensorEventQueue* hook_ASensorManager_createEventQueue(ASensorManager* m
 static int hook_ASensorManager_getSensorList(ASensorManager* manager, ASensorList** list);
 static ASensor* hook_ASensorManager_getDefaultSensor(ASensorManager* manager, int type);
 
+#define NATIVE_SENSOR_SYM_1 "ASensorManager_getInstance"
+#define NATIVE_SENSOR_SYM_2 "ASensorManager_getInstanceForPackage"
+#define NATIVE_SENSOR_SYM_3 "ASensorManager_getSensorList"
+#define NATIVE_SENSOR_SYM_4 "ASensorManager_getDefaultSensor"
+#define NATIVE_SENSOR_SYM_5 "ASensorManager_createEventQueue"
+#define NATIVE_SENSOR_METHOD_COUNT 5
+
 void registerDobbyNativeSensorsHooks(void) {
   void* handle = dlopen("libandroid.so", RTLD_NOLOAD);
   if (!handle) {
@@ -29,16 +36,17 @@ void registerDobbyNativeSensorsHooks(void) {
   }
 
   if (!handle) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to get handle to libandroid.so. Aborting for safety!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "(Native Sensors): failed to get handle to libandroid.so!");
     BIPAN_PANIC();
   }
 
   const char* symbols[] = {
-      "ASensorManager_getInstance",
-      "ASensorManager_getInstanceForPackage",
-      "ASensorManager_getSensorList",
-      "ASensorManager_getDefaultSensor",
-      "ASensorManager_createEventQueue"};
+      NATIVE_SENSOR_SYM_1,
+      NATIVE_SENSOR_SYM_2,
+      NATIVE_SENSOR_SYM_3,
+      NATIVE_SENSOR_SYM_4,
+      NATIVE_SENSOR_SYM_5,
+  };
 
   void* hooks[] = {
       (void*)hook_ASensorManager_getInstance,
@@ -54,14 +62,21 @@ void registerDobbyNativeSensorsHooks(void) {
       (void**)&orig_ASensorManager_getDefaultSensor,
       (void**)&orig_ASensorManager_createEventQueue};
 
-  const int nativeSensorsMethodsCount = 5;
-  for (int i = 0; i < nativeSensorsMethodsCount; i++) {
+  for (int i = 0; i < NATIVE_SENSOR_METHOD_COUNT; i++) {
     void* addr = dlsym(handle, symbols[i]);
-    if (addr) {
-      if (DobbyHook(addr, hooks[i], originals[i]) == 0) {
-        __builtin___clear_cache((char*)addr, (char*)addr + 32);
-      }
+    if (!addr) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve: %s", symbols[i]);
+      BIPAN_PANIC();
     }
+
+    int rc = DobbyHook(addr, hooks[i], originals[i]);
+    if (rc != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook: %s", symbols[i]);
+      BIPAN_PANIC();
+    }
+
+    __builtin___clear_cache((char*)addr, (char*)addr + 32);
+    write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", symbols[i]);
   }
   dlclose(handle);
 }
