@@ -39,6 +39,7 @@ class MainApplication: Application() {
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
         super.onCreate()
+        Avocado.init(this)
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -47,8 +48,8 @@ class MainApplication: Application() {
             defaultHandler?.uncaughtException(thread, throwable)
         }
 
-        Avocado.init(this)
         if (BuildConfig.DEBUG) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "DEBUG build", shouldToast = true)
             setupStrictMode()
         }
 
@@ -69,33 +70,9 @@ class MainApplication: Application() {
                 }
             }
         )
+
         configRepository = GrunfeldConfigs(this)
-
-        if (!grunfeldCfgExists(this)) {
-            val ctx = this
-
-            CoroutineScope(Dispatchers.IO).launch {
-                val am = ctx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
-                val sb = StringBuilder()
-
-                sb.appendLine("Per-app memory class of device: ${am.memoryClass} MB")
-                sb.appendLine("Size of Dalvik Heap w/ largeHeap=true: ${am.largeMemoryClass} MB")
-                val errorProcs = am.processesInErrorState
-                if (errorProcs != null) {
-                    errorProcs.forEach { ep ->
-                        sb.appendLine("processInErrorState: ${ep.processName}")
-                    }
-                }
-
-                val runningProcs = am.runningAppProcesses
-                if (runningProcs != null) {
-                    runningProcs.forEach { rp ->
-                        sb.appendLine("runningAppProcess: ${rp.processName}")
-                    }
-                }
-                writeToGrunfeldCfg(ctx, sb.toString())
-            }
-        }
+        writeDummyFile()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -127,7 +104,6 @@ class MainApplication: Application() {
     }
 
     private fun setupStrictMode() {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG, "DEBUG build", shouldToast = true)
         StrictMode.setThreadPolicy(
             ThreadPolicy.Builder()
                 .detectCustomSlowCalls()
@@ -169,6 +145,35 @@ class MainApplication: Application() {
 
         stackTrace.forEachIndexed { index, frame ->
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Java frame #$index: $frame")
+        }
+    }
+
+    private fun writeDummyFile() {
+        if (grunfeldCfgExists(this)) {
+            return
+        }
+
+        val ctx = this
+        CoroutineScope(Dispatchers.IO).launch {
+            val am = ctx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            val sb = StringBuilder()
+
+            sb.appendLine("Per-app memory class of device: ${am.memoryClass} MB")
+            sb.appendLine("Size of Dalvik Heap w/ largeHeap=true: ${am.largeMemoryClass} MB")
+            val errorProcs = am.processesInErrorState
+            if (errorProcs != null) {
+                errorProcs.forEach { ep ->
+                    sb.appendLine("processInErrorState: ${ep.processName}")
+                }
+            }
+
+            val runningProcs = am.runningAppProcesses
+            if (runningProcs != null) {
+                runningProcs.forEach { rp ->
+                    sb.appendLine("runningAppProcess: ${rp.processName}")
+                }
+            }
+            writeToGrunfeldCfg(ctx, sb.toString())
         }
     }
 }

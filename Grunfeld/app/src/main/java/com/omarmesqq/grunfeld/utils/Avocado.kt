@@ -20,7 +20,7 @@ object Avocado {
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        Log.w(TAG, "Logger initialized")
+        Log.i(TAG, "Logger initialized")
     }
 
     fun avocadoLog(level: AVOCADO_LOG_LEVEL, tag: String? = null, msg: String, tr: Throwable? = null, shouldToast: Boolean = false) {

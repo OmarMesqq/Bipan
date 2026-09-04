@@ -507,7 +507,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
         return (*env)->NewStringUTF(env, report);
     }
 
-    char buf[PATH_MAX];
+    char buf[PATH_MAX] = {0};
     while (fgets(buf, sizeof(buf), fp) != NULL) {
         char start[11] = {0};
         char end[11] = {0};
@@ -941,7 +941,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getallfds(JNIEnv *env, jobjec
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
 
         // Build "/proc/self/fd/<entry>"
         char linkpath[PATH_MAX];
