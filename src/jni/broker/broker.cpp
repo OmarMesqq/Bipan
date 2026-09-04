@@ -762,7 +762,7 @@ static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
   FILE* f = fopen("/proc/self/stat", "r");
   if (!f) return false;
 
-  char buf[4096] = {0};
+  char buf[PATH_MAX] = {0};
   if (!fgets(buf, sizeof(buf), f)) {
     fclose(f);
     return false;
@@ -770,22 +770,28 @@ static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
   fclose(f);
 
   char* p = strrchr(buf, ')');
-  if (!p) return false;
+  if (!p) {
+    return false;
+  }
   p += 2;  // skip ") "
 
   int field = 3;
   char* tok = strtok(p, " ");
   unsigned long as = 0, ae = 0;
   while (tok) {
-    if (field == 48) as = strtoul(tok, nullptr, 10);  // arg_start
-    if (field == 49) {                                // arg_end
+    if (field == 48) {  // arg_start
+      as = strtoul(tok, nullptr, 10);
+    }
+    if (field == 49) {  // arg_end
       ae = strtoul(tok, nullptr, 10);
       break;
     }
     tok = strtok(nullptr, " ");
     field++;
   }
-  if (as == 0 || ae == 0) return false;
+  if (as == 0 || ae == 0) {
+    return false;
+  }
   *arg_start = as;
   *arg_end = ae;
   return true;
@@ -912,7 +918,9 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
 }
 
 static std::string get_sockaddr_info(const struct sockaddr* sa) {
-  if (sa == nullptr) return "NULL Address";
+  if (sa == nullptr) {
+    return "NULL Address";
+  }
 
   char addr_str[INET6_ADDRSTRLEN] = {0};
   uint16_t port = 0;
@@ -963,8 +971,11 @@ static inline bool client_is_dead(int epfd, int sock, int pidfd) {
 }
 
 /**
- * Wrapper for `pidfd_open` as even with correct headers, the NDK
- * says it's an 'undeclared identifier'
+ * WARNING: There's no `pidfd_open()` because the
+ * project's current SDK level is too low.
+ *
+ * My phone is recent, so creating a syscall wrapper works.
+ * Beware your case: always look at the `logcat`
  */
 static inline int bipan_pidfd_open(pid_t pid, unsigned int flags) {
   return (int)raw_syscall(__NR_pidfd_open, (long)pid, (long)flags, 0, 0, 0, 0);

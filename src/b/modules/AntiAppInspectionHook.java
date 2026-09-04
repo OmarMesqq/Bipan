@@ -312,6 +312,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         case "queryIntentActivities": {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
+            String action = intent.getAction();
 
             // Allow self-targeted queries (component or package matches self)
             boolean isSelfQuery = false;
@@ -323,6 +324,13 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             }
 
             if (isSelfQuery) {
+              return method.invoke(originalPM, args);
+            }
+
+            if (
+              selfPackageName.equals("com.android.webview") &&
+              action.equals("android.settings.WEBVIEW_SETTINGS")
+            ) {
               return method.invoke(originalPM, args);
             }
 

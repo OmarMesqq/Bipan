@@ -221,7 +221,9 @@ static void close_unrelated_fds(const std::unordered_set<int>& keep) {
   }
   struct dirent* entry;
   while ((entry = readdir(d)) != nullptr) {
-    if (entry->d_name[0] == '.') continue;
+    if (entry->d_name[0] == '.') {
+      continue;
+    }
     int fd = atoi(entry->d_name);
     if (fd >= 0 && !keep.count(fd) && fd != dirfd(d)) {
       close(fd);
