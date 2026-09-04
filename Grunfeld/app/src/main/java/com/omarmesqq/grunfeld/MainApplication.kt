@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.res.Configuration
 import android.os.Build
@@ -16,8 +17,12 @@ import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.omarmesqq.grunfeld.utils.Persistence.grunfeldCfgExists
+import com.omarmesqq.grunfeld.utils.Persistence.writeToGrunfeldCfg
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
-
 
 private const val TAG = "MainApplication"
 
@@ -34,6 +39,14 @@ class MainApplication: Application() {
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
         super.onCreate()
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "[!] UNCAUGHT_EXCEPTION: ${throwable.message} in thread ${thread.name}", tr= throwable)
+            printJavaBacktrace()
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         Avocado.init(this)
         if (BuildConfig.DEBUG) {
             setupStrictMode()
@@ -56,14 +69,33 @@ class MainApplication: Application() {
                 }
             }
         )
-
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "[!] UNCAUGHT_EXCEPTION: ${throwable.message} in thread ${thread.name}", tr= throwable)
-            printJavaBacktrace()
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
         configRepository = GrunfeldConfigs(this)
+
+        if (!grunfeldCfgExists(this)) {
+            val ctx = this
+
+            CoroutineScope(Dispatchers.IO).launch {
+                val am = ctx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                val sb = StringBuilder()
+
+                sb.appendLine("Per-app memory class of device: ${am.memoryClass} MB")
+                sb.appendLine("Size of Dalvik Heap w/ largeHeap=true: ${am.largeMemoryClass} MB")
+                val errorProcs = am.processesInErrorState
+                if (errorProcs != null) {
+                    errorProcs.forEach { ep ->
+                        sb.appendLine("processInErrorState: ${ep.processName}")
+                    }
+                }
+
+                val runningProcs = am.runningAppProcesses
+                if (runningProcs != null) {
+                    runningProcs.forEach { rp ->
+                        sb.appendLine("runningAppProcess: ${rp.processName}")
+                    }
+                }
+                writeToGrunfeldCfg(ctx, sb.toString())
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
