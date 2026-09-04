@@ -128,13 +128,13 @@ fun dumpInstallerInfo(ctx: Context): String {
 @Suppress("DEPRECATION")
 fun dumpNetworkInfo(context: Context): String {
     val sb = StringBuilder()
+    sb.appendLine("[NETWORK INTERFACES (via getNetworkInterfaces)]")
 
-    sb.append("[NETWORK INTERFACES (via getNetworkInterfaces)]\n")
     try {
         val ifaces = deferredInterfaces.getCompleted()
         sb.append(ifaces)
     } catch (e: Exception) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "getNetworkInterfaces Exception", tr = e)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
         sb.append("Failed to get interfaces: ${e.message}\n")
     }
 
@@ -154,7 +154,7 @@ fun dumpNetworkInfo(context: Context): String {
         sb.append("SSID: $ssid\n")
         sb.append("Network ID: $netid\n")
     } catch (e: SecurityException) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "WIFI_SERVICE Exception", tr = e)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "WIFI_SERVICE Exception", tr = e)
 
         sb.append("WIFI_SERVICE Exception. Message: ${e.message}\n\n")
         sb.append("Exception's stackTrace: ${e.stackTrace.contentToString()}\n\n")
@@ -808,7 +808,7 @@ fun readLogcatWithRuntime(): String {
         val process =  Runtime.getRuntime().exec("logcat -d")
         val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
 
-        for (i in 1..5) {
+        repeat(5) {
             sb.appendLine(bufferedReader.readLine())
         }
 
