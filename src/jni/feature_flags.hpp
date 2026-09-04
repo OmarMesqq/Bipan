@@ -16,7 +16,7 @@
  * or help me with debugging. Some stuff might be shipped
  * out of this FT to become an actual feature!
  */
-#define IN_APP_DEV_EXPERIMENTS
+// #define IN_APP_DEV_EXPERIMENTS
 
 /**
  * Logs time taken to acquire a lock for the IPC shared memory region 
