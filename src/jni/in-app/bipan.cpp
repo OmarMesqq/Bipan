@@ -26,8 +26,8 @@
 #include "ipc_communication.hpp"
 #include "sigsys_handler.hpp"
 #include "synchronization.hpp"
-#ifdef IN_APP_DEBUG_LOGGING
-#include "hooks/native/bionic_signals.cpp"
+#ifdef IN_APP_DEV_EXPERIMENTS
+#include "hooks/native/bionic_signals.hpp"
 #endif
 
 using zygisk::Api;
@@ -180,7 +180,7 @@ class Bipan : public zygisk::ModuleBase {
     registerDobbyGetifaddrsHooks();
     registerDobbyNativeSysPropsHooks();
     registerDobbyNativeSensorsHooks();
-#ifdef IN_APP_DEBUG_LOGGING
+#ifdef IN_APP_DEV_EXPERIMENTS
     registerDobbyBionicSignalHooks();
 #endif
 
@@ -236,27 +236,27 @@ class Bipan : public zygisk::ModuleBase {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to load BipanJava's class (%s)!", BIPAN_JAVA_PACKAGE_NAME);
       BIPAN_PANIC();
-    } else {
-      jclass payloadClass = static_cast<jclass>(payloadClassObj);
-
-      g_bipan_java_class = static_cast<jclass>(env->NewGlobalRef(payloadClass));
-
-      // Call install from Java-side
-      jmethodID installMethod = env->GetStaticMethodID(payloadClass, "i", "()V");
-      if (installMethod == nullptr) {
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
-        BIPAN_PANIC();
-      }
-
-      env->CallStaticVoidMethod(payloadClass, installMethod);
-      if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's install threw!");
-        BIPAN_PANIC();
-      } else {
-        write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
-      }
     }
+
+    jclass payloadClass = static_cast<jclass>(payloadClassObj);
+
+    g_bipan_java_class = static_cast<jclass>(env->NewGlobalRef(payloadClass));
+
+    // Call install from Java-side
+    jmethodID installMethod = env->GetStaticMethodID(payloadClass, "i", "()V");
+    if (installMethod == nullptr) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's installMethod is NULL!");
+      BIPAN_PANIC();
+    }
+
+    env->CallStaticVoidMethod(payloadClass, installMethod);
+    if (env->ExceptionCheck()) {
+      env->ExceptionClear();
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] BipanJava's install threw!");
+      BIPAN_PANIC();
+    }
+
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "BipanJava DEX payload successfully injected.");
 
     env->DeleteLocalRef(className);
     env->DeleteLocalRef(dexClassLoader);
@@ -318,13 +318,13 @@ class Bipan : public zygisk::ModuleBase {
     if (env->ExceptionCheck()) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "setField: failed to find field: %s", fieldName);
-      return;
+      BIPAN_PANIC();
     }
 
     jstring newStr = env->NewStringUTF(value);
     if (newStr == nullptr) {
       write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "setField: failed create new Java String for value: %s", value);
-      return;
+      BIPAN_PANIC();
     }
 
     env->SetStaticObjectField(clazz, fieldId, newStr);
@@ -342,7 +342,7 @@ class Bipan : public zygisk::ModuleBase {
     if (buildClass == nullptr) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Could not find android.os.Build!");
-      return;
+      BIPAN_PANIC();
     }
 
     spoofAbisAs64BitOnly();
@@ -370,7 +370,7 @@ class Bipan : public zygisk::ModuleBase {
     if (versionClass == nullptr) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "could not find android.os.Build.VERSION!");
-      return;
+      BIPAN_PANIC();
     }
 
     setField(versionClass, "INCREMENTAL", "14401865");
@@ -439,7 +439,9 @@ class Bipan : public zygisk::ModuleBase {
 
   jobjectArray makeStringArray(const char* const* strings, size_t count) {
     jclass stringClass = env->FindClass("java/lang/String");
-    if (!stringClass) return nullptr;
+    if (!stringClass) {
+      return nullptr;
+    }
 
     jobjectArray array = env->NewObjectArray((jsize)count, stringClass, nullptr);
     if (!array) {
@@ -487,7 +489,7 @@ class Bipan : public zygisk::ModuleBase {
     if (!buildClass) {
       env->ExceptionClear();
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Could not find android.os.Build!");
-      return;
+      BIPAN_PANIC();
     }
 
     const char* abis64[] = {"arm64-v8a"};
@@ -498,6 +500,7 @@ class Bipan : public zygisk::ModuleBase {
 
     if (!ok1 || !ok2) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to set some CPU ABI JNI field");
+      BIPAN_PANIC();
     }
 
     env->DeleteLocalRef(buildClass);
