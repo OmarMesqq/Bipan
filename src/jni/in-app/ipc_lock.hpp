@@ -5,6 +5,11 @@
 
 #include "synchronization.hpp"
 
+/**
+ * WARNING: only the SIGSYS handler should include this header file
+ * Otherwise, there will be different lock states in the process.
+ * Could add `inline` here, but would rather be explicit.
+ */
 static volatile int ipc_lock_state = 0;
 
 // AS-safe lock
