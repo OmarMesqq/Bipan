@@ -45,7 +45,9 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   memset(&info, 0, sizeof(ManualDlInfo));
   char sym_name[PATH_MAX] = UNRESOLVED_SYMBOL_NAME;
 
-  lr &= 0x0000FFFFFFFFFFFFULL;  // Strip arm64 PAC auth bits
+  // Strip arm64 PAC auth bits
+  pc &= 0x0000FFFFFFFFFFFFULL; 
+  lr &= 0x0000FFFFFFFFFFFFULL;  
 
   // Try the actual PC first (like for inline asm)
   LIB_IN_MAPS_RET ret = find_lib_name_in_maps(pc, &info, pid);
