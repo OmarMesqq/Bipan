@@ -38,7 +38,9 @@ void registerDobbyDrmNativeHook(void) {
     BIPAN_PANIC();
   }
   __builtin___clear_cache((char*)addr, (char*)addr + 32);
+#ifdef IN_APP_DEBUG_LOGGING
   write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", NATIVE_GET_PROP_BYTE_ARRAY_SYM);
+#endif
 }
 
 // Hooks below
