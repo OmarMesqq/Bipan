@@ -382,6 +382,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
             String action = intent.getAction();
+
             if ("com.facebook.usdid.CROSS_SIGN_SERVICE".equals(action)) {
               Log.i(TAG, "Blinded: queryIntentServices Meta's USDID cross-sign service");
               return emptyParceledListSlice();
@@ -398,6 +399,15 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
               Log.i(TAG, "Blinded: queryIntentServices adservices.MEASUREMENT_SERVICE");
               return emptyParceledListSlice();
             }
+            if ("android.media.MediaRouteProviderService".equals(action)) {
+              Log.i(TAG, "Blinded: queryIntentServices MediaRouteProviderService");
+              return emptyParceledListSlice();
+            }
+            if ("android.media.MediaRoute2ProviderService".equals(action)) {
+              Log.i(TAG, "Blinded: queryIntentServices MediaRoute2ProviderService");
+              return emptyParceledListSlice();
+            }
+
             Log.w(TAG, "queryIntentServices: Allowing Intent: " + dumpIntent(intent));
           }
           return method.invoke(originalPM, args);

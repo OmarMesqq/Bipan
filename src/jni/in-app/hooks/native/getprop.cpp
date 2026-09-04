@@ -399,7 +399,9 @@ void registerDobbyNativeSysPropsHooks(void) {
     }
 
     __builtin___clear_cache((char*)addr, (char*)addr + 32);
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", symbols[i]);
+#endif
   }
 }
 
