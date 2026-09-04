@@ -22,7 +22,6 @@ import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -58,21 +57,23 @@ val deferredIfaces = GlobalScope.async {
     return@async sb.toString()
 }
 
-fun DumpJavaInfo(context: Context): String {
+fun dumpBuildAndSettingsInfo(context: Context): String {
     val buildInfo = dumpBuildInfo()
     val settingsInfo = dumpSettingsInfo(context)
     return "$buildInfo\n\n$settingsInfo"
 }
 
-fun dumpJavaSensorInfo(ctx: Context): String {
-    val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    val deviceSensors: List<Sensor> = sensorManager.getSensorList(Sensor.TYPE_ALL)
+fun dumpSensorInfo(ctx: Context): String {
+    val sb = StringBuilder()
 
-    return if (deviceSensors.isEmpty()) {
-        "No sensors detected"
+    val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    val sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL)
+
+    if (sensorList.isEmpty()) {
+        sb.appendLine("SensorManager.getSensorList(ALL): empty")
     } else {
-        deviceSensors.joinToString(separator = "\n\n") { sensor ->
-            """
+        val ret = sensorList.joinToString(separator = "\n\n") { sensor ->
+        """
         Name: ${sensor.name}
         Vendor: ${sensor.vendor}
         Version: ${sensor.version}
@@ -82,7 +83,12 @@ fun dumpJavaSensorInfo(ctx: Context): String {
         Max Range: ${sensor.maximumRange}
         """.trimIndent()
         }
+        sb.appendLine("SensorManager.getSensorList(ALL): $ret")
     }
+
+    sb.appendLine("SensorManager.getDefaultSensor(ALL): ${sensorManager.getDefaultSensor(Sensor.TYPE_ALL)?.name}")
+
+    return sb.toString()
 }
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -947,8 +953,3 @@ fun readLogcatWithProcessBuilder(): String {
     sb.appendLine("Process exited with code $exitCode")
     return sb.toString()
 }
-
-private fun stackToString(frames: Array<StackTraceElement>): String {
-    return frames.joinToString("\n") { "at $it" }
-}
-

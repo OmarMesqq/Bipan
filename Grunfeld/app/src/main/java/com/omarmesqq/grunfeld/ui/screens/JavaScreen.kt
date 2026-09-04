@@ -26,7 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
-import com.omarmesqq.grunfeld.utils.DumpJavaInfo
+import com.omarmesqq.grunfeld.utils.dumpBuildAndSettingsInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
 import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
@@ -35,7 +35,7 @@ import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
 import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
-import com.omarmesqq.grunfeld.utils.dumpJavaSensorInfo
+import com.omarmesqq.grunfeld.utils.dumpSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
@@ -53,7 +53,7 @@ fun JavaInfoScreen() {
     val screenScrollState = rememberScrollState()
     val composableScope = rememberCoroutineScope()
 
-    var buildAndSettingsInfo by remember { mutableStateOf(DumpJavaInfo(context)) }
+    var buildAndSettingsInfo by remember { mutableStateOf(dumpBuildAndSettingsInfo(context)) }
 
     var javaSensorsReport by remember { mutableStateOf("Sensors not tested yet") }
 
@@ -130,7 +130,7 @@ fun JavaInfoScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Button(
-                onClick = { javaSensorsReport = dumpJavaSensorInfo(context) },
+                onClick = { javaSensorsReport = dumpSensorInfo(context) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Probe Sensors using Java")
