@@ -4,8 +4,8 @@
 #include <link.h>
 
 #include <cstdint>
-#include "../../../logger/logger.hpp"
 
+#include "../../../logger/logger.hpp"
 #include "common_utils.hpp"
 #include "deps/dobby.h"
 #include "in-app/globals.hpp"
@@ -18,17 +18,23 @@ static int filtered_iterate_callback(struct dl_phdr_info* info, size_t size, voi
 // Hooks
 static int my_dl_iterate_phdr(int (*cb)(struct dl_phdr_info*, size_t, void*), void* data);
 
+// Symbol names
+#define DL_ITERATE_SYM "__loader_dl_iterate_phdr"
+
 void registerDobbyDlIteratePhdrHook(void) {
-  void* dl_iterate_phdr_addr = dlsym(RTLD_DEFAULT, "__loader_dl_iterate_phdr");
-  if (!dl_iterate_phdr_addr) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve dl_iterate_phdr!");
+  void* addr = dlsym(RTLD_DEFAULT, DL_ITERATE_SYM);
+  if (!addr) {
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to resolve: %s", DL_ITERATE_SYM);
     BIPAN_PANIC();
   }
-  int hookRet = DobbyHook(dl_iterate_phdr_addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
+
+  int hookRet = DobbyHook(addr, (void*)my_dl_iterate_phdr, (void**)&orig_dl_iterate_phdr);
   if (hookRet != 0) {
-    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook dl_iterate_phdr!");
+    write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] Failed to hook %s", DL_ITERATE_SYM);
     BIPAN_PANIC();
   }
+  __builtin___clear_cache((char*)addr, (char*)addr + 32);
+  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Dobby hooked: %s", DL_ITERATE_SYM);
 }
 
 // Hooks below
