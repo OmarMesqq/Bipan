@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import kotlin.properties.Delegates
 
 enum class AVOCADO_LOG_LEVEL {
     AVOCADO_ERROR,
@@ -24,8 +23,13 @@ object Avocado {
         Log.w(TAG, "Logger initialized")
     }
 
-    fun avocadoLog(level: AVOCADO_LOG_LEVEL, tag: String, msg: String, tr: Throwable? = null, shouldToast: Boolean = false) {
-        val combinedTag = "$TAG.$tag"
+    fun avocadoLog(level: AVOCADO_LOG_LEVEL, tag: String? = null, msg: String, tr: Throwable? = null, shouldToast: Boolean = false) {
+        val combinedTag = if (tag != null) {
+            "$TAG.$tag"
+        } else {
+            TAG
+        }
+
         when (level) {
             AVOCADO_LOG_LEVEL.AVOCADO_ERROR -> Log.e(combinedTag, msg, tr)
             AVOCADO_LOG_LEVEL.AVOCADO_WARNING -> Log.w(combinedTag, msg, tr)

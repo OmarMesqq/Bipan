@@ -17,7 +17,7 @@ class GrunfeldConfigs(private val context: Context) {
 
     val isFlagSecureEnabledKeyFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
-            preferences[isFlagSecureEnabledKey] ?: false
+            preferences[isFlagSecureEnabledKey] ?: true
     }
 
     suspend fun toggleIsFlagSecure() {

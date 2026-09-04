@@ -36,30 +36,29 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.util.UUID
 
-/**
- * Does PTR lookups internally and I shouldn't (nor can)
- * make network requests in the main thread.
- * As I didn't want to make dumpNetworkInfo suspend,
- * we got this
- */
-val deferredIfaces = GlobalScope.async {
+private val deferredInterfaces = GlobalScope.async {
     val sb = StringBuilder()
-    val interfaces = NetworkInterface.getNetworkInterfaces()
 
-    if (interfaces == null) {
-        sb.append("No interfaces found.\n")
-    } else {
-        for (intf in interfaces.asSequence()) {
-            sb.append(formatInterfaceDetails(intf))
-            sb.append("\n")
+    try {
+        val interfaces = NetworkInterface.getNetworkInterfaces()
+        if (interfaces == null) {
+            sb.appendLine("No interfaces found")
+        } else {
+            for (intf in interfaces.asSequence()) {
+                sb.append(formatInterfaceDetails(intf))
+                sb.append("\n")
+            }
         }
+    } catch (e: Exception) {
+        sb.appendLine("getNetworkInterfaces exception: ${e.message} | ${e.cause}")
     }
+
     return@async sb.toString()
 }
 
 fun dumpBuildAndSettingsInfo(context: Context): String {
-    val buildInfo = dumpBuildInfo()
-    val settingsInfo = dumpSettingsInfo(context)
+    val buildInfo = getBuildInfo()
+    val settingsInfo = getSettingsInfo(context)
     return "$buildInfo\n\n$settingsInfo"
 }
 
@@ -125,7 +124,6 @@ fun dumpInstallerInfo(ctx: Context): String {
 }
 
 
-
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
 fun dumpNetworkInfo(context: Context): String {
@@ -133,7 +131,7 @@ fun dumpNetworkInfo(context: Context): String {
 
     sb.append("[NETWORK INTERFACES (via getNetworkInterfaces)]\n")
     try {
-        val ifaces = deferredIfaces.getCompleted()
+        val ifaces = deferredInterfaces.getCompleted()
         sb.append(ifaces)
     } catch (e: Exception) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpNetworkInfo", "getNetworkInterfaces Exception", tr = e)
@@ -245,145 +243,6 @@ fun dumpNetworkInfo(context: Context): String {
 
 
     return sb.toString()
-}
-
-private fun formatInterfaceDetails(intf: NetworkInterface): String {
-    val details = StringBuilder()
-
-    // Metadata
-    details.append("--- Interface: ${intf.name} ---\n")
-    details.append("| Index: ${intf.index}\n")
-    details.append("| MTU: ${intf.mtu}\n")
-
-    // State & Capabilities
-    details.append("| Flags: ")
-    if (intf.isLoopback) details.append("[LOOPBACK] ")
-    if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ")
-    if (intf.isVirtual) details.append("[VIRTUAL] ")
-    if (intf.isUp) details.append("[UP] ")
-    if (intf.supportsMulticast()) details.append("[MULTICAST] ")
-
-    details.append("\n")
-
-    val addrList = intf.interfaceAddresses
-    if (addrList.isEmpty()) {
-        details.append("| Addresses: empty list!\n")
-    } else {
-        for (addr in addrList) {
-            val ip = addr.address.hostAddress
-            val prefix = addr.networkPrefixLength
-            val broadcast = addr.broadcast?.hostAddress
-            details.append("| -> IP: $ip/$prefix\n")
-            details.append("| -> Broadcast: $broadcast\n")
-        }
-    }
-
-    // Hierarchy (Sub-interfaces/VLANs)
-    val parent = intf.parent
-    if (parent != null) {
-        details.append("| Parent: ${parent.name}\n")
-    }
-    val subs = intf.subInterfaces.asSequence().toList()
-    if (subs.isNotEmpty()) {
-        details.append("| Children: ${subs.joinToString { it.name }}\n")
-    }
-    details.append("\n")
-
-    return details.toString()
-}
-
-@Suppress("DEPRECATION")
-private fun formatNetworkInfo(ni: NetworkInfo?) : String {
-    if (ni == null) {
-        return "Provided NetworkInfo is null"
-    }
-    val sb = StringBuilder()
-
-
-    sb.appendLine("\t Type: ${ni.type}")
-    sb.appendLine("\t Extra info: ${ni.extraInfo}")
-    sb.appendLine("\t State: ${ni.state}")
-    sb.appendLine("\t Detailed state: ${ni.detailedState}")
-    sb.appendLine("\t isAvailable: ${ni.isAvailable}")
-    sb.appendLine("\t isConnected: ${ni.isConnected}")
-    sb.appendLine("\t isConnectedOrConnecting: ${ni.isConnectedOrConnecting}")
-    sb.appendLine("\t isFailover: ${ni.isFailover}")
-    sb.appendLine("\t isRoaming: ${ni.isRoaming}")
-    sb.appendLine("\t reason: ${ni.reason}")
-    sb.appendLine("\t subtype: ${ni.subtype}")
-    sb.appendLine("\t subtypeName: ${ni.subtypeName}")
-    sb.appendLine("\t typeName: ${ni.typeName}\n")
-
-    return sb.toString()
-}
-
-@Suppress("DEPRECATION")
-private fun dumpBuildInfo(): String {
-    return """
-            BOARD: ${Build.BOARD}
-            BOOTLOADER: ${Build.BOOTLOADER}
-            BRAND: ${Build.BRAND}
-            DEVICE: ${Build.DEVICE}
-            DISPLAY: ${Build.DISPLAY}
-            FINGERPRINT: ${Build.FINGERPRINT}
-            HARDWARE: ${Build.HARDWARE}
-            HOST: ${Build.HOST}
-            ID: ${Build.ID}
-            MANUFACTURER: ${Build.MANUFACTURER}
-            MODEL: ${Build.MODEL}
-            ODM_SKU: ${Build.ODM_SKU}
-            PRODUCT: ${Build.PRODUCT}
-            SKU: ${Build.SKU}
-            SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
-            SOC_MODEL: ${Build.SOC_MODEL}
-            SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS.joinToString()}
-            SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
-            SUPPORTED_ABIS: ${Build.SUPPORTED_ABIS?.joinToString()}
-            CPU_ABI: ${Build.CPU_ABI}
-            CPU_ABI2: ${Build.CPU_ABI2}
-            TAGS: ${Build.TAGS}
-            TIME: ${Build.TIME}
-            TYPE: ${Build.TYPE}
-            USER: ${Build.USER}
-            RADIO: ${Build.getRadioVersion()}
-            MAJOR_SDK: ${Build.getMajorSdkVersion(Build.VERSION.SDK_INT_FULL)}
-            MINOR_SDK: ${Build.getMinorSdkVersion(Build.VERSION.SDK_INT_FULL)}
-            PARTITIONS: ${Build.getFingerprintedPartitions().joinToString { "${it.name}:${it.fingerprint}" }}
-            BASE_OS: ${Build.VERSION.BASE_OS}
-            CODENAME: ${Build.VERSION.CODENAME}
-            INCREMENTAL: ${Build.VERSION.INCREMENTAL}
-            MEDIA_PERFORMANCE_CLASS: ${Build.VERSION.MEDIA_PERFORMANCE_CLASS}
-            PREVIEW_SDK_INT: ${Build.VERSION.PREVIEW_SDK_INT}
-            RELEASE: ${Build.VERSION.RELEASE}
-            RELEASE_OR_CODENAME: ${Build.VERSION.RELEASE_OR_CODENAME}
-            RELEASE_OR_PREVIEW_DISPLAY: ${Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY}
-            SDK_INT: ${Build.VERSION.SDK_INT}
-            SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
-            SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
-            """.trimIndent()
-}
-
-private fun dumpSettingsInfo(ctx: Context): String {
-    val cr = ctx.contentResolver
-    val notFoundKey = -999
-
-    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
-    @SuppressLint("HardwareIds")
-    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
-
-    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
-    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
-    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
-    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
-
-    return """
-       DEVICE_NAME: $deviceName
-       SSAID: $ssaid
-       DEV_SETTINGS_ON: ${if (devSettingsOn == notFoundKey) "Could not extract value" else devSettingsOn}
-       ADB_ENABLED: ${if (adbEnabled == notFoundKey) "Could not extract value" else adbEnabled}
-       BOOT_COUNT: ${if (bootCount == notFoundKey) "Could not extract value" else bootCount}
-       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == notFoundKey) "Could not extract value" else waitForDebugger}
-    """.trimIndent()
 }
 
 fun dumpQueryIntentActivities(context: Context): String {
@@ -549,7 +408,7 @@ fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
 
 @RequiresApi(Build.VERSION_CODES.BAKLAVA)
 @Suppress("DEPRECATION")
-fun getSomeSystemFeatures(ctx: Context): String {
+fun dumpSomeSystemFeatures(ctx: Context): String {
     val pm = ctx.packageManager
     val sb = StringBuilder()
 
@@ -671,7 +530,7 @@ fun getSomeSystemFeatures(ctx: Context): String {
     return sb.toString()
 }
 
-fun getSystemProps(): String {
+fun dumpSystemProps(): String {
     val arch = System.getProperty("os.arch")
     val name = System.getProperty("os.name")
     val version = System.getProperty("os.version")
@@ -721,7 +580,6 @@ private fun ByteArray.toHexString(): String {
         format("%02x", it)
     }
 }
-
 
 @SuppressLint("PrivateApi")
 fun dumpDevProperties(): String {
@@ -926,29 +784,198 @@ fun dumpTelephonyInfo(context: Context): String {
     return sb.toString()
 }
 
+fun dumpSensitiveInfoWithRuntime():String {
+    val sb = StringBuilder()
+    try {
+        val arr1 = arrayOf("which", "su")
+        val pr1 =  Runtime.getRuntime().exec(arr1)
+        val bufRdr1 = BufferedReader(InputStreamReader(pr1.inputStream))
+        sb.appendLine(bufRdr1.readLine())
+
+        val inputStream = Runtime.getRuntime().exec("getprop").inputStream
+        val bufRdr2 = BufferedReader(InputStreamReader(inputStream))
+        sb.appendLine(bufRdr2.readLine())
+
+    } catch (tr: Throwable) {
+        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
+    }
+    return sb.toString()
+}
 
 fun readLogcatWithRuntime(): String {
-    val process =  Runtime.getRuntime().exec("logcat -d")
-    val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
     val sb = StringBuilder()
-    for (i in 1..5) {
-        sb.appendLine(bufferedReader.readLine())
+    try {
+        val process =  Runtime.getRuntime().exec("logcat -d")
+        val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
+
+        for (i in 1..5) {
+            sb.appendLine(bufferedReader.readLine())
+        }
+
+    } catch (tr: Throwable) {
+        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
     }
     return sb.toString()
 }
 
 fun readLogcatWithProcessBuilder(): String {
     val sb = StringBuilder()
-    val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
-    val process = processBuilder.start()
+    try {
+        val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
+        val process = processBuilder.start()
 
-    process.inputStream.bufferedReader().useLines { lines ->
-        lines.take(5).forEach { line ->
-            sb.appendLine(line)
+        process.inputStream.bufferedReader().useLines { lines ->
+            lines.take(5).forEach { line ->
+                sb.appendLine(line)
+            }
+        }
+
+        val exitCode = process.waitFor()
+        sb.appendLine("Process exited with code $exitCode")
+    } catch (tr: Throwable) {
+        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
+    }
+
+    return sb.toString()
+}
+
+// Privates
+
+private fun formatInterfaceDetails(intf: NetworkInterface): String {
+    val details = StringBuilder()
+
+    // Metadata
+    details.append("--- Interface: ${intf.name} ---\n")
+    details.append("| Index: ${intf.index}\n")
+    details.append("| MTU: ${intf.mtu}\n")
+
+    // State & Capabilities
+    details.append("| Flags: ")
+    if (intf.isLoopback) details.append("[LOOPBACK] ")
+    if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ")
+    if (intf.isVirtual) details.append("[VIRTUAL] ")
+    if (intf.isUp) details.append("[UP] ")
+    if (intf.supportsMulticast()) details.append("[MULTICAST] ")
+
+    details.append("\n")
+
+    val addrList = intf.interfaceAddresses
+    if (addrList.isEmpty()) {
+        details.append("| Addresses: empty list!\n")
+    } else {
+        for (addr in addrList) {
+            val ip = addr.address.hostAddress
+            val prefix = addr.networkPrefixLength
+            val broadcast = addr.broadcast?.hostAddress
+            details.append("| -> IP: $ip/$prefix\n")
+            details.append("| -> Broadcast: $broadcast\n")
         }
     }
 
-    val exitCode = process.waitFor()
-    sb.appendLine("Process exited with code $exitCode")
+    // Hierarchy (Sub-interfaces/VLANs)
+    val parent = intf.parent
+    if (parent != null) {
+        details.append("| Parent: ${parent.name}\n")
+    }
+    val subs = intf.subInterfaces.asSequence().toList()
+    if (subs.isNotEmpty()) {
+        details.append("| Children: ${subs.joinToString { it.name }}\n")
+    }
+    details.append("\n")
+
+    return details.toString()
+}
+
+@Suppress("DEPRECATION")
+private fun formatNetworkInfo(ni: NetworkInfo?) : String {
+    if (ni == null) {
+        return "Provided NetworkInfo is null"
+    }
+    val sb = StringBuilder()
+
+
+    sb.appendLine("\t Type: ${ni.type}")
+    sb.appendLine("\t Extra info: ${ni.extraInfo}")
+    sb.appendLine("\t State: ${ni.state}")
+    sb.appendLine("\t Detailed state: ${ni.detailedState}")
+    sb.appendLine("\t isAvailable: ${ni.isAvailable}")
+    sb.appendLine("\t isConnected: ${ni.isConnected}")
+    sb.appendLine("\t isConnectedOrConnecting: ${ni.isConnectedOrConnecting}")
+    sb.appendLine("\t isFailover: ${ni.isFailover}")
+    sb.appendLine("\t isRoaming: ${ni.isRoaming}")
+    sb.appendLine("\t reason: ${ni.reason}")
+    sb.appendLine("\t subtype: ${ni.subtype}")
+    sb.appendLine("\t subtypeName: ${ni.subtypeName}")
+    sb.appendLine("\t typeName: ${ni.typeName}\n")
+
     return sb.toString()
+}
+
+@Suppress("DEPRECATION")
+private fun getBuildInfo(): String {
+    return """
+            BOARD: ${Build.BOARD}
+            BOOTLOADER: ${Build.BOOTLOADER}
+            BRAND: ${Build.BRAND}
+            DEVICE: ${Build.DEVICE}
+            DISPLAY: ${Build.DISPLAY}
+            FINGERPRINT: ${Build.FINGERPRINT}
+            HARDWARE: ${Build.HARDWARE}
+            HOST: ${Build.HOST}
+            ID: ${Build.ID}
+            MANUFACTURER: ${Build.MANUFACTURER}
+            MODEL: ${Build.MODEL}
+            ODM_SKU: ${Build.ODM_SKU}
+            PRODUCT: ${Build.PRODUCT}
+            SKU: ${Build.SKU}
+            SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
+            SOC_MODEL: ${Build.SOC_MODEL}
+            SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS.joinToString()}
+            SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
+            SUPPORTED_ABIS: ${Build.SUPPORTED_ABIS?.joinToString()}
+            CPU_ABI: ${Build.CPU_ABI}
+            CPU_ABI2: ${Build.CPU_ABI2}
+            TAGS: ${Build.TAGS}
+            TIME: ${Build.TIME}
+            TYPE: ${Build.TYPE}
+            USER: ${Build.USER}
+            RADIO: ${Build.getRadioVersion()}
+            MAJOR_SDK: ${Build.getMajorSdkVersion(Build.VERSION.SDK_INT_FULL)}
+            MINOR_SDK: ${Build.getMinorSdkVersion(Build.VERSION.SDK_INT_FULL)}
+            PARTITIONS: ${Build.getFingerprintedPartitions().joinToString { "${it.name}:${it.fingerprint}" }}
+            BASE_OS: ${Build.VERSION.BASE_OS}
+            CODENAME: ${Build.VERSION.CODENAME}
+            INCREMENTAL: ${Build.VERSION.INCREMENTAL}
+            MEDIA_PERFORMANCE_CLASS: ${Build.VERSION.MEDIA_PERFORMANCE_CLASS}
+            PREVIEW_SDK_INT: ${Build.VERSION.PREVIEW_SDK_INT}
+            RELEASE: ${Build.VERSION.RELEASE}
+            RELEASE_OR_CODENAME: ${Build.VERSION.RELEASE_OR_CODENAME}
+            RELEASE_OR_PREVIEW_DISPLAY: ${Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY}
+            SDK_INT: ${Build.VERSION.SDK_INT}
+            SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
+            SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
+            """.trimIndent()
+}
+
+private fun getSettingsInfo(ctx: Context): String {
+    val cr = ctx.contentResolver
+    val notFoundKey = -999
+
+    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
+    @SuppressLint("HardwareIds")
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
+
+    return """
+       DEVICE_NAME: $deviceName
+       SSAID: $ssaid
+       DEV_SETTINGS_ON: ${if (devSettingsOn == notFoundKey) "Could not extract value" else devSettingsOn}
+       ADB_ENABLED: ${if (adbEnabled == notFoundKey) "Could not extract value" else adbEnabled}
+       BOOT_COUNT: ${if (bootCount == notFoundKey) "Could not extract value" else bootCount}
+       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == notFoundKey) "Could not extract value" else waitForDebugger}
+    """.trimIndent()
 }

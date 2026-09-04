@@ -47,7 +47,7 @@ open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object LogcatScreen : Screen("logcat", "Logcat", Icons.Default.Construction)
 }
 
-private const val TAG = "MainActitvity"
+private const val TAG = "MainActivity"
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {

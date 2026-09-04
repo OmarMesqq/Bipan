@@ -1,22 +1,17 @@
-.idea
 .DS_Store
-a.out*
 
 zygisk/
 *.zip
+*.jar
 src/libs/
 src/obj/
-
 javac_out
 classes.dex
 # Changes everytime BipanJava is modified
-bipan_java.h
+bipan_java.h 
 
 # profiling data
 perf.data
 simple_report.html
 firefox_report.json
-
-lab/**
-*.jar
 r8analysis/

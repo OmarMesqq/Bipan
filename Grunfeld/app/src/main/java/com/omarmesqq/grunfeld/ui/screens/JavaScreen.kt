@@ -39,9 +39,10 @@ import com.omarmesqq.grunfeld.utils.dumpSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
+import com.omarmesqq.grunfeld.utils.dumpSensitiveInfoWithRuntime
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
-import com.omarmesqq.grunfeld.utils.getSomeSystemFeatures
-import com.omarmesqq.grunfeld.utils.getSystemProps
+import com.omarmesqq.grunfeld.utils.dumpSomeSystemFeatures
+import com.omarmesqq.grunfeld.utils.dumpSystemProps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,6 +69,7 @@ fun JavaInfoScreen() {
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
     var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
+    var runtimeInfo by remember { mutableStateOf("") }
     var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
@@ -120,6 +122,22 @@ fun JavaInfoScreen() {
 
             Text(
                 text = mediaDrmIdInfo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        SectionHeader("JVM RUNTIME")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    runtimeInfo = dumpSensitiveInfoWithRuntime()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get some info with Runtime")
+            }
+            Text(
+                text = runtimeInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -248,7 +266,7 @@ fun JavaInfoScreen() {
             ReportTextWithCopy(getSomeSystemFeaturesInfo, "getSomeSystemFeaturesInfo not queried")
             Button(
                 onClick = {
-                    getSomeSystemFeaturesInfo = getSomeSystemFeatures(context)
+                    getSomeSystemFeaturesInfo = dumpSomeSystemFeatures(context)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -277,7 +295,7 @@ fun JavaInfoScreen() {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
-                    sysPropsInfo = getSystemProps()
+                    sysPropsInfo = dumpSystemProps()
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
