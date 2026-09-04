@@ -57,21 +57,13 @@ static const int  BOGUS_SYSCALL_EXPECTED_RET = 21;
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
     LOGI("__attribute__((constructor))");
+    athenaInit();
     // requestNativeBacktrace();
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad");
     // requestNativeBacktrace();
-
-    JNIEnv* env = NULL;
-    jint result = (*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6);
-    if (result != JNI_OK) {
-        LOGE("Failed to get env from JVM. Result code: %d. Not setting up Athena.", result);
-        return JNI_VERSION_1_6;
-    }
-
-    athenaInit(env);
     return JNI_VERSION_1_6;
 }
 
@@ -1307,26 +1299,28 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
-    char result_buffer[512];
-    char* status_msg;
-    char* queue_msg;
+    char result_buffer[PATH_MAX] = {0};
+    char entry[512] = {0};
 
     // On API >= 26 we get the sensor sensorManager for our specific package
     ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
 
     if (!sensorManager) {
-        return (*env)->NewStringUTF(env, "Sensor Manager is NULL!");
+        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NULL\n");
+        strcat(result_buffer, entry);
     }
 
     // Enumerate all sensors
-    ASensorList list;
-    int count = ASensorManager_getSensorList(sensorManager, &list);
+    ASensorList list = {0};
+    int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
 
-    if (count == 0) {
-        status_msg = "SUCCESS: 0 Sensors found (Blocked)";
+    if (sensorListCount == 0) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: empty\n");
+        strcat(result_buffer, entry);
     } else {
-        status_msg = "LEAK: Sensors detected";
-        for (int i = 0; i < count; i++) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
+        strcat(result_buffer, entry);
+        for (int i = 0; i < sensorListCount; i++) {
             const char* name = ASensor_getName(list[i]);
             const char* vendor = ASensor_getVendor(list[i]);
             int type = ASensor_getType(list[i]);
@@ -1337,22 +1331,30 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     // Get some famous sensors
     const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
     const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
-    if (!accel || !gyro) {
-        LOGE("Accelerometer and or Gyroscope handle is NULL!");
+    if (!accel) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): null\n");
+        strcat(result_buffer, entry);
+    }
+    if (!gyro) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): null\n");
+        strcat(result_buffer, entry);
     }
 
     // Get a looper for the current thread
     ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
     if (!looper) {
-        LOGE("[Sensors] Failed to get looper!\n");
+        snprintf(entry, sizeof(entry), "testSensors: Failed to get ALooper for current thread!\n");
+        strcat(result_buffer, entry);
     }
 
     // Create an event queue get streamed sensor data
     ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
     if (queue == NULL) {
-        queue_msg = "SUCCESS: Event Queue Blocked";
+        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: is NULL\n");
+        strcat(result_buffer, entry);
     } else {
-        queue_msg = "LEAK: Event Queue Created";
+        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
+        strcat(result_buffer, entry);
 
         // Add the "famous" sensors to the event stream queue
         ASensorEventQueue_enableSensor(queue, accel);
@@ -1410,11 +1412,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
         ASensorEventQueue_disableSensor(queue, gyro);
         ASensorManager_destroyEventQueue(sensorManager, queue);
     }
-
-    // Format the final on-screen report
-    snprintf(result_buffer, sizeof(result_buffer),
-             "Sensor Count: %d\n%s\n%s",
-             count, status_msg, queue_msg);
 
     return (*env)->NewStringUTF(env, result_buffer);
 }

@@ -25,7 +25,6 @@ typedef struct {
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg);
 static int capture_backtrace(void** out_frames, int max_frames);
 static void print_native_backtrace(void);
-static void print_java_backtrace(JNIEnv *env);
 static void athena_sig_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 
@@ -34,15 +33,9 @@ static struct sigaction g_old_segv_act = {0}; // SIGSEGV
 static struct sigaction g_old_abrt_act = {0}; // SIGABRT
 static struct sigaction g_old_trap_act = {0}; // SIGTRAP
 static struct sigaction g_old_quit_act = {0}; // SIGQUIT
-static JNIEnv* g_jniEnv = NULL;
 
 
-void athenaInit(JNIEnv* env) {
-    if (env == NULL) {
-        LOGE("athenaInit: received null JNIEnv pointer. Won't install.");
-        return;
-    }
-    g_jniEnv = env;
+void athenaInit(void) {
     int ret = -1;
 
     // Setup auxiliary stack
@@ -100,11 +93,6 @@ void requestNativeBacktrace(void) {
     print_native_backtrace();
 }
 
-void requestJavaBacktrace(void) {
-    print_java_backtrace(g_jniEnv);
-}
-
-
 static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void* arg) {
     BacktraceState* state = (BacktraceState*)arg;
 
@@ -146,35 +134,6 @@ static void print_native_backtrace(void) {
         } else {
             LOGF("#%02d pc %p <unknown>", i, frames[i]);
         }
-    }
-}
-
-static void print_java_backtrace(JNIEnv *env) {
-    if (env == NULL) {
-        LOGE("print_java_backtrace: received null JNIEnv pointer. Won't dump Java stacktrace");
-        return;
-    }
-
-    jclass throwableClass = (*env)->FindClass(env, "java/lang/Throwable");
-    jmethodID ctor = (*env)->GetMethodID(env, throwableClass, "<init>", "()V");
-    jobject throwable = (*env)->NewObject(env, throwableClass, ctor);
-
-    jmethodID getStackTrace = (*env)->GetMethodID(env, throwableClass,
-                                                  "getStackTrace", "()[Ljava/lang/StackTraceElement;");
-    jobjectArray stackTrace = (jobjectArray)(*env)->CallObjectMethod(env, throwable, getStackTrace);
-
-    jsize len = (*env)->GetArrayLength(env, stackTrace);
-    jclass steClass = (*env)->FindClass(env, "java/lang/StackTraceElement");
-    jmethodID toString = (*env)->GetMethodID(env, steClass, "toString", "()Ljava/lang/String;");
-
-    for (jsize i = 0; i < len; i++) {
-        jobject frame = (*env)->GetObjectArrayElement(env, stackTrace, i);
-        jstring str = (jstring)(*env)->CallObjectMethod(env, frame, toString);
-        const char* cstr = (*env)->GetStringUTFChars(env, str, NULL);
-        LOGF("Java frame #%d: %s", i, cstr);
-        (*env)->ReleaseStringUTFChars(env, str, cstr);
-        (*env)->DeleteLocalRef(env, str);
-        (*env)->DeleteLocalRef(env, frame);
     }
 }
 

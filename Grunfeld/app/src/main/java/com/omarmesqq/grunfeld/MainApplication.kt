@@ -39,7 +39,7 @@ class MainApplication: Application() {
             setupStrictMode()
         }
 
-        // Pre-warm Chromium engine using bleeding edge API
+        // Pre-warm Chromium engine using "bleeding edge" API
         val executor = Executors.newSingleThreadExecutor()
         val config = WebViewStartUpConfig.Builder(executor).build()
 
@@ -60,6 +60,7 @@ class MainApplication: Application() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "[!] UNCAUGHT_EXCEPTION: ${throwable.message} in thread ${thread.name}", tr= throwable)
+            printJavaBacktrace()
             defaultHandler?.uncaughtException(thread, throwable)
         }
         configRepository = GrunfeldConfigs(this)
@@ -124,6 +125,18 @@ class MainApplication: Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             VmPolicy.Builder().detectBlockedBackgroundActivityLaunch()
             ThreadPolicy.Builder().detectExplicitGc()
+        }
+    }
+    private fun printJavaBacktrace() {
+        val stackTrace = Throwable().stackTrace
+
+        if (stackTrace.isEmpty()) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "printJavaBacktrace: no stack trace available")
+            return
+        }
+
+        stackTrace.forEachIndexed { index, frame ->
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Java frame #$index: $frame")
         }
     }
 }
