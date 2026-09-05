@@ -136,10 +136,7 @@ fun JavaInfoScreen() {
             ) {
                 Text("Get some info with Runtime")
             }
-            Text(
-                text = runtimeInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            ReportTextWithCopy(runtimeInfo, "Sensors not tested at Java layer yet")
         }
 
         SectionHeader("SENSORS")
