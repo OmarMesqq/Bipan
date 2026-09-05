@@ -33,6 +33,9 @@ import androidx.webkit.WebViewFeature.isFeatureSupported
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 private const val TAG = "WebViewModel"
 class WebViewModel : ViewModel() {
@@ -82,6 +85,8 @@ class WebViewModel : ViewModel() {
 
     fun wvmOnStop() {
         webView?.apply {
+            setNetworkAvailable(false)
+            stopLoading()
             onPause()
             pauseTimers()
         }
@@ -89,12 +94,9 @@ class WebViewModel : ViewModel() {
 
     fun wvmOnPause() {
         webView?.apply {
-            stopLoading()
+            setNetworkAvailable(false)
             onPause()
             pauseTimers()
-
-            // Yeah, tell JS there's no Internet so there's no bg data exchange
-            setNetworkAvailable(false)
         }
     }
 
@@ -286,7 +288,9 @@ class WebViewModel : ViewModel() {
             clearMatches()
 
             clearClientCertPreferences(null)
-            WebViewDatabase.getInstance(webView.context).clearHttpAuthUsernamePassword()
+            CoroutineScope(Dispatchers.IO).launch {
+                WebViewDatabase.getInstance(webView.context).clearHttpAuthUsernamePassword()
+            }
         }
 
         val cookieManager = CookieManager.getInstance()
