@@ -149,12 +149,11 @@ class MainApplication: Application() {
     }
 
     private fun writeDummyFile() {
-        if (grunfeldCfgExists(this)) {
-            return
-        }
-
         val ctx = this
         CoroutineScope(Dispatchers.IO).launch {
+            if (grunfeldCfgExists(ctx)) {
+                return@launch
+            }
             val am = ctx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
             val sb = StringBuilder()
 
