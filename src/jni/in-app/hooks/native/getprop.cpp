@@ -1,6 +1,7 @@
 #include "getprop.hpp"
 
 #include <dlfcn.h>
+#include <sys/system_properties.h>
 
 #include <cstdint>
 #include <string>
@@ -15,12 +16,14 @@
 // Original functions
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
+static int (*orig_system_property_read)(const void* pi, char* name, char* value) = nullptr;
 
 // Helpers
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
 // Hooks
 static int hook_system_property_get(const char* name, char* value);
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie);
+static int hook_system_property_read(const void* pi, char* name, char* value);
 
 // Data structures
 static const std::unordered_map<std::string, std::string> g_prop_overrides = {
@@ -167,8 +170,10 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.com.google.clientidbase", "android-google"},
     {"ro.kernel.version", "6.6"},
 
+    {"init.svc.usbd", "stopped"},
     {"init.svc.adbd", "stopped"},
     {"debug.debuggerd.wait_for_debugger", ""},
+    {"ro.force.debuggable", "0"},
 
     {"bluetooth.device.default_name", "Pixel 8 Pro"},
     {"ro.boot.ap_serial", ""},
@@ -177,8 +182,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.boot.wb.snapQB", ""},
     {"ro.boot.carrierid.param.offset", ""},
     {"bluetooth.device.class_of_device", "90,2,4"},
-
-    {"init.svc.usbd", "stopped"},
 
     {"ro.hardware.chipname", ""},
 
@@ -368,21 +371,25 @@ static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
 // Symbol names
 #define PROP_GET_SYM "__system_property_get"
 #define PROP_READ_CB_SYM "__system_property_read_callback"
-#define GETPROP_METHOD_COUNT 2
+#define PROP_READ_SYM "__system_property_read"
+#define GETPROP_METHOD_COUNT 3
 
 void registerDobbyNativeSysPropsHooks(void) {
   const char* symbols[] = {
       PROP_GET_SYM,
-      PROP_READ_CB_SYM};
+      PROP_READ_CB_SYM,
+      PROP_READ_SYM};
 
   void* hooks[] = {
       (void*)hook_system_property_get,
       (void*)hook_system_property_read_callback,
+      (void*)hook_system_property_read,
   };
 
   void** originals[] = {
       (void**)&orig_system_property_get,
       (void**)&orig_system_property_read_callback,
+      (void**)&orig_system_property_read,
   };
 
   for (int i = 0; i < GETPROP_METHOD_COUNT; i++) {
@@ -424,6 +431,39 @@ static int hook_system_property_get(const char* name, char* value) {
     }
   }
   return orig_system_property_get(name, value);
+}
+
+static int hook_system_property_read(const void* pi, char* name, char* value) {
+  // Let the orig function fill name/value
+  int len = orig_system_property_read(pi, name, value);
+
+  if (name != nullptr && name[0] != '\0') {
+    auto globalIt = g_prop_overrides.find(name);
+    if (globalIt != g_prop_overrides.end()) {
+      if (value != nullptr) {
+        strncpy(value, globalIt->second.c_str(), PROP_VALUE_MAX - 1);
+        value[PROP_VALUE_MAX - 1] = '\0';
+        return static_cast<int>(strlen(value));
+      }
+      // name-only request: no override
+      return len;
+    }
+
+    if (g_telephony_spoofing_allowlist.find(g_package_name) ==
+        g_telephony_spoofing_allowlist.end()) {
+      auto telIt = g_telephony_prop_overrides.find(name);
+      if (telIt != g_telephony_prop_overrides.end()) {
+        if (value != nullptr) {
+          strncpy(value, telIt->second.c_str(), PROP_VALUE_MAX - 1);
+          value[PROP_VALUE_MAX - 1] = '\0';
+          return static_cast<int>(strlen(value));
+        }
+        return len;
+      }
+    }
+  }
+
+  return len;
 }
 
 struct PropCallbackCtx {
