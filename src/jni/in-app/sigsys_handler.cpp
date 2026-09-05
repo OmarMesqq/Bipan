@@ -256,22 +256,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     return;
   }
 
-  if (nr == __NR_socket) {
-    // 1st arg is the "domain" of the socket
-    // TODO: probably android doesn't allow using NETLINK for private routes
-    if (arg0 == AF_NETLINK) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Blocked AF_NETLINK socket");
-      ctx->uc_mcontext.BP_REG_R0 = (__u64)-EAFNOSUPPORT;
-      in_sigsys_handler = false;
-      return;
-    }
-
-    long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
-    in_sigsys_handler = false;
-    return;
-  }
-
 #ifdef IN_APP_PERF_ANALYSIS
   pid_t injectedPid = (pid_t)raw_syscall(__NR_getpid, 0, 0, 0, 0, 0, 0);
   char injectedThName[16] = {0};
