@@ -2,6 +2,7 @@ package com.omarmesqq.grunfeld.viewmodel
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
@@ -9,7 +10,6 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebSettings.FORCE_DARK_ON
 import android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK
 import android.webkit.WebSettings.LOAD_CACHE_ONLY
 import android.webkit.WebSettings.MENU_ITEM_PROCESS_TEXT
@@ -45,6 +45,7 @@ class WebViewModel : ViewModel() {
     var isLoading = mutableStateOf(true)
     var urlText = mutableStateOf(initialUrl)
     var lifecycle: Lifecycle.State = Lifecycle.State.DESTROYED
+    var isDarkTheme: Boolean = false
     var isWebViewPendingRecovery = false
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
@@ -169,16 +170,13 @@ class WebViewModel : ViewModel() {
             offscreenPreRaster = false
             disabledActionModeMenuItems = MENU_ITEM_PROCESS_TEXT
             cacheMode = LOAD_CACHE_ELSE_NETWORK
-            forceDark = FORCE_DARK_ON
+
+            if (isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
+                WebSettingsCompat.setSafeBrowsingEnabled(this, false)
+            }
 
             if (isFeatureSupported(WebViewFeature.DOWNLOAD_FAVICONS_ENABLED)) {
                 WebSettingsCompat.setDownloadFaviconsEnabled(this, false)
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"setDownloadFaviconsEnabled is OFF!", shouldToast = true)
-            }
-
-            if (isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                WebSettingsCompat.setForceDark(this, WebSettingsCompat.FORCE_DARK_ON)
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"Force Dark on is ON!", shouldToast = true)
             }
 
             saveFormData = false
@@ -219,11 +217,17 @@ class WebViewModel : ViewModel() {
             override fun onPageStarted(
                 view: WebView?,
                 url: String?,
-                favicon: android.graphics.Bitmap?
+                favicon: Bitmap?
             ) {
                 super.onPageStarted(view, url, favicon)
                 isLoading.value = true
+
                 if (url != null) {
+                    if (isDarkTheme) {
+                        view?.let {
+                            injectDark(it)
+                        }
+                    }
                     urlText.value = url
                 }
             }
@@ -337,6 +341,50 @@ class WebViewModel : ViewModel() {
                 AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
                 TAG,
                 "detectAllDeviceInfoProps injection worked. Res: $result"
+            )
+        }
+    }
+
+
+    private fun injectDark(webView: WebView) {
+        val js = """
+            (function() {
+              const originalMatchMedia = window.matchMedia;
+              window.matchMedia = function(query) {
+                if (query.includes('prefers-color-scheme: dark')) {
+                  return {
+                    matches: true,
+                    media: query,
+                    onchange: null,
+                    addListener: function() {},
+                    removeListener: function() {},
+                    addEventListener: function() {},
+                    removeEventListener: function() {},
+                    dispatchEvent: function() { return true; }
+                  };
+                }
+                if (query.includes('prefers-color-scheme: light')) {
+                  return {
+                    matches: false,
+                    media: query,
+                    onchange: null,
+                    addListener: function() {},
+                    removeListener: function() {},
+                    addEventListener: function() {},
+                    removeEventListener: function() {},
+                    dispatchEvent: function() { return true; }
+                  };
+                }
+                return originalMatchMedia.call(window, query);
+              };
+            })();
+            """.trimIndent()
+
+        webView.evaluateJavascript(js) { result ->
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+                TAG,
+                "Dark theme injection worked. Res: $result"
             )
         }
     }
