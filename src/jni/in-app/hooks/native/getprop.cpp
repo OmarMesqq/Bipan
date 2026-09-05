@@ -154,212 +154,152 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
 
-    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
+    // RADIO
+    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551,"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
     {"ril.sw_ver", ""},
     {"ril.sw_ver2", ""},
+    {"ro.baseband", "g5300g-251108-251202-B-12876551,"},
 
-    {"nfc.initialized", "false"},
-    {"ro.product.locale", "en-US"},
-
+    // Some fingerprinting vectors
     {"ro.config.alarm_alert", "Hassium.ogg"},
     {"ro.config.notification_sound", "Argon.ogg"},
     {"ro.config.ringtone", "Orion.ogg"},
-
-    // default_prop
-    {"ro.com.google.clientidbase", "android-google"},
-    {"ro.kernel.version", "6.6"},
-
-    {"init.svc.usbd", "stopped"},
-    {"init.svc.adbd", "stopped"},
-    {"debug.debuggerd.wait_for_debugger", ""},
-    {"ro.force.debuggable", "0"},
-
+    {"ro.product.locale", "en-US"},
+    {"persist.sys.locale", "en-US"},
     {"bluetooth.device.default_name", "Pixel 8 Pro"},
-    {"ro.boot.ap_serial", ""},
-    {"ro.boot.odin_download", ""},
-    {"ro.boot.sec_atd.tty", ""},
-    {"ro.boot.wb.snapQB", ""},
-    {"ro.boot.carrierid.param.offset", ""},
-    {"bluetooth.device.class_of_device", "90,2,4"},
+    // {"ro.sf.lcd_density", "400"},
 
-    {"ro.hardware.chipname", ""},
+    // User-set
+    {"debug.debuggerd.wait_for_debugger", ""},
 
-    {"init.svc.vendor.lineage_health", ""},
-    {"init.svc_debug_pid.vendor.lineage_health", ""},
-    {"ro.boottime.vendor.lineage_health", ""},
-    {"ro.lineage.build.version", ""},
-    {"ro.lineage.device", ""},
-    {"ro.lineage.display.version", ""},
-    {"ro.lineage.releasetype", ""},
-    {"ro.lineage.version", ""},
-    {"ro.lineagelegal.url", ""},
+    // General tuning
+    {"nfc.initialized", "false"},
+    {"ro.support_one_handed_mode", "false"},
 
-    // init_service_status_private_prop
+    // OEM/ROM specific
     {"init.svc.vaultkeeper", ""},
     {"init.svc.vendor_flash_recovery", ""},
+    {"init.svc.lineage-bugreport", "stopped"},
+    {"ro.board.api_frozen", ""},
+
+    // AOSP
+    {"ro.debuggable", "0"},
+    {"ro.secure", "1"},
+    {"ro.force.debuggable", "0"},
     {"init.svc.adb_root", ""},
     {"service.adb.root", ""},
-
-    // soc_prop
-    {"ro.soc.manufacturer", "Google"},
-    {"ro.soc.model", "Tensor G3"},
-
-    // system_prop
     {"persist.sys.usb.config", ""},
-    {"sys.usb.config", ""},
-    {"sys.lineage_settings_system_version", ""},
+    {"sys.usb.config", "mtp"},
+    {"sys.usb.configfs", "1"},
+    {"init.svc.usbd", "stopped"},
+    {"init.svc.adbd", "stopped"},
+    {"sys.usb.controller", ""},
+    {"ro.kernel.version", "6.6"},
 
-    // bootloader_prop
-    {"ro.boot.hardware", "zuma"},
-    {"ro.hardware", "zuma"},
-    {"ro.bootloader", "ripcurrent-15.0-12455211"},
-    {"ro.boot.bootloader", "ripcurrent-15.0-12455211"},
-    {"ro.boot.em.model", "ripcurrent-15.0-12455211"},
-    {"ro.boot.selinux", "enforcing"},
-    {"ro.boot.warranty_bit", ""},
-    {"ro.boot.verifiedbootstate", "green"},
-
-    // ?
-    {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
-    {"ro.boot.em.did", ""},
-    {"ro.boot.ap_serial", ""},
-    {"ro.boot.fmp_config", ""},
-    {"ro.boot.odin_download", ""},
-    {"ro.boot.debug_level", ""},
-    {"ro.boot.em.status", ""},
-    {"ro.boot.rp", ""},
-    {"ro.boot.sb.debug0", ""},
-    {"ro.boot.sn.param.offset", ""},
-    {"ro.boot.wb.hs", ""},
-    {"ro.boot.wb.snapQB", ""},
-    {"ro.boot.svb.ver", ""},
-    {"ro.boot.sales.param.offset", ""},
-    {"ro.boot.ulcnt", ""},
-    {"ro.boot.sec_atd.tty", ""},
-    {"ro.boot.bore_cnt", ""},
-    {"ro.boot.dtbo_idx", ""},
-    {"ro.boot.fmm_lock", ""},
-    {"ro.boot.revision", ""},
-    {"ro.boot.ucs_mode", ""},
-    {"ro.boot.carrierid.param.offset", ""},
-    {"ro.boot.prototype.param.offset", ""},
-    {"ro.boot.force_upload", ""},
-    {"ro.boot.emmc_checksum", ""},
-    {"ro.boot.hmac_mismatch", ""},
-    {"ro.boot.cp_reserved_mem", ""},
-    {"ro.boot.recovery_offset", ""},
-    {"ro.revision", ""},
-
-    // locale_prop
-    {"persist.sys.locale", "en-US"},
-
-    // log_tag_prop
-    {"log.tag.EDEN", ""},
-
-    // packagemanager_config_prop
-    {"ro.control_privapp_permissions", "enforce"},
-
+    // 64-bit only
     {"ro.odm.product.cpu.abilist32", ""},
     {"ro.product.cpu.abilist32", ""},
     {"ro.system.product.cpu.abilist32", ""},
     {"ro.vendor.product.cpu.abilist32", ""},
-
     {"ro.odm.product.cpu.abilist", "arm64-v8a"},
     {"ro.product.cpu.abilist", "arm64-v8a"},
     {"ro.system.product.cpu.abilist", "arm64-v8a"},
     {"ro.vendor.product.cpu.abilist", "arm64-v8a"},
-
     {"ro.zygote", "zygote64"},
+    {"init.svc.zygote_secondary", ""},
 
+    // Hardware fingerprinting
+    {"ro.bootmode", "normal"},
+    {"bootreceiver.enable", "1"},
+    {"ro.bootloader", "ripcurrent-15.0-12455211"},
+    {"ro.soc.manufacturer", "Google"},
+    {"ro.soc.model", "Tensor G3"},
+    {"ro.boot.boot_devices", "soc/1d84000.ufshc"},
+    {"ro.boot.bootloader", "ripcurrent-15.0-12455211"},
+    {"ro.boot.em.did", ""},
+    {"ro.boot.em.model", "ripcurrent-15.0-12455211"},
+    {"ro.boot.hardware", "zuma"},
+    {"ro.boot.odin_download", ""},
+    {"ro.boot.wb.snapQB", ""},
+    {"ro.com.google.clientidbase", "android-google"},
+    {"ro.hardware", "zuma"},
+    {"ro.boot.ap_serial", ""},
+    {"ro.boot.verifiedbootstate", "green"},
+    // Samsung bs
+    {"ro.boot.warranty_bit", ""},
+    {"ro.boot.force_upload", ""},
+
+    // Maybe useful if you change them
+    // {"ro.boot.selinux", "enforcing"},
+    // {"ro.adb.secure", "1"},
+    // {"ro.allow.mock.location", "0"},
+    // {"persist.sys.strictmode.disable", "true"},
+    // {"ro.control_privapp_permissions", "enforce"},
+    // {"ro.build.characteristics", "default"},
+    // {"ro.surface_flinger.enable_frame_rate_override", "false"},
+    // {"ro.surface_flinger.game_default_frame_rate_override", "60"},
+    // {"security.perf_harden", "1"},
+
+    // AVB/Verity
+    {"sys.oem_unlock_allowed", "0"},
+    {"ro.boot.write_protect", "1"},
+    {"ro.boot.veritymode.managed", "yes"},
+    {"ro.boot.veritymode", "enforcing"},
+    {"ro.boot.vbmeta.hash_alg", "sha256"},
+    {"ro.boot.vbmeta.device_state", "locked"},
+    {"ro.boot.vbmeta.avb_version", "1.2"},
+    {"ro.boot.secure_hardware", "1"},
+    {"ro.boot.mode", "normal"},
+    {"ro.boot.force_normal_boot", "1"},
+    {"ro.boot.flash.locked", "1"},
+    {"ro.boot.avb_version", "1.2"},
+
+    // Basic telephony spoofing (shouldn't break stuff)
+    {"ro.carrier", "retbr"},  // Brazilian retail vendor
+    {"ro.boot.carrierid", ""},
+    {"gsm.sim.state", "READY,"},
+
+    // Nothing here + everything is setup just fine
+    {"gsm.sim.eventList", ""},
+    {"ril.simoperator", ","},
+    {"ril.cidManager.initiated", "1"},
+
+    // No calls rn..
+    {"ril.dds.call.ongoing0", "0"},
+    {"ril.dds.call.ongoing1", ""},
+
+    // Telephony (potentially) unique identifiers
+    {"ril.modem.board", ""},
+    {"ril.modem.board2", ""},
+    {"ril.attach.apn0", ""},
+    {"ril.hw_ver", ""},
+    {"ril.hw_ver2", ""},
+    {"ril.model_id", ""},
+    {"ril.model_id2", ""},
+    {"ril.rfcal_date", ""},
+    {"ril.rfcal_date2", ""},
+    {"ril.product_code", ""},
+    {"ril.product_code2", ""},
+
+    // Maybe useful if you change them
+    // {"ril.halservice.registered.slot1", "true"},
+    // {"ril.halservice.registered.slot2", "true"},
+    // {"ril.rejectedPlmn", ","},
 };
 
 static const std::unordered_map<std::string, std::string> g_telephony_prop_overrides = {
-    {"gsm.operator.iso-country", "br"},
-    {"gsm.sim.operator.iso-country", "br"},
-    {"gsm.sim.operator.numeric", "72406"},
-    {"persist.radio.multisim.config", "ss"},
+    // Spoof Brazilian carrier
+    {"gsm.operator.iso-country", "br,"},
+    {"gsm.sim.operator.iso-country", "br,"},
 
-    // telephony_config_prop
-    {"ro.telephony.sim_slots.count", "1"},
-    {"ro.telephony.default_network", "9"},
+    {"gsm.sim.operator.numeric", "72406,"},
+    {"gsm.operator.numeric", "72406,"},
 
-    // debug_prop
+    {"gsm.sim.operator.alpha", "Vivo,"},
+    {"gsm.operator.alpha", "Vivo,"},
+
     {"debug.tracing.mnc", "6"},
-
-    // vendor_radio_prop
-    {"ro.vendor.radio.default_network", "9"},
-    {"ro.vendor.multisim.simslotcount", "1"},
-
-    // radio_prop
-    {"ro.ril.svdo", ""},
-    {"ro.ril.svlte1x", ""},
-    {"ro.ril.support_cdma", ""},
-    {"ro.ril.def_network_after_check_tdscdma", ""},
-    {"gsm.sim.state", "READY"},
-    {"gsm.sim.operator.alpha", "Vivo"},
-    {"gsm.sim.eventList", ""},
-    {"gsm.current.phone-type", "1"},
-    {"gsm.network.type", "LTE"},
-    {"gsm.operator.alpha", "Vivo"},
-    {"gsm.operator.numeric", "72406"},
-    {"ril.dds.call.ongoing0", ""},
-    {"ril.dds.call.ongoing1", ""},
-    {"ril.dds.data.slotid", ""},
-    {"ril.dds.datacross.slotid", ""},
-    {"ril.sim.opl0", ""},
-    {"ril.sim.opl1", ""},
-    {"ril.sim.opl5g0", ""},
-    {"ril.sim.opl5g1", ""},
-    // ?
-    {"ril.sim.lastSubCmdId", ""},
-    {"ril.skt.network_regist", ""},
-    {"ril.CHAR", ""},
-    {"ril.LIMA", ""},
-    {"ril.data.netlink.nlmsg_type", ""},
-    {"ril.read.done", ""},
-    {"ril.modem.board", ""},
-    {"ril.modem.board2", ""},
-    {"ril.phone.connected.slot1", ""},
-    {"ril.phone.connected.slot2", ""},
-    {"ril.volte.911call", ""},
-    {"ril.attach.apn0", ""},
-    {"ril.cs_svc", ""},
-    {"ril.hw_ver", ""},
-    {"ril.hw_ver2", ""},
-    {"ril.initPB", ""},
-    {"ril.initPB2", ""},
-    {"ril.iscdma", ""},
-    {"ril.cpreset", ""},
-    {"ril.hasisim", "0"},
-    {"ril.support.incrementalscan", ""},
-    {"ril.RildInit", ""},
-    {"ril.cold_sim", ""},
-    {"ril.model_id", ""},
-    {"ril.model_id2", ""},
-    {"ril.ICC_TYPE0", ""},
-    {"ril.ICC_TYPE1", ""},
-    {"ril.pin_mode0", ""},
-    {"ril.cidManager.initiated", ""},
-    {"ril.halservice.registered.slot1", ""},
-    {"ril.halservice.registered.slot2", ""},
-    {"ril.radiostate", ""},
-    {"ril.rfcal_date", ""},
-    {"ril.rfcal_date2", ""},
-    {"ril.currentplmn", ""},
-    {"ril.sar_control", ""},
-    {"ril.simoperator", ""},
-    {"ril.product_code", ""},
-    {"ril.product_code2", ""},
-    {"ril.rejectedPlmn", ""},
-    {"ril.sar_device_id", ""},
-    {"ril.switchingSlot", ""},
-    {"ril.ltenetworktype", ""},
-    {"ril.max_interface0", ""},
-    {"ril.max_interface1", ""},
-    {"ril.bip_dns_in_progress", ""},
-    {"persist.radio.latest-modeltype", ""},
-    {"persist.radio.def_network", "9"},
 };
 
 static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {

@@ -375,22 +375,20 @@ class Bipan : public zygisk::ModuleBase {
 
     setField(versionClass, "INCREMENTAL", "14401865");
     setField(versionClass, "SECURITY_PATCH", "2025-12-05");
-    setField(versionClass, "SDK", "36");
 
-    setField(versionClass, "CODENAME", "REL");
-    setField(versionClass, "RELEASE", "16");
+    // Uncomment to pin device's SDK level
+    // setField(versionClass, "SDK", "36");
+    // setField(versionClass, "CODENAME", "REL");
+    // setField(versionClass, "RELEASE", "16");
     // The two below should be the same value as `RELEASE` for final release builds
-    setField(versionClass, "RELEASE_OR_CODENAME", "16");
-    setField(versionClass, "RELEASE_OR_PREVIEW_DISPLAY", "16");
+    // setField(versionClass, "RELEASE_OR_CODENAME", "16");
+    // setField(versionClass, "RELEASE_OR_PREVIEW_DISPLAY", "16");
 
-    jfieldID sdkIntId = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
-    env->SetStaticIntField(versionClass, sdkIntId, 36);
+    // jfieldID sdkIntId = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
+    // env->SetStaticIntField(versionClass, sdkIntId, 36);
 
-    jfieldID sdkIntFullId = env->GetStaticFieldID(versionClass, "SDK_INT_FULL", "I");
-    env->SetStaticIntField(versionClass, sdkIntFullId, 3600001);
-
-    jfieldID mpcId = env->GetStaticFieldID(versionClass, "MEDIA_PERFORMANCE_CLASS", "I");
-    env->SetStaticIntField(versionClass, mpcId, 33);  // TIRAMISU/Android 13
+    // jfieldID sdkIntFullId = env->GetStaticFieldID(versionClass, "SDK_INT_FULL", "I");
+    // env->SetStaticIntField(versionClass, sdkIntFullId, 3600001);
 
     env->DeleteLocalRef(buildClass);
     if (versionClass) {
