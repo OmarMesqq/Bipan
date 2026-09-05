@@ -49,14 +49,7 @@ class WebViewModel : ViewModel() {
     var isWebViewPendingRecovery = false
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
-            /**
-             * TODO:
-             * Note: WebView should always be instantiated with an Activity Context.
-             * If instantiated with an Application Context,
-             * WebView will be unable to provide several features,
-             * such as JavaScript dialogs and autofill.
-             */
-            webView = WebView(context.applicationContext).apply {
+            webView = WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -81,8 +74,8 @@ class WebViewModel : ViewModel() {
     fun clearAndReset() {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "Cleared all site data!", shouldToast = true)
         fullCleanup(webView)
-        urlText.value = "about:blank"
-        webView?.loadUrl("about:blank")
+        urlText.value = initialUrl
+        webView?.loadUrl(initialUrl)
     }
 
     // https://developer.android.com/guide/components/activities/activity-lifecycle
@@ -222,7 +215,7 @@ class WebViewModel : ViewModel() {
                 super.onPageStarted(view, url, favicon)
                 isLoading.value = true
 
-                if (url != null) {
+                if (url != null && url != initialUrl) {
                     if (isDarkTheme) {
                         view?.let {
                             injectDark(it)
@@ -336,12 +329,10 @@ class WebViewModel : ViewModel() {
     })();
     """.trimIndent()
 
-        webView.evaluateJavascript(js) { result ->
-            avocadoLog(
-                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
-                TAG,
-                "detectAllDeviceInfoProps injection worked. Res: $result"
-            )
+        webView.evaluateJavascript(js) { res ->
+            if (res != null && res != "null") {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG,"Deviceinfo injection returned non null: $res")
+            }
         }
     }
 
@@ -380,12 +371,10 @@ class WebViewModel : ViewModel() {
             })();
             """.trimIndent()
 
-        webView.evaluateJavascript(js) { result ->
-            avocadoLog(
-                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
-                TAG,
-                "Dark theme injection worked. Res: $result"
-            )
+        webView.evaluateJavascript(js) { res ->
+            if (res != null && res != "null") {
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_WARNING, TAG,"Dark theme injection returned non null: $res")
+            }
         }
     }
 }
