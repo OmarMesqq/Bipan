@@ -47,8 +47,8 @@ class WebViewModel : ViewModel() {
     var canGoBack = mutableStateOf(false)
     var isLoading = mutableStateOf(true)
     var urlText = mutableStateOf(initialUrl)
-    var lifecycle: Lifecycle.State = Lifecycle.State.DESTROYED
-    var isDarkTheme: Boolean = false
+    var currLifecycleState = Lifecycle.State.DESTROYED
+    var isCurrentlyInDarkTheme = false
     var isWebViewPendingRecovery = false
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
@@ -101,7 +101,7 @@ class WebViewModel : ViewModel() {
     }
 
     fun wvmOnResume() {
-        lifecycle = Lifecycle.State.RESUMED
+        currLifecycleState = Lifecycle.State.RESUMED
         webView?.apply {
             setNetworkAvailable(true)
             reload() // causes full refresh, maybe unnecessary
@@ -194,7 +194,7 @@ class WebViewModel : ViewModel() {
                 }
                 webView = null
 
-                if (lifecycle.isAtLeast(Lifecycle.State.RESUMED)) {
+                if (currLifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
                     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onRenderProcessGone: Activity in foreground. Starting WebView recovery!")
                 } else {
                     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onRenderProcessGone: Activity in background. Postponing recovery until user returns")
@@ -218,7 +218,7 @@ class WebViewModel : ViewModel() {
                 isLoading.value = true
 
                 if (url != null && url != initialUrl) {
-                    if (isDarkTheme) {
+                    if (isCurrentlyInDarkTheme) {
                         view?.let {
                             injectDark(it)
                         }
@@ -254,7 +254,7 @@ class WebViewModel : ViewModel() {
                     avocadoLog(
                         AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
                         TAG,
-                        "Neutering favicon/icon fetch: ${request.url}"
+                        "Neutering favicon request: ${request.url}"
                     )
                     return WebResourceResponse("image/png", "UTF-8", null)
                 }
@@ -270,7 +270,11 @@ class WebViewModel : ViewModel() {
 
         webView?.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "JS Console: ${consoleMessage?.message()}"
+                val sb = StringBuilder()
+
+                avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+                    TAG,
+                    "[JS Console]\nMessage:\n${consoleMessage?.message()}\n"
                 )
                 return super.onConsoleMessage(consoleMessage)
             }

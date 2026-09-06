@@ -68,7 +68,8 @@ touch /data/adb/modules/bipan/targets/com.android.vending
 touch /data/adb/modules/bipan/targets/com.google.android.gms
 touch /data/adb/modules/bipan/targets/com.google.android.gms.unstable
 touch /data/adb/modules/bipan/targets/com.facebook.katana
-touch /data/adb/modules/bipan/targets/some.app.to.sandbox
+touch /data/adb/modules/bipan/targets/com.instagram.android
+touch /data/adb/modules/bipan/targets/com.android.webview
 ```
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
