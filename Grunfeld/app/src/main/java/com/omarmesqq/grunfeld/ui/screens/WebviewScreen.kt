@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -56,6 +57,8 @@ private const val TAG = "WebviewScreen"
 @Composable
 fun WebviewScreen(wvVM: WebViewModel = viewModel()) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var wvWeakRef: WeakReference<WebView> = WeakReference(wvVM.getOrCreateWebView(context))
     var webView: WebView? = wvWeakRef.get()
     avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "WV at top: ${webView.hashCode()}")
@@ -65,57 +68,37 @@ fun WebviewScreen(wvVM: WebViewModel = viewModel()) {
 
     LifecycleEventEffect(Lifecycle.Event.ON_CREATE) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_CREATE")
-        wvVM.lifecycle = Lifecycle.State.STARTED
-        wvVM.isDarkTheme = isDarkPersist.value
+        updateWebViewViewModel(wvVM, Lifecycle.State.CREATED, isDarkPersist.value)
         wvVM.wvmOnPause()
-        if (wvVM.isWebViewPendingRecovery) {
-            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
-            webView = wvWeakRef.get()
-            wvVM.isWebViewPendingRecovery = false
-        }
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_START")
-        wvVM.lifecycle = Lifecycle.State.STARTED
-        wvVM.isDarkTheme = isDarkPersist.value
+        updateWebViewViewModel(wvVM, Lifecycle.State.STARTED, isDarkPersist.value)
         wvVM.wvmOnPause()
-        if (wvVM.isWebViewPendingRecovery) {
-            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
-            webView = wvWeakRef.get()
-            wvVM.isWebViewPendingRecovery = false
-        }
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_RESUME")
-        wvVM.lifecycle = Lifecycle.State.RESUMED
-        wvVM.isDarkTheme = isDarkPersist.value
+        updateWebViewViewModel(wvVM, Lifecycle.State.RESUMED, isDarkPersist.value)
         wvVM.wvmOnResume()
-        if (wvVM.isWebViewPendingRecovery) {
-            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
-            webView = wvWeakRef.get()
-            wvVM.isWebViewPendingRecovery = false
-        }
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_PAUSE")
-        wvVM.lifecycle = Lifecycle.State.CREATED
-        wvVM.isDarkTheme = isDarkPersist.value
+        updateWebViewViewModel(wvVM, Lifecycle.State.STARTED, isDarkPersist.value)
         wvVM.wvmOnPause()
-        if (wvVM.isWebViewPendingRecovery) {
-            wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
-            webView = wvWeakRef.get()
-            wvVM.isWebViewPendingRecovery = false
-        }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "ON_STOP")
-        wvVM.lifecycle = Lifecycle.State.CREATED
-        wvVM.isDarkTheme = isDarkPersist.value
+        updateWebViewViewModel(wvVM, Lifecycle.State.CREATED, isDarkPersist.value)
         wvVM.wvmOnStop()
-        if (wvVM.isWebViewPendingRecovery) {
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_ANY) {
+        val currentState = lifecycleOwner.lifecycle.currentState
+
+        if (currentState.isAtLeast(Lifecycle.State.RESUMED) && wvVM.isWebViewPendingRecovery) {
             wvWeakRef = WeakReference(wvVM.getOrCreateWebView(context))
             webView = wvWeakRef.get()
             wvVM.isWebViewPendingRecovery = false
@@ -256,4 +239,10 @@ fun WebviewScreen(wvVM: WebViewModel = viewModel()) {
             }
         }
     }
+}
+
+
+private fun updateWebViewViewModel(wvVM: WebViewModel, lcState: Lifecycle.State, isDarkTheme: Boolean) {
+    wvVM.currLifecycleState = lcState
+    wvVM.isCurrentlyInDarkTheme = isDarkTheme
 }

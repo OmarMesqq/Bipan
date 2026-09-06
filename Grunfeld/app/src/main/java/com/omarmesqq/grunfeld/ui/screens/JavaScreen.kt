@@ -180,12 +180,12 @@ fun JavaInfoScreen() {
                 onClick = {
                     getPackageInfoStatus = dumpGetPackageInfo(
                         context,
-                        "com.android.settings"
+                        "com.google.android.gms"
                     )
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getPackageInfo(Settings)")
+                Text("getPackageInfo(Google Play Services)")
             }
 
             Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
