@@ -15,7 +15,9 @@
 
 static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline void scrub_socket(struct sockaddr* s);
+
 static char g_altstack[SIGSTKSZ * 4];
+static struct sigaction old_sys = {};
 
 #ifdef IN_APP_ADDITIONAL_HANDLERS
 #include <dlfcn.h>
@@ -30,7 +32,6 @@ static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context* context, void
 static int capture_backtrace(void** out_frames, int max_frames);
 static void print_backtrace();
 
-static struct sigaction old_sys = {};
 static struct sigaction old_segv = {};
 static struct sigaction old_abrt = {};
 static struct sigaction old_trap = {};
@@ -75,8 +76,13 @@ void registerSignalHandler() {
 
   struct kernel_sigaction sa_SYS = {};
   sa_SYS.sa_handler = sigsys_handler;
-  // Remember to pass SA_NODEFER during development to catch recursions
+
+#ifdef IN_APP_DEBUG_BUILD
+  sa_SYS.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Debug build: Included SA_NODEFER into SIGSYS act's mask");
+#else
   sa_SYS.sa_flags = SA_SIGINFO | SA_ONSTACK;
+#endif
 
   ret = raw_syscall(__NR_rt_sigaction, SIGSYS, (long)&sa_SYS, 0, 8, 0, 0);
   if (ret != 0) {
@@ -85,8 +91,13 @@ void registerSignalHandler() {
   }
 #else
   struct sigaction actSys = {};
-  // Remember to pass SA_NODEFER during development to catch recursions
+
+#ifdef IN_APP_DEBUG_BUILD
+  actSys.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Debug build: Included SA_NODEFER into SIGSYS act's mask");
+#else
   actSys.sa_flags = SA_SIGINFO | SA_ONSTACK;
+#endif
   actSys.sa_sigaction = &sigsys_handler;
 
   ret = sigemptyset(&actSys.sa_mask);
