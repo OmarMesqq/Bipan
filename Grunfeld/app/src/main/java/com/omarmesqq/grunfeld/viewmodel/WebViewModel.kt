@@ -127,7 +127,11 @@ class WebViewModel : ViewModel() {
         isLoading: MutableState<Boolean>,
         urlText: MutableState<String>
     ) {
-        setWebContentsDebuggingEnabled(false)
+        if (BuildConfig.DEBUG) {
+            setWebContentsDebuggingEnabled(true)
+        } else {
+            setWebContentsDebuggingEnabled(false)
+        }
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
@@ -270,11 +274,16 @@ class WebViewModel : ViewModel() {
 
         webView?.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                val sb = StringBuilder()
+                val formattedMsg = StringBuilder()
+
+                formattedMsg.appendLine("===== [JS Console] =====")
+                formattedMsg.appendLine("Message: ${consoleMessage?.message()}")
+                formattedMsg.appendLine("Source file:${consoleMessage?.sourceId()}")
+                formattedMsg.appendLine("===== [JS Console] =====")
 
                 avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
                     TAG,
-                    "[JS Console]\nMessage:\n${consoleMessage?.message()}\n"
+                    formattedMsg.toString()
                 )
                 return super.onConsoleMessage(consoleMessage)
             }
