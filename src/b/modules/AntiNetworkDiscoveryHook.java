@@ -77,6 +77,7 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
           }
           return null;
         }
+        Log.w(TAG, "Allowing MediaRouter method: " + method.getName());
         return method.invoke(originalMediaRouterService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -152,6 +153,7 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
           }
           return null;
         }
+        Log.w(TAG, "Allowing NSD method: " + method.getName());
         return method.invoke(originalNsdService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;

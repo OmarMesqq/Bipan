@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Random;
 import b.BaseHook;
 import b.J;
-
 import java.lang.reflect.InvocationTargetException;
 
 public class GsfIdSpoofHook implements BaseHook {
@@ -83,6 +82,7 @@ public class GsfIdSpoofHook implements BaseHook {
                   return spoofed;
                 }
               }
+              Log.w(TAG, "Allowing IContentProvider method: " + method.getName());
               return method.invoke(realProvider, args);
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -364,6 +364,7 @@ public class GsfIdSpoofHook implements BaseHook {
               if (result != null && isGetContentProvider(method.getName())) {
                 wrapHolderIfGsf(result);
               }
+              Log.w(TAG, "Allowing IActivityManager method: " + method.getName());
               return result;
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -387,6 +388,7 @@ public class GsfIdSpoofHook implements BaseHook {
               if ("queryLocalInterface".equals(method.getName())) {
                 return amProxy;
               }
+              Log.w(TAG, "Allowing IBinder method: " + method.getName());
               return method.invoke(realBinder, args);
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -500,6 +502,7 @@ public class GsfIdSpoofHook implements BaseHook {
             if (result != null && isGetContentProvider(method.getName())) {
               wrapHolderIfGsf(result);
             }
+            Log.w(TAG, "Allowing IActivityManager (2) method: " + method.getName());
             return result;
           } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;

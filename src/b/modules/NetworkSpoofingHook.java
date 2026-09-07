@@ -144,6 +144,8 @@ public class NetworkSpoofingHook implements BaseHook {
             }
             return ni;
           }
+        } else {
+          Log.w(TAG, "Allowing CM method: " + method.getName());
         }
         return result;
       } catch (InvocationTargetException e) {
@@ -190,6 +192,7 @@ public class NetworkSpoofingHook implements BaseHook {
         if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
           spoofWifiInfo((WifiInfo) result);
         }
+        Log.w(TAG, "Allowing WifiManager method: " + method.getName());
         return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -353,7 +356,13 @@ public class NetworkSpoofingHook implements BaseHook {
       }
 
     } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofLinkProperties UndeclaredThrowableException: cause:", cause);
       throw e.getCause() != null ? e.getCause() : e;
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofLinkProperties UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(cause);
     } catch (Exception e) {
       Log.e(TAG, "Failed to spoof LinkProperties", e);
       throw J.cleanThrowable(new OutOfMemoryError());

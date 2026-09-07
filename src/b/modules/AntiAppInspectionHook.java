@@ -443,7 +443,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
               isSafeQuery = true;
             }
-
+            
+            // TODO: make this DRY
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -729,7 +730,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Object result = method.invoke(originalPM, args);
-          // Log.w(TAG, "Allowing PM method: " + method.getName());
+          Log.w(TAG, "Allowing PM method: " + method.getName());
           return result;
         }
       }
