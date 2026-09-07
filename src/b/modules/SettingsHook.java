@@ -100,6 +100,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
           }
         }
       }
+      Log.w(TAG, "Allowing IContentProvider method: " + method.getName());
       return method.invoke(originalProvider, args);
     } catch (InvocationTargetException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -130,7 +131,6 @@ public class SettingsHook implements BaseHook, InvocationHandler {
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
 
     for (String className : targetClasses) {
-
       Class<?> clazz = Class.forName(className);
       Field sNameValueCacheField = clazz.getDeclaredField("sNameValueCache");
       sNameValueCacheField.setAccessible(true);
@@ -164,7 +164,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
       }
 
       this.originalProvider = original;
-
+      // TODO: put `invoke` separate
       Object proxy = Proxy.newProxyInstance(
           iContentProviderClass.getClassLoader(),
           new Class[] { iContentProviderClass },
