@@ -66,9 +66,7 @@ fun MainScreen() {
             composable(Screen.MoreScreen.route) { MoreScreen(navController) }
 
             composable(Screen.SettingsScreen.route) { SettingsScreen() }
-            composable(Screen.RootCheckerScreen.route) { RootCheckerScreen() }
             composable(Screen.AboutScreen.route) { AboutScreen() }
-            composable(Screen.LogcatScreen.route) { LogcatScreen() }
         }
     }
 }
