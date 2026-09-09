@@ -116,18 +116,10 @@ fun WebviewScreen(wvVM: WebViewModel = viewModel()) {
     var expanded by remember { mutableStateOf(false) }
     val predefinedSites = listOf(
         "https://i2dk.com/",
-        "https://start.duckduckgo.com/",
         "https://deviceinfo.me/",
         "https://browserleaks.com/",
         "https://panopticlick.org",
-        "https://www.cloudflare.com/ssl/encrypted-sni/",
-        "https://cloudflare-quic.com/",
-        "https://one.one.one.one/help",
-        "https://amiunique.org/",
-        "https://3d-gauss.com/",
         "https://abrahamjuliot.github.io/creepjs/",
-        "https://thetest.com/tests/browser",
-        "https://webglreport.com"
     )
 
     BackHandler(enabled = true) {

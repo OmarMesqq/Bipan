@@ -34,33 +34,17 @@ import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
+import java.util.Enumeration
 import java.util.UUID
 
 private val deferredInterfaces = GlobalScope.async {
-    val sb = StringBuilder()
-
     try {
-        val interfaces = NetworkInterface.getNetworkInterfaces()
-        if (interfaces == null) {
-            sb.appendLine("No interfaces found")
-        } else {
-            for (intf in interfaces.asSequence()) {
-                sb.append(formatInterfaceDetails(intf))
-                sb.append("\n")
-            }
-        }
+        return@async NetworkInterface.getNetworkInterfaces()
     } catch (e: Exception) {
-        sb.appendLine("getNetworkInterfaces exception: ${e.message} | ${e.cause}")
+        throw Exception(e)
     }
-
-    return@async sb.toString()
 }
 
-fun dumpBuildAndSettingsInfo(context: Context): String {
-    val buildInfo = getBuildInfo()
-    val settingsInfo = getSettingsInfo(context)
-    return "$buildInfo\n\n$settingsInfo"
-}
 
 fun dumpSensorInfo(ctx: Context): String {
     val sb = StringBuilder()
@@ -68,24 +52,14 @@ fun dumpSensorInfo(ctx: Context): String {
     val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     val sensorList = sensorManager.getSensorList(Sensor.TYPE_ALL)
 
-    if (sensorList.isEmpty()) {
-        sb.appendLine("SensorManager.getSensorList(ALL): empty")
-    } else {
-        val ret = sensorList.joinToString(separator = "\n\n") { sensor ->
-        """
-        Name: ${sensor.name}
-        Vendor: ${sensor.vendor}
-        Version: ${sensor.version}
-        Type: ${sensor.type}
-        Power: ${sensor.power} mA
-        Resolution: ${sensor.resolution}
-        Max Range: ${sensor.maximumRange}
-        """.trimIndent()
-        }
-        sb.appendLine("SensorManager.getSensorList(ALL): $ret")
+    if (sensorList.isNotEmpty()) {
+        sb.appendLine("SensorList(ALL) size: ${sensorList.size}")
     }
 
-    sb.appendLine("SensorManager.getDefaultSensor(ALL): ${sensorManager.getDefaultSensor(Sensor.TYPE_ALL)?.name}")
+    val defaultSensorAll = sensorManager.getDefaultSensor(Sensor.TYPE_ALL)
+    if (defaultSensorAll != null) {
+        sb.appendLine("getDefaultSensor(ALL): ${defaultSensorAll.name}")
+    }
 
     return sb.toString()
 }
@@ -128,15 +102,8 @@ fun dumpInstallerInfo(ctx: Context): String {
 @Suppress("DEPRECATION")
 fun dumpNetworkInfo(context: Context): String {
     val sb = StringBuilder()
-    sb.appendLine("[NETWORK INTERFACES (via getNetworkInterfaces)]")
 
-    try {
-        val ifaces = deferredInterfaces.getCompleted()
-        sb.append(ifaces)
-    } catch (e: Exception) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
-        sb.append("Failed to get interfaces: ${e.message}\n")
-    }
+
 
     sb.append("\n[WIFI MANAGER INFO]\n")
     try {
@@ -243,6 +210,16 @@ fun dumpNetworkInfo(context: Context): String {
 
 
     return sb.toString()
+}
+
+
+fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
+    try {
+        return deferredInterfaces.getCompleted()
+    } catch (e: Exception) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
+        throw Exception(e)
+    }
 }
 
 fun dumpQueryIntentActivities(context: Context): String {
@@ -784,18 +761,26 @@ fun dumpTelephonyInfo(context: Context): String {
     return sb.toString()
 }
 
-fun dumpSensitiveInfoWithRuntime():String {
+fun runtimeExecWithCmdArray(cmdarray: Array<String>):String {
     val sb = StringBuilder()
     try {
-        val arr1 = arrayOf("which", "su")
-        val pr1 =  Runtime.getRuntime().exec(arr1)
-        val bufRdr1 = BufferedReader(InputStreamReader(pr1.inputStream))
-        sb.appendLine("which su: ${bufRdr1.readLine()}")
+        val process =  Runtime.getRuntime().exec(cmdarray)
+        val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
+        bufferedReader.forEachLine { line ->
+            sb.appendLine(line)
+        }
+    } catch (tr: Throwable) {
+        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
+    }
+    return sb.toString()
+}
 
-        sb.appendLine("----- getprop -----")
-        val inputStream = Runtime.getRuntime().exec("getprop").inputStream
-        val bufRdr2 = BufferedReader(InputStreamReader(inputStream))
-        bufRdr2.forEachLine { line ->
+fun runtimeExecWithCmd(cmd: String):String {
+    val sb = StringBuilder()
+    try {
+        val process =  Runtime.getRuntime().exec(cmd)
+        val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
+        bufferedReader.forEachLine { line ->
             sb.appendLine(line)
         }
 
@@ -845,48 +830,40 @@ fun readLogcatWithProcessBuilder(): String {
 // Privates
 
 private fun formatInterfaceDetails(intf: NetworkInterface): String {
-    val details = StringBuilder()
+    val sb = StringBuilder()
 
     // Metadata
-    details.append("--- Interface: ${intf.name} ---\n")
-    details.append("| Index: ${intf.index}\n")
-    details.append("| MTU: ${intf.mtu}\n")
+    sb.append("--- Interface: ${intf.name} ---\n")
+    sb.append("| MTU: ${intf.mtu}\n")
 
-    // State & Capabilities
-    details.append("| Flags: ")
-    if (intf.isLoopback) details.append("[LOOPBACK] ")
-    if (intf.isPointToPoint) details.append("[P2P/TUNNEL] ")
-    if (intf.isVirtual) details.append("[VIRTUAL] ")
-    if (intf.isUp) details.append("[UP] ")
-    if (intf.supportsMulticast()) details.append("[MULTICAST] ")
 
-    details.append("\n")
+    sb.append("\n")
 
     val addrList = intf.interfaceAddresses
     if (addrList.isEmpty()) {
-        details.append("| Addresses: empty list!\n")
+        sb.append("| Addresses: empty list!\n")
     } else {
         for (addr in addrList) {
             val ip = addr.address.hostAddress
             val prefix = addr.networkPrefixLength
             val broadcast = addr.broadcast?.hostAddress
-            details.append("| -> IP: $ip/$prefix\n")
-            details.append("| -> Broadcast: $broadcast\n")
+            sb.append("| -> IP: $ip/$prefix\n")
+            sb.append("| -> Broadcast: $broadcast\n")
         }
     }
 
     // Hierarchy (Sub-interfaces/VLANs)
     val parent = intf.parent
     if (parent != null) {
-        details.append("| Parent: ${parent.name}\n")
+        sb.append("| Parent: ${parent.name}\n")
     }
     val subs = intf.subInterfaces.asSequence().toList()
     if (subs.isNotEmpty()) {
-        details.append("| Children: ${subs.joinToString { it.name }}\n")
+        sb.append("| Children: ${subs.joinToString { it.name }}\n")
     }
-    details.append("\n")
+    sb.append("\n")
 
-    return details.toString()
+    return sb.toString()
 }
 
 @Suppress("DEPRECATION")
@@ -912,73 +889,4 @@ private fun formatNetworkInfo(ni: NetworkInfo?) : String {
     sb.appendLine("\t typeName: ${ni.typeName}\n")
 
     return sb.toString()
-}
-
-@Suppress("DEPRECATION")
-private fun getBuildInfo(): String {
-    return """
-            BOARD: ${Build.BOARD}
-            BOOTLOADER: ${Build.BOOTLOADER}
-            BRAND: ${Build.BRAND}
-            DEVICE: ${Build.DEVICE}
-            DISPLAY: ${Build.DISPLAY}
-            FINGERPRINT: ${Build.FINGERPRINT}
-            HARDWARE: ${Build.HARDWARE}
-            HOST: ${Build.HOST}
-            ID: ${Build.ID}
-            MANUFACTURER: ${Build.MANUFACTURER}
-            MODEL: ${Build.MODEL}
-            ODM_SKU: ${Build.ODM_SKU}
-            PRODUCT: ${Build.PRODUCT}
-            SKU: ${Build.SKU}
-            SOC_MANUFACTURER: ${Build.SOC_MANUFACTURER}
-            SOC_MODEL: ${Build.SOC_MODEL}
-            SUPPORTED_32_BIT_ABIS: ${Build.SUPPORTED_32_BIT_ABIS.joinToString()}
-            SUPPORTED_64_BIT_ABIS: ${Build.SUPPORTED_64_BIT_ABIS?.joinToString()}
-            SUPPORTED_ABIS: ${Build.SUPPORTED_ABIS?.joinToString()}
-            CPU_ABI: ${Build.CPU_ABI}
-            CPU_ABI2: ${Build.CPU_ABI2}
-            TAGS: ${Build.TAGS}
-            TIME: ${Build.TIME}
-            TYPE: ${Build.TYPE}
-            USER: ${Build.USER}
-            RADIO: ${Build.getRadioVersion()}
-            MAJOR_SDK: ${Build.getMajorSdkVersion(Build.VERSION.SDK_INT_FULL)}
-            MINOR_SDK: ${Build.getMinorSdkVersion(Build.VERSION.SDK_INT_FULL)}
-            PARTITIONS: ${Build.getFingerprintedPartitions().joinToString { "${it.name}:${it.fingerprint}" }}
-            BASE_OS: ${Build.VERSION.BASE_OS}
-            CODENAME: ${Build.VERSION.CODENAME}
-            INCREMENTAL: ${Build.VERSION.INCREMENTAL}
-            MEDIA_PERFORMANCE_CLASS: ${Build.VERSION.MEDIA_PERFORMANCE_CLASS}
-            PREVIEW_SDK_INT: ${Build.VERSION.PREVIEW_SDK_INT}
-            RELEASE: ${Build.VERSION.RELEASE}
-            RELEASE_OR_CODENAME: ${Build.VERSION.RELEASE_OR_CODENAME}
-            RELEASE_OR_PREVIEW_DISPLAY: ${Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY}
-            SDK_INT: ${Build.VERSION.SDK_INT}
-            SDK_INT_FULL: ${Build.VERSION.SDK_INT_FULL}
-            SECURITY_PATCH: ${Build.VERSION.SECURITY_PATCH}
-            """.trimIndent()
-}
-
-private fun getSettingsInfo(ctx: Context): String {
-    val cr = ctx.contentResolver
-    val notFoundKey = -999
-
-    val deviceName = Global.getString(cr, Global.DEVICE_NAME) ?: "Unknown"
-    @SuppressLint("HardwareIds")
-    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
-
-    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
-    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
-    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
-    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
-
-    return """
-       DEVICE_NAME: $deviceName
-       SSAID: $ssaid
-       DEV_SETTINGS_ON: ${if (devSettingsOn == notFoundKey) "Could not extract value" else devSettingsOn}
-       ADB_ENABLED: ${if (adbEnabled == notFoundKey) "Could not extract value" else adbEnabled}
-       BOOT_COUNT: ${if (bootCount == notFoundKey) "Could not extract value" else bootCount}
-       WAIT_FOR_DEBUGGER: ${if (waitForDebugger == notFoundKey) "Could not extract value" else waitForDebugger}
-    """.trimIndent()
 }
