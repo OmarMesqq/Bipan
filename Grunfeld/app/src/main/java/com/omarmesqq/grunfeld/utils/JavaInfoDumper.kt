@@ -11,17 +11,12 @@ import android.content.pm.PackageManager.NameNotFoundException
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.media.MediaDrm
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import android.net.NetworkInfo
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.provider.Settings
-import android.provider.Settings.Global
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
-import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -41,7 +36,7 @@ private val deferredInterfaces = GlobalScope.async {
     try {
         return@async NetworkInterface.getNetworkInterfaces()
     } catch (e: Exception) {
-        throw Exception(e)
+        throw e
     }
 }
 
@@ -98,127 +93,22 @@ fun dumpInstallerInfo(ctx: Context): String {
 }
 
 
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
-fun dumpNetworkInfo(context: Context): String {
-    val sb = StringBuilder()
-
-
-
-    sb.append("\n[WIFI MANAGER INFO]\n")
+fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
     try {
-        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
-        val info = wifiManager.connectionInfo
-
-        val ipv4Address = Formatter.formatIpAddress(info.ipAddress)
-        val bssid = info.bssid
-        val ssid = info.ssid
-        val netid = info.networkId
-
-        sb.append("IPv4 address: $ipv4Address\n")
-        sb.append("BSSID: $bssid\n")
-        sb.append("SSID: $ssid\n")
-        sb.append("Network ID: $netid\n")
-    } catch (e: SecurityException) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "WIFI_SERVICE Exception", tr = e)
-
-        sb.append("WIFI_SERVICE Exception. Message: ${e.message}\n\n")
-        sb.append("Exception's stackTrace: ${e.stackTrace.contentToString()}\n\n")
+        val wifiManager = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        return wifiManager.connectionInfo
+    } catch (e: Exception) {
+        throw e
     }
-
-
-    sb.append("\n[LINK PROPERTIES INFO (via ConnectivityManager)]\n\n")
-    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-
-    val activeNetworkInfo = cm.activeNetworkInfo
-    sb.append("activeNetworkInfo dump:\n")
-    sb.appendLine("========================================")
-    sb.append(formatNetworkInfo(activeNetworkInfo))
-    sb.appendLine("========================================\n")
-
-    val allNetworks = cm.allNetworks
-    sb.append("allNetworks size: ${allNetworks.size}\n")
-    sb.append("allNetworks: ${allNetworks.contentToString()}\n\n")
-
-    val allNetworkInfo = cm.allNetworkInfo
-    sb.append("allNetworkInfo size: ${allNetworkInfo.size}\n")
-    if (allNetworkInfo.size > 0) {
-        sb.append("allNetworkInfo dump:\n")
-        sb.appendLine("========================================")
-        allNetworkInfo.forEach {
-            sb.append(formatNetworkInfo(it))
-        }
-        sb.appendLine("========================================\n")
-    }
-
-
-    val isMetered = cm.isActiveNetworkMetered
-    sb.append("isActiveNetworkMetered: $isMetered\n\n")
-
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-    val isVpnTransport = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ?: false
-    val hasNotVpnCap = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ?: true
-
-    sb.append("TRANSPORT_VPN: $isVpnTransport\n")
-    sb.append("HAS_NOT_VPN_CAP: $hasNotVpnCap\n\n")
-
-    val activeNetwork = cm.activeNetwork
-    if (activeNetwork == null) {
-        sb.append("No active network to query.\n")
-    } else {
-        val linkProperties = cm.getLinkProperties(activeNetwork)
-        if (linkProperties == null) {
-            sb.append("LinkProperties is null.\n")
-        } else {
-            val dhcpServerAdddr= linkProperties.dhcpServerAddress
-            val dnsServers = linkProperties.dnsServers
-            val ifaceName = linkProperties.interfaceName
-            val addresses = linkProperties.linkAddresses
-            val nat64prefix = linkProperties.nat64Prefix
-            val routes = linkProperties.routes
-            val mtu = linkProperties.mtu
-            val privateDnsServerName = linkProperties.privateDnsServerName
-            val isPrivateDnsServerActive = linkProperties.isPrivateDnsActive
-
-            sb.append("DHCP Server: ${dhcpServerAdddr?.hostAddress ?: "No DHCP server"} \n")
-            dnsServers.forEach {
-                sb.append("DNS server: ${it.hostAddress}\n")
-            }
-
-            sb.append("Interface name: $ifaceName \n")
-
-            if (addresses.isEmpty()) {
-                sb.append("No IP address found!\n")
-            } else {
-                addresses.forEach { addr ->
-                    sb.append("Address: ${addr.address.hostAddress}\n")
-                }
-            }
-
-            routes.forEach { r ->
-                sb.append("Route: $r\n")
-            }
-
-            sb.append("MTU: $mtu\n")
-            sb.append("NAT64 Prefix: $nat64prefix \n")
-            sb.append("Is Private DNS Server active: $isPrivateDnsServerActive\n")
-            sb.append("Private DNS Server name: $privateDnsServerName\n")
-        }
-    }
-
-
-    return sb.toString()
 }
-
 
 fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
     try {
         return deferredInterfaces.getCompleted()
     } catch (e: Exception) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
-        throw Exception(e)
+        throw e
     }
 }
 
@@ -507,17 +397,6 @@ fun dumpSomeSystemFeatures(ctx: Context): String {
     return sb.toString()
 }
 
-fun dumpSystemProps(): String {
-    val arch = System.getProperty("os.arch")
-    val name = System.getProperty("os.name")
-    val version = System.getProperty("os.version")
-
-    return """
-        os.arch:         $arch
-        os.name:         $name
-        os.name:         $version
-    """.trimIndent()
-}
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
 fun dumpGsfId(ctx: Context) : String {
@@ -823,70 +702,6 @@ fun readLogcatWithProcessBuilder(): String {
     } catch (tr: Throwable) {
         sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
     }
-
-    return sb.toString()
-}
-
-// Privates
-
-private fun formatInterfaceDetails(intf: NetworkInterface): String {
-    val sb = StringBuilder()
-
-    // Metadata
-    sb.append("--- Interface: ${intf.name} ---\n")
-    sb.append("| MTU: ${intf.mtu}\n")
-
-
-    sb.append("\n")
-
-    val addrList = intf.interfaceAddresses
-    if (addrList.isEmpty()) {
-        sb.append("| Addresses: empty list!\n")
-    } else {
-        for (addr in addrList) {
-            val ip = addr.address.hostAddress
-            val prefix = addr.networkPrefixLength
-            val broadcast = addr.broadcast?.hostAddress
-            sb.append("| -> IP: $ip/$prefix\n")
-            sb.append("| -> Broadcast: $broadcast\n")
-        }
-    }
-
-    // Hierarchy (Sub-interfaces/VLANs)
-    val parent = intf.parent
-    if (parent != null) {
-        sb.append("| Parent: ${parent.name}\n")
-    }
-    val subs = intf.subInterfaces.asSequence().toList()
-    if (subs.isNotEmpty()) {
-        sb.append("| Children: ${subs.joinToString { it.name }}\n")
-    }
-    sb.append("\n")
-
-    return sb.toString()
-}
-
-@Suppress("DEPRECATION")
-private fun formatNetworkInfo(ni: NetworkInfo?) : String {
-    if (ni == null) {
-        return "Provided NetworkInfo is null"
-    }
-    val sb = StringBuilder()
-
-
-    sb.appendLine("\t Type: ${ni.type}")
-    sb.appendLine("\t Extra info: ${ni.extraInfo}")
-    sb.appendLine("\t State: ${ni.state}")
-    sb.appendLine("\t Detailed state: ${ni.detailedState}")
-    sb.appendLine("\t isAvailable: ${ni.isAvailable}")
-    sb.appendLine("\t isConnected: ${ni.isConnected}")
-    sb.appendLine("\t isConnectedOrConnecting: ${ni.isConnectedOrConnecting}")
-    sb.appendLine("\t isFailover: ${ni.isFailover}")
-    sb.appendLine("\t isRoaming: ${ni.isRoaming}")
-    sb.appendLine("\t reason: ${ni.reason}")
-    sb.appendLine("\t subtype: ${ni.subtype}")
-    sb.appendLine("\t subtypeName: ${ni.subtypeName}")
-    sb.appendLine("\t typeName: ${ni.typeName}\n")
 
     return sb.toString()
 }

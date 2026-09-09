@@ -8,6 +8,14 @@ object TestRunner {
         return actual == expected
     }
 
+    fun ensureEquals(actual: Set<String>, expected: Set<String>): Boolean {
+        return actual == expected
+    }
+
+    fun ensureEqualBooleans(actual: Boolean, expected: Boolean): Boolean {
+        return actual == expected
+    }
+
     fun ensureNotContains(actual: String, expected: String): Boolean {
         return actual.contains(expected)
     }
@@ -18,5 +26,9 @@ object TestRunner {
 
     fun <T> ensureEmpty(list: Iterable<T>): Boolean {
         return list.count() == 0
+    }
+
+    fun <T> ensureSingle(list: Iterable<T>): Boolean {
+        return list.count() == 1
     }
 }

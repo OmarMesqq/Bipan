@@ -1,9 +1,14 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.annotation.SuppressLint
+import android.content.ContentResolver
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.provider.Settings
 import android.provider.Settings.Global
-import android.text.TextUtils.split
+import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,6 +38,8 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
@@ -45,20 +51,17 @@ import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
 import com.omarmesqq.grunfeld.utils.dumpGsfId
 import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
 import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
-import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpSomeSystemFeatures
-import com.omarmesqq.grunfeld.utils.dumpSystemProps
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
+import com.omarmesqq.grunfeld.utils.dumpWifiManagerInfo
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.NetworkInterface
-import java.util.Enumeration
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -66,9 +69,8 @@ fun JavaInfoScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
     val composableScope = rememberCoroutineScope()
+    val cr = context.contentResolver
 
-
-    var netInfo by remember { mutableStateOf("") }
 
     var installerInfo by remember { mutableStateOf("Installer info not queried") }
     var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
@@ -79,7 +81,6 @@ fun JavaInfoScreen() {
     var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
     var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
 
-    var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
     var gsfId by remember { mutableStateOf("GSF ID not queried") }
@@ -97,13 +98,16 @@ fun JavaInfoScreen() {
     ) {
         Text(text = "Java info", style = MaterialTheme.typography.headlineMedium)
 
-        SectionHeader("BUILD AND SETTINGS TESTS")
+        SectionHeader("BUILD,SETTINGS AND SYSTEM PROPERTIES TESTS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             BuildAssertions()
-            SettingsAssertions(context)
+            HorizontalDivider()
+            SettingsAssertions(cr)
+            HorizontalDivider()
+            SystemPropertiesAssertions()
         }
 
         SectionHeader("RUNTIME EXEC TESTS")
@@ -132,12 +136,13 @@ fun JavaInfoScreen() {
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                NetworkIfacesAssertions(context)
+                NetworkIfacesAssertions()
             }
         }
         SectionHeader("WIFI MANAGER TESTS")
+        WifiManagerAssertions(context)
         SectionHeader("LINK PROPERTIES TESTS")
-
+        LinkPropertiesAssertions(context)
         SectionHeader("PACKAGE MANAGER")
         Column(
             modifier = Modifier.padding(16.dp),
@@ -285,20 +290,6 @@ fun JavaInfoScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Button(
-                onClick = {
-                    sysPropsInfo = dumpSystemProps()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get some system properties")
-            }
-
-            Text(
-                text = sysPropsInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Button(
                 onClick = { devPropsInfo = dumpDevProperties() },
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -338,6 +329,20 @@ fun JavaInfoScreen() {
                 text = mediaDrmIdInfo,
                 style = MaterialTheme.typography.bodyMedium
             )
+
+            Button(
+                onClick = {
+
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get SSAID")
+            }
+
+            Text(
+                text = "TO-DO",
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }
@@ -350,11 +355,7 @@ private fun BuildAssertions() {
     AssertionResult("BRAND", Build.BRAND, "google")
     AssertionResult("DEVICE", Build.DEVICE, "husky")
     AssertionResult("DISPLAY", Build.DISPLAY, "BP4A.251205.006")
-    AssertionResult(
-        "FINGERPRINT",
-        Build.FINGERPRINT,
-        "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
-    )
+    AssertionResult("FINGERPRINT",Build.FINGERPRINT,"google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys")
     AssertionResult("HARDWARE", Build.HARDWARE, "zuma")
     AssertionResult("HOST", Build.HOST, "abfarm-20038")
     AssertionResult("ID", Build.ID, "BP4A.251205.006")
@@ -372,12 +373,19 @@ private fun BuildAssertions() {
     AssertionResult("INCREMENTAL", Build.VERSION.INCREMENTAL, "14401865")
     AssertionResult("SECURITY_PATCH", Build.VERSION.SECURITY_PATCH, "2025-12-05")
 
+
+    val abis32 = Build.SUPPORTED_32_BIT_ABIS
+    AssertionResultEmpty("SUPPORTED_32_BIT_ABIS", abis32.toList())
+
+    val abis64 = Build.SUPPORTED_64_BIT_ABIS
+    AssertionResultSingleSpecificValueInIterable("SUPPORTED_64_BIT_ABIS", abis64.toList(), "arm64-v8a")
+
+    val abis = Build.SUPPORTED_ABIS
+    AssertionResultSingleSpecificValueInIterable("SUPPORTED_ABIS", abis.toList(), "arm64-v8a")
+
+
     // ODM_SKU: not set by spoofer - retains real device value
     // SKU: not set by spoofer - retains real device value
-    // SUPPORTED_32_BIT_ABIS: not set by spoofer - retains real device value
-    // SUPPORTED_64_BIT_ABIS: not set by spoofer - retains real device value
-    // SUPPORTED_ABIS: not set by spoofer - retains real device value
-    // TIME: field ID retrieved but value not shown being set in snippet - retains real/set value if set elsewhere
     // MAJOR_SDK: not set by spoofer - derived from real SDK_INT_FULL
     // MINOR_SDK: not set by spoofer - derived from real SDK_INT_FULL
     // PARTITIONS: not set by spoofer - retains real device value
@@ -393,8 +401,7 @@ private fun BuildAssertions() {
 }
 
 @Composable
-private fun SettingsAssertions(ctx: Context) {
-    val cr = ctx.contentResolver
+private fun SettingsAssertions(cr: ContentResolver) {
     val notFoundKey = -999
 
 
@@ -407,6 +414,16 @@ private fun SettingsAssertions(ctx: Context) {
     AssertionResult("ADB_ENABLED", adbEnabled, "0")
     AssertionResult("BOOT_COUNT", bootCount, "43")
     AssertionResult("WAIT_FOR_DEBUGGER", waitForDebugger, "0")
+}
+@Composable
+private fun SystemPropertiesAssertions() {
+    val arch = System.getProperty("os.arch")
+    val name = System.getProperty("os.name")
+    val version = System.getProperty("os.version")
+
+    AssertionResult("os.arch", arch ?: "", "aarch64")
+    AssertionResult("os.name", name ?: "", "Linux")
+    AssertionResult("os.version", version ?: "", "6.6.56-android16-11-g8a3e2b1c4d5f")
 }
 
 @Composable
@@ -421,7 +438,7 @@ private fun SensorsAssertions(ctx: Context) {
 }
 
 @Composable
-private fun NetworkIfacesAssertions(ctx: Context) {
+private fun NetworkIfacesAssertions() {
     val interfaceList = try {
         dumpNetworkInterfaces()
     } catch (e: Exception) {
@@ -460,5 +477,89 @@ private fun NetworkIfacesAssertions(ctx: Context) {
             AssertionResultEmpty("Sub interfaces", subs)
             HorizontalDivider()
         }
+}
+
+@Suppress("DEPRECATION")
+@Composable
+private fun WifiManagerAssertions(ctx: Context) {
+    val wifiInfo = try {
+        dumpWifiManagerInfo(ctx)
+    } catch (e: Exception) {
+        Text(
+            text = "dumpWifiManagerInfo failed: ${e.message}",
+            color = Color.Red
+        )
+        return
+    }
+
+    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
+    AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
+    AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
+    AssertionResult("Network ID", wifiInfo.networkId, "4")
+}
+
+@Composable
+private fun LinkPropertiesAssertions(ctx: Context) {
+     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+     val activeNetworkInfo = cm.activeNetworkInfo
+
+
+    AssertionResultNotContains("Active network VPN?", activeNetworkInfo?.typeName ?: "", "VPN")
+    AssertionResult("All networks size", cm.allNetworks.size, "0")
+    AssertionResultEmpty("All networks content", cm.allNetworks.toList())
+
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+    if (caps == null) {
+        Text(
+            text = "Failed to getNetworkCapabilities via CM",
+            color = Color.Red
+        )
+        return
+    }
+    val hasTransportVpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+    val hasCapNotVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    AssertionResult("Network has VPN transport?", hasTransportVpn, false)
+    AssertionResult("Network has cap NOT_VPN?", hasCapNotVpn, true)
+
+    val activeNetwork = cm.activeNetwork
+    if (activeNetwork == null) {
+        Text(
+            text = "activeNetwork is null",
+            color = Color.Red
+        )
+        return
+    }
+    val linkProperties = cm.getLinkProperties(activeNetwork)
+    if (linkProperties == null) {
+        Text(
+            text = "linkProperties is null",
+            color = Color.Red
+        )
+        return
+    }
+
+    val linkAddrs = linkProperties.linkAddresses.map {
+        it.address.hostAddress
+    }
+
+
+
+    AssertionResultNull("DHCP Server", linkProperties.dhcpServerAddress)
+    AssertionResultNotContains("Interface name", linkProperties.interfaceName.toString(), "tun")
+    AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, "10.111.222.1")
+    AssertionResult("MTU", linkProperties.mtu, "1500")
+    AssertionResult("Private DNS active?", linkProperties.isPrivateDnsActive, false)
+    AssertionResult("Private DNS Server", linkProperties.privateDnsServerName ?: "", "")
+
+    val dnsServers = linkProperties.dnsServers.map {
+        it.hostAddress
+    }
+    val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
+    AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
+}
+
+private fun DeviceIdentifiersAssertions(cr: ContentResolver) {
+    @SuppressLint("HardwareIds")
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
 
 }
