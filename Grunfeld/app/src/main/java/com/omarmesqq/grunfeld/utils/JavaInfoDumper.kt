@@ -352,42 +352,6 @@ fun runtimeExecWithCmd(cmd: String):String {
     return sb.toString()
 }
 
-fun readLogcatWithRuntime(): String {
-    val sb = StringBuilder()
-    try {
-        val process =  Runtime.getRuntime().exec("logcat -d")
-        val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
-
-        repeat(5) {
-            sb.appendLine(bufferedReader.readLine())
-        }
-
-    } catch (tr: Throwable) {
-        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
-    }
-    return sb.toString()
-}
-
-fun readLogcatWithProcessBuilder(): String {
-    val sb = StringBuilder()
-    try {
-        val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
-        val process = processBuilder.start()
-
-        process.inputStream.bufferedReader().useLines { lines ->
-            lines.take(5).forEach { line ->
-                sb.appendLine(line)
-            }
-        }
-
-        val exitCode = process.waitFor()
-        sb.appendLine("Process exited with code $exitCode")
-    } catch (tr: Throwable) {
-        sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
-    }
-
-    return sb.toString()
-}
 
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
