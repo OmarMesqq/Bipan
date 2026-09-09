@@ -57,8 +57,6 @@ fun dumpSensorInfo(ctx: Context): String {
 }
 
 
-
-
 @Suppress("DEPRECATION")
 fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
     try {
