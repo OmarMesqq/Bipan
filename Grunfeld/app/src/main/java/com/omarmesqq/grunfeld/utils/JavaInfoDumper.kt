@@ -1,11 +1,10 @@
 package com.omarmesqq.grunfeld.utils
 
 import android.annotation.SuppressLint
+import android.content.ContentResolver
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
-import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.NameNotFoundException
 import android.hardware.Sensor
@@ -14,13 +13,11 @@ import android.media.MediaDrm
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.telephony.SubscriptionInfo
-import android.telephony.SubscriptionManager
+import android.provider.Settings
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import com.omarmesqq.grunfeld.utils.ObjectDumper.dumpSomeObject
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import java.io.BufferedReader
@@ -59,38 +56,7 @@ fun dumpSensorInfo(ctx: Context): String {
     return sb.toString()
 }
 
-@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-@Suppress("DEPRECATION")
-fun dumpInstallerInfo(ctx: Context): String {
-    val pm = ctx.packageManager
-    val packageName = ctx.packageName
-    val info = pm.getInstallSourceInfo(packageName)
 
-    val originator = info.originatingPackageName // The "Source" (e.g., Chrome)
-    val initiator = info.initiatingPackageName   // Who called the installation
-    val installer = info.installingPackageName   // Who did the work (e.g., Play Store)
-    val updateOwner = info.updateOwnerPackageName   // Package responsible for managing updates
-
-    val packageSource = when (info.packageSource) {
-        PackageInstaller.PACKAGE_SOURCE_STORE -> "App Store"
-        PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE -> "Local File"
-        PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE -> "Downloaded File"
-        PackageInstaller.PACKAGE_SOURCE_OTHER -> "Other"
-        PackageInstaller.PACKAGE_SOURCE_UNSPECIFIED -> "Installer did not call PackageInstaller.SessionParams.setPackageSource(int) to specify the package source."
-        else -> "Unknown Value: ${info.packageSource}"
-    }
-
-    val legacyInstaller = pm.getInstallerPackageName(packageName)
-
-    return """
-        Originator:   $originator
-        Initiator:    $initiator
-        Installer:    $installer
-        Update Owner: $updateOwner
-        Package Source: $packageSource
-        [Legacy API] Installer: $legacyInstaller
-    """.trimIndent()
-}
 
 
 @Suppress("DEPRECATION")
@@ -112,22 +78,6 @@ fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
     }
 }
 
-fun dumpQueryIntentActivities(context: Context): String {
-    val pm = context.packageManager
-    val sb = StringBuilder()
-
-    val amountToShow = 5
-    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
-        addCategory(Intent.CATEGORY_LAUNCHER)
-    }
-    val allApps = pm.queryIntentActivities(launcherIntent, 0)
-    sb.appendLine("Showing $amountToShow apps with Launcher icon")
-    allApps.take(amountToShow).forEach { info ->
-        sb.appendLine(info.activityInfo.packageName)
-    }
-
-    return sb.toString()
-}
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
@@ -180,66 +130,6 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     return sb.toString()
 }
 
-/**
- * getInstalledApplications:
- * runtime info only, no components/permissions
- */
-fun dumpGetInstalledApplications(context: Context): String {
-    val pm = context.packageManager
-    val sb = StringBuilder()
-
-    val apps: List<ApplicationInfo> =
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-
-    val amountToShow = 5
-    sb.appendLine("\n=== getInstalledApplications showing $amountToShow of ${apps.size} apps ===")
-    apps.take(amountToShow).forEach { app: ApplicationInfo ->
-        val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-        val isDebuggable = (app.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        sb.appendLine("${app.packageName} | system: $isSystem | debuggable: $isDebuggable")
-    }
-
-
-
-    return sb.toString()
-}
-
-/**
- * getInstalledPackages:
- * full PackageInfo per app — components + permissions in one shot
- */
-fun dumpGetInstalledPackages(context: Context): String {
-    val pm = context.packageManager
-    val sb = StringBuilder()
-
-    val flags = (
-            PackageManager.GET_PERMISSIONS or
-                    PackageManager.GET_ACTIVITIES or
-                    PackageManager.GET_SERVICES or
-                    PackageManager.GET_RECEIVERS or
-                    PackageManager.GET_PROVIDERS
-            )
-    val packages: List<PackageInfo> = pm.getInstalledPackages(flags)
-
-    val amountToShow = 5
-    sb.appendLine("\n=== getInstalledPackages: showing $amountToShow of ${packages.size} packages ===")
-    packages.take(amountToShow).forEach { pkg: PackageInfo ->
-        sb.appendLine("\n${pkg.packageName} v${pkg.versionName}")
-        sb.appendLine("  Activities : ${pkg.activities?.size ?: 0}")
-        sb.appendLine("  Services   : ${pkg.services?.size ?: 0}")
-        sb.appendLine("  Receivers  : ${pkg.receivers?.size ?: 0}")
-        sb.appendLine("  Providers  : ${pkg.providers?.size ?: 0}")
-
-        val perms: Array<String> = pkg.requestedPermissions ?: emptyArray()
-        val permFlags: IntArray = pkg.requestedPermissionsFlags ?: IntArray(0)
-        perms.forEachIndexed { i, perm: String ->
-            val granted = (permFlags.getOrElse(i) { 0 } and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
-            sb.appendLine("  [${if (granted) "GRANTED" else "DENIED "}] $perm")
-        }
-    }
-
-    return sb.toString()
-}
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpGetApplicationInfo(context: Context, packageName: String) : String {
@@ -262,180 +152,20 @@ fun dumpGetApplicationInfo(context: Context, packageName: String) : String {
     return res.toString()
 }
 
-fun dumpGetSystemAvailableFeaturesInfo(context: Context) : String {
-    val pm = context.packageManager
+fun dumpDeviceIds(ctx: Context, cr: ContentResolver): String {
+    val ssaid = dumpSsaid(cr)
+    val gsfId = dumpGsfId(ctx)
+    val mediaDrmId = dumpMediaDrmId()
+
     val sb = StringBuilder()
-
-    val res = pm.systemAvailableFeatures
-    res.forEach { fi ->
-        sb.appendLine(fi.name)
-    }
-    return sb.toString()
-}
-
-@RequiresApi(Build.VERSION_CODES.BAKLAVA)
-@Suppress("DEPRECATION")
-fun dumpSomeSystemFeatures(ctx: Context): String {
-    val pm = ctx.packageManager
-    val sb = StringBuilder()
-
-    sb.appendLine("FEATURE_NFC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC)}")
-    sb.appendLine("FEATURE_NFC_BEAM: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_BEAM)}")
-    sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)}")
-    sb.appendLine("FEATURE_NFC_HOST_CARD_EMULATION_NFCF: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF)}")
-    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_ESE)}")
-    sb.appendLine("FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_NFC_OFF_HOST_CARD_EMULATION_UICC)}\n")
-
-    sb.appendLine("FEATURE_BLUETOOTH: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)}")
-    sb.appendLine("FEATURE_BLUETOOTH_LE: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)}")
-    sb.appendLine("FEATURE_BLUETOOTH_LE_CHANNEL_SOUNDING: ${pm.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE_CHANNEL_SOUNDING)}\n")
-
-
-    sb.appendLine("FEATURE_AUDIO_LOW_LATENCY: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_LOW_LATENCY)}")
-    sb.appendLine("FEATURE_AUDIO_OUTPUT: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_OUTPUT)}")
-    sb.appendLine("FEATURE_AUDIO_PRO: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_PRO)}")
-    sb.appendLine("FEATURE_AUDIO_SPATIAL_HEADTRACKING_LOW_LATENCY: ${pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_SPATIAL_HEADTRACKING_LOW_LATENCY)}\n")
-
-
-    sb.appendLine("FEATURE_AUTOFILL: ${pm.hasSystemFeature(PackageManager.FEATURE_AUTOFILL)}")
-    sb.appendLine("FEATURE_APP_WIDGETS: ${pm.hasSystemFeature(PackageManager.FEATURE_APP_WIDGETS)}")
-    sb.appendLine("FEATURE_LIVE_WALLPAPER: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_WALLPAPER)}")
-    sb.appendLine("FEATURE_MIDI: ${pm.hasSystemFeature(PackageManager.FEATURE_MIDI)}")
-    sb.appendLine("FEATURE_PICTURE_IN_PICTURE: ${pm.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)}")
-    sb.appendLine("FEATURE_EXPANDED_PICTURE_IN_PICTURE: ${pm.hasSystemFeature(PackageManager.FEATURE_EXPANDED_PICTURE_IN_PICTURE)}")
-    sb.appendLine("FEATURE_FREEFORM_WINDOW_MANAGEMENT: ${pm.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT)}")
-    sb.appendLine("FEATURE_WINDOW_MAGNIFICATION: ${pm.hasSystemFeature(PackageManager.FEATURE_WINDOW_MAGNIFICATION)}")
-    sb.appendLine("FEATURE_SCREEN_LANDSCAPE: ${pm.hasSystemFeature(PackageManager.FEATURE_SCREEN_LANDSCAPE)}")
-    sb.appendLine("FEATURE_PRINTING: ${pm.hasSystemFeature(PackageManager.FEATURE_PRINTING)}\n")
-
-    sb.appendLine("FEATURE_SENSOR_HEART_RATE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEART_RATE)}")
-    sb.appendLine("FEATURE_SENSOR_ACCELEROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER)}")
-    sb.appendLine("FEATURE_SENSOR_AMBIENT_TEMPERATURE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_AMBIENT_TEMPERATURE)}")
-    sb.appendLine("FEATURE_SENSOR_BAROMETER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_BAROMETER)}")
-    sb.appendLine("FEATURE_SENSOR_COMPASS: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_COMPASS)}")
-    sb.appendLine("FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_DYNAMIC_HEAD_TRACKER)}")
-    sb.appendLine("FEATURE_SENSOR_GYROSCOPE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE)}")
-    sb.appendLine("FEATURE_SENSOR_HEADING: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HEADING)}")
-    sb.appendLine("FEATURE_SENSOR_HINGE_ANGLE: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)}")
-    sb.appendLine("FEATURE_SENSOR_LIGHT: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_LIGHT)}")
-    sb.appendLine("FEATURE_SENSOR_PROXIMITY: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_PROXIMITY)}")
-    sb.appendLine("FEATURE_SENSOR_RELATIVE_HUMIDITY: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_RELATIVE_HUMIDITY)}")
-    sb.appendLine("FEATURE_SENSOR_STEP_COUNTER: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_COUNTER)}")
-    sb.appendLine("FEATURE_SENSOR_STEP_DETECTOR: ${pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_STEP_DETECTOR)}")
-    sb.appendLine("FEATURE_HIFI_SENSORS: ${pm.hasSystemFeature(PackageManager.FEATURE_HIFI_SENSORS)}")
-    sb.appendLine("FEATURE_CONSUMER_IR: ${pm.hasSystemFeature(PackageManager.FEATURE_CONSUMER_IR)}\n")
-
-    sb.appendLine("FEATURE_CONTROLS: ${pm.hasSystemFeature(PackageManager.FEATURE_CONTROLS)}")
-    sb.appendLine("FEATURE_GAMEPAD: ${pm.hasSystemFeature(PackageManager.FEATURE_GAMEPAD)}\n")
-
-    sb.appendLine("FEATURE_USB_ACCESSORY: ${pm.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY)}")
-    sb.appendLine("FEATURE_USB_HOST: ${pm.hasSystemFeature(PackageManager.FEATURE_USB_HOST)}\n")
-
-
-
-    sb.appendLine("FEATURE_MANAGED_USERS: ${pm.hasSystemFeature(PackageManager.FEATURE_MANAGED_USERS)}")
-    sb.appendLine("FEATURE_CREDENTIALS: ${pm.hasSystemFeature(PackageManager.FEATURE_CREDENTIALS)}\n")
-
-    sb.appendLine("FEATURE_SIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP)}")
-    sb.appendLine("FEATURE_SIP_VOIP: ${pm.hasSystemFeature(PackageManager.FEATURE_SIP_VOIP)}")
-    sb.appendLine("FEATURE_TELEPHONY_CDMA: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_CDMA)}")
-    sb.appendLine("FEATURE_TELEPHONY_EUICC: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_EUICC)}")
-    sb.appendLine("FEATURE_TELEPHONY_EUICC_MEP: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_EUICC_MEP)}")
-    sb.appendLine("FEATURE_TELEPHONY_MBMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_MBMS)}")
-    sb.appendLine("FEATURE_TELEPHONY_SUBSCRIPTION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_SUBSCRIPTION)}")
-    sb.appendLine("FEATURE_TELEPHONY_RADIO_ACCESS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_RADIO_ACCESS)}")
-    sb.appendLine("FEATURE_TELEPHONY_IMS: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_IMS)}\n")
-
-    sb.appendLine("FEATURE_HARDWARE_KEYSTORE: ${pm.hasSystemFeature(PackageManager.FEATURE_HARDWARE_KEYSTORE)}")
-    sb.appendLine("FEATURE_IDENTITY_CREDENTIAL_HARDWARE: ${pm.hasSystemFeature(PackageManager.FEATURE_IDENTITY_CREDENTIAL_HARDWARE)}")
-    sb.appendLine("FEATURE_IDENTITY_CREDENTIAL_HARDWARE_DIRECT_ACCESS: ${pm.hasSystemFeature(PackageManager.FEATURE_IDENTITY_CREDENTIAL_HARDWARE_DIRECT_ACCESS)}")
-    sb.appendLine("FEATURE_KEYSTORE_APP_ATTEST_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_APP_ATTEST_KEY)}")
-    sb.appendLine("FEATURE_KEYSTORE_LIMITED_USE_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_LIMITED_USE_KEY)}")
-    sb.appendLine("FEATURE_KEYSTORE_SINGLE_USE_KEY: ${pm.hasSystemFeature(PackageManager.FEATURE_KEYSTORE_SINGLE_USE_KEY)}")
-    sb.appendLine("FEATURE_STRONGBOX_KEYSTORE: ${pm.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)}")
-    sb.appendLine("FEATURE_SECURITY_MODEL_COMPATIBLE: ${pm.hasSystemFeature(PackageManager.FEATURE_SECURITY_MODEL_COMPATIBLE)}")
-    sb.appendLine("FEATURE_SE_OMAPI_SD: ${pm.hasSystemFeature(PackageManager.FEATURE_SE_OMAPI_SD)}")
-    sb.appendLine("FEATURE_SE_OMAPI_UICC: ${pm.hasSystemFeature(PackageManager.FEATURE_SE_OMAPI_UICC)}\n")
-
-    sb.appendLine("FEATURE_DEVICE_ID_ATTESTATION: ${pm.hasSystemFeature("android.software.device_id_attestation")}")
-    sb.appendLine("FEATURE_VERIFIED_BOOT: ${pm.hasSystemFeature(PackageManager.FEATURE_VERIFIED_BOOT)}\n")
-
-    sb.appendLine("[LEGACY] FEATURE_VR_MODE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE)}")
-    sb.appendLine("[MODERN] FEATURE_VR_MODE_HIGH_PERFORMANCE: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_MODE_HIGH_PERFORMANCE)}")
-    sb.appendLine("FEATURE_VR_HEADTRACKING: ${pm.hasSystemFeature(PackageManager.FEATURE_VR_HEADTRACKING)}")
-    sb.appendLine("FEATURE_CAMERA_AR: ${pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AR)}\n")
-
-    sb.appendLine("[LEGACY] FEATURE_TELEVISION: ${pm.hasSystemFeature(PackageManager.FEATURE_TELEVISION)}")
-    sb.appendLine("[MODERN] FEATURE_LEANBACK: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)}")
-    sb.appendLine("FEATURE_LEANBACK_ONLY: ${pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)}")
-    sb.appendLine("FEATURE_LIVE_TV: ${pm.hasSystemFeature(PackageManager.FEATURE_LIVE_TV)}\n")
-
-    sb.appendLine("FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS: ${pm.hasSystemFeature(PackageManager.FEATURE_WALLET_LOCATION_BASED_SUGGESTIONS)}")
-    sb.appendLine("FEATURE_WATCH: ${pm.hasSystemFeature(PackageManager.FEATURE_WATCH)}\n")
-
-    sb.appendLine("FEATURE_WIFI_DIRECT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)}")
-    sb.appendLine("FEATURE_WIFI_PASSPOINT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_PASSPOINT)}")
-    sb.appendLine("FEATURE_WIFI_RTT: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)}")
-    sb.appendLine("FEATURE_THREAD_NETWORK: ${pm.hasSystemFeature(PackageManager.FEATURE_THREAD_NETWORK)}")
-    sb.appendLine("FEATURE_WIFI_AWARE: ${pm.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)}")
-    sb.appendLine("FEATURE_UWB: ${pm.hasSystemFeature(PackageManager.FEATURE_UWB)}\n")
-
-    sb.appendLine("FEATURE_IPSEC_TUNNELS: ${pm.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)}")
-    sb.appendLine("FEATURE_IPSEC_TUNNEL_MIGRATION: ${pm.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNEL_MIGRATION)}\n")
-
-    // interesting...
-    sb.appendLine("FEATURE_CANT_SAVE_STATE: ${pm.hasSystemFeature(PackageManager.FEATURE_CANT_SAVE_STATE)}\n")
-
-    sb.appendLine("FEATURE_COMPANION_DEVICE_SETUP: ${pm.hasSystemFeature(PackageManager.FEATURE_COMPANION_DEVICE_SETUP)}")
-    sb.appendLine("[LEGACY] FEATURE_CONNECTION_SERVICE: ${pm.hasSystemFeature(PackageManager.FEATURE_CONNECTION_SERVICE)}")
-    sb.appendLine("[MODERN] FEATURE_TELECOM: ${pm.hasSystemFeature(PackageManager.FEATURE_TELECOM)}\n")
-
-    sb.appendLine("FEATURE_VULKAN_DEQP_LEVEL: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_DEQP_LEVEL)}")
-    sb.appendLine("FEATURE_VULKAN_HARDWARE_COMPUTE: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_COMPUTE)}")
-    sb.appendLine("FEATURE_VULKAN_HARDWARE_LEVEL: ${pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)}")
+    sb.appendLine("SSAID: $ssaid")
+    sb.appendLine("GSF ID: $gsfId")
+    sb.appendLine("DRM ID: $mediaDrmId")
+    sb.appendLine("\nNow relaunch the app and note Bipan's work on these IDs!")
 
     return sb.toString()
 }
 
-
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun dumpGsfId(ctx: Context) : String {
-    val cr = ctx.contentResolver
-    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
-    val idKey = "android_id"
-
-    val uri = gsfContentProviderUri.toUri()
-    val params = arrayOf(idKey)
-
-    val gsfId = try {
-        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
-            check(cursor.moveToFirst() && cursor.columnCount >= 2)
-            toHexString(cursor.getString(1).toLong())
-        }
-    } catch (e: Exception) {
-        "Failed to get GSF ID: ${e.message}"
-    }
-    return gsfId
-}
-
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun dumpMediaDrmId() : String {
-    val widevineUUidMostSigBits = -0x121074568629b532L
-    val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
-    val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
-
-    val wvDrm = MediaDrm(widevineUUID)
-    val widevineIdRaw = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
-    val widevineId = widevineIdRaw.toHexString()
-    wvDrm.close()
-
-    return widevineId
-}
-private fun ByteArray.toHexString(): String {
-    return this.joinToString("") {
-        format("%02x", it)
-    }
-}
 
 @SuppressLint("PrivateApi")
 fun dumpDevProperties(): String {
@@ -559,7 +289,6 @@ fun dumpDevProperties(): String {
 @Suppress("DEPRECATION")
 fun dumpTelephonyInfo(context: Context): String {
     val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-    val subscriptionManager  = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
 
     val sb = StringBuilder()
 
@@ -582,53 +311,9 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
 
     try {
-        val subscriptionInfoList: List<SubscriptionInfo>? = subscriptionManager.activeSubscriptionInfoList
-
-        subscriptionInfoList?.forEach { info ->
-            val subscriptionId = info.subscriptionId
-            val carrierName = info.carrierName
-            val displayName = info.displayName
-            val number = info.number
-            val cardId = info.cardId
-            val carrierId = info.carrierId
-            val countryIso = info.countryIso
-            val iccId = info.iccId
-            val isEmbedded = info.isEmbedded
-            val isOnlyNonTerrestrialNetwork = info.isOnlyNonTerrestrialNetwork
-            val isOpportunistic = info.isOpportunistic
-            val mcc = info.mcc
-            val mccString = info.mccString
-            val mnc = info.mnc
-            val mncString = info.mncString
-            val portIndex = info.portIndex
-            val simSlotIndex = info.simSlotIndex
-            val subscriptionType = info.subscriptionType
-
-            sb.appendLine("SubscriptionManager: cardId: $cardId")
-            sb.appendLine("SubscriptionManager: carrierId: $carrierId")
-            sb.appendLine("SubscriptionManager: countryIso: $countryIso")
-            sb.appendLine("SubscriptionManager: iccId: $iccId")
-            sb.appendLine("SubscriptionManager: isEmbedded: $isEmbedded")
-            sb.appendLine("SubscriptionManager: isOnlyNonTerrestrialNetwork: $isOnlyNonTerrestrialNetwork")
-            sb.appendLine("SubscriptionManager: isOpportunistic: $isOpportunistic")
-            sb.appendLine("SubscriptionManager: mcc: $mcc")
-            sb.appendLine("SubscriptionManager: mccString: $mccString")
-            sb.appendLine("SubscriptionManager: mnc: $mnc")
-            sb.appendLine("SubscriptionManager: mncString: $mncString")
-            sb.appendLine("SubscriptionManager: portIndex: $portIndex")
-            sb.appendLine("SubscriptionManager: simSlotIndex: $simSlotIndex")
-            sb.appendLine("SubscriptionManager: subscriptionType: $subscriptionType")
-            sb.appendLine("SubscriptionManager: subscriptionId: $subscriptionId")
-            sb.appendLine("SubscriptionManager: carrierName: $carrierName")
-            sb.appendLine("SubscriptionManager: displayName: $displayName")
-            sb.appendLine("SubscriptionManager: number: $number")
-        }
-
         sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
         sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
         sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
-        sb.appendLine("serviceState RAW STRINGIFIED:\n\n${telephonyManager.serviceState}\n\n")
-        sb.appendLine("serviceState OBJDUMPED:\n\n${dumpSomeObject(telephonyManager.serviceState as Any)}\n\n")
         sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
     } catch (e: SecurityException) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpTelephonyInfo", "Exception: ", tr = e)
@@ -704,4 +389,51 @@ fun readLogcatWithProcessBuilder(): String {
     }
 
     return sb.toString()
+}
+
+
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+private fun dumpGsfId(ctx: Context) : String {
+    val cr = ctx.contentResolver
+    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
+    val idKey = "android_id"
+
+    val uri = gsfContentProviderUri.toUri()
+    val params = arrayOf(idKey)
+
+    val gsfId = try {
+        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
+            check(cursor.moveToFirst() && cursor.columnCount >= 2)
+            toHexString(cursor.getString(1).toLong())
+        }
+    } catch (e: Exception) {
+        "Failed to get GSF ID: ${e.message}"
+    }
+    return gsfId
+}
+
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+private fun dumpMediaDrmId() : String {
+    val widevineUUidMostSigBits = -0x121074568629b532L
+    val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
+    val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
+
+    val wvDrm = MediaDrm(widevineUUID)
+    val widevineIdRaw = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    val widevineId = widevineIdRaw.toHexString()
+    wvDrm.close()
+
+    return widevineId
+}
+private fun ByteArray.toHexString(): String {
+    return this.joinToString("") {
+        format("%02x", it)
+    }
+}
+
+
+private fun dumpSsaid(cr: ContentResolver): String {
+    @SuppressLint("HardwareIds")
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+    return ssaid
 }

@@ -1,12 +1,12 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.provider.Settings
 import android.provider.Settings.Global
 import android.text.format.Formatter
 import androidx.annotation.RequiresApi
@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,25 +44,21 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
+import com.omarmesqq.grunfeld.utils.dumpDeviceIds
 import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
 import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
-import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
-import com.omarmesqq.grunfeld.utils.dumpGsfId
-import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
-import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
 import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
-import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
 import com.omarmesqq.grunfeld.utils.dumpSensorInfo
-import com.omarmesqq.grunfeld.utils.dumpSomeSystemFeatures
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.dumpWifiManagerInfo
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
+import com.scottyab.rootbeer.RootBeer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -71,21 +68,12 @@ fun JavaInfoScreen() {
     val composableScope = rememberCoroutineScope()
     val cr = context.contentResolver
 
-
-    var installerInfo by remember { mutableStateOf("Installer info not queried") }
-    var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
     var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
-    var getInstalledApplicationsInfo by remember { mutableStateOf("Installed applications not queried") }
-    var getInstalledPackagesInfo by remember { mutableStateOf("Installed packages not queried") }
     var applicationInfoForSelf by remember { mutableStateOf("Application info not queried") }
-    var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
-    var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
-
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
-    var gsfId by remember { mutableStateOf("GSF ID not queried") }
-    var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
-
+    var deviceIds by remember { mutableStateOf("Device IDs not queried") }
+    
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
     Column(
@@ -98,7 +86,7 @@ fun JavaInfoScreen() {
     ) {
         Text(text = "Java info", style = MaterialTheme.typography.headlineMedium)
 
-        SectionHeader("BUILD,SETTINGS AND SYSTEM PROPERTIES TESTS")
+        SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -141,9 +129,32 @@ fun JavaInfoScreen() {
         }
         SectionHeader("WIFI MANAGER TESTS")
         WifiManagerAssertions(context)
+
         SectionHeader("LINK PROPERTIES TESTS")
         LinkPropertiesAssertions(context)
-        SectionHeader("PACKAGE MANAGER")
+
+        SectionHeader("APP INSTALLER TEST")
+        AppInstallerAssertions(context)
+
+        SectionHeader("FOREIGN APP INSPECTION TESTS")
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            QueryIntentActivitiesAssertions(context)
+            HorizontalDivider()
+            InstalledApplicationsAssertions(context)
+            HorizontalDivider()
+            InstalledPackagesAssertions(context)
+        }
+
+        SectionHeader("SELF-ANALYSIS")
+        LogcatAssertions()
+
+        SectionHeader("ROOTBER ROOT CHECK")
+        RootCheckAssertions(context)
+
+
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -181,86 +192,6 @@ fun JavaInfoScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("getApplicationInfo(Webview)")
-            }
-
-            Text(
-                text = "Get installer info for Grunfeld",
-                style = MaterialTheme.typography.titleMedium
-            )
-            ReportTextWithCopy(installerInfo, "Installer info not queried")
-            Button(
-                onClick = {
-                    installerInfo = dumpInstallerInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstallSourceInfo()")
-            }
-
-            Text(text = "Query Intent Activities", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(dumpQueryIntentActivities, "Query Intent Activities not tested")
-            Button(
-                onClick = {
-                    dumpQueryIntentActivities = dumpQueryIntentActivities(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("dumpQueryIntentActivities()")
-            }
-
-
-            Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getInstalledApplicationsInfo, "Installed applications not queried")
-            Button(
-                onClick = {
-                    getInstalledApplicationsInfo = dumpGetInstalledApplications(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstalledApplications()")
-            }
-
-            Text(text = "Get Installed Packages", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getInstalledPackagesInfo, "Installed applications not queried")
-            Button(
-                onClick = {
-                    getInstalledPackagesInfo = dumpGetInstalledPackages(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstalledPackages()")
-            }
-
-            Text(
-                text = "Get ALL available system features",
-                style = MaterialTheme.typography.titleMedium
-            )
-            ReportTextWithCopy(
-                getSystemAvailableFeaturesInfo,
-                "getSystemAvailableFeatures not queried"
-            )
-            Button(
-                onClick = {
-                    getSystemAvailableFeaturesInfo = dumpGetSystemAvailableFeaturesInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getSystemAvailableFeaturesInfo()")
-            }
-
-
-            Text(
-                text = "Get some system features by querying their keys",
-                style = MaterialTheme.typography.titleMedium
-            )
-            ReportTextWithCopy(getSomeSystemFeaturesInfo, "getSomeSystemFeaturesInfo not queried")
-            Button(
-                onClick = {
-                    getSomeSystemFeaturesInfo = dumpSomeSystemFeatures(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getSomeSystemFeatures()")
             }
         }
 
@@ -303,44 +234,17 @@ fun JavaInfoScreen() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = {
-                    gsfId = dumpGsfId(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get GSF ID")
-            }
-            Text(
-                text = gsfId,
-                style = MaterialTheme.typography.bodyMedium
-            )
 
             Button(
                 onClick = {
-                    mediaDrmIdInfo = dumpMediaDrmId()
+                    deviceIds = dumpDeviceIds(context, cr)
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Get Media DRM ID")
+                Text("Get some device unique IDs")
             }
-
             Text(
-                text = mediaDrmIdInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Button(
-                onClick = {
-
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get SSAID")
-            }
-
-            Text(
-                text = "TO-DO",
+                text = deviceIds,
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -403,8 +307,7 @@ private fun BuildAssertions() {
 @Composable
 private fun SettingsAssertions(cr: ContentResolver) {
     val notFoundKey = -999
-
-
+    
     val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
     val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
     val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
@@ -498,6 +401,7 @@ private fun WifiManagerAssertions(ctx: Context) {
     AssertionResult("Network ID", wifiInfo.networkId, "4")
 }
 
+@Suppress("DEPRECATION")
 @Composable
 private fun LinkPropertiesAssertions(ctx: Context) {
      val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -543,7 +447,6 @@ private fun LinkPropertiesAssertions(ctx: Context) {
     }
 
 
-
     AssertionResultNull("DHCP Server", linkProperties.dhcpServerAddress)
     AssertionResultNotContains("Interface name", linkProperties.interfaceName.toString(), "tun")
     AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, "10.111.222.1")
@@ -558,8 +461,98 @@ private fun LinkPropertiesAssertions(ctx: Context) {
     AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
 }
 
-private fun DeviceIdentifiersAssertions(cr: ContentResolver) {
-    @SuppressLint("HardwareIds")
-    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+@Composable
+private fun AppInstallerAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+    val packageName = ctx.packageName
+    val info = pm.getInstallSourceInfo(packageName)
+
+    val originator = info.originatingPackageName
+    val initiator = info.initiatingPackageName
+    val installer = info.installingPackageName
+    val updateOwner = info.updateOwnerPackageName
+
+    AssertionResultNull("Originator (\"source\" of installation)", originator)
+    AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
+    AssertionResult("Installer (did the actual installation)", installer ?: "", "com.android.vending")
+    AssertionResult("updateOwner (pkg that will keep updating)", updateOwner ?: "", "com.android.vending")
+
+    @Suppress("DEPRECATION")
+    val legacyInstaller = pm.getInstallerPackageName(packageName)
+
+    AssertionResult("Installer package name (Legacy API)", legacyInstaller ?: "", "com.android.vending")
+}
+
+@Composable
+private fun QueryIntentActivitiesAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+
+    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+        addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+    val appsWithLauncher = pm.queryIntentActivities(launcherIntent, 0)
+    AssertionResultEmpty("queryIntentActivities(CATEGORY_LAUNCHER): apps with launcher", appsWithLauncher)
+}
+
+@Composable
+private fun InstalledApplicationsAssertions(ctx: Context) {
+    // Using Application's for diversity, should be hooked too
+    val pm = ctx.applicationContext.packageManager
+
+    val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+    AssertionResultEmpty("Installed applications", installedApps)
 
 }
+
+@Composable
+private fun InstalledPackagesAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+    val flags = (
+            PackageManager.GET_PERMISSIONS or
+                    PackageManager.GET_ACTIVITIES or
+                    PackageManager.GET_SERVICES or
+                    PackageManager.GET_RECEIVERS or
+                    PackageManager.GET_PROVIDERS
+            )
+    val installedPackages = pm.getInstalledPackages(flags)
+    AssertionResultEmpty("Installed packages", installedPackages)
+}
+
+@Composable
+private fun LogcatAssertions() {
+
+    val execd =  Runtime.getRuntime().exec("logcat -d")
+    val bufferedReader = BufferedReader(InputStreamReader(execd.inputStream))
+    var i = 1
+    repeat(5) {
+        AssertionResultNull("Logcat (Runtime) line $i", bufferedReader.readLine())
+        i++
+    }
+
+    HorizontalDivider()
+
+    val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
+    val process = processBuilder.start()
+    val exitCode = process.waitFor()
+    AssertionResult("Exit code of logcat (ProcessBuilder)", exitCode, "0")
+}
+@Composable
+private fun RootCheckAssertions(ctx: Context) {
+    var isRooted by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        isRooted = RootBeer(ctx).isRooted
+    }
+
+    when (val rooted = isRooted) {
+        null -> {
+            Text("Loading...")
+        }
+
+        else -> {
+            AssertionResult("Is rooted?",rooted,false
+            )
+        }
+    }
+}
+
