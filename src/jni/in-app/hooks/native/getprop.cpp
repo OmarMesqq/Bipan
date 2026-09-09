@@ -155,11 +155,11 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
 
     // RADIO
-    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551,"},
+    {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
     {"gsm.version.ril-impl", "com.google.android.telephony.modem"},
     {"ril.sw_ver", ""},
     {"ril.sw_ver2", ""},
-    {"ro.baseband", "g5300g-251108-251202-B-12876551,"},
+    {"ro.baseband", "g5300g-251108-251202-B-12876551"},
 
     // Some fingerprinting vectors
     {"ro.config.alarm_alert", "Hassium.ogg"},
