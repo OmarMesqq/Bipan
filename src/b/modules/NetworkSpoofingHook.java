@@ -257,7 +257,7 @@ public class NetworkSpoofingHook implements BaseHook {
           }
         }
       } catch (Throwable t) {
-        Log.e(TAG, "Failed to patch async message [1]", t);
+        Log.e(TAG, "Failed to patch async message [2]", t);
         throw J.cleanThrowable(new OutOfMemoryError());
       }
     }
@@ -287,6 +287,12 @@ public class NetworkSpoofingHook implements BaseHook {
       transportInfoField.setAccessible(true);
       transportInfoField.set(caps, null);
 
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "applyVpnSpoof InvocationTargetException: cause:", cause);
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "applyVpnSpoof UndeclaredThrowableException: cause:", cause);
     } catch (Exception e) {
       Log.e(TAG, "Failed to apply VPN spoof", e);
       throw J.cleanThrowable(new OutOfMemoryError());
@@ -357,8 +363,8 @@ public class NetworkSpoofingHook implements BaseHook {
 
     } catch (InvocationTargetException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "spoofLinkProperties UndeclaredThrowableException: cause:", cause);
-      throw e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofLinkProperties InvocationTargetException: cause:", cause);
+      throw J.cleanThrowable(cause);
     } catch (UndeclaredThrowableException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
       Log.e(TAG, "spoofLinkProperties UndeclaredThrowableException: cause:", cause);
@@ -391,6 +397,10 @@ public class NetworkSpoofingHook implements BaseHook {
       setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
       setField(info, "mNetworkId", 4);
       spoofSsid(info);
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofWifiInfo UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
     } catch (Exception e) {
       Log.e(TAG, "spoofWifiInfo: Unknown exception", e);
       throw J.cleanThrowable(new OutOfMemoryError());
@@ -406,6 +416,14 @@ public class NetworkSpoofingHook implements BaseHook {
       Object fakeSsid = fromUtf8Text.invoke(null, UNKNOWN_SSID);
 
       setField(info, "mWifiSsid", fakeSsid);
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofSsid InvocationTargetException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofSsid UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
     } catch (Exception e) {
       Log.e(TAG, "spoofSsid: Unknown exception: ", e);
       throw J.cleanThrowable(new OutOfMemoryError());
@@ -417,6 +435,10 @@ public class NetworkSpoofingHook implements BaseHook {
       Field f = obj.getClass().getDeclaredField(name);
       f.setAccessible(true);
       f.set(obj, value);
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "setField UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
     } catch (NoSuchFieldException e) {
       Log.e(TAG, "setField(" + name + ") - NoSuchFieldException. Message: " + e.getMessage());
     } catch (Exception e) {
@@ -430,11 +452,22 @@ public class NetworkSpoofingHook implements BaseHook {
       Method setUsePrivateDns = LinkProperties.class.getMethod("setUsePrivateDns", boolean.class);
       setUsePrivateDns.invoke(lp, false);
 
-      Method setPrivateDnsServerName = LinkProperties.class.getMethod(
-          "setPrivateDnsServerName", String.class);
+      Method setPrivateDnsServerName = LinkProperties.class
+          .getMethod("setPrivateDnsServerName", String.class);
       setPrivateDnsServerName.invoke(lp, new Object[] { null });
-    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-      Log.e(TAG, "Failed to spoof private DNS: ", e);
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofPrivateDnsInLp InvocationTargetException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
+    } catch (UndeclaredThrowableException e) {
+      Throwable cause = e.getCause() != null ? e.getCause() : e;
+      Log.e(TAG, "spoofPrivateDnsInLp UndeclaredThrowableException: cause:", cause);
+      throw J.cleanThrowable(new OutOfMemoryError());
+    } catch (NoSuchMethodException e) {
+      Log.e(TAG, "spoofPrivateDnsInLp NoSuchMethodException: ", e);
+      throw J.cleanThrowable(new OutOfMemoryError());
+    } catch (Exception e) {
+      Log.e(TAG, "spoofPrivateDnsInLp exception: ", e);
       throw J.cleanThrowable(new OutOfMemoryError());
     }
   }
