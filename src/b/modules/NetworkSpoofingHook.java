@@ -195,7 +195,6 @@ public class NetworkSpoofingHook implements BaseHook {
           Log.i(TAG, "Neutered WifiManager method: getVerboseLoggingLevel");
           return 0; // VERBOSE_LOGGING_LEVEL_DISABLED
         }
-        // Log.w(TAG, "Allowing WifiManager method: " + method.getName());
         return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;

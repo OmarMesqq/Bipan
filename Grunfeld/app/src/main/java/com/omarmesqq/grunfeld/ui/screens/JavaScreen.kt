@@ -136,9 +136,7 @@ fun JavaInfoScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             QueryIntentActivitiesAssertions(context)
-            HorizontalDivider()
             InstalledApplicationsAssertions(context)
-            HorizontalDivider()
             InstalledPackagesAssertions(context)
         }
 
@@ -285,7 +283,7 @@ private fun SystemPropertiesAssertions() {
 @Composable
 private fun RuntimeAssertions() {
     AssertionResult("which su", runtimeExecWithCmdArray(arrayOf("which", "su")), "")
-    AssertionResult("getprop", runtimeExecWithCmd("getprop"), "")
+    AssertionResult("getprop", runtimeExecWithCmd("getprop"), "null")
 }
 
 @Composable
@@ -348,11 +346,9 @@ private fun WifiManagerAssertions(ctx: Context) {
         return
     }
 
-
-    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
-    val safeBssid = wifiInfo.bssid ?: "(null)"
-    AssertionResult("BSSID", safeBssid, "02:00:00:00:00:00")
+    AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
     AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
+    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
     AssertionResult("Network ID", wifiInfo.networkId, "4")
 }
 
@@ -414,6 +410,14 @@ private fun LinkPropertiesAssertions(ctx: Context) {
     }
     val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
     AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
+
+    val routes = linkProperties.routes
+    routes.forEachIndexed { idx, r ->
+        Text(
+            text = "Route $idx: $r",
+            color = Color.Yellow
+        )
+    }
 }
 
 @Composable
@@ -430,7 +434,7 @@ private fun AppInstallerAssertions(ctx: Context) {
     AssertionResultNull("Originator (\"source\" of installation)", originator)
     AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
     AssertionResult("Installer (did the actual installation)", installer ?: "", "com.android.vending")
-    AssertionResult("updateOwner (pkg that will keep updating)", updateOwner ?: "", "com.android.vending")
+    AssertionResult("Update owner (pkg that will keep app up-to-date)", updateOwner ?: "", "com.android.vending")
 
     @Suppress("DEPRECATION")
     val legacyInstaller = pm.getInstallerPackageName(packageName)

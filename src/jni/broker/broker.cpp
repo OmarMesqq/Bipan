@@ -281,7 +281,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "faccessat(%s) denied", path);
-          ipc_mem->ret = -EPERM;
+          ipc_mem->ret = -EACCES;
           break;
         }
         if (shouldSpoofExistence(path)) {
@@ -328,7 +328,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         if (shouldDenyStat(resolved_link_path)) {
           free(proc_pid_fd_path);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "fstat(%s) denied", resolved_link_path);
-          ipc_mem->ret = -EPERM;
+          ipc_mem->ret = -EACCES;
           break;
         }
 
@@ -384,7 +384,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         ipc_mem->action = ACTION_USE_RET;
         if (shouldDenyStat(path)) {
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "newfstatat(%s) denied", path);
-          ipc_mem->ret = -EPERM;
+          ipc_mem->ret = -EACCES;
           break;
         }
         if (shouldSpoofExistence(path)) {
