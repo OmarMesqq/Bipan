@@ -186,12 +186,12 @@ fun JavaInfoScreen() {
                 onClick = {
                     applicationInfoForSelf = dumpGetApplicationInfo(
                         context,
-                        "com.android.webview"
+                        "com.google.android.gms"
                     )
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("getApplicationInfo(Webview)")
+                Text("getApplicationInfo(Google Play Services)")
             }
         }
 

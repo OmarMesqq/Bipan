@@ -82,7 +82,7 @@ public class GsfIdSpoofHook implements BaseHook {
                   return spoofed;
                 }
               }
-              Log.w(TAG, "Allowing IContentProvider method: " + method.getName());
+              // Log.w(TAG, "Allowing IContentProvider method: " + method.getName());
               return method.invoke(realProvider, args);
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -364,7 +364,7 @@ public class GsfIdSpoofHook implements BaseHook {
               if (result != null && isGetContentProvider(method.getName())) {
                 wrapHolderIfGsf(result);
               }
-              Log.w(TAG, "Allowing IActivityManager method: " + method.getName());
+              // Log.w(TAG, "Allowing AM method: " + method.getName());
               return result;
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -388,7 +388,6 @@ public class GsfIdSpoofHook implements BaseHook {
               if ("queryLocalInterface".equals(method.getName())) {
                 return amProxy;
               }
-              Log.w(TAG, "Allowing IBinder method: " + method.getName());
               return method.invoke(realBinder, args);
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -502,7 +501,6 @@ public class GsfIdSpoofHook implements BaseHook {
             if (result != null && isGetContentProvider(method.getName())) {
               wrapHolderIfGsf(result);
             }
-            Log.w(TAG, "Allowing IActivityManager (2) method: " + method.getName());
             return result;
           } catch (InvocationTargetException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;

@@ -1,10 +1,12 @@
 package b.modules;
 
 import android.content.Context;
+import android.media.RoutingSessionInfo;
 import android.os.IBinder;
 import android.util.Log;
 import b.BaseHook;
 import b.J;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -12,6 +14,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * Prevents apps from discovering LAN devices using mDNS (and possibly
@@ -22,9 +25,15 @@ import java.util.Map;
  */
 public class AntiNetworkDiscoveryHook implements BaseHook {
   private static final String TAG = "BipanJavaNetDiscovery";
+  private static String pkgName = "";
+
+  static String randomNumberString() {
+    return String.valueOf(new Random().nextInt(201));
+  }
 
   @Override
   public void install(Context context) throws Exception {
+    pkgName = context.getPackageName();
     // Common ServiceManager setup
     Class<?> serviceManager = Class.forName("android.os.ServiceManager");
     Method getService = serviceManager.getDeclaredMethod("getService", String.class);
@@ -77,7 +86,25 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
           }
           return null;
         }
-        Log.w(TAG, "Allowing MediaRouter method: " + method.getName());
+        if ("getSystemSessionInfo".equals(methodName)) {
+          Constructor<RoutingSessionInfo> ctor = RoutingSessionInfo.class
+              .getDeclaredConstructor(RoutingSessionInfo.Builder.class);
+          Constructor<RoutingSessionInfo.Builder> ctorB = RoutingSessionInfo.Builder.class
+              .getDeclaredConstructor(String.class, String.class);
+          ctorB.setAccessible(true);
+          RoutingSessionInfo.Builder builder = ctorB.newInstance(randomNumberString(), pkgName);
+          ctor.setAccessible(true);
+          RoutingSessionInfo rsi = ctor.newInstance(builder);
+          Log.i(TAG, "Neutering MediaRouter getSystemSessionInfo");
+          return rsi;
+        }
+
+        if ("setDeviceSuggestionsWithRouter2".equals(methodName)) {
+          Log.i(TAG, "Neutering MediaRouter setDeviceSuggestionsWithRouter2");
+          return null;
+        }
+
+        // Log.w(TAG, "Allowing MediaRouter method: " + method.getName());
         return method.invoke(originalMediaRouterService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -153,7 +180,7 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
           }
           return null;
         }
-        Log.w(TAG, "Allowing NSD method: " + method.getName());
+        // Log.w(TAG, "Allowing NSD method: " + method.getName());
         return method.invoke(originalNsdService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;

@@ -600,10 +600,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           Log.i(TAG, "Blinded: resolveActivity");
           return null;
         }
-        case "getTargetSdkVersion": {
-          Log.i(TAG, "Blinded: getTargetSdkVersion");
-          return 36;
-        }
+        // case "getTargetSdkVersion": {
+        //   Log.i(TAG, "Blinded: getTargetSdkVersion");
+        //   return 36;
+        // }
 
         case "hasSystemFeature": {
           String feature = (args != null && args.length > 0 && args[0] instanceof String)
@@ -730,7 +730,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Object result = method.invoke(originalPM, args);
-          Log.w(TAG, "Allowing PM method: " + method.getName());
+          // Log.w(TAG, "Allowing PM method: " + method.getName());
           return result;
         }
       }
