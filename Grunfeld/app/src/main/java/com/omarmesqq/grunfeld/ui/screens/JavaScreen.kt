@@ -57,6 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.NetworkInterface
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -110,22 +111,10 @@ fun JavaInfoScreen() {
 
 
         SectionHeader("NETWORK INTERFACES TESTS")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                NetworkIfacesAssertions()
-            }
-        }
-        SectionHeader("WIFI MANAGER TESTS")
-        WifiManagerAssertions(context)
+        NetworkIfacesAssertions()
 
-        SectionHeader("LINK PROPERTIES TESTS")
-        LinkPropertiesAssertions(context)
+        SectionHeader("LINK PROPERTIES AND WIFI MANAGER TESTS")
+        LinkPropertiesAndWifiAssertions(context)
 
         SectionHeader("APP INSTALLER TEST")
         AppInstallerAssertions(context)
@@ -210,7 +199,11 @@ private fun BuildAssertions() {
     AssertionResult("BRAND", Build.BRAND, "google")
     AssertionResult("DEVICE", Build.DEVICE, "husky")
     AssertionResult("DISPLAY", Build.DISPLAY, "BP4A.251205.006")
-    AssertionResult("FINGERPRINT",Build.FINGERPRINT,"google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys")
+    AssertionResult(
+        "FINGERPRINT",
+        Build.FINGERPRINT,
+        "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
+    )
     AssertionResult("HARDWARE", Build.HARDWARE, "zuma")
     AssertionResult("HOST", Build.HOST, "abfarm-20038")
     AssertionResult("ID", Build.ID, "BP4A.251205.006")
@@ -233,32 +226,26 @@ private fun BuildAssertions() {
     AssertionResultEmpty("SUPPORTED_32_BIT_ABIS", abis32.toList())
 
     val abis64 = Build.SUPPORTED_64_BIT_ABIS
-    AssertionResultSingleSpecificValueInIterable("SUPPORTED_64_BIT_ABIS", abis64.toList(), "arm64-v8a")
+    AssertionResultSingleSpecificValueInIterable(
+        "SUPPORTED_64_BIT_ABIS",
+        abis64.toList(),
+        "arm64-v8a"
+    )
 
     val abis = Build.SUPPORTED_ABIS
     AssertionResultSingleSpecificValueInIterable("SUPPORTED_ABIS", abis.toList(), "arm64-v8a")
 
 
-    // ODM_SKU: not set by spoofer - retains real device value
-    // SKU: not set by spoofer - retains real device value
-    // MAJOR_SDK: not set by spoofer - derived from real SDK_INT_FULL
-    // MINOR_SDK: not set by spoofer - derived from real SDK_INT_FULL
-    // PARTITIONS: not set by spoofer - retains real device value
-    // BASE_OS: not set by spoofer - retains real device value
-    // CODENAME: not set by spoofer - retains real device value
-    // MEDIA_PERFORMANCE_CLASS: not set by spoofer - retains real device value
-    // PREVIEW_SDK_INT: not set by spoofer - retains real device value
-    // RELEASE: not set by spoofer - retains real device value
-    // RELEASE_OR_CODENAME: not set by spoofer - retains real device value
-    // RELEASE_OR_PREVIEW_DISPLAY: not set by spoofer - retains real device value
-    // SDK_INT: not set by spoofer - retains real device value
-    // SDK_INT_FULL: not set by spoofer - retains real device value
+    AssertionResult("BASE_OS", Build.VERSION.BASE_OS, "")
+    AssertionResult("ODM_SKU", Build.ODM_SKU, Build.UNKNOWN)
+    AssertionResult("SKU", Build.SKU, Build.UNKNOWN)
+    AssertionResult("CODENAME", Build.VERSION.CODENAME, "REL")
 }
 
 @Composable
 private fun SettingsAssertions(cr: ContentResolver) {
     val notFoundKey = -999
-    
+
     val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
     val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
     val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
@@ -269,6 +256,7 @@ private fun SettingsAssertions(cr: ContentResolver) {
     AssertionResult("BOOT_COUNT", bootCount, "43")
     AssertionResult("WAIT_FOR_DEBUGGER", waitForDebugger, "0")
 }
+
 @Composable
 private fun SystemPropertiesAssertions() {
     val arch = System.getProperty("os.arch")
@@ -293,73 +281,62 @@ private fun SensorsAssertions(ctx: Context) {
 
 @Composable
 private fun NetworkIfacesAssertions() {
-    val interfaceList = try {
-        dumpNetworkInterfaces()
-    } catch (e: Exception) {
-        Text(
-            text = "dumpNetworkInterfaces failed: ${e.message}",
-            color = Color.Red
-        )
-        return
+    var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
+    LaunchedEffect(Unit) {
+        ifaceList = dumpNetworkInterfaces()
     }
 
-
-    interfaceList
-        .asSequence()
-        .toList()
-        .forEach { iface ->
-            AssertionResultNotContains("Interface name", iface.name, "tun")
-
-            if (iface.name.contains("wlan") || iface.name.contains("rmnet")) {
-                iface.interfaceAddresses.forEach { addr ->
-                    AssertionResult("MTU", iface.mtu, "1500")
-
-                    val localIp = addr.address.hostAddress ?: ""
-                    val prefix = addr.networkPrefixLength
-                    val broadcast = addr.broadcast?.hostAddress ?: ""
-
-                    AssertionResult("Local IP", localIp, "10.111.222.1")
-                    AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "24")
-                    AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
-                }
-            }
-
-            val parent = iface.parent
-            val subs = iface.subInterfaces.asSequence().toList()
-
-            AssertionResultNull("Parent interface", parent)
-            AssertionResultEmpty("Sub interfaces", subs)
-            HorizontalDivider()
+    when (val interfaceList = ifaceList) {
+        null -> {
+            Text("Loading...")
         }
-}
+        else -> {
+            interfaceList
+                .forEach { iface ->
+                    AssertionResultNotContains("Interface name", iface.name, "tun")
 
-@Suppress("DEPRECATION")
-@Composable
-private fun WifiManagerAssertions(ctx: Context) {
-    val wifiInfo = try {
-        dumpWifiManagerInfo(ctx)
-    } catch (e: Exception) {
-        Text(
-            text = "dumpWifiManagerInfo failed: ${e.message}",
-            color = Color.Red
-        )
-        return
+                    if (iface.name.contains("wlan")) {
+                        iface.interfaceAddresses.forEach { addr ->
+                            AssertionResult("MTU", iface.mtu, "1500")
+
+                            val localIp = addr.address.hostAddress ?: ""
+                            val prefix = addr.networkPrefixLength
+                            val broadcast = addr.broadcast?.hostAddress ?: ""
+
+                            AssertionResult("Local IP", localIp, "10.111.222.1")
+                            AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "24")
+                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
+                        }
+                    } else if (iface.name.contains("rmnet")) {
+                        iface.interfaceAddresses.forEach { addr ->
+                            AssertionResult("MTU", iface.mtu, "1500")
+                            val localIp = addr.address.hostAddress ?: ""
+                            val prefix = addr.networkPrefixLength
+                            val broadcast = addr.broadcast?.hostAddress ?: ""
+                            AssertionResult("Local IP", localIp, "10.111.222.1")
+                            AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "")
+                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
+
+                        }
+                    }
+
+                    val parent = iface.parent
+                    val subs = iface.subInterfaces.asSequence().toList()
+
+                    AssertionResultNull("Parent interface", parent)
+                    AssertionResultEmpty("Sub interfaces", subs)
+                }
+        }
     }
-
-    AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
-    AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
-    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
-    AssertionResult("Network ID", wifiInfo.networkId, "4")
 }
 
 @Suppress("DEPRECATION")
 @Composable
-private fun LinkPropertiesAssertions(ctx: Context) {
-     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-     val activeNetworkInfo = cm.activeNetworkInfo
+private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
+    val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetworkInfo = cm.activeNetworkInfo
 
-
-    AssertionResultNotContains("Active network VPN?", activeNetworkInfo?.typeName ?: "", "VPN")
+    AssertionResultNotContains("Active network VPN?", activeNetworkInfo?.typeName ?: "BOGUS", "VPN")
     AssertionResult("All networks size", cm.allNetworks.size, "0")
     AssertionResultEmpty("All networks content", cm.allNetworks.toList())
 
@@ -393,17 +370,29 @@ private fun LinkPropertiesAssertions(ctx: Context) {
         return
     }
 
+    val currentInterface = linkProperties.interfaceName
+    if (currentInterface == null) {
+        Text(
+            text = "Couldn't get current interface name",
+            color = Color.Red
+        )
+        return
+    }
+    AssertionResultNotContains("Interface name", currentInterface, "tun")
+
+
     val linkAddrs = linkProperties.linkAddresses.map {
         it.address.hostAddress
     }
 
-
     AssertionResultNull("DHCP Server", linkProperties.dhcpServerAddress)
-    AssertionResultNotContains("Interface name", linkProperties.interfaceName.toString(), "tun")
+
     AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, "10.111.222.1")
     AssertionResult("MTU", linkProperties.mtu, "1500")
     AssertionResult("Private DNS active?", linkProperties.isPrivateDnsActive, false)
-    AssertionResult("Private DNS Server", linkProperties.privateDnsServerName ?: "", "")
+    if (linkProperties.privateDnsServerName != null) {
+        AssertionResult("Private DNS Server", linkProperties.privateDnsServerName!!, "")
+    }
 
     val dnsServers = linkProperties.dnsServers.map {
         it.hostAddress
@@ -418,6 +407,35 @@ private fun LinkPropertiesAssertions(ctx: Context) {
             color = Color.Yellow
         )
     }
+
+    HorizontalDivider()
+
+    val wifiInfo = try {
+        dumpWifiManagerInfo(ctx)
+    } catch (e: Exception) {
+        Text(
+            text = "dumpWifiManagerInfo failed: ${e.message}",
+            color = Color.Red
+        )
+        return
+    }
+
+    if (currentInterface.startsWith("wlan")) {
+        AssertionResult(
+            "IPv4 address",
+            Formatter.formatIpAddress(wifiInfo.ipAddress),
+            "10.111.222.1"
+        )
+        AssertionResult("Network ID", wifiInfo.networkId, "4")
+    } else {
+        AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
+        AssertionResult("Network ID", wifiInfo.networkId, "-1")
+    }
+
+    if (wifiInfo.bssid != null) {
+        AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
+    }
+    AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
 }
 
 @Composable
@@ -433,13 +451,25 @@ private fun AppInstallerAssertions(ctx: Context) {
 
     AssertionResultNull("Originator (\"source\" of installation)", originator)
     AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
-    AssertionResult("Installer (did the actual installation)", installer ?: "", "com.android.vending")
-    AssertionResult("Update owner (pkg that will keep app up-to-date)", updateOwner ?: "", "com.android.vending")
+    AssertionResult(
+        "Installer (did the actual installation)",
+        installer ?: "",
+        "com.android.vending"
+    )
+    AssertionResult(
+        "Update owner (pkg that will keep app up-to-date)",
+        updateOwner ?: "",
+        "com.android.vending"
+    )
 
     @Suppress("DEPRECATION")
     val legacyInstaller = pm.getInstallerPackageName(packageName)
 
-    AssertionResult("Installer package name (Legacy API)", legacyInstaller ?: "", "com.android.vending")
+    AssertionResult(
+        "Installer package name (Legacy API)",
+        legacyInstaller ?: "",
+        "com.android.vending"
+    )
 }
 
 @Composable
@@ -480,7 +510,7 @@ private fun InstalledPackagesAssertions(ctx: Context) {
 @Composable
 private fun LogcatAssertions() {
 
-    val execd =  Runtime.getRuntime().exec("logcat -d")
+    val execd = Runtime.getRuntime().exec("logcat -d")
     val bufferedReader = BufferedReader(InputStreamReader(execd.inputStream))
     var i = 1
     repeat(5) {
@@ -495,6 +525,7 @@ private fun LogcatAssertions() {
     val exitCode = process.waitFor()
     AssertionResult("Exit code of logcat (ProcessBuilder)", exitCode, "0")
 }
+
 @Composable
 private fun RootCheckAssertions(ctx: Context) {
     var isRooted by remember { mutableStateOf<Boolean?>(null) }
@@ -509,7 +540,8 @@ private fun RootCheckAssertions(ctx: Context) {
         }
 
         else -> {
-            AssertionResult("Is rooted?",rooted,false
+            AssertionResult(
+                "Is rooted?", rooted, false
             )
         }
     }

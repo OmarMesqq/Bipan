@@ -25,7 +25,6 @@ import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
-import java.util.Enumeration
 import java.util.UUID
 
 //TODO: review this
@@ -37,12 +36,12 @@ private val deferredInterfaces = GlobalScope.async {
     }
 }
 
-fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
+fun dumpNetworkInterfaces(): List<NetworkInterface>? {
     try {
-        return deferredInterfaces.getCompleted()
+        return deferredInterfaces.getCompleted().toList()
     } catch (e: Exception) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
-        throw e
+        return null
     }
 }
 

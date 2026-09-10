@@ -202,6 +202,28 @@ public class J {
     unseal();
   }
 
+  public static <T extends Throwable> T cleanThrowable(T tr) {
+    if (tr == null) {
+      return null;
+    }
+
+    List<Pattern> noiseClassPatterns = List.of(
+        Pattern.compile("^java\\.lang\\.reflect\\..*"),
+        Pattern.compile("^\\$Proxy\\d+$"));
+
+    List<Pattern> noiseFilePatterns = List.of(
+        Pattern.compile("^SourceFile$"),
+        Pattern.compile("^Unknown Source$"));
+
+    clean_stack_trace_recursive(tr, noiseClassPatterns, noiseFilePatterns, new HashSet<>());
+    return tr;
+  }
+
+  public static boolean hasPermission(Context ctx, String perm) {
+    int has = ctx.checkSelfPermission(perm);
+    return has == PackageManager.PERMISSION_GRANTED;
+  }
+
   private static void loadModules(Context context) throws Throwable {
     String packageName = context.getPackageName();
     List<BaseHook> modules = new ArrayList<>();
@@ -268,23 +290,6 @@ public class J {
         s_mDisabledField.setBoolean(pic, true);
       }
     }
-  }
-
-  public static <T extends Throwable> T cleanThrowable(T tr) {
-    if (tr == null) {
-      return null;
-    }
-
-    List<Pattern> noiseClassPatterns = List.of(
-        Pattern.compile("^java\\.lang\\.reflect\\..*"),
-        Pattern.compile("^\\$Proxy\\d+$"));
-
-    List<Pattern> noiseFilePatterns = List.of(
-        Pattern.compile("^SourceFile$"),
-        Pattern.compile("^Unknown Source$"));
-
-    clean_stack_trace_recursive(tr, noiseClassPatterns, noiseFilePatterns, new HashSet<>());
-    return tr;
   }
 
   private static void clean_stack_trace_recursive(
