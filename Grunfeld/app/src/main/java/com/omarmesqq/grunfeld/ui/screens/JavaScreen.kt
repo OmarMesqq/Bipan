@@ -45,8 +45,6 @@ import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpDeviceIds
-import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
-import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
 import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.dumpSensorInfo
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
@@ -68,12 +66,8 @@ fun JavaInfoScreen() {
     val composableScope = rememberCoroutineScope()
     val cr = context.contentResolver
 
-    var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
-    var applicationInfoForSelf by remember { mutableStateOf("Application info not queried") }
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
-
     var deviceIds by remember { mutableStateOf("Device IDs not queried") }
-    
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
     Column(
@@ -153,47 +147,6 @@ fun JavaInfoScreen() {
 
         SectionHeader("ROOTBER ROOT CHECK")
         RootCheckAssertions(context)
-
-
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-
-            Text(
-                text = "Get Package Info for an arbitrary package",
-                style = MaterialTheme.typography.titleMedium
-            )
-            ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
-            Button(
-                onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(
-                        context,
-                        "com.google.android.gms"
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getPackageInfo(Google Play Services)")
-            }
-
-            Text(
-                text = "Get Application Info for an arbitrary package",
-                style = MaterialTheme.typography.titleMedium
-            )
-            ReportTextWithCopy(applicationInfoForSelf, "Get Application info not queried")
-            Button(
-                onClick = {
-                    applicationInfoForSelf = dumpGetApplicationInfo(
-                        context,
-                        "com.google.android.gms"
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getApplicationInfo(Google Play Services)")
-            }
-        }
 
         SectionHeader("TELEPHONY")
         Column(
@@ -395,8 +348,10 @@ private fun WifiManagerAssertions(ctx: Context) {
         return
     }
 
+
     AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
-    AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
+    val safeBssid = wifiInfo.bssid ?: "(null)"
+    AssertionResult("BSSID", safeBssid, "02:00:00:00:00:00")
     AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
     AssertionResult("Network ID", wifiInfo.networkId, "4")
 }
@@ -491,7 +446,7 @@ private fun QueryIntentActivitiesAssertions(ctx: Context) {
         addCategory(Intent.CATEGORY_LAUNCHER)
     }
     val appsWithLauncher = pm.queryIntentActivities(launcherIntent, 0)
-    AssertionResultEmpty("queryIntentActivities(CATEGORY_LAUNCHER): apps with launcher", appsWithLauncher)
+    AssertionResultEmpty("Apps with launcher", appsWithLauncher)
 }
 
 @Composable

@@ -3,10 +3,6 @@ package com.omarmesqq.grunfeld.utils
 import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
-import android.content.pm.PackageManager.NameNotFoundException
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.media.MediaDrm
@@ -26,9 +22,6 @@ import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
-import java.util.Date
 import java.util.Enumeration
 import java.util.UUID
 
@@ -78,95 +71,6 @@ fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
     } catch (e: Exception) {
         throw e
     }
-}
-
-
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-@Suppress("DEPRECATION")
-fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
-    val pm = context.packageManager
-    val sb = StringBuilder()
-
-    val flags = (
-            PackageManager.GET_PERMISSIONS or
-                    PackageManager.GET_ACTIVITIES or
-                    PackageManager.GET_SERVICES or
-                    PackageManager.GET_RECEIVERS or
-                    PackageManager.GET_PROVIDERS or
-                    PackageManager.GET_SIGNING_CERTIFICATES or
-                    PackageManager.GET_META_DATA or
-                    PackageManager.GET_URI_PERMISSION_PATTERNS or
-                    PackageManager.GET_INTENT_FILTERS
-            )
-
-    val info: PackageInfo = try {
-        pm.getPackageInfo(targetPackage, flags)
-    } catch (_: NameNotFoundException) {
-        return "Package not found: $targetPackage"
-    }
-
-    sb.appendLine("=== $targetPackage ===")
-
-    val signingInfo = info.signingInfo
-    if (signingInfo != null) {
-        val signature = if (signingInfo.hasMultipleSigners() ) {
-            signingInfo.apkContentsSigners.firstOrNull()
-        } else {
-            signingInfo.signingCertificateHistory.firstOrNull()
-        }
-        if (signature != null) {
-            val certFactory = CertificateFactory.getInstance("X.509")
-            val cert = certFactory.generateCertificate(
-                signature.toByteArray().inputStream()
-            ) as X509Certificate
-
-
-            sb.appendLine("Signer subject: ${cert.subjectX500Principal.name}")
-            sb.appendLine("subjectAlternativeNames: ${cert.subjectAlternativeNames}")
-
-
-        }
-    }
-
-
-    sb.appendLine("Version: ${info.versionName} (${info.longVersionCode})")
-    sb.appendLine("Installed: ${Date(info.firstInstallTime)}")
-    sb.appendLine("Updated:   ${Date(info.lastUpdateTime)}")
-
-    val appInfoFlags = info.applicationInfo?.flags ?: 0
-    val isSystemApp = (appInfoFlags and ApplicationInfo.FLAG_SYSTEM) != 0
-    val isUpdatedSystemApp = (appInfoFlags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-
-    sb.appendLine("isSystemApp: $isSystemApp")
-    sb.appendLine("isUpdatedSystemApp: $isUpdatedSystemApp")
-
-    if (info.applicationInfo != null) {
-        val label = pm.getApplicationLabel(info.applicationInfo!!)
-        sb.appendLine("label: $label")
-    }
-
-    return sb.toString()
-}
-
-
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-fun dumpGetApplicationInfo(context: Context, packageName: String) : String {
-    val pm = context.packageManager
-    val sb = StringBuilder()
-
-    val res = try {
-        val appInfo = pm.getApplicationInfo(packageName, 0)
-
-        sb.appendLine("Shared libs: ${appInfo.sharedLibraryFiles.contentToString()}")
-        sb.appendLine("Storage UUID: ${appInfo.storageUuid}")
-        sb.appendLine("isProfileable: ${appInfo.isProfileable}")
-
-        sb.toString()
-    } catch (e: Exception) {
-        e.cause
-    }
-
-    return res.toString()
 }
 
 fun dumpDeviceIds(ctx: Context, cr: ContentResolver): String {
@@ -370,8 +274,6 @@ fun runtimeExecWithCmd(cmd: String):String {
     }
     return sb.toString()
 }
-
-
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
 private fun dumpGsfId(ctx: Context) : String {
