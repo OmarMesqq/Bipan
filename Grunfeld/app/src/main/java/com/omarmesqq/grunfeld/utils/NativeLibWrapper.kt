@@ -14,7 +14,6 @@ object NativeLibWrapper {
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
-    external fun getifaddrs():String
     external fun getMediaDrmIdNative(): String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun dlIteratePhdrTest(): String
