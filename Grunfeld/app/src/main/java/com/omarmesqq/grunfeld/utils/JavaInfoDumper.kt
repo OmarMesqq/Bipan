@@ -26,13 +26,26 @@ import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.util.Date
 import java.util.Enumeration
 import java.util.UUID
 
+//TODO: review this
 private val deferredInterfaces = GlobalScope.async {
     try {
         return@async NetworkInterface.getNetworkInterfaces()
     } catch (e: Exception) {
+        throw e
+    }
+}
+
+fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
+    try {
+        return deferredInterfaces.getCompleted()
+    } catch (e: Exception) {
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
         throw e
     }
 }
@@ -67,15 +80,6 @@ fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
     }
 }
 
-fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
-    try {
-        return deferredInterfaces.getCompleted()
-    } catch (e: Exception) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
-        throw e
-    }
-}
-
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
@@ -102,10 +106,32 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
     }
 
     sb.appendLine("=== $targetPackage ===")
+
+    val signingInfo = info.signingInfo
+    if (signingInfo != null) {
+        val signature = if (signingInfo.hasMultipleSigners() ) {
+            signingInfo.apkContentsSigners.firstOrNull()
+        } else {
+            signingInfo.signingCertificateHistory.firstOrNull()
+        }
+        if (signature != null) {
+            val certFactory = CertificateFactory.getInstance("X.509")
+            val cert = certFactory.generateCertificate(
+                signature.toByteArray().inputStream()
+            ) as X509Certificate
+
+
+            sb.appendLine("Signer subject: ${cert.subjectX500Principal.name}")
+            sb.appendLine("subjectAlternativeNames: ${cert.subjectAlternativeNames}")
+
+
+        }
+    }
+
+
     sb.appendLine("Version: ${info.versionName} (${info.longVersionCode})")
-    sb.appendLine("Installed: ${java.util.Date(info.firstInstallTime)}")
-    sb.appendLine("Updated:   ${java.util.Date(info.lastUpdateTime)}")
-    sb.appendLine("UID: ${info.applicationInfo?.uid}")
+    sb.appendLine("Installed: ${Date(info.firstInstallTime)}")
+    sb.appendLine("Updated:   ${Date(info.lastUpdateTime)}")
 
     val appInfoFlags = info.applicationInfo?.flags ?: 0
     val isSystemApp = (appInfoFlags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -113,12 +139,6 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
 
     sb.appendLine("isSystemApp: $isSystemApp")
     sb.appendLine("isUpdatedSystemApp: $isUpdatedSystemApp")
-
-    sb.appendLine("metaData: ${info.applicationInfo?.metaData}")
-    sb.appendLine("appComponentFactory: ${info.applicationInfo?.appComponentFactory}")
-    sb.appendLine("backupAgentName: ${info.applicationInfo?.backupAgentName}")
-    sb.appendLine("category: ${info.applicationInfo?.category}")
-    sb.appendLine("className: ${info.applicationInfo?.className}")
 
     if (info.applicationInfo != null) {
         val label = pm.getApplicationLabel(info.applicationInfo!!)
@@ -132,15 +152,14 @@ fun dumpGetPackageInfo(context: Context, targetPackage: String): String {
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 fun dumpGetApplicationInfo(context: Context, packageName: String) : String {
     val pm = context.packageManager
+    val sb = StringBuilder()
 
     val res = try {
         val appInfo = pm.getApplicationInfo(packageName, 0)
-        val sb = StringBuilder()
-        sb.appendLine("App Component Factory: ${appInfo.appComponentFactory}")
-        sb.appendLine("Class name: ${appInfo.className}")
-        sb.appendLine("Enabled ?: ${appInfo.enabled}")
-        sb.appendLine("Minimum SDK: ${appInfo.minSdkVersion}")
-        sb.appendLine("UID: ${appInfo.uid}")
+
+        sb.appendLine("Shared libs: ${appInfo.sharedLibraryFiles.contentToString()}")
+        sb.appendLine("Storage UUID: ${appInfo.storageUuid}")
+        sb.appendLine("isProfileable: ${appInfo.isProfileable}")
 
         sb.toString()
     } catch (e: Exception) {
