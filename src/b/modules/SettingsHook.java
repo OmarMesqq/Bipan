@@ -100,7 +100,6 @@ public class SettingsHook implements BaseHook, InvocationHandler {
           }
         }
       }
-      // Log.w(TAG, "Allowing IContentProvider method: " + method.getName());
       return method.invoke(originalProvider, args);
     } catch (InvocationTargetException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;

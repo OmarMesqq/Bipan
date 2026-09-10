@@ -1,8 +1,10 @@
 package com.omarmesqq.grunfeld.utils
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.media.MediaDrm
@@ -12,6 +14,7 @@ import android.os.Build
 import android.provider.Settings
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.GlobalScope
@@ -43,6 +46,12 @@ fun dumpNetworkInterfaces(): Enumeration<NetworkInterface> {
     }
 }
 
+fun hasPermission(context: Context, permission: String): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        permission
+    ) == PackageManager.PERMISSION_GRANTED
+}
 
 fun dumpSensorInfo(ctx: Context): String {
     val sb = StringBuilder()
@@ -227,20 +236,22 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simCountryIso: ${telephonyManager.simCountryIso}")
     sb.appendLine("simCarrierId: ${telephonyManager.simCarrierId}")
     sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
-    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}\n")
-
+    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
 
-    try {
+    if (hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
         sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
+        sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
+    } else {
+        sb.appendLine("\nPhone permission not granted: won't check isMultiSimSupported and visualVoicemailPackageName")
+    }
+
+    val hasFineLocation = hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+    if (hasFineLocation) {
         sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
         sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
-        sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
-    } catch (e: SecurityException) {
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, "dumpTelephonyInfo", "Exception: ", tr = e)
-
-        sb.appendLine("Permission denied for grabbing some fields: ${e.message}")
-        sb.appendLine("Stacktrace: ${e.stackTrace.contentToString()}")
+    } else {
+        sb.appendLine("\nPrecise location permission not granted: won't check allCellInfo and cellLocation")
     }
 
     return sb.toString()
@@ -265,9 +276,7 @@ fun runtimeExecWithCmd(cmd: String):String {
     try {
         val process =  Runtime.getRuntime().exec(cmd)
         val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
-        bufferedReader.forEachLine { line ->
-            sb.appendLine(line)
-        }
+        sb.append(bufferedReader.readLine())
 
     } catch (tr: Throwable) {
         sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
