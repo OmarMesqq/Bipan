@@ -1,6 +1,14 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.provider.Settings.Global
+import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,39 +21,43 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.ui.composables.AssertionResult
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotContains
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
-import com.omarmesqq.grunfeld.utils.dumpBuildAndSettingsInfo
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
-import com.omarmesqq.grunfeld.utils.dumpGetApplicationInfo
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledApplications
-import com.omarmesqq.grunfeld.utils.dumpGetInstalledPackages
-import com.omarmesqq.grunfeld.utils.dumpGetPackageInfo
-import com.omarmesqq.grunfeld.utils.dumpGetSystemAvailableFeaturesInfo
-import com.omarmesqq.grunfeld.utils.dumpGsfId
-import com.omarmesqq.grunfeld.utils.dumpInstallerInfo
+import com.omarmesqq.grunfeld.utils.dumpDeviceIds
+import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.dumpSensorInfo
-import com.omarmesqq.grunfeld.utils.dumpMediaDrmId
-import com.omarmesqq.grunfeld.utils.dumpNetworkInfo
-import com.omarmesqq.grunfeld.utils.dumpQueryIntentActivities
-import com.omarmesqq.grunfeld.utils.dumpSensitiveInfoWithRuntime
 import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
-import com.omarmesqq.grunfeld.utils.dumpSomeSystemFeatures
-import com.omarmesqq.grunfeld.utils.dumpSystemProps
+import com.omarmesqq.grunfeld.utils.dumpWifiManagerInfo
+import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
+import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
+import com.scottyab.rootbeer.RootBeer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.NetworkInterface
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -53,29 +65,10 @@ fun JavaInfoScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
     val composableScope = rememberCoroutineScope()
+    val cr = context.contentResolver
 
-    var buildAndSettingsInfo by remember { mutableStateOf(dumpBuildAndSettingsInfo(context)) }
-
-    var javaSensorsReport by remember { mutableStateOf("Sensors not tested yet") }
-
-    var netInfo by remember { mutableStateOf("") }
-
-    var installerInfo by remember { mutableStateOf("Installer info not queried") }
-    var dumpQueryIntentActivities by remember { mutableStateOf("Query Intent Activities not tested") }
-    var getPackageInfoStatus by remember { mutableStateOf("Get Package Info not queried") }
-    var getInstalledApplicationsInfo by remember { mutableStateOf("Installed applications not queried") }
-    var getInstalledPackagesInfo by remember { mutableStateOf("Installed packages not queried") }
-    var applicationInfoForSelf by remember { mutableStateOf("Application info not queried") }
-    var getSystemAvailableFeaturesInfo by remember { mutableStateOf("System available features not queried") }
-    var getSomeSystemFeaturesInfo by remember { mutableStateOf("hasSystemFeature not queried") }
-
-    var runtimeInfo by remember { mutableStateOf("") }
-    var sysPropsInfo by remember { mutableStateOf("Sys props not queried") }
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
-
-    var gsfId by remember { mutableStateOf("GSF ID not queried") }
-    var mediaDrmIdInfo by remember { mutableStateOf("Media DRM ID not queried") }
-
+    var deviceIds by remember { mutableStateOf("Device IDs not queried") }
     var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
     Column(
@@ -88,191 +81,65 @@ fun JavaInfoScreen() {
     ) {
         Text(text = "Java info", style = MaterialTheme.typography.headlineMedium)
 
-        SectionHeader("BUILD AND SETTINGS INFO")
+        SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
-            ReportTextWithCopy(buildAndSettingsInfo, "")
+            BuildAssertions()
+            HorizontalDivider()
+            SettingsAssertions(cr)
+            HorizontalDivider()
+            SystemPropertiesAssertions()
         }
 
-        SectionHeader("DEVICE IDENTIFIERS")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    gsfId = dumpGsfId(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get GSF ID")
-            }
-            Text(
-                text = gsfId,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Button(
-                onClick = {
-                    mediaDrmIdInfo = dumpMediaDrmId()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get Media DRM ID")
-            }
-
-            Text(
-                text = mediaDrmIdInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-        SectionHeader("JVM RUNTIME")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    runtimeInfo = dumpSensitiveInfoWithRuntime()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get some info with Runtime")
-            }
-            ReportTextWithCopy(runtimeInfo, "Sensors not tested at Java layer yet")
-        }
-
-        SectionHeader("SENSORS")
+        SectionHeader("RUNTIME EXEC TESTS")
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
-                onClick = { javaSensorsReport = dumpSensorInfo(context) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Probe Sensors using Java")
-            }
-            ReportTextWithCopy(javaSensorsReport, "Sensors not tested at Java layer yet")
+            RuntimeAssertions()
         }
 
-        SectionHeader("Networking")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        SectionHeader("SENSORS TESTS")
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = {
-                        netInfo = dumpNetworkInfo(context)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Query network stats")
-                }
-                ReportTextWithCopy(netInfo, "")
-            }
+            SensorsAssertions(context)
         }
 
-        SectionHeader("PACKAGE MANAGER")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
-            Text(text = "Get Package Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getPackageInfoStatus, "Get Package Info not queried")
-            Button(
-                onClick = {
-                    getPackageInfoStatus = dumpGetPackageInfo(
-                        context,
-                        "com.google.android.gms"
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getPackageInfo(Google Play Services)")
-            }
+        SectionHeader("NETWORK INTERFACES TESTS")
+        NetworkIfacesAssertions()
 
-            Text(text = "Get Application Info for an arbitrary package", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(applicationInfoForSelf, "Get Application info not queried")
-            Button(
-                onClick = {
-                    applicationInfoForSelf = dumpGetApplicationInfo(
-                        context,
-                        "com.android.webview"
-                    )
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getApplicationInfo(Webview)")
-            }
+        SectionHeader("LINK PROPERTIES AND WIFI MANAGER TESTS")
+        LinkPropertiesAndWifiAssertions(context)
 
-            Text(text = "Get installer info for Grunfeld", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(installerInfo, "Installer info not queried")
-            Button(
-                onClick = {
-                    installerInfo = dumpInstallerInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstallSourceInfo()")
-            }
+        SectionHeader("APP INSTALLER TEST")
+        AppInstallerAssertions(context)
 
-            Text(text = "Query Intent Activities", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(dumpQueryIntentActivities, "Query Intent Activities not tested")
-            Button(
-                onClick = {
-                    dumpQueryIntentActivities = dumpQueryIntentActivities(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("dumpQueryIntentActivities()")
-            }
-
-
-            Text(text = "Get Installed Applications", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getInstalledApplicationsInfo, "Installed applications not queried")
-            Button(
-                onClick = {
-                    getInstalledApplicationsInfo = dumpGetInstalledApplications(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstalledApplications()")
-            }
-
-            Text(text = "Get Installed Packages", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getInstalledPackagesInfo, "Installed applications not queried")
-            Button(
-                onClick = {
-                    getInstalledPackagesInfo = dumpGetInstalledPackages(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getInstalledPackages()")
-            }
-
-            Text(text = "Get ALL available system features", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getSystemAvailableFeaturesInfo, "getSystemAvailableFeatures not queried")
-            Button(
-                onClick = {
-                    getSystemAvailableFeaturesInfo = dumpGetSystemAvailableFeaturesInfo(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getSystemAvailableFeaturesInfo()")
-            }
-
-
-            Text(text = "Get some system features by querying their keys", style = MaterialTheme.typography.titleMedium)
-            ReportTextWithCopy(getSomeSystemFeaturesInfo, "getSomeSystemFeaturesInfo not queried")
-            Button(
-                onClick = {
-                    getSomeSystemFeaturesInfo = dumpSomeSystemFeatures(context)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("getSomeSystemFeatures()")
-            }
+        SectionHeader("FOREIGN APP INSPECTION TESTS")
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            QueryIntentActivitiesAssertions(context)
+            InstalledApplicationsAssertions(context)
+            InstalledPackagesAssertions(context)
         }
+
+        SectionHeader("SELF-ANALYSIS")
+        LogcatAssertions()
+
+        SectionHeader("ROOTBER ROOT CHECK")
+        RootCheckAssertions(context)
 
         SectionHeader("TELEPHONY")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Button(
                 onClick = {
                     composableScope.launch {
@@ -289,21 +156,10 @@ fun JavaInfoScreen() {
         }
 
         SectionHeader("SYSTEM PROPERTIES")
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    sysPropsInfo = dumpSystemProps()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get some system properties")
-            }
-
-            Text(
-                text = sysPropsInfo,
-                style = MaterialTheme.typography.bodyMedium
-            )
-
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Button(
                 onClick = { devPropsInfo = dumpDevProperties() },
                 modifier = Modifier.fillMaxWidth()
@@ -312,5 +168,378 @@ fun JavaInfoScreen() {
             }
             ReportTextWithCopy(devPropsInfo, "Dev properties not queried")
         }
+
+        SectionHeader("DEVICE IDENTIFIERS")
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+
+            Button(
+                onClick = {
+                    deviceIds = dumpDeviceIds(context, cr)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Get some device unique IDs")
+            }
+            Text(
+                text = deviceIds,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }
+
+@Suppress("DEPRECATION")
+@Composable
+private fun BuildAssertions() {
+    AssertionResult("BOARD", Build.BOARD, "husky")
+    AssertionResult("BOOTLOADER", Build.BOOTLOADER, "ripcurrent-15.0-12455211")
+    AssertionResult("BRAND", Build.BRAND, "google")
+    AssertionResult("DEVICE", Build.DEVICE, "husky")
+    AssertionResult("DISPLAY", Build.DISPLAY, "BP4A.251205.006")
+    AssertionResult(
+        "FINGERPRINT",
+        Build.FINGERPRINT,
+        "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
+    )
+    AssertionResult("HARDWARE", Build.HARDWARE, "zuma")
+    AssertionResult("HOST", Build.HOST, "abfarm-20038")
+    AssertionResult("ID", Build.ID, "BP4A.251205.006")
+    AssertionResult("MANUFACTURER", Build.MANUFACTURER, "google")
+    AssertionResult("MODEL", Build.MODEL, "Pixel 8 Pro")
+    AssertionResult("PRODUCT", Build.PRODUCT, "husky")
+    AssertionResult("SOC_MANUFACTURER", Build.SOC_MANUFACTURER, "Google")
+    AssertionResult("SOC_MODEL", Build.SOC_MODEL, "Tensor G3")
+    AssertionResult("CPU_ABI", Build.CPU_ABI, "arm64-v8a")
+    AssertionResult("CPU_ABI2", Build.CPU_ABI2, "")
+    AssertionResult("TYPE", Build.TYPE, "user")
+    AssertionResult("TIME", Build.TIME, "1764954000000")
+    AssertionResult("USER", Build.USER, "android-build")
+    AssertionResult("RADIO", Build.getRadioVersion(), "g5300g-251108-251202-B-12876551")
+    AssertionResult("INCREMENTAL", Build.VERSION.INCREMENTAL, "14401865")
+    AssertionResult("SECURITY_PATCH", Build.VERSION.SECURITY_PATCH, "2025-12-05")
+
+
+    val abis32 = Build.SUPPORTED_32_BIT_ABIS
+    AssertionResultEmpty("SUPPORTED_32_BIT_ABIS", abis32.toList())
+
+    val abis64 = Build.SUPPORTED_64_BIT_ABIS
+    AssertionResultSingleSpecificValueInIterable(
+        "SUPPORTED_64_BIT_ABIS",
+        abis64.toList(),
+        "arm64-v8a"
+    )
+
+    val abis = Build.SUPPORTED_ABIS
+    AssertionResultSingleSpecificValueInIterable("SUPPORTED_ABIS", abis.toList(), "arm64-v8a")
+
+
+    AssertionResult("BASE_OS", Build.VERSION.BASE_OS, "")
+    AssertionResult("ODM_SKU", Build.ODM_SKU, Build.UNKNOWN)
+    AssertionResult("SKU", Build.SKU, Build.UNKNOWN)
+    AssertionResult("CODENAME", Build.VERSION.CODENAME, "REL")
+}
+
+@Composable
+private fun SettingsAssertions(cr: ContentResolver) {
+    val notFoundKey = -999
+
+    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
+    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
+    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
+    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
+
+    AssertionResult("DEVELOPMENT_SETTINGS_ENABLED", devSettingsOn, "0")
+    AssertionResult("ADB_ENABLED", adbEnabled, "0")
+    AssertionResult("BOOT_COUNT", bootCount, "43")
+    AssertionResult("WAIT_FOR_DEBUGGER", waitForDebugger, "0")
+}
+
+@Composable
+private fun SystemPropertiesAssertions() {
+    val arch = System.getProperty("os.arch")
+    val name = System.getProperty("os.name")
+    val version = System.getProperty("os.version")
+
+    AssertionResult("os.arch", arch ?: "", "aarch64")
+    AssertionResult("os.name", name ?: "", "Linux")
+    AssertionResult("os.version", version ?: "", "6.6.56-android16-11-g8a3e2b1c4d5f")
+}
+
+@Composable
+private fun RuntimeAssertions() {
+    AssertionResult("which su", runtimeExecWithCmdArray(arrayOf("which", "su")), "")
+    AssertionResult("getprop", runtimeExecWithCmd("getprop"), "null")
+}
+
+@Composable
+private fun SensorsAssertions(ctx: Context) {
+    AssertionResult("Sensors", dumpSensorInfo(ctx), "")
+}
+
+@Composable
+private fun NetworkIfacesAssertions() {
+    var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
+    LaunchedEffect(Unit) {
+        ifaceList = dumpNetworkInterfaces()
+    }
+
+    when (val interfaceList = ifaceList) {
+        null -> {
+            Text("Loading...")
+        }
+        else -> {
+            interfaceList
+                .forEach { iface ->
+                    AssertionResultNotContains("Interface name", iface.name, "tun")
+
+                    if (iface.name.contains("wlan")) {
+                        iface.interfaceAddresses.forEach { addr ->
+                            AssertionResult("MTU", iface.mtu, "1500")
+
+                            val localIp = addr.address.hostAddress ?: ""
+                            val prefix = addr.networkPrefixLength
+                            val broadcast = addr.broadcast?.hostAddress ?: ""
+
+                            AssertionResult("Local IP", localIp, "10.111.222.1")
+                            AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "24")
+                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
+                        }
+                    } else if (iface.name.contains("rmnet")) {
+                        iface.interfaceAddresses.forEach { addr ->
+                            AssertionResult("MTU", iface.mtu, "1500")
+                            val localIp = addr.address.hostAddress ?: ""
+                            val prefix = addr.networkPrefixLength
+                            val broadcast = addr.broadcast?.hostAddress ?: ""
+                            AssertionResult("Local IP", localIp, "10.111.222.1")
+                            AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "")
+                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
+
+                        }
+                    }
+
+                    val parent = iface.parent
+                    val subs = iface.subInterfaces.asSequence().toList()
+
+                    AssertionResultNull("Parent interface", parent)
+                    AssertionResultEmpty("Sub interfaces", subs)
+                }
+        }
+    }
+}
+
+@Suppress("DEPRECATION")
+@Composable
+private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
+    val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetworkInfo = cm.activeNetworkInfo
+
+    AssertionResultNotContains("Active network VPN?", activeNetworkInfo?.typeName ?: "BOGUS", "VPN")
+    AssertionResult("All networks size", cm.allNetworks.size, "0")
+    AssertionResultEmpty("All networks content", cm.allNetworks.toList())
+
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+    if (caps == null) {
+        Text(
+            text = "Failed to getNetworkCapabilities via CM",
+            color = Color.Red
+        )
+        return
+    }
+    val hasTransportVpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+    val hasCapNotVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    AssertionResult("Network has VPN transport?", hasTransportVpn, false)
+    AssertionResult("Network has cap NOT_VPN?", hasCapNotVpn, true)
+
+    val activeNetwork = cm.activeNetwork
+    if (activeNetwork == null) {
+        Text(
+            text = "activeNetwork is null",
+            color = Color.Red
+        )
+        return
+    }
+    val linkProperties = cm.getLinkProperties(activeNetwork)
+    if (linkProperties == null) {
+        Text(
+            text = "linkProperties is null",
+            color = Color.Red
+        )
+        return
+    }
+
+    val currentInterface = linkProperties.interfaceName
+    if (currentInterface == null) {
+        Text(
+            text = "Couldn't get current interface name",
+            color = Color.Red
+        )
+        return
+    }
+    AssertionResultNotContains("Interface name", currentInterface, "tun")
+
+    val expectedRoutes = listOf(
+        "10.111.222.0/24 -> 0.0.0.0 $currentInterface mtu 0",
+        "0.0.0.0/0 -> 10.111.222.1 $currentInterface mtu 0",
+    )
+    val actualRoutes = linkProperties.routes
+    AssertionResult("Networking routes", actualRoutes.toString(), expectedRoutes.toString())
+
+    val linkAddrs = linkProperties.linkAddresses.map {
+        it.address.hostAddress
+    }
+
+    AssertionResultNull("DHCP Server", linkProperties.dhcpServerAddress)
+
+    AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, "10.111.222.1")
+    AssertionResult("MTU", linkProperties.mtu, "1500")
+    AssertionResult("Private DNS active?", linkProperties.isPrivateDnsActive, false)
+    if (linkProperties.privateDnsServerName != null) {
+        AssertionResult("Private DNS Server", linkProperties.privateDnsServerName!!, "")
+    }
+
+    val dnsServers = linkProperties.dnsServers.map {
+        it.hostAddress
+    }
+    val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
+    AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
+
+    HorizontalDivider()
+
+    val wifiInfo = try {
+        dumpWifiManagerInfo(ctx)
+    } catch (e: Exception) {
+        Text(
+            text = "dumpWifiManagerInfo failed: ${e.message}",
+            color = Color.Red
+        )
+        return
+    }
+
+    if (currentInterface.startsWith("wlan")) {
+        AssertionResult(
+            "IPv4 address",
+            Formatter.formatIpAddress(wifiInfo.ipAddress),
+            "10.111.222.1"
+        )
+    } else {
+        AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
+    }
+
+    if (wifiInfo.bssid != null) {
+        AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
+    }
+    AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
+}
+
+@Composable
+private fun AppInstallerAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+    val packageName = ctx.packageName
+    val info = pm.getInstallSourceInfo(packageName)
+
+    val originator = info.originatingPackageName
+    val initiator = info.initiatingPackageName
+    val installer = info.installingPackageName
+    val updateOwner = info.updateOwnerPackageName
+
+    AssertionResultNull("Originator (\"source\" of installation)", originator)
+    AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
+    AssertionResult(
+        "Installer (did the actual installation)",
+        installer ?: "",
+        "com.android.vending"
+    )
+    AssertionResult(
+        "Update owner (pkg that will keep app up-to-date)",
+        updateOwner ?: "",
+        "com.android.vending"
+    )
+
+    @Suppress("DEPRECATION")
+    val legacyInstaller = pm.getInstallerPackageName(packageName)
+
+    AssertionResult(
+        "Installer package name (Legacy API)",
+        legacyInstaller ?: "",
+        "com.android.vending"
+    )
+}
+
+@Composable
+private fun QueryIntentActivitiesAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+
+    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+        addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+    val appsWithLauncher = pm.queryIntentActivities(launcherIntent, 0)
+    AssertionResultEmpty("Apps with launcher", appsWithLauncher)
+}
+
+@Composable
+private fun InstalledApplicationsAssertions(ctx: Context) {
+    // Using Application's for diversity, should be hooked too
+    val pm = ctx.applicationContext.packageManager
+
+    val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+    AssertionResultEmpty("Installed applications", installedApps)
+
+}
+
+@Composable
+private fun InstalledPackagesAssertions(ctx: Context) {
+    val pm = ctx.packageManager
+    val flags = (
+            PackageManager.GET_PERMISSIONS or
+                    PackageManager.GET_ACTIVITIES or
+                    PackageManager.GET_SERVICES or
+                    PackageManager.GET_RECEIVERS or
+                    PackageManager.GET_PROVIDERS
+            )
+    val installedPackages = pm.getInstalledPackages(flags)
+    AssertionResultEmpty("Installed packages", installedPackages)
+}
+
+@Composable
+private fun LogcatAssertions() {
+
+    val execd = Runtime.getRuntime().exec("logcat -d")
+    val bufferedReader = BufferedReader(InputStreamReader(execd.inputStream))
+    var i = 1
+    repeat(5) {
+        AssertionResultNull("Logcat (Runtime) line $i", bufferedReader.readLine())
+        i++
+    }
+
+    HorizontalDivider()
+
+    val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
+    val process = processBuilder.start()
+    val exitCode = process.waitFor()
+    AssertionResult("Exit code of logcat (ProcessBuilder)", exitCode, "0")
+}
+
+@Composable
+private fun RootCheckAssertions(ctx: Context) {
+    var isRooted by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        isRooted = RootBeer(ctx).isRooted
+    }
+
+    when (val rooted = isRooted) {
+        null -> {
+            Text("Loading...")
+        }
+
+        else -> {
+            AssertionResult(
+                "Is rooted?", rooted, false
+            )
+        }
+    }
+}
+

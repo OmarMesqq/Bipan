@@ -52,7 +52,9 @@ class WebViewModel : ViewModel() {
     var isWebViewPendingRecovery = false
     fun getOrCreateWebView(context: Context): WebView? {
         if (webView == null) {
-            webView = WebView(context).apply {
+            // In a perfect scenario, the WV would have its own activity
+            // but for now keep it tied to the Application's context
+            webView = WebView(context.applicationContext).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT

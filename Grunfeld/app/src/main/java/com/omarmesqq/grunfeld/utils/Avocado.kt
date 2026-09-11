@@ -14,7 +14,7 @@ enum class AVOCADO_LOG_LEVEL {
     AVOCADO_VERBOSE,
 }
 
-private const val TAG = "Avocado"
+private const val TAG = "Grunfeld"
 object Avocado {
     private lateinit var appContext: Context
 

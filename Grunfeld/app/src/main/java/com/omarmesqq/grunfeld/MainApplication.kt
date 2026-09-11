@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld
 
-import android.app.ActivityManager
 import android.app.Application
 import android.content.res.Configuration
 import android.os.Build
@@ -17,11 +16,6 @@ import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import com.omarmesqq.grunfeld.utils.Persistence.grunfeldCfgExists
-import com.omarmesqq.grunfeld.utils.Persistence.writeToGrunfeldCfg
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 private const val TAG = "MainApplication"
@@ -49,7 +43,6 @@ class MainApplication: Application() {
         }
 
         if (BuildConfig.DEBUG) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "DEBUG build", shouldToast = true)
             setupStrictMode()
         }
 
@@ -72,7 +65,6 @@ class MainApplication: Application() {
         )
 
         configRepository = GrunfeldConfigs(this)
-        writeDummyFile()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -145,34 +137,6 @@ class MainApplication: Application() {
 
         stackTrace.forEachIndexed { index, frame ->
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Java frame #$index: $frame")
-        }
-    }
-
-    private fun writeDummyFile() {
-        val ctx = this
-        CoroutineScope(Dispatchers.IO).launch {
-            if (grunfeldCfgExists(ctx)) {
-                return@launch
-            }
-            val am = ctx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
-            val sb = StringBuilder()
-
-            sb.appendLine("Per-app memory class of device: ${am.memoryClass} MB")
-            sb.appendLine("Size of Dalvik Heap w/ largeHeap=true: ${am.largeMemoryClass} MB")
-            val errorProcs = am.processesInErrorState
-            if (errorProcs != null) {
-                errorProcs.forEach { ep ->
-                    sb.appendLine("processInErrorState: ${ep.processName}")
-                }
-            }
-
-            val runningProcs = am.runningAppProcesses
-            if (runningProcs != null) {
-                runningProcs.forEach { rp ->
-                    sb.appendLine("runningAppProcess: ${rp.processName}")
-                }
-            }
-            writeToGrunfeldCfg(ctx, sb.toString())
         }
     }
 }

@@ -10,13 +10,10 @@ object NativeLibWrapper {
     external fun testListen(): String
     external fun testSendto(): String
     external fun testGetsockname(): String
-    external fun testSocket(): String
     external fun testSendmsg(): String
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
-    external fun getifaddrs():String
-    external fun getallfds():String
     external fun getMediaDrmIdNative(): String
     external fun testOpenFileAndReadLink(filenames: Array<String>): String
     external fun dlIteratePhdrTest(): String
@@ -33,5 +30,4 @@ object NativeLibWrapper {
     external fun raiseAbrt()
     external fun raiseTrap()
     external fun raiseQuit()
-    external fun investigateSocket(): String
 }

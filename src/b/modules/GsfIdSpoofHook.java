@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Random;
 import b.BaseHook;
 import b.J;
-
 import java.lang.reflect.InvocationTargetException;
 
 public class GsfIdSpoofHook implements BaseHook {

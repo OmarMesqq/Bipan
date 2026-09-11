@@ -1,11 +1,18 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Android
-import androidx.compose.material.icons.filled.Construction
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -27,16 +34,6 @@ private data class MoreItem(
 @Composable
 fun MoreScreen(navController: NavHostController) {
     val items = listOf(
-        MoreItem(
-            title = "Root checker",
-            icon = { Icon(Icons.Default.Android, contentDescription = "Android") },
-            onClick = { navController.navigate(Screen.RootCheckerScreen.route) }
-        ),
-        MoreItem(
-            title = "Logcat",
-            icon = { Icon(Icons.Default.Construction, contentDescription = "Logcat") },
-            onClick = { navController.navigate(Screen.LogcatScreen.route) }
-        ),
         MoreItem(
             title = "Settings",
             icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },

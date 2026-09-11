@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.os.Process
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +28,6 @@ import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
-import android.os.Process
 
 @Composable
 fun NativeScreen() {
@@ -41,9 +41,7 @@ fun NativeScreen() {
     var listenReport by remember { mutableStateOf("listen not tested yet") }
     var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
-    var socketReport by remember { mutableStateOf("AF_NETLINK socket not tested yet") }
     var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
-    var getifaddrsReport by remember { mutableStateOf("getifaddrs not tested yet") }
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
@@ -57,12 +55,10 @@ fun NativeScreen() {
     var statxInfo by remember { mutableStateOf("Files not stated") }
     var statfsHostsInfo by remember { mutableStateOf("") }
 
-    var procSelFdInfo by remember { mutableStateOf("/proc/self/fd not read yet") }
     var forkExecInfo by remember { mutableStateOf("fork/exec inspected yet") }
     var procSelfMapsInfo by remember { mutableStateOf("/proc/self/maps not studied yet") }
     var procSelfSmapsInfo by remember { mutableStateOf("/proc/self/smaps not studied yet") }
     var procMountPoints by remember { mutableStateOf("mounts not studied yet") }
-    var socketsInfo by remember { mutableStateOf("") }
 
     val pid = Process.myPid()
 
@@ -126,20 +122,6 @@ fun NativeScreen() {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get info on sockets inside /proc/self/fd", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(socketsInfo, "")
-                    Button(
-                        onClick = {
-                            socketsInfo = NativeLibWrapper.investigateSocket()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("opendir(/proc/self/fd) && analyze [socket:")
-                    }
-                }
-
 
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = "Study mount points", style = MaterialTheme.typography.titleMedium)
@@ -231,14 +213,6 @@ fun NativeScreen() {
                     ReportTextWithCopy(dliteratephdrInfo, "dl_iterate_phdr not run yet")
                     Button(onClick = { dliteratephdrInfo = NativeLibWrapper.dlIteratePhdrTest() }, modifier = Modifier.fillMaxWidth()) {
                         Text("dl_iterate_phdr()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "List file descriptors and their links", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(procSelFdInfo, "/proc/self/fd not read yet")
-                    Button(onClick = { procSelFdInfo = NativeLibWrapper.getallfds() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("getdents64(/proc/self/fd) && readlinkat(fdX)")
                     }
                 }
 
@@ -494,24 +468,10 @@ fun NativeScreen() {
                     }
                 }
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("socket(AF_NETLINK)")
-                    ReportTextWithCopy(socketReport, "AF_NETLINK socket not tested yet")
-                    Button(onClick = { socketReport = NativeLibWrapper.testSocket() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("AF_NETLINK socket")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CodeTitle("sendmsg()")
                     ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
                     Button(onClick = { sendmsgReport = NativeLibWrapper.testSendmsg() }, modifier = Modifier.fillMaxWidth()) {
                         Text("sendmsg LAN")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("getifaddrs()")
-                    ReportTextWithCopy(getifaddrsReport, "getifaddrs not tested yet")
-                    Button(onClick = { getifaddrsReport = NativeLibWrapper.getifaddrs() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Enumerate interfaces")
                     }
                 }
             }

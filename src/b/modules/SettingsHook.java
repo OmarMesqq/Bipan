@@ -130,7 +130,6 @@ public class SettingsHook implements BaseHook, InvocationHandler {
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
 
     for (String className : targetClasses) {
-
       Class<?> clazz = Class.forName(className);
       Field sNameValueCacheField = clazz.getDeclaredField("sNameValueCache");
       sNameValueCacheField.setAccessible(true);
@@ -164,7 +163,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
       }
 
       this.originalProvider = original;
-
+      // TODO: put `invoke` separate
       Object proxy = Proxy.newProxyInstance(
           iContentProviderClass.getClassLoader(),
           new Class[] { iContentProviderClass },

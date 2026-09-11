@@ -327,10 +327,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
               return method.invoke(originalPM, args);
             }
 
-            if (
-              selfPackageName.equals("com.android.webview") &&
-              action.equals("android.settings.WEBVIEW_SETTINGS")
-            ) {
+            if (selfPackageName.equals("com.android.webview") &&
+                action.equals("android.settings.WEBVIEW_SETTINGS")) {
               return method.invoke(originalPM, args);
             }
 
@@ -444,6 +442,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
               isSafeQuery = true;
             }
 
+            // TODO: make this DRY
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -598,10 +597,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           }
           Log.i(TAG, "Blinded: resolveActivity");
           return null;
-        }
-        case "getTargetSdkVersion": {
-          Log.i(TAG, "Blinded: getTargetSdkVersion");
-          return 36;
         }
 
         case "hasSystemFeature": {
