@@ -14,14 +14,12 @@
     <!-- Package Manager -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-
     <!--  GPS, Cell towers, location, ...  -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <!--  Phone  -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
     <!--  GMS Stuff  -->
     <uses-permission android:name="com.google.android.providers.gsf.permission.READ_GSERVICES" />

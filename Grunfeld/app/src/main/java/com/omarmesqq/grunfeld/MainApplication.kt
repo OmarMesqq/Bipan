@@ -43,7 +43,6 @@ class MainApplication: Application() {
         }
 
         if (BuildConfig.DEBUG) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "DEBUG build", shouldToast = true)
             setupStrictMode()
         }
 

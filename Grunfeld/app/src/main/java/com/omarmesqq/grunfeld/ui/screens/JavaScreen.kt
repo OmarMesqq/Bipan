@@ -380,6 +380,12 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     }
     AssertionResultNotContains("Interface name", currentInterface, "tun")
 
+    val expectedRoutes = listOf(
+        "10.111.222.0/24 -> 0.0.0.0 $currentInterface mtu 0",
+        "0.0.0.0/0 -> 10.111.222.1 $currentInterface mtu 0",
+    )
+    val actualRoutes = linkProperties.routes
+    AssertionResult("Networking routes", actualRoutes.toString(), expectedRoutes.toString())
 
     val linkAddrs = linkProperties.linkAddresses.map {
         it.address.hostAddress
@@ -400,14 +406,6 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
     AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
 
-    val routes = linkProperties.routes
-    routes.forEachIndexed { idx, r ->
-        Text(
-            text = "Route $idx: $r",
-            color = Color.Yellow
-        )
-    }
-
     HorizontalDivider()
 
     val wifiInfo = try {
@@ -426,10 +424,8 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
             Formatter.formatIpAddress(wifiInfo.ipAddress),
             "10.111.222.1"
         )
-        AssertionResult("Network ID", wifiInfo.networkId, "4")
     } else {
         AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
-        AssertionResult("Network ID", wifiInfo.networkId, "-1")
     }
 
     if (wifiInfo.bssid != null) {
