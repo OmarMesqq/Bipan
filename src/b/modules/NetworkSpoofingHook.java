@@ -24,32 +24,24 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.InetAddress;
 import java.util.Map;
+import android.Manifest;
 import java.util.ArrayList;
 import b.J;
 
 /**
- * An almost-too-complex hook for some networking related services in Android:
- * - Trims VPN flag from NetworkCapabilities
- * - Hardcodes a fake IPv4 local address
- * - Hardcodes `VALIDATED` for connections i.e. not behind captive portal
+ * Hooks for `WifiManager` (deprecated) and `ConnectivityManager`
+ * - Hides VPN usage removing it from `TransportInfo` and setting simple routes
+ * - Hides Android's Private DNS usage
+ * - Hides current network's DHCP server
+ * - Spoofs fake DNS servers (Google's)
+ * - Spoofs fake local IPv4 address
+ * - Hardcodes MTU to 1500 (could bypass throttling and some VPNs have it lower)
+ * - Hides Wifi SSID and BSSID
  */
 public class NetworkSpoofingHook implements BaseHook {
   private static final String TAG = "BipanJavaNetwork";
 
-  /**
-   * Non-system apps can't use the `LOCAL_MAC_ADDRESS` permission,
-   * so this is the default returned by AOSP.
-   * 
-   * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiInfo.java;l=100
-   */
   private static final String DEFAULT_MAC_ADDRESS = "02:00:00:00:00:00";
-
-  /**
-   * Returned when the "if there is no network currently connected
-   * or if the caller has insufficient permissions to access the SSID"
-   * 
-   * https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/Wifi/framework/java/android/net/wifi/WifiManager.java;l=1985
-   */
   private static final String UNKNOWN_SSID = "<unknown ssid>";
 
   private static final String CELLULAR_IFACE_NAME = "rmnet0";
@@ -58,6 +50,8 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private static Object cmProxy;
   private static Object wifiProxy;
+
+  private static boolean hasFineLocationPerm = false;
 
   @Override
   public void install(Context context) throws Exception {
@@ -70,6 +64,7 @@ public class NetworkSpoofingHook implements BaseHook {
     @SuppressWarnings("unchecked")
     Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
 
+    hasFineLocationPerm = J.hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION);
     setupConnectivitySpoofing(getService, cache);
     setupWifiSpoofing(getService, cache);
   }
@@ -138,7 +133,6 @@ public class NetworkSpoofingHook implements BaseHook {
                 null // extraInfo
             );
 
-            // If VPN, we abort
             if ("VPN".equals(ni.getTypeName())) {
               throw J.cleanThrowable(new OutOfMemoryError());
             }
@@ -190,10 +184,6 @@ public class NetworkSpoofingHook implements BaseHook {
         if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
           spoofWifiInfo((WifiInfo) result);
           return result;
-        }
-        if ("getVerboseLoggingLevel".equals(method.getName())) {
-          Log.i(TAG, "Neutered WifiManager method: getVerboseLoggingLevel");
-          return 0; // VERBOSE_LOGGING_LEVEL_DISABLED
         }
         return result;
       } catch (InvocationTargetException e) {
@@ -350,7 +340,6 @@ public class NetworkSpoofingHook implements BaseHook {
       spoofPrivateDnsInLp(lp);
 
       String currentIface = lp.getInterfaceName();
-      // Default route: 0.0.0.0/0 via gateway
       Object defaultPrefix = ipPrefixCtor.newInstance(anyAddr, 0);
 
       if (currentIface.contains("rmnet")) { // mobile

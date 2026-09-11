@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.Map;
 import java.util.ArrayList;
 import java.lang.reflect.Constructor;
+import android.Manifest;
 
 public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final String TAG = "BipanJavaTelephony";
@@ -157,11 +158,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
           return false;
         }
 
-        case "isMultiSimSupported": {
-          Log.i(TAG, "Neutered isMultiSimSupported");
-          return TelephonyManager.MULTISIM_NOT_SUPPORTED_BY_HARDWARE;
-        }
-
         case "getAllCellInfo": {
           Log.i(TAG, "Neutered getAllCellInfo");
           return new ArrayList<>();
@@ -176,11 +172,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getServiceStateForSlot": {
           Log.i(TAG, "Neutered " + method.getName());
           return new ServiceState();
-        }
-
-        case "getVisualVoicemailPackageName": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return "com.google.android.dialer";
         }
 
         case "getCarrierPrivilegeStatus": {
