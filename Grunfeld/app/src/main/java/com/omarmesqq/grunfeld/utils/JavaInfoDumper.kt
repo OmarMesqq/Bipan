@@ -17,8 +17,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.lang.Long.toHexString
@@ -27,18 +27,13 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.util.UUID
 
-//TODO: review this
-private val deferredInterfaces = GlobalScope.async {
+suspend fun dumpNetworkInterfaces(): List<NetworkInterface>? {
     try {
-        return@async NetworkInterface.getNetworkInterfaces()
-    } catch (e: Exception) {
-        throw e
-    }
-}
-
-fun dumpNetworkInterfaces(): List<NetworkInterface>? {
-    try {
-        return deferredInterfaces.getCompleted().toList()
+        var ifaces: List<NetworkInterface>
+        withContext(Dispatchers.IO) {
+            ifaces = NetworkInterface.getNetworkInterfaces().toList()
+        }
+        return ifaces
     } catch (e: Exception) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, msg = "getNetworkInterfaces Exception", tr = e)
         return null
