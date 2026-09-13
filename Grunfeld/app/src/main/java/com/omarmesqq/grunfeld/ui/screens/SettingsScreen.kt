@@ -29,7 +29,7 @@ fun SettingsScreen() {
     val context = LocalContext.current
 
     val configs = remember { GrunfeldConfigs(context) }
-    val isFlagSecureEnabled by configs.isFlagSecureEnabledKeyFlow.collectAsState(initial = false)
+    val isFlagSecureEnabled by configs.flagSecureEnabledFlow.collectAsState(initial = false)
 
     Column(
         modifier = Modifier
@@ -49,7 +49,7 @@ fun SettingsScreen() {
                 checked = isFlagSecureEnabled,
                 onCheckedChange = {
                     scope.launch {
-                        configs.toggleIsFlagSecure()
+                        configs.toggleFlagSecure()
                     }
                 }
             )

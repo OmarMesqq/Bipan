@@ -63,11 +63,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
-            !viewModel.isReady.value
+            !viewModel.isAppReady.value
         }
 
         lifecycleScope.launch {
-            viewModel.isFlagSecureEnable.collectLatest { isEnabled ->
+            viewModel.isFlagSecureEnabled.collectLatest { isEnabled ->
                 if (isEnabled) {
                     window.setFlags(
                         WindowManager.LayoutParams.FLAG_SECURE,
