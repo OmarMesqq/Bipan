@@ -6,11 +6,7 @@ object NativeLibWrapper {
     external fun getDeviceData(context: Context): String
     external fun testSensors(): String
     external fun getUname(): String
-    external fun testBind(): String
-    external fun testListen(): String
-    external fun testSendto(): String
     external fun testGetsockname(): String
-    external fun testSendmsg(): String
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean

@@ -41,9 +41,6 @@
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
-
-static const char* proto_to_str(int proto);
-static const char* fam_to_str(int fam);
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
@@ -55,6 +52,12 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
 
 static const long BOGUS_SYSCALL = 0xB050517;
 static const int  BOGUS_SYSCALL_EXPECTED_RET = 21;
+
+// Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed
+static const uint8_t kWidevineUuid[16] = {
+        0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
+        0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
+};
 
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
@@ -100,7 +103,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
     struct statfs b1 = {0};
     struct statfs b2 = {0};
 
-    int ret = 0;
+    int ret = -1;
 
     ret = statfs("/system/etc/hosts", &b1);
     if (ret != 0) {
@@ -124,11 +127,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
     return (*env)->NewStringUTF(env, report);
 }
 
-// Widevine UUID: edef8ba9-79d6-4ace-a3c8-27dcd51d21ed
-static const uint8_t kWidevineUuid[16] = {
-        0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
-        0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
-};
 
 static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
     static const char *hex = "0123456789abcdef";
@@ -139,6 +137,7 @@ static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_ca
     }
     out[o] = '\0';
 }
+
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(
         JNIEnv *env, jobject thiz) {
@@ -157,8 +156,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(
 
     media_status_t st = AMediaDrm_getPropertyByteArray(
             drm,
-            PROPERTY_DEVICE_UNIQUE_ID,  // "deviceUniqueId"
-            &prop);
+            PROPERTY_DEVICE_UNIQUE_ID,  // deviceUniqueId
+            &prop
+    );
 
     if (st != AMEDIA_OK || prop.ptr == NULL || prop.length == 0) {
         snprintf(report, sizeof(report),
@@ -216,10 +216,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountNodes(JNIEnv *env, j
             if (
                     !strstr(entry, "magisk") &&
                     !strstr(entry, "hosts") &&
-                    !strstr(entry, "mdns") &&
-                    !strstr(entry, "cacerts") &&
                     !strstr(entry, "zygisk") &&
-                    !strstr(entry, "/adb") &&
                     !strstr(entry, "debug_ramdisk") &&
                     !strstr(entry, "/cache/") &&
                     !strstr(entry, "/product/bin") &&
@@ -482,7 +479,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
             if (
-                    strstr(libName, "memfd") ||
+                    strstr(libName, "/memfd:jit-cache (deleted)") ||
                     strstr(libName, "Bipan") ||
                     strstr(libName, "bipan") ||
                     strstr(libName, "zygisk")
@@ -494,7 +491,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
             // ignore problematic lines
         }
         if (
-                strstr(libName, "memfd") ||
+                strstr(libName, "/memfd:jit-cache (deleted)") ||
                 strstr(libName, "Bipan") ||
                 strstr(libName, "bipan") ||
                 strstr(libName, "zygisk")
@@ -566,7 +563,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
 
         if (ret == 8) {
             matchedCurrentRegion = (
-                                           strstr(libName, "memfd") ||
+                                           strstr(libName, "/memfd:jit-cache (deleted)") ||
                                            strstr(libName, "Bipan") ||
                                            strstr(libName, "bipan") ||
                                            strstr(libName, "zygisk")
@@ -592,19 +589,19 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, jobject thiz, jstring progname) {
     int pipefd[2];
+    char errBuf[128] = {0};
+
     if (pipe(pipefd) == -1) {
-        char err[128];
-        snprintf(err, sizeof(err), "pipe failed: %s", strerror(errno));
-        return (*env)->NewStringUTF(env, err);
+        snprintf(errBuf, sizeof(errBuf), "pipe failed: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, errBuf);
     }
 
     pid_t pid = fork();
     if (pid == -1) {
-        char err[128];
-        snprintf(err, sizeof(err), "fork failed: %s", strerror(errno));
+        snprintf(errBuf, sizeof(errBuf), "fork failed: %s", strerror(errno));
         close(pipefd[0]);
         close(pipefd[1]);
-        return (*env)->NewStringUTF(env, err);
+        return (*env)->NewStringUTF(env, errBuf);
     }
 
     if (pid == 0) {
@@ -649,11 +646,13 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
         return (*env)->NewStringUTF(env, finalReport);
     }
 
-    // Combine execution output and status info
-    snprintf(finalReport, sizeof(finalReport),
-             "--- UNAME OUTPUT ---\n%s\n--- STATUS ---\nExit Code: %d",
-             outputBuffer,
-             WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1);
+    int exitCode = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
+    if (exitCode != 0) {
+        snprintf(finalReport, sizeof(finalReport), "child exit code != 0. actually: %d", exitCode);
+        return (*env)->NewStringUTF(env, finalReport);
+    }
+
+    snprintf(finalReport, sizeof(finalReport), "%s", outputBuffer);
 
     return (*env)->NewStringUTF(env, finalReport);
 }
@@ -862,122 +861,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
     return (*env)->NewStringUTF(env, report);
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testBind(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-    long ret = 0;
 
-    #define ADDRESS_COUNT 5
-    #define PORT_COUNT 2
-    #define PROTO_COUNT 2
-    #define FAM_COUNT 2
-
-    const char* addresses[ADDRESS_COUNT] = {
-            "127.0.0.1", // IPv4 localhost
-            "::1", // IPv6 localhost
-            "0.0.0.0", // IPv4 unspecified
-            "::", // IPv6 unspecified
-            "10.111.222.1", // phone lan ip
-    };
-
-    const int ports[PORT_COUNT] = { RANDOM_EPHEMERAL_PORT,ARBITRARY_PORT };
-    const SockType protocols[PROTO_COUNT] = { TCP, UDP };
-    const SockFamily families[FAM_COUNT] = { IPv4, IPv6 };
-
-    SockFactoryRes* res = NULL;
-    for (int fam_idx = 0; fam_idx < FAM_COUNT; fam_idx++) {
-        SockFamily fam = families[fam_idx];
-
-        for (int addr_idx = 0; addr_idx < ADDRESS_COUNT; addr_idx++) {
-            const char* addr_str = addresses[addr_idx];
-
-            // Simple check: Don't try IPv4 strings with IPv6 family and vice versa
-            bool is_v6_str = (strchr(addr_str, ':') != NULL);
-            if ((fam == IPv4 && is_v6_str) || (fam == IPv6 && !is_v6_str && strcmp(addr_str, "localhost") != 0)) {
-                continue;
-            }
-
-            for (int port_idx = 0; port_idx < PORT_COUNT; port_idx++) {
-                for (int proto_idx = 0; proto_idx < 2; proto_idx++) {
-                    res = CreateSocket(fam, protocols[proto_idx], addr_str, ports[port_idx], 0, 0);
-                    if (!res) {
-                        snprintf(entry, sizeof(entry), "Failed to create socket!\n");
-                        strcat(report, entry);
-                        continue;
-                    }
-
-                    ret = (fam == IPv4)
-                               ? arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas4, sizeof(res->sas.sas4), 0,0,0)
-                               : arm64_raw_syscall(__NR_bind, res->sock, (long)&res->sas.sas6, sizeof(res->sas.sas6), 0,0,0);
-
-                    snprintf(entry, sizeof(entry), "%s:%d | %s | %s | res: %s\n",
-                             addr_str, ports[port_idx], proto_to_str((int) protocols[proto_idx]), fam_to_str((int) fam), ret == 0 ? "SUCESS" : "FAILED");
-                    strcat(report, entry);
-
-                    close(res->sock);
-                    free(res);
-                }
-            }
-            strcat(report, "\n");
-        }
-    }
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testListen(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-    long ret = 0;
-
-    SockFactoryRes* res = CreateSocket(IPv4, TCP, "0.0.0.0", RANDOM_EPHEMERAL_PORT, 0, 0);
-    if (!res) {
-        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
-    }
-
-    const int backlog = 10;
-    ret = arm64_raw_syscall(__NR_listen, res->sock, backlog, 0, 0, 0, 0);
-
-    snprintf(entry, sizeof(entry), "Result: %s\n", ret == 0 ? "SUCCESS" : "FAILED");
-    strcat(report, entry);
-
-    close(res->sock);
-    free(res);
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendto(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-    // Multicast / LAN Discovery
-    const char* msg = "M-SEARCH * HTTP/1.1";
-
-    const int port_ssdp_upnp = 1900;
-    const char* ipv4_multicast_addr = "239.255.255.250";
-    SockFactoryRes* res = CreateSocket(IPv4, UDP, ipv4_multicast_addr, port_ssdp_upnp, 0, 0);
-    if (!res) {
-        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
-    }
-
-    long ret = arm64_raw_syscall(__NR_sendto, res->sock, (long)msg, (long)strlen(msg), 0, (long)&res->sas.sas4, sizeof(res->sas.sas4));
-
-    snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, ipv4_multicast_addr);
-    strcat(report, entry);
-
-    close(res->sock);
-    free(res);
-    return (*env)->NewStringUTF(env, report);
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
-    long ret = 0;
+    long ret = -1;
     char report[MAX_REPORT_SIZE] = {0};
     char entry[256] = {0};
 
-    // As Bipan blocks binds to local IPs, we connect to a WAN IP and then check the socket to see if it leaks the local IP
     const int port_dns = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
     SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
@@ -985,7 +876,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
         return (*env)->NewStringUTF(env, "Failed to create socket!\n");
     }
 
-    // use standard connect (Bipan allows public internet)
+    // 1. `connect` to WAN w/ a regular socket
     if (connect(res->sock, (struct sockaddr*)&res->sas.sas4, sizeof(res->sas.sas4)) == -1) {
         snprintf(entry, sizeof(entry), "connect failed \n");
         strcat(report, entry);
@@ -995,58 +886,20 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
         return (*env)->NewStringUTF(env, report);
     }
 
-    struct sockaddr_in leaked_addr;
-    socklen_t len = sizeof(leaked_addr);
-
-    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&leaked_addr, (long)&len, 0, 0, 0);
+    // 2. `getsockname` of this socket to get the device's local IP
+    struct sockaddr_in local_addr;
+    socklen_t len = sizeof(local_addr);
+    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&local_addr, (long)&len, 0, 0, 0);
 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN] = {0};
-        inet_ntop(AF_INET, &leaked_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        snprintf(entry, sizeof(entry), "socket IP: %s\n", ip);
+        inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET_ADDRSTRLEN);
+        snprintf(entry, sizeof(entry), "Socket IP: %s\n", ip);
     } else {
-        snprintf(entry, sizeof(entry), "failed with ret: %ld\n", ret);
+        snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
     }
 
     strcat(report, entry);
-    close(res->sock);
-    free(res);
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSendmsg(JNIEnv *env, jobject thiz) {
-    char report[MAX_REPORT_SIZE] = {0};
-    char entry[256] = {0};
-
-    #define DEST_ADDR "10.111.222.3"
-    SockFactoryRes* res = CreateSocket(IPv4, UDP, DEST_ADDR, ARBITRARY_PORT, 0, 0);
-    if (!res) {
-        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
-    }
-
-    // Data to be sent using the Scatter/Gather (iovec) structure
-    char* data1 = "Message Header - ";
-    char* data2 = "Hello from sendmsg!";
-
-    struct iovec iov[2];
-    iov[0].iov_base = data1;
-    iov[0].iov_len = strlen(data1);
-
-    iov[1].iov_base = data2;
-    iov[1].iov_len = strlen(data2);
-
-    //  msghdr structure
-    struct msghdr msg = {0};
-    msg.msg_name = &res->sas.sas4; // Destination address
-    msg.msg_namelen = sizeof(res->sas.sas4);
-    msg.msg_iov = iov;             // Pointer to the array of iovecs
-    msg.msg_iovlen = 2;            // Number of elements in the iovec array
-
-    long ret = arm64_raw_syscall(__NR_sendmsg, res->sock, (long)&msg, 0, 0, 0, 0);
-    snprintf(entry, sizeof(entry), "Result: %ld bytes sent to %s\n", ret, DEST_ADDR);
-    strcat(report, entry);
-
     close(res->sock);
     free(res);
     return (*env)->NewStringUTF(env, report);
@@ -1070,7 +923,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
         return (*env)->NewStringUTF(env, "Error: uname syscall failed");
     }
 
-    char result_str[512];
+    char result_str[512] ={0};
     snprintf(result_str, sizeof(result_str),
              "System: %s\nNode: %s\nRelease: %s\nVersion: %s\nMachine: %s\nDomain Name: %s",
              buffer.sysname,
@@ -1284,14 +1137,6 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
     strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
     strcat(report, entry);
-//    snprintf(entry, sizeof(entry), "\tHard link count: %lu\n", (unsigned long)statbuf->st_nlink);
-//    strcat(report, entry);
-//    snprintf(entry, sizeof(entry), "\tUID: %u\n", statbuf->st_uid);
-//    strcat(report, entry);
-//    snprintf(entry, sizeof(entry), "\tGID: %u\n", statbuf->st_gid);
-//    strcat(report, entry);
-//    snprintf(entry, sizeof(entry), "\tst_rdev (device id for special files): %lu\n", (unsigned long)statbuf->st_rdev);
-//    strcat(report, entry);
     snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
     strcat(report, entry);
 
@@ -1332,13 +1177,6 @@ static void dump_newfstat_info(const char* path, char* const report, struct stat
 
     snprintf(entry, sizeof(entry),"\tFile Type: %s\n", file_type);
     strcat(report, entry);
-
-    // Special Flags (SUID, SGID, Sticky Bit)
-//    snprintf(entry, sizeof(entry),"\tSpecial Flags: SUID=%d, SGID=%d, Sticky=%d\n",
-//         (statbuf->st_mode & S_ISUID) ? 1 : 0,
-//         (statbuf->st_mode & S_ISGID) ? 1 : 0,
-//         (statbuf->st_mode & S_ISVTX) ? 1 : 0);
-//    strcat(report, entry);
 
     snprintf(entry, sizeof(entry),"\tPermissions: User(%c%c%c) Group(%c%c%c) Other(%c%c%c)\n\n",
          (statbuf->st_mode & S_IRUSR) ? 'r' : '-',
@@ -1532,23 +1370,6 @@ static void dump_statx_info(const char* path, char* const report, struct statx* 
     snprintf(entry, sizeof(entry), "\tDev (containing filesystem): major=%u minor=%u\n",
              statxbuf->stx_dev_major, statxbuf->stx_dev_minor);
     strcat(report, entry);
-}
-
-static const char* proto_to_str(int proto) {
-    switch (proto) {
-        case TCP: return "TCP";
-        case UDP: return "UDP";
-        default:  return "UNKNOWN_PROTO";
-    }
-}
-
-static const char* fam_to_str(int fam) {
-    switch (fam) {
-        case IPv4: return "IPv4";
-        case IPv6: return "IPv6";
-        case Unix: return "Unix";
-        default:   return "UNKNOWN_FAM";
-    }
 }
 
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context) {

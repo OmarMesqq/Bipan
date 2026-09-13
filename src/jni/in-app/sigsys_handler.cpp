@@ -17,7 +17,9 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline void scrub_socket(struct sockaddr* s);
 
 static char g_altstack[SIGSTKSZ * 4];
+#ifndef IN_APP_RAW_SIGNAL_REGISTRATION
 static struct sigaction old_sys = {};
+#endif
 
 #ifdef IN_APP_ADDITIONAL_HANDLERS
 #include <dlfcn.h>

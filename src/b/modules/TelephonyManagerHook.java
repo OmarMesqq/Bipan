@@ -33,7 +33,6 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final int CARRIER_ID = 530;
   private static final String MCCMNC_TUPLE = "72406";
   private static final String SIM_ISO_COUNTRY_CODE = "br";
-  private static final int MODEM_COUNT = 1;
 
   private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
       "com.whatsapp",
@@ -123,14 +122,15 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     try {
-      switch (method.getName()) {
+      String methodName = method.getName();
+      switch (methodName) {
         case "getNetworkOperatorName":
         case "getNetworkOperatorNameForDisplay":
         case "getSimOperatorName":
         case "getSimOperatorNameForPhone":
         case "getSimOperatorNameForSubscription":
         case "getSubscriptionCarrierName": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return CARRIER_NAME;
         }
 
@@ -139,96 +139,62 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimCountryIso":
         case "getSimCountryIsoForPhone":
         case "getSimCountryIsoForSubscription": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return SIM_ISO_COUNTRY_CODE;
         }
 
         case "getSimOperator":
         case "getSimOperatorNumeric":
         case "getSimOperatorForSubscription": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return MCCMNC_TUPLE;
-        }
-
-        case "getPhoneCount":
-        case "getActiveModemCount":
-        case "getSupportedModemCount": {
-          Log.i(TAG, "Neutered " + method.getName());
-          return MODEM_COUNT;
-        }
-
-        case "isMultiSimEnabled": {
-          Log.i(TAG, "Neutered isMultiSimEnabled");
-          return false;
         }
 
         case "getAllCellInfo": {
           if (hasFineLocationPerm) {
-          Log.i(TAG, "Neutered getAllCellInfo");
-          return new ArrayList<>();
+            Log.i(TAG, "Neutered getAllCellInfo");
+            return new ArrayList<>();
           }
           return method.invoke(originalITelephony, args);
         }
 
         case "getCellLocation": {
           if (hasFineLocationPerm) {
-          Log.i(TAG, "Neutered getCellLocation");
-          return createEmptyCellIdentity();
+            Log.i(TAG, "Neutered getCellLocation");
+            return createEmptyCellIdentity();
           }
           return method.invoke(originalITelephony, args);
         }
 
         case "getServiceState":
         case "getServiceStateForSlot": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return new ServiceState();
         }
 
         case "getCarrierPrivilegeStatus": {
-          Class<?> tm = Class.forName("android.telephony.TelephonyManager");
-          Field carrierPrivilegeStatusNoAccessField = tm.getDeclaredField("CARRIER_PRIVILEGE_STATUS_NO_ACCESS");
-          carrierPrivilegeStatusNoAccessField.setAccessible(true);
-          int CARRIER_PRIVILEGE_STATUS_NO_ACCESS = (int) carrierPrivilegeStatusNoAccessField.get(null);
-
-          Log.i(TAG, "Neutered " + method.getName());
-          return CARRIER_PRIVILEGE_STATUS_NO_ACCESS;
+          Log.i(TAG, "Neutered getCarrierPrivilegeStatus");
+          return 0; // CARRIER_PRIVILEGE_STATUS_NO_ACCESS
         }
 
         case "getSimCarrierId":
         case "getSimSpecificCarrierId":
         case "getSubscriptionCarrierId":
         case "getSubscriptionSpecificCarrierId": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return CARRIER_ID;
         }
 
         case "getDeviceId":
         case "getDeviceIdWithFeature": {
-          Log.i(TAG, "Neutered " + method.getName());
+          Log.i(TAG, "Neutered " + methodName);
           return null;
         }
 
         case "getMmsUserAgent":
         case "getMmsUAProfUrl": {
+          Log.i(TAG, "Neutered " + methodName);
           return "";
-        }
-
-        case "hasIccCardUsingSlotIndex": {
-          int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
-          Log.i(TAG, "Neutered hasIccCardUsingSlotIndex slot=" + slotIndex);
-          return slotIndex == 0; // single SIM, slot 0 only
-        }
-        case "getDataNetworkTypeForSubscriber": {
-          Log.i(TAG, "Neutered getDataNetworkTypeForSubscriber");
-          return TelephonyManager.NETWORK_TYPE_LTE;
-        }
-        case "getSimStateForSlotIndex": {
-          int slotIndex = (args != null && args.length > 0) ? (int) args[0] : -1;
-          Log.i(TAG, "Neutered getSimStateForSlotIndex slot=" + slotIndex);
-          if (slotIndex == 0) {
-            return TelephonyManager.SIM_STATE_READY;
-          }
-          return TelephonyManager.SIM_STATE_UNKNOWN;
         }
 
         case "getCarrierIdFromMccMnc": {

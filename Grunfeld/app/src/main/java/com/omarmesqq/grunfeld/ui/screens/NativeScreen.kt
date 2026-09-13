@@ -37,11 +37,8 @@ fun NativeScreen() {
     var sensorReport by remember { mutableStateOf("Sensors not tested at native layer yet") }
     var unameReport by remember { mutableStateOf("Uname not fetched yet") }
 
-    var bindReport by remember { mutableStateOf("bind not tested yet") }
-    var listenReport by remember { mutableStateOf("listen not tested yet") }
-    var sendtoReport by remember { mutableStateOf("sendto not tested yet") }
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
-    var sendmsgReport by remember { mutableStateOf("sendmsg not tested yet") }
+
 
     var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
     var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
@@ -75,11 +72,11 @@ fun NativeScreen() {
         "/system/lib64",
         "/system/lib64/libzygisk.so",
 
-        "/product/bin",
+        "/product/bin/su",
+        "/debug_ramdisk/magisk",
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -177,9 +174,6 @@ fun NativeScreen() {
                                 "/proc/self/smaps",
                                 "/proc/$pid/smaps",
 
-                                "/proc/self/status",
-                                "/proc/$pid/status",
-
                                 "/proc/self/mounts",
                                 "/proc/$pid/mounts",
 
@@ -189,12 +183,14 @@ fun NativeScreen() {
                                 "/proc/self/mountinfo",
                                 "/proc/$pid/mountinfo",
 
-
                                 "/proc/mounts",
+
                                 "/proc/version",
                                 "/proc/sys/kernel/version",
                                 "/proc/sys/kernel/osrelease",
+
                                 "/proc/asound/version",
+
                                 "/etc/hosts",
                                 "/system/etc/hosts",
                             )
@@ -300,26 +296,26 @@ fun NativeScreen() {
                 Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                Button(
-                    onClick = {
-                        val installed = NativeLibWrapper.installSigsysHandler()
-                        if (!installed) {
-                            signalHandlerStatus = "Failed to install handler"
-                            return@Button
-                        }
+                    Button(
+                        onClick = {
+                            val installed = NativeLibWrapper.installSigsysHandler()
+                            if (!installed) {
+                                signalHandlerStatus = "Failed to install handler"
+                                return@Button
+                            }
 
-                        val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
-                        signalHandlerStatus = if (actionCaptured) {
-                            "Installed and captured!"
-                        } else {
-                            "Installed, but failed to capture trigger"
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("sigaction SIGSYS")
+                            val actionCaptured = NativeLibWrapper.triggerSigsysViolation()
+                            signalHandlerStatus = if (actionCaptured) {
+                                "Installed and captured!"
+                            } else {
+                                "Installed, but failed to capture trigger"
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("sigaction SIGSYS")
+                    }
                 }
-            }
 
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
@@ -435,47 +431,13 @@ fun NativeScreen() {
             }
 
             SectionHeader("NETWORKING")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("bind()")
-                    ReportTextWithCopy(bindReport, "bind not tested yet")
-                    Button(onClick = { bindReport = NativeLibWrapper.testBind() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("bind")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("listen()")
-                    ReportTextWithCopy(listenReport, "listen not tested yet")
-                    Button(onClick = { listenReport = NativeLibWrapper.testListen() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("listen")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("sendto()")
-                    ReportTextWithCopy(sendtoReport, "sendto not tested yet")
-                    Button(onClick = { sendtoReport = NativeLibWrapper.testSendto() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("sendto LAN")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("getsockname()")
-                    ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
-                    Button(onClick = { getsocknameReport = NativeLibWrapper.testGetsockname() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("getsockname")
-                    }
-                }
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("sendmsg()")
-                    ReportTextWithCopy(sendmsgReport, "sendmsg not tested yet")
-                    Button(onClick = { sendmsgReport = NativeLibWrapper.testSendmsg() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("sendmsg LAN")
-                    }
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CodeTitle("getsockname()")
+                ReportTextWithCopy(getsocknameReport, "getsockname not tested yet")
+                Button(onClick = { getsocknameReport = NativeLibWrapper.testGetsockname() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("getsockname")
                 }
             }
-
         }
     }
 }
