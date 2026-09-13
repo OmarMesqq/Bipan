@@ -368,26 +368,13 @@ public class NetworkSpoofingHook implements BaseHook {
 
   private void spoofWifiInfo(WifiInfo info) {
     try {
-      // Check if WiFi is actually connected
-      Field networkIdField = info.getClass().getDeclaredField("mNetworkId");
-      networkIdField.setAccessible(true);
-      int networkId = (int) networkIdField.get(info);
-
-      // No permission, not connected or we are on mobile
-      if (networkId == -1) {
-        InetAddress zeroIp = InetAddress.getByAddress(new byte[] { 0, 0, 0, 0 });
-        setField(info, "mIpAddress", zeroIp);
-        setField(info, "mBSSID", null);
+      if (hasFineLocationPerm) {
+        setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
         spoofSsid(info);
-        return;
       }
 
       InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
-
       setField(info, "mIpAddress", fakeIp);
-      setField(info, "mBSSID", DEFAULT_MAC_ADDRESS);
-      setField(info, "mNetworkId", 4);
-      spoofSsid(info);
     } catch (UndeclaredThrowableException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
       Log.e(TAG, "spoofWifiInfo UndeclaredThrowableException: cause:", cause);
