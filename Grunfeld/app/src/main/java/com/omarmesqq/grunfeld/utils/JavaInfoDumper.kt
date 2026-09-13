@@ -209,6 +209,7 @@ fun dumpDevProperties(): String {
     return sb.toString()
 }
 
+
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Suppress("DEPRECATION")
 fun dumpTelephonyInfo(context: Context): String {
@@ -233,6 +234,7 @@ fun dumpTelephonyInfo(context: Context): String {
     sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
     sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
 
+    @SuppressLint("MissingPermission")
     if (hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
         sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
         sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
@@ -240,8 +242,8 @@ fun dumpTelephonyInfo(context: Context): String {
         sb.appendLine("\nPhone permission not granted: won't check isMultiSimSupported and visualVoicemailPackageName")
     }
 
-    val hasFineLocation = hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-    if (hasFineLocation) {
+    @SuppressLint("MissingPermission")
+    if (hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)) {
         sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
         sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
     } else {

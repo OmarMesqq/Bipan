@@ -27,6 +27,8 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private Object originalITelephony;
   private TelephonyManager realTm;
 
+  private static boolean hasFineLocationPerm = false;
+
   private static final String CARRIER_NAME = "Vivo";
   private static final int CARRIER_ID = 530;
   private static final String MCCMNC_TUPLE = "72406";
@@ -76,6 +78,8 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
     if (realPhoneBinder == null) {
       throw new Exception(TAG + "Could not get 'phone' service binder");
     }
+
+    hasFineLocationPerm = J.hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION);
 
     Class<?> iTelephonyStub = Class.forName("com.android.internal.telephony.ITelephony$Stub");
     Method asInterface = iTelephonyStub.getDeclaredMethod("asInterface", IBinder.class);
@@ -159,13 +163,19 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         }
 
         case "getAllCellInfo": {
+          if (hasFineLocationPerm) {
           Log.i(TAG, "Neutered getAllCellInfo");
           return new ArrayList<>();
+          }
+          return method.invoke(originalITelephony, args);
         }
 
         case "getCellLocation": {
+          if (hasFineLocationPerm) {
           Log.i(TAG, "Neutered getCellLocation");
           return createEmptyCellIdentity();
+          }
+          return method.invoke(originalITelephony, args);
         }
 
         case "getServiceState":

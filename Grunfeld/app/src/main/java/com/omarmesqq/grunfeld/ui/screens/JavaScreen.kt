@@ -191,7 +191,6 @@ fun JavaInfoScreen() {
     }
 }
 
-@Suppress("DEPRECATION")
 @Composable
 private fun BuildAssertions() {
     AssertionResult("BOARD", Build.BOARD, "husky")
@@ -199,11 +198,7 @@ private fun BuildAssertions() {
     AssertionResult("BRAND", Build.BRAND, "google")
     AssertionResult("DEVICE", Build.DEVICE, "husky")
     AssertionResult("DISPLAY", Build.DISPLAY, "BP4A.251205.006")
-    AssertionResult(
-        "FINGERPRINT",
-        Build.FINGERPRINT,
-        "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
-    )
+    AssertionResult("FINGERPRINT",Build.FINGERPRINT,"google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys")
     AssertionResult("HARDWARE", Build.HARDWARE, "zuma")
     AssertionResult("HOST", Build.HOST, "abfarm-20038")
     AssertionResult("ID", Build.ID, "BP4A.251205.006")
@@ -212,7 +207,9 @@ private fun BuildAssertions() {
     AssertionResult("PRODUCT", Build.PRODUCT, "husky")
     AssertionResult("SOC_MANUFACTURER", Build.SOC_MANUFACTURER, "Google")
     AssertionResult("SOC_MODEL", Build.SOC_MODEL, "Tensor G3")
+    @Suppress("DEPRECATION")
     AssertionResult("CPU_ABI", Build.CPU_ABI, "arm64-v8a")
+    @Suppress("DEPRECATION")
     AssertionResult("CPU_ABI2", Build.CPU_ABI2, "")
     AssertionResult("TYPE", Build.TYPE, "user")
     AssertionResult("TIME", Build.TIME, "1764954000000")
@@ -226,11 +223,7 @@ private fun BuildAssertions() {
     AssertionResultEmpty("SUPPORTED_32_BIT_ABIS", abis32.toList())
 
     val abis64 = Build.SUPPORTED_64_BIT_ABIS
-    AssertionResultSingleSpecificValueInIterable(
-        "SUPPORTED_64_BIT_ABIS",
-        abis64.toList(),
-        "arm64-v8a"
-    )
+    AssertionResultSingleSpecificValueInIterable("SUPPORTED_64_BIT_ABIS",abis64.toList(),"arm64-v8a")
 
     val abis = Build.SUPPORTED_ABIS
     AssertionResultSingleSpecificValueInIterable("SUPPORTED_ABIS", abis.toList(), "arm64-v8a")
@@ -240,6 +233,13 @@ private fun BuildAssertions() {
     AssertionResult("ODM_SKU", Build.ODM_SKU, Build.UNKNOWN)
     AssertionResult("SKU", Build.SKU, Build.UNKNOWN)
     AssertionResult("CODENAME", Build.VERSION.CODENAME, "REL")
+
+    Build.getFingerprintedPartitions().forEachIndexed { idx, partition ->
+        Text(
+            text = "Partition $idx: ${partition.name}",
+            color = Color.Magenta
+        )
+    }
 }
 
 @Composable
@@ -295,28 +295,20 @@ private fun NetworkIfacesAssertions() {
                 .forEach { iface ->
                     AssertionResultNotContains("Interface name", iface.name, "tun")
 
-                    if (iface.name.contains("wlan")) {
+                    if (iface.name.contains("wlan") || iface.name.contains("rmnet")) {
                         iface.interfaceAddresses.forEach { addr ->
                             AssertionResult("MTU", iface.mtu, "1500")
 
-                            val localIp = addr.address.hostAddress ?: ""
+                            val localIp = addr.address.hostAddress ?: "NO_LOCAL_IP_THATS_ODD"
                             val prefix = addr.networkPrefixLength
-                            val broadcast = addr.broadcast?.hostAddress ?: ""
+                            val broadcast = addr.broadcast?.hostAddress
 
                             AssertionResult("Local IP", localIp, "10.111.222.1")
                             AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "24")
-                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
-                        }
-                    } else if (iface.name.contains("rmnet")) {
-                        iface.interfaceAddresses.forEach { addr ->
-                            AssertionResult("MTU", iface.mtu, "1500")
-                            val localIp = addr.address.hostAddress ?: ""
-                            val prefix = addr.networkPrefixLength
-                            val broadcast = addr.broadcast?.hostAddress ?: ""
-                            AssertionResult("Local IP", localIp, "10.111.222.1")
-                            AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "")
-                            AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
 
+                            if (broadcast != null) {
+                                AssertionResult("IPv4 broadcast", broadcast, "10.111.222.255")
+                            }
                         }
                     }
 
@@ -418,15 +410,8 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
         return
     }
 
-    if (currentInterface.startsWith("wlan")) {
-        AssertionResult(
-            "IPv4 address",
-            Formatter.formatIpAddress(wifiInfo.ipAddress),
-            "10.111.222.1"
-        )
-    } else {
-        AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
-    }
+    // val isConnectedToWifi = caps.hasTransport(TRANSPORT_WIFI)
+    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
 
     if (wifiInfo.bssid != null) {
         AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
@@ -443,7 +428,6 @@ private fun AppInstallerAssertions(ctx: Context) {
     val originator = info.originatingPackageName
     val initiator = info.initiatingPackageName
     val installer = info.installingPackageName
-    val updateOwner = info.updateOwnerPackageName
 
     AssertionResultNull("Originator (\"source\" of installation)", originator)
     AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
@@ -452,11 +436,15 @@ private fun AppInstallerAssertions(ctx: Context) {
         installer ?: "",
         "com.android.vending"
     )
-    AssertionResult(
-        "Update owner (pkg that will keep app up-to-date)",
-        updateOwner ?: "",
-        "com.android.vending"
-    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        val updateOwner = info.updateOwnerPackageName
+        AssertionResult(
+            "Update owner (pkg that will keep app up-to-date)",
+            updateOwner ?: "",
+            "com.android.vending"
+        )
+    }
 
     @Suppress("DEPRECATION")
     val legacyInstaller = pm.getInstallerPackageName(packageName)
