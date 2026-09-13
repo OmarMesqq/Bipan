@@ -1,6 +1,7 @@
 package com.omarmesqq.grunfeld.ui.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -11,7 +12,6 @@ import android.os.Build
 import android.provider.Settings.Global
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,24 +36,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotContains
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotEqualStrings
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.dumpDevProperties
-import com.omarmesqq.grunfeld.utils.dumpDeviceIds
-import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
-import com.omarmesqq.grunfeld.utils.dumpSensorInfo
-import com.omarmesqq.grunfeld.utils.dumpWifiManagerInfo
-import com.omarmesqq.grunfeld.utils.hasPermission
+import com.omarmesqq.grunfeld.utils.getGsfId
+import com.omarmesqq.grunfeld.utils.getMediaDrmId
+import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
+import com.omarmesqq.grunfeld.utils.getSensorsInfo
+import com.omarmesqq.grunfeld.utils.getSsaid
+import com.omarmesqq.grunfeld.utils.getWifiManagerInfo
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.scottyab.rootbeer.RootBeer
+import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
@@ -62,7 +67,6 @@ import java.net.NetworkInterface
 private const val FAKE_IP = "10.111.222.1"
 private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 
-@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
 fun JavaInfoScreen() {
     val context = LocalContext.current
@@ -70,7 +74,6 @@ fun JavaInfoScreen() {
     val cr = context.contentResolver
 
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
-    var deviceIds by remember { mutableStateOf("Device IDs not queried") }
 
     Column(
         modifier = Modifier
@@ -154,24 +157,7 @@ fun JavaInfoScreen() {
         }
 
         SectionHeader("DEVICE IDENTIFIERS")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-
-            Button(
-                onClick = {
-                    deviceIds = dumpDeviceIds(context, cr)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get some device unique IDs")
-            }
-            Text(
-                text = deviceIds,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        DeviceIdAssertions(context, cr)
     }
 }
 
@@ -264,14 +250,14 @@ private fun RuntimeAssertions() {
 
 @Composable
 private fun SensorsAssertions(ctx: Context) {
-    AssertionResult("Sensors", dumpSensorInfo(ctx), "")
+    AssertionResult("Sensors", getSensorsInfo(ctx), "")
 }
 
 @Composable
 private fun NetworkIfacesAssertions() {
     var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
     LaunchedEffect(Unit) {
-        ifaceList = dumpNetworkInterfaces()
+        ifaceList = getNetworkInterfaces()
     }
 
     when (val interfaceList = ifaceList) {
@@ -389,7 +375,7 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     HorizontalDivider()
 
     val wifiInfo = try {
-        dumpWifiManagerInfo(ctx)
+        getWifiManagerInfo(ctx)
     } catch (e: Exception) {
         Text(
             text = "dumpWifiManagerInfo failed: ${e.message}",
@@ -495,11 +481,11 @@ private fun LogcatAssertions() {
     AssertionResult("Exit code of logcat (ProcessBuilder)", exitCode, "0")
 }
 
-
 @Composable
 private fun TelephonyAssertions(ctx: Context) {
     val tm  = ctx.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
+    @SuppressLint("MissingPermission")
     if (hasPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)) {
         AssertionResultEmpty("[MODERN] allCellInfo", tm.allCellInfo)
         @Suppress("DEPRECATION")
@@ -544,8 +530,66 @@ private fun RootCheckAssertions(ctx: Context) {
     }
 }
 
-
 @Composable
-private fun DeviceIdAssertions() {
+private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
+    val context = LocalContext.current
+    val app = ctx.applicationContext as MainApplication
 
+    var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
+    }
+
+    when (isFirstAppLaunch) {
+        null -> {
+            Text("Loading...")
+        }
+        true -> {
+            Text(
+                text = "First app launch: collected device IDs to check in next launch",
+                color = Color.Yellow
+            )
+            LaunchedEffect(Unit) {
+                val ssaid = getSsaid(cr)
+                val gsfId = getGsfId(context)
+                val drmId = getMediaDrmId()
+
+                app.configRepository.updateDeviceIds(ssaid, gsfId, drmId)
+                app.configRepository.toggleFirstLaunch()
+            }
+        }
+        else -> {
+            var fetchedFromPrefs by remember { mutableStateOf(false) }
+            var ssaidFromPref by remember { mutableStateOf<String?>(null) }
+            var gsfIdFromPref by remember { mutableStateOf<String?>(null) }
+            var drmIdFromPref by remember { mutableStateOf<String?>(null) }
+
+            LaunchedEffect(Unit) {
+                ssaidFromPref = app.configRepository.ssaidFlow.first()
+                gsfIdFromPref = app.configRepository.gsfIdFlow.first()
+                drmIdFromPref = app.configRepository.drmIdFlow.first()
+                fetchedFromPrefs = true
+            }
+
+            val currentSsaid = getSsaid(cr)
+            val currentGsfId = getGsfId(context)
+            val currentDrmId = getMediaDrmId()
+
+            if (!fetchedFromPrefs) {
+                Text("Fetching data from SharedPrefs...")
+            } else {
+                AssertionResultNotEqualStrings("SSAID", currentSsaid, ssaidFromPref!!)
+                AssertionResultNotEqualStrings("GSF ID", currentGsfId, gsfIdFromPref!!)
+                AssertionResultNotEqualStrings("DRM ID", currentDrmId, drmIdFromPref!!)
+            }
+        }
+    }
+}
+
+private fun hasPermission(context: Context, permission: String): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        permission
+    ) == PackageManager.PERMISSION_GRANTED
 }

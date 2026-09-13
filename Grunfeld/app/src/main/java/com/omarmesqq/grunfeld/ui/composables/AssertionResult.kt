@@ -29,6 +29,29 @@ fun AssertionResult(testTitle: String, actual: String, expected: String) {
 }
 
 @Composable
+fun AssertionResultNotEqualStrings(testTitle: String, actual: String, expected: String) {
+    val passed = !(TestRunner.ensureEqualStrings(actual, expected))
+    val prettyExpected = if (expected == "") {
+        "(empty)"
+    } else {
+        expected
+    }
+
+    Text(
+        text = if (passed) {
+            "$testTitle: $actual != $prettyExpected"
+        } else  {
+            "$testTitle test FAIL: \"$actual\" == \"$prettyExpected\""
+        },
+        color = if (passed) {
+            Color.Green
+        } else {
+            Color.Red
+        }
+    )
+}
+
+@Composable
 fun AssertionResult(testTitle: String, actual: Long, expected: String) {
     val passed = TestRunner.ensureEqualStrings(actual.toString(), expected)
 
