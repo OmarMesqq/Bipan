@@ -59,7 +59,7 @@ class MainApplication: Application() {
                 }
 
                 override fun onError(error: WebViewStartupException) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error, shouldToast = true)
+                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error)
                 }
             }
         )
@@ -69,7 +69,7 @@ class MainApplication: Application() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onConfigurationChanged", shouldToast = true)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onConfigurationChanged")
     }
 
     override fun onTrimMemory(level: Int) {
@@ -83,7 +83,7 @@ class MainApplication: Application() {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
         }
         else {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory unknown level: $level", shouldToast = true)
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory unknown level: $level")
         }
     }
 
@@ -92,7 +92,7 @@ class MainApplication: Application() {
      */
     override fun onLowMemory() {
         super.onLowMemory()
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onLowMemory", shouldToast = true)
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onLowMemory")
     }
 
     private fun setupStrictMode() {
