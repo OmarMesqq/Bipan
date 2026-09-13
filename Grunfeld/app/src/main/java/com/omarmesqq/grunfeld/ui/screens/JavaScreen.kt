@@ -1,5 +1,6 @@
 package com.omarmesqq.grunfeld.ui.screens
 
+import android.Manifest
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -8,6 +9,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings.Global
+import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,14 +49,11 @@ import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.dumpDeviceIds
 import com.omarmesqq.grunfeld.utils.dumpNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.dumpSensorInfo
-import com.omarmesqq.grunfeld.utils.dumpTelephonyInfo
 import com.omarmesqq.grunfeld.utils.dumpWifiManagerInfo
+import com.omarmesqq.grunfeld.utils.hasPermission
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.scottyab.rootbeer.RootBeer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
@@ -69,12 +67,10 @@ private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 fun JavaInfoScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
-    val composableScope = rememberCoroutineScope()
     val cr = context.contentResolver
 
     var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
     var deviceIds by remember { mutableStateOf("Device IDs not queried") }
-    var telephonyInfo by remember { mutableStateOf("Telephony info not queried") }
 
     Column(
         modifier = Modifier
@@ -134,31 +130,14 @@ fun JavaInfoScreen() {
             InstalledPackagesAssertions(context)
         }
 
-        SectionHeader("SELF-ANALYSIS")
+        SectionHeader("SELF-ANALYSIS TESTS")
         LogcatAssertions()
+
+        SectionHeader("TELEPHONY TESTS")
+        TelephonyAssertions(context)
 
         SectionHeader("ROOTBER ROOT CHECK")
         RootCheckAssertions(context)
-
-        SectionHeader("TELEPHONY")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    composableScope.launch {
-                        telephonyInfo = withContext(Dispatchers.IO) {
-                            dumpTelephonyInfo(context)
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Get Telephony info")
-            }
-            ReportTextWithCopy(telephonyInfo, "", MaterialTheme.typography.bodyMedium)
-        }
 
         SectionHeader("SYSTEM PROPERTIES")
         Column(
@@ -514,6 +493,34 @@ private fun LogcatAssertions() {
     val process = processBuilder.start()
     val exitCode = process.waitFor()
     AssertionResult("Exit code of logcat (ProcessBuilder)", exitCode, "0")
+}
+
+
+@Composable
+private fun TelephonyAssertions(ctx: Context) {
+    val tm  = ctx.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+
+    if (hasPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)) {
+        AssertionResultEmpty("[MODERN] allCellInfo", tm.allCellInfo)
+        @Suppress("DEPRECATION")
+        AssertionResultNull("[LEGACY] cellLocation", tm.cellLocation)
+    }
+
+    AssertionResult("Has carrier privileges?", tm.hasCarrierPrivileges(), false)
+
+    AssertionResult("SIM operator", tm.simOperator, "72406")
+    AssertionResult("Network operator", tm.networkOperator, "72406")
+
+    AssertionResult("Network operator name", tm.networkOperatorName, "Vivo")
+    AssertionResult("SIM operator name", tm.simOperatorName, "Vivo")
+    AssertionResult("SIM carrier ID name", tm.simCarrierIdName.toString(), "Vivo")
+
+    AssertionResult("Network country ISO code", tm.networkCountryIso, "br")
+    AssertionResult("SIM country ISO code", tm.simCountryIso, "br")
+
+    AssertionResult("SIM carrier ID", tm.simCarrierId, "530")
+    AssertionResult("Carrier ID from SIM MCC/MNC", tm.carrierIdFromSimMccMnc, "530")
+    AssertionResult("SIM specific carrier ID", tm.simSpecificCarrierId, "530")
 }
 
 @Composable

@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld.utils
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
@@ -10,10 +9,7 @@ import android.hardware.SensorManager
 import android.media.MediaDrm
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
-import android.os.Build
 import android.provider.Settings
-import android.telephony.TelephonyManager
-import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -205,50 +201,6 @@ fun dumpDevProperties(): String {
         row("ro.boot.em.did",         prop("ro.boot.em.did"))
     }
 
-
-    return sb.toString()
-}
-
-
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-@Suppress("DEPRECATION")
-fun dumpTelephonyInfo(context: Context): String {
-    val telephonyManager  = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-
-    val sb = StringBuilder()
-
-    sb.appendLine("subscriptionId: ${telephonyManager.subscriptionId}")
-    sb.appendLine("[LEGACY] phoneCount: ${telephonyManager.phoneCount}")
-    sb.appendLine("[MODERN] activeModemCount: ${telephonyManager.activeModemCount}")
-    sb.appendLine("supportedModemCount: ${telephonyManager.supportedModemCount}")
-
-    sb.appendLine("carrierIdFromSimMccMnc: ${telephonyManager.carrierIdFromSimMccMnc}")
-    sb.appendLine("networkOperator: ${telephonyManager.networkOperator}")
-    sb.appendLine("networkOperatorName: ${telephonyManager.networkOperatorName}")
-    sb.appendLine("simOperator: ${telephonyManager.simOperator}")
-    sb.appendLine("simOperatorName: ${telephonyManager.simOperatorName}")
-    sb.appendLine("networkCountryIso: ${telephonyManager.networkCountryIso}")
-    sb.appendLine("simCountryIso: ${telephonyManager.simCountryIso}")
-    sb.appendLine("simCarrierId: ${telephonyManager.simCarrierId}")
-    sb.appendLine("simCarrierIdName: ${telephonyManager.simCarrierIdName}")
-    sb.appendLine("simSpecificCarrierId: ${telephonyManager.simSpecificCarrierId}")
-    sb.appendLine("hasCarrierPrivileges: ${telephonyManager.hasCarrierPrivileges()}")
-
-    @SuppressLint("MissingPermission")
-    if (hasPermission(context, Manifest.permission.READ_PHONE_STATE)) {
-        sb.appendLine("isMultiSimSupported: ${telephonyManager.isMultiSimSupported}")
-        sb.appendLine("visualVoicemailPackageName: ${telephonyManager.visualVoicemailPackageName}")
-    } else {
-        sb.appendLine("\nPhone permission not granted: won't check isMultiSimSupported and visualVoicemailPackageName")
-    }
-
-    @SuppressLint("MissingPermission")
-    if (hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)) {
-        sb.appendLine("[LEGACY] allCellInfo: ${telephonyManager.allCellInfo}")
-        sb.appendLine("[MODERN] cellLocation: ${telephonyManager.cellLocation}")
-    } else {
-        sb.appendLine("\nPrecise location permission not granted: won't check allCellInfo and cellLocation")
-    }
 
     return sb.toString()
 }
