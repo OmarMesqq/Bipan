@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
@@ -58,6 +59,10 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
+
+
+private const val FAKE_IP = "10.111.222.1"
+private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @Composable
@@ -207,10 +212,12 @@ private fun BuildAssertions() {
     AssertionResult("PRODUCT", Build.PRODUCT, "husky")
     AssertionResult("SOC_MANUFACTURER", Build.SOC_MANUFACTURER, "Google")
     AssertionResult("SOC_MODEL", Build.SOC_MODEL, "Tensor G3")
+
     @Suppress("DEPRECATION")
     AssertionResult("CPU_ABI", Build.CPU_ABI, "arm64-v8a")
     @Suppress("DEPRECATION")
     AssertionResult("CPU_ABI2", Build.CPU_ABI2, "")
+
     AssertionResult("TYPE", Build.TYPE, "user")
     AssertionResult("TIME", Build.TIME, "1764954000000")
     AssertionResult("USER", Build.USER, "android-build")
@@ -239,6 +246,8 @@ private fun BuildAssertions() {
             text = "Partition $idx: ${partition.name}",
             color = Color.Magenta
         )
+        AssertionResult("PARTITION FINGERPRINT", partition.fingerprint, "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys")
+        AssertionResult("PARTITION BUILD TIME", partition.buildTimeMillis, "1764954000000")
     }
 }
 
@@ -303,7 +312,7 @@ private fun NetworkIfacesAssertions() {
                             val prefix = addr.networkPrefixLength
                             val broadcast = addr.broadcast?.hostAddress
 
-                            AssertionResult("Local IP", localIp, "10.111.222.1")
+                            AssertionResult("Local IP", localIp, FAKE_IP)
                             AssertionResult("Prefix length (subnet mask)", prefix.toInt(), "24")
 
                             if (broadcast != null) {
@@ -328,7 +337,7 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val activeNetworkInfo = cm.activeNetworkInfo
 
-    AssertionResultNotContains("Active network VPN?", activeNetworkInfo?.typeName ?: "BOGUS", "VPN")
+    AssertionResultNotContains("Is active network VPN?", activeNetworkInfo?.typeName ?: "NO_TYPE_NAME_THATS_ODD", "VPN")
     AssertionResult("All networks size", cm.allNetworks.size, "0")
     AssertionResultEmpty("All networks content", cm.allNetworks.toList())
 
@@ -374,7 +383,7 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
 
     val expectedRoutes = listOf(
         "10.111.222.0/24 -> 0.0.0.0 $currentInterface mtu 0",
-        "0.0.0.0/0 -> 10.111.222.1 $currentInterface mtu 0",
+        "0.0.0.0/0 -> $FAKE_IP $currentInterface mtu 0",
     )
     val actualRoutes = linkProperties.routes
     AssertionResult("Networking routes", actualRoutes.toString(), expectedRoutes.toString())
@@ -385,7 +394,7 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
 
     AssertionResultNull("DHCP Server", linkProperties.dhcpServerAddress)
 
-    AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, "10.111.222.1")
+    AssertionResultSingleSpecificValueInIterable("IP address", linkAddrs, FAKE_IP)
     AssertionResult("MTU", linkProperties.mtu, "1500")
     AssertionResult("Private DNS active?", linkProperties.isPrivateDnsActive, false)
     if (linkProperties.privateDnsServerName != null) {
@@ -410,13 +419,12 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
         return
     }
 
-    // val isConnectedToWifi = caps.hasTransport(TRANSPORT_WIFI)
-    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "10.111.222.1")
+    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
 
     if (wifiInfo.bssid != null) {
         AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
     }
-    AssertionResult("SSID", wifiInfo.ssid, "<unknown ssid>")
+    AssertionResultContains("SSID", wifiInfo.ssid, "<unknown ssid>")
 }
 
 @Composable
@@ -426,23 +434,23 @@ private fun AppInstallerAssertions(ctx: Context) {
     val info = pm.getInstallSourceInfo(packageName)
 
     val originator = info.originatingPackageName
-    val initiator = info.initiatingPackageName
-    val installer = info.installingPackageName
+    val initiator = info.initiatingPackageName ?: "NO_INITIATOR_THATS_ODD"
+    val installer = info.installingPackageName ?: "NO_INSTALLER_THATS_ODD"
 
     AssertionResultNull("Originator (\"source\" of installation)", originator)
-    AssertionResult("Initiator (called the installation)", initiator ?: "", "com.android.vending")
+    AssertionResult("Initiator (called the installation)", initiator, PLAY_STORE_PKG_NAME)
     AssertionResult(
         "Installer (did the actual installation)",
-        installer ?: "",
-        "com.android.vending"
+        installer,
+        PLAY_STORE_PKG_NAME
     )
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         val updateOwner = info.updateOwnerPackageName
         AssertionResult(
             "Update owner (pkg that will keep app up-to-date)",
-            updateOwner ?: "",
-            "com.android.vending"
+            updateOwner ?: "NO_UPDATE_OWNER_THATS_ODD",
+            PLAY_STORE_PKG_NAME
         )
     }
 
@@ -452,7 +460,7 @@ private fun AppInstallerAssertions(ctx: Context) {
     AssertionResult(
         "Installer package name (Legacy API)",
         legacyInstaller ?: "",
-        "com.android.vending"
+        PLAY_STORE_PKG_NAME
     )
 }
 
@@ -474,7 +482,6 @@ private fun InstalledApplicationsAssertions(ctx: Context) {
 
     val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
     AssertionResultEmpty("Installed applications", installedApps)
-
 }
 
 @Composable
@@ -493,9 +500,8 @@ private fun InstalledPackagesAssertions(ctx: Context) {
 
 @Composable
 private fun LogcatAssertions() {
-
-    val execd = Runtime.getRuntime().exec("logcat -d")
-    val bufferedReader = BufferedReader(InputStreamReader(execd.inputStream))
+    val logcatExecd = Runtime.getRuntime().exec("logcat -d")
+    val bufferedReader = BufferedReader(InputStreamReader(logcatExecd.inputStream))
     var i = 1
     repeat(5) {
         AssertionResultNull("Logcat (Runtime) line $i", bufferedReader.readLine())
@@ -530,4 +536,3 @@ private fun RootCheckAssertions(ctx: Context) {
         }
     }
 }
-

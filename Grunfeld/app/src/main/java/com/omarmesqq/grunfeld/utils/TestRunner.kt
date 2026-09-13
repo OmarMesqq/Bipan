@@ -1,11 +1,11 @@
 package com.omarmesqq.grunfeld.utils
 
 object TestRunner {
-    fun ensureEquals(actual: String, expected: String): Boolean {
+    fun ensureEqualStrings(actual: String, expected: String): Boolean {
         return actual == expected
     }
 
-    fun ensureEquals(actual: Set<String>, expected: Set<String>): Boolean {
+    fun ensureEqualSets(actual: Set<String>, expected: Set<String>): Boolean {
         return actual == expected
     }
 
@@ -13,7 +13,7 @@ object TestRunner {
         return actual == expected
     }
 
-    fun ensureNotContains(actual: String, expected: String): Boolean {
+    fun ensureContains(actual: String, expected: String): Boolean {
         return actual.contains(expected)
     }
 

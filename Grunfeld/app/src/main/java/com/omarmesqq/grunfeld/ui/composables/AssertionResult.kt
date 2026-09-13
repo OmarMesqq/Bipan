@@ -7,7 +7,7 @@ import com.omarmesqq.grunfeld.utils.TestRunner
 
 @Composable
 fun AssertionResult(testTitle: String, actual: String, expected: String) {
-    val passed = TestRunner.ensureEquals(actual, expected)
+    val passed = TestRunner.ensureEqualStrings(actual, expected)
     val prettyExpected = if (expected == "") {
         "(empty)"
     } else {
@@ -30,7 +30,7 @@ fun AssertionResult(testTitle: String, actual: String, expected: String) {
 
 @Composable
 fun AssertionResult(testTitle: String, actual: Long, expected: String) {
-    val passed = TestRunner.ensureEquals(actual.toString(), expected)
+    val passed = TestRunner.ensureEqualStrings(actual.toString(), expected)
 
     Text(
         text = if (passed) {
@@ -48,7 +48,7 @@ fun AssertionResult(testTitle: String, actual: Long, expected: String) {
 
 @Composable
 fun AssertionResult(testTitle: String, actual: Int, expected: String) {
-    val passed = TestRunner.ensureEquals(actual.toString(), expected)
+    val passed = TestRunner.ensureEqualStrings(actual.toString(), expected)
 
     Text(
         text = if (passed) {
@@ -84,13 +84,31 @@ fun AssertionResult(testTitle: String, actual: Boolean, expected: Boolean) {
 
 @Composable
 fun AssertionResultNotContains(testTitle: String, actual: String, expected: String) {
-    val passed = !(TestRunner.ensureNotContains(actual, expected))
+    val passed = !(TestRunner.ensureContains(actual, expected))
 
     Text(
         text = if (passed) {
             "$testTitle: $actual does not contain  \"$expected\""
         } else  {
-            "$testTitle test FAIL: \"$actual\" == \"$expected\""
+            "$testTitle test FAIL: \"$actual\" contains \"$expected\""
+        },
+        color = if (passed) {
+            Color.Green
+        } else {
+            Color.Red
+        }
+    )
+}
+
+@Composable
+fun AssertionResultContains(testTitle: String, actual: String, expected: String) {
+    val passed = TestRunner.ensureContains(actual, expected)
+
+    Text(
+        text = if (passed) {
+            "$testTitle: $actual contains \"$expected\""
+        } else  {
+            "$testTitle test FAIL: \"$actual\" does NOT contain \"$expected\""
         },
         color = if (passed) {
             Color.Green
@@ -139,7 +157,7 @@ fun <T> AssertionResultEmpty(testTitle: String, actual: Iterable<T>) {
 @Composable
 fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, actual: Iterable<T>, expected: String) {
     val isSingleElement = TestRunner.ensureSingle(actual)
-    val isEqual = TestRunner.ensureEquals(actual.first() as String, expected)
+    val isEqual = TestRunner.ensureEqualStrings(actual.first() as String, expected)
     val passed = isSingleElement and isEqual
 
     Text(
@@ -160,7 +178,7 @@ fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, actual: 
 fun <T> AssertionResultSomeValuesInIterable(testTitle: String, actual: Iterable<T>, expected: List<String>) {
     val actualSet = actual.toSet() as Set<String>
     val expectedSet = expected.toSet()
-    val passed = TestRunner.ensureEquals(actualSet, expectedSet)
+    val passed = TestRunner.ensureEqualSets(actualSet, expectedSet)
 
     Text(
         text = if (passed) {
