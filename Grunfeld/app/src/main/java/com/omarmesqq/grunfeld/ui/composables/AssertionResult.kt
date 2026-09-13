@@ -119,8 +119,8 @@ fun AssertionResultNull(testTitle: String, actual: Any?) {
 }
 
 @Composable
-fun <T> AssertionResultEmpty(testTitle: String, list: Iterable<T>) {
-    val passed = TestRunner.ensureEmpty(list)
+fun <T> AssertionResultEmpty(testTitle: String, actual: Iterable<T>) {
+    val passed = TestRunner.ensureEmpty(actual)
 
     Text(
         text = if (passed) {
@@ -137,9 +137,9 @@ fun <T> AssertionResultEmpty(testTitle: String, list: Iterable<T>) {
 }
 
 @Composable
-fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, list: Iterable<T>, expected: String) {
-    val isSingleElement = TestRunner.ensureSingle(list)
-    val isEqual = TestRunner.ensureEquals(list.first() as String, expected)
+fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, actual: Iterable<T>, expected: String) {
+    val isSingleElement = TestRunner.ensureSingle(actual)
+    val isEqual = TestRunner.ensureEquals(actual.first() as String, expected)
     val passed = isSingleElement and isEqual
 
     Text(
@@ -157,8 +157,8 @@ fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, list: It
 }
 
 @Composable
-fun <T> AssertionResultSomeValuesInIterable(testTitle: String, list: Iterable<T>, expected: List<String>) {
-    val actualSet = list.toSet() as Set<String>
+fun <T> AssertionResultSomeValuesInIterable(testTitle: String, actual: Iterable<T>, expected: List<String>) {
+    val actualSet = actual.toSet() as Set<String>
     val expectedSet = expected.toSet()
     val passed = TestRunner.ensureEquals(actualSet, expectedSet)
 

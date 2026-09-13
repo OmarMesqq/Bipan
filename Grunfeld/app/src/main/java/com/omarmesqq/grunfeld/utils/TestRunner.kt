@@ -2,9 +2,6 @@ package com.omarmesqq.grunfeld.utils
 
 object TestRunner {
     fun ensureEquals(actual: String, expected: String): Boolean {
-//        if (actual.count { it == ',' } == 1) {
-//            return expected.replace(",", "") == expected
-//        }
         return actual == expected
     }
 
@@ -24,11 +21,11 @@ object TestRunner {
         return actual == null
     }
 
-    fun <T> ensureEmpty(list: Iterable<T>): Boolean {
-        return list.count() == 0
+    fun <T> ensureEmpty(actual: Iterable<T>): Boolean {
+        return actual.count() == 0
     }
 
-    fun <T> ensureSingle(list: Iterable<T>): Boolean {
-        return list.count() == 1
+    fun <T> ensureSingle(actual: Iterable<T>): Boolean {
+        return actual.count() == 1
     }
 }
