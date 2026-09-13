@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -17,35 +18,55 @@ private const val UNIQUE_DEVICE_ID_DEFAULT = ""
 
 
 class GrunfeldConfigs(private val context: Context) {
+    private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
     private val flagSecureEnabledPref = booleanPreferencesKey("IS_FLAG_SECURE_ENABLED")
-    private val deviceId_SSAID_PREF = booleanPreferencesKey("DEVICE_SSAID")
-    private val deviceId_GSF_ID_PREF = booleanPreferencesKey("DEVICE_GSF_ID")
-    private val deviceId_DRM_ID_PREF = booleanPreferencesKey("DEVICE_DRM_ID")
+    private val deviceidSsaidPref = stringPreferencesKey("DEVICE_SSAID")
+    private val deviceidGsfIdPref = stringPreferencesKey("DEVICE_GSF_ID")
+    private val deviceidDrmIdPref = stringPreferencesKey("DEVICE_DRM_ID")
 
     val flagSecureEnabledFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[flagSecureEnabledPref] ?: IS_FLAG_SECURE_ENABLED_DEFAULT
     }
 
-    val ssaidFlow = context.dataStore.data
+    val isFirstLaunchFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
-            preferences[deviceId_SSAID_PREF] ?: UNIQUE_DEVICE_ID_DEFAULT
+            preferences[isFirstLaunchPref] ?: true
         }
 
-    val gsfIdFlow = context.dataStore.data
+    val ssaidFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
-            preferences[deviceId_GSF_ID_PREF] ?: UNIQUE_DEVICE_ID_DEFAULT
+            preferences[deviceidSsaidPref] ?: UNIQUE_DEVICE_ID_DEFAULT
         }
 
-    val drmIdFlow = context.dataStore.data
+    val gsfIdFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
-            preferences[deviceId_DRM_ID_PREF] ?: UNIQUE_DEVICE_ID_DEFAULT
+            preferences[deviceidGsfIdPref] ?: UNIQUE_DEVICE_ID_DEFAULT
+        }
+
+    val drmIdFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[deviceidDrmIdPref] ?: UNIQUE_DEVICE_ID_DEFAULT
         }
 
     suspend fun toggleFlagSecure() {
         val currentState = flagSecureEnabledFlow.first()
         context.dataStore.edit { prefs ->
             prefs[flagSecureEnabledPref] = !currentState
+        }
+    }
+    suspend fun toggleFirstLaunch() {
+        val currentState = isFirstLaunchFlow.first()
+        context.dataStore.edit { prefs ->
+            prefs[isFirstLaunchPref] = !currentState
+        }
+    }
+
+    suspend fun updateDeviceIds(ssaid: String, gsfId: String, drmId: String) {
+        context.dataStore.edit { prefs ->
+            prefs[deviceidSsaidPref] = ssaid
+            prefs[deviceidGsfIdPref] = gsfId
+            prefs[deviceidDrmIdPref] = drmId
         }
     }
 }

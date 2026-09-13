@@ -3,14 +3,12 @@ package com.omarmesqq.grunfeld.utils
 import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
-import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.media.MediaDrm
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.provider.Settings
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +21,7 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.util.UUID
 
-suspend fun dumpNetworkInterfaces(): List<NetworkInterface>? {
+suspend fun getNetworkInterfaces(): List<NetworkInterface>? {
     try {
         var ifaces: List<NetworkInterface>
         withContext(Dispatchers.IO) {
@@ -36,14 +34,7 @@ suspend fun dumpNetworkInterfaces(): List<NetworkInterface>? {
     }
 }
 
-fun hasPermission(context: Context, permission: String): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        permission
-    ) == PackageManager.PERMISSION_GRANTED
-}
-
-fun dumpSensorInfo(ctx: Context): String {
+fun getSensorsInfo(ctx: Context): String {
     val sb = StringBuilder()
 
     val sensorManager = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -61,9 +52,8 @@ fun dumpSensorInfo(ctx: Context): String {
     return sb.toString()
 }
 
-
 @Suppress("DEPRECATION")
-fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
+fun getWifiManagerInfo(ctx: Context): WifiInfo {
     try {
         val wifiManager = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         return wifiManager.connectionInfo
@@ -71,21 +61,6 @@ fun dumpWifiManagerInfo(ctx: Context): WifiInfo {
         throw e
     }
 }
-
-fun dumpDeviceIds(ctx: Context, cr: ContentResolver): String {
-    val ssaid = dumpSsaid(cr)
-    val gsfId = dumpGsfId(ctx)
-    val mediaDrmId = dumpMediaDrmId()
-
-    val sb = StringBuilder()
-    sb.appendLine("SSAID: $ssaid")
-    sb.appendLine("GSF ID: $gsfId")
-    sb.appendLine("DRM ID: $mediaDrmId")
-    sb.appendLine("\nNow relaunch the app and note Bipan's work on these IDs!")
-
-    return sb.toString()
-}
-
 
 @SuppressLint("PrivateApi")
 fun dumpDevProperties(): String {
@@ -205,6 +180,46 @@ fun dumpDevProperties(): String {
     return sb.toString()
 }
 
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+fun getGsfId(ctx: Context) : String {
+    val cr = ctx.contentResolver
+    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
+    val idKey = "android_id"
+
+    val uri = gsfContentProviderUri.toUri()
+    val params = arrayOf(idKey)
+
+    val gsfId = try {
+        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
+            check(cursor.moveToFirst() && cursor.columnCount >= 2)
+            toHexString(cursor.getString(1).toLong())
+        }
+    } catch (e: Exception) {
+        "Failed to get GSF ID: ${e.message}"
+    }
+    return gsfId
+}
+
+// Credits to https://github.com/fingerprintjs/fingerprintjs-android
+fun getMediaDrmId() : String {
+    val widevineUUidMostSigBits = -0x121074568629b532L
+    val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
+    val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
+
+    val wvDrm = MediaDrm(widevineUUID)
+    val widevineIdRaw = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+    val widevineId = widevineIdRaw.toHexString()
+    wvDrm.close()
+
+    return widevineId
+}
+
+fun getSsaid(cr: ContentResolver): String {
+    @SuppressLint("HardwareIds")
+    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
+    return ssaid
+}
+
 fun runtimeExecWithCmdArray(cmdarray: Array<String>):String {
     val sb = StringBuilder()
     try {
@@ -232,48 +247,8 @@ fun runtimeExecWithCmd(cmd: String):String {
     return sb.toString()
 }
 
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-private fun dumpGsfId(ctx: Context) : String {
-    val cr = ctx.contentResolver
-    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
-    val idKey = "android_id"
-
-    val uri = gsfContentProviderUri.toUri()
-    val params = arrayOf(idKey)
-
-    val gsfId = try {
-        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
-            check(cursor.moveToFirst() && cursor.columnCount >= 2)
-            toHexString(cursor.getString(1).toLong())
-        }
-    } catch (e: Exception) {
-        "Failed to get GSF ID: ${e.message}"
-    }
-    return gsfId
-}
-
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-private fun dumpMediaDrmId() : String {
-    val widevineUUidMostSigBits = -0x121074568629b532L
-    val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
-    val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
-
-    val wvDrm = MediaDrm(widevineUUID)
-    val widevineIdRaw = wvDrm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
-    val widevineId = widevineIdRaw.toHexString()
-    wvDrm.close()
-
-    return widevineId
-}
 private fun ByteArray.toHexString(): String {
     return this.joinToString("") {
         format("%02x", it)
     }
-}
-
-
-private fun dumpSsaid(cr: ContentResolver): String {
-    @SuppressLint("HardwareIds")
-    val ssaid = Settings.Secure.getString(cr, Settings.Secure.ANDROID_ID)
-    return ssaid
 }
