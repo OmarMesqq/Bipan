@@ -762,7 +762,6 @@ private fun SystemPropsAssertions() {
     AssertionResult("ro.config.notification_sound", getSystemProperty("ro.config.notification_sound"), "Argon.ogg")
     AssertionResult("ro.config.ringtone", getSystemProperty("ro.config.ringtone"), "Orion.ogg")
     AssertionResult("ro.product.locale", getSystemProperty("ro.product.locale"), "en-US")
-    AssertionResult("persist.sys.locale", getSystemProperty("persist.sys.locale"), defaultValue)
     AssertionResult("bluetooth.device.default_name", getSystemProperty("bluetooth.device.default_name"), "Pixel 8 Pro")
 
     // User-set
@@ -780,8 +779,7 @@ private fun SystemPropsAssertions() {
 
     // AOSP
     AssertionResult("init.svc.adb_root", getSystemProperty("init.svc.adb_root"), defaultValue)
-    AssertionResult("service.adb.root", getSystemProperty("service.adb.root"), defaultValue)
-    AssertionResult("persist.sys.usb.config", getSystemProperty("persist.sys.usb.config"), defaultValue)
+    AssertionResult("persist.sys.usb.config", getSystemProperty("persist.sys.usb.config"), "mtp")
     AssertionResult("sys.usb.config", getSystemProperty("sys.usb.config"), "mtp")
     AssertionResult("sys.usb.configfs", getSystemProperty("sys.usb.configfs"), "1")
     AssertionResult("init.svc.usbd", getSystemProperty("init.svc.usbd"), "stopped")
@@ -822,20 +820,19 @@ private fun SystemPropsAssertions() {
     AssertionResult("ro.boot.verifiedbootstate", getSystemProperty("ro.boot.verifiedbootstate"), "green")
     AssertionResult("ro.boot.warranty_bit", getSystemProperty("ro.boot.warranty_bit"), defaultValue)
     AssertionResult("ro.boot.force_upload", getSystemProperty("ro.boot.force_upload"), defaultValue)
-    // TODO: figure out how to insert the non-existing props on-the-fly
-    AssertionResult("sys.oem_unlock_allowed", getSystemProperty("sys.oem_unlock_allowed"), defaultValue)
-    AssertionResult("ro.boot.write_protect", getSystemProperty("ro.boot.write_protect"), defaultValue)
-    AssertionResult("ro.boot.veritymode.managed", getSystemProperty("ro.boot.veritymode.managed"), defaultValue)
-    AssertionResult("ro.boot.veritymode", getSystemProperty("ro.boot.veritymode"), defaultValue)
-    AssertionResult("ro.boot.vbmeta.hash_alg", getSystemProperty("ro.boot.vbmeta.hash_alg"), defaultValue)
-    AssertionResult("ro.boot.vbmeta.device_state", getSystemProperty("ro.boot.vbmeta.device_state"), defaultValue)
-    AssertionResult("ro.boot.vbmeta.avb_version", getSystemProperty("ro.boot.vbmeta.avb_version"), defaultValue)
-    AssertionResult("ro.boot.secure_hardware", getSystemProperty("ro.boot.secure_hardware"), defaultValue)
-    AssertionResult("ro.boot.mode", getSystemProperty("ro.boot.mode"), defaultValue)
-    AssertionResult("ro.boot.force_normal_boot", getSystemProperty("ro.boot.force_normal_boot"), defaultValue)
-    AssertionResult("ro.boot.flash.locked", getSystemProperty("ro.boot.flash.locked"), defaultValue)
-    AssertionResult("ro.boot.avb_version", getSystemProperty("ro.boot.avb_version"), defaultValue)
-    // END TODO
+    
+    AssertionResult("sys.oem_unlock_allowed", getSystemProperty("sys.oem_unlock_allowed"), "0")
+    AssertionResult("ro.boot.write_protect", getSystemProperty("ro.boot.write_protect"), "1")
+    AssertionResult("ro.boot.veritymode.managed", getSystemProperty("ro.boot.veritymode.managed"), "yes")
+    AssertionResult("ro.boot.veritymode", getSystemProperty("ro.boot.veritymode"), "enforcing")
+    AssertionResult("ro.boot.vbmeta.hash_alg", getSystemProperty("ro.boot.vbmeta.hash_alg"), "sha256")
+    AssertionResult("ro.boot.vbmeta.device_state", getSystemProperty("ro.boot.vbmeta.device_state"), "locked")
+    AssertionResult("ro.boot.vbmeta.avb_version", getSystemProperty("ro.boot.vbmeta.avb_version"), "1.2")
+    AssertionResult("ro.boot.secure_hardware", getSystemProperty("ro.boot.secure_hardware"), "1")
+    AssertionResult("ro.boot.mode", getSystemProperty("ro.boot.mode"), "normal")
+    AssertionResult("ro.boot.force_normal_boot", getSystemProperty("ro.boot.force_normal_boot"), "1")
+    AssertionResult("ro.boot.flash.locked", getSystemProperty("ro.boot.flash.locked"), "1")
+    AssertionResult("ro.boot.avb_version", getSystemProperty("ro.boot.avb_version"), "1.2")
 
     AssertionResult("ro.carrier", getSystemProperty("ro.carrier"), "retbr")
     AssertionResult("ro.boot.carrierid", getSystemProperty("ro.boot.carrierid"), defaultValue)
