@@ -27,6 +27,7 @@
 
 #define TAG "GrunfeldNative"
 
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -70,13 +71,13 @@ static const uint8_t kWidevineUuid[16] = {
 
 
 __attribute__((constructor)) void grunfeld_early_init(void) {
-    LOGI("__attribute__((constructor))");
+    LOGD("__attribute__((constructor))");
     athenaInit();
     // requestNativeBacktrace();
 }
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    LOGI("JNI_OnLoad");
+    LOGD("JNI_OnLoad");
     // requestNativeBacktrace();
     return JNI_VERSION_1_6;
 }
@@ -154,6 +155,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *e
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, jobject thiz, jstring mountPoint) {
     char errBuf[128] = {0};
+    unsigned char linesLogged = 0;
 
     const char* mountPointCstr = (*env)->GetStringUTFChars(env, mountPoint, NULL);
     if (mountPointCstr == NULL) {
@@ -196,8 +198,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, j
             // Not enough room left in report; stop reading this file
             break;
         }
-        memcpy(report + reportLen, entry, lineLen);
-        reportLen += lineLen;
+        if (linesLogged < 2) {
+            memcpy(report + reportLen, entry, lineLen);
+            reportLen += lineLen;
+            linesLogged++;
+        } else break;
+
     }
     fclose(fp);
 
@@ -220,49 +226,38 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
             return (*env)->NewStringUTF(env, errorBuffer);
         }
 
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
+        const char* filepath = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (filepath == NULL) {
             snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
             (*env)->DeleteLocalRef(env, jstr);
             return (*env)->NewStringUTF(env, errorBuffer);
         }
 
-        long ret = 0;
+        long ret = -1;
 
-        int mode1 = F_OK; // tests existence of file
-        int mode2 = R_OK | W_OK | X_OK; // exists, has read, write, execute perms
-        int mode3 = R_OK; // exists and has read
+        int chkExistenceMode = F_OK;
+        int hasReadPermMode = R_OK;
 
-        int flags1 = AT_EACCESS; // performs access using effective UID and GID
+        int flags = AT_EACCESS; // performs access using effective UID and GID
 
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode2, flags1, 0, 0);
+        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) filepath, chkExistenceMode, flags, 0, 0);
         if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK | W_OK | X_OK - flags: AT_EACCESS -> SUCCESSFUL\n", cstr);
+            snprintf(entry, sizeof(entry), "%s (F_OK) successful\n", filepath);
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof(entry), "%s\n", RAW_SYSCALL_TO_ERRNO(ret));
+            snprintf(entry, sizeof(entry), "%s (F_OK) failed: %s\n", filepath, RAW_SYSCALL_TO_ERRNO(ret));
             strcat(report, entry);
         }
 
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode3, flags1, 0, 0);
+
+        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) filepath, hasReadPermMode, flags, 0, 0);
         if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: R_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
+            snprintf(entry, sizeof(entry), "%s (R_OK) successful\n", filepath);
             strcat(report, entry);
         } else {
-            snprintf(entry, sizeof(entry), "%s\n", RAW_SYSCALL_TO_ERRNO(ret));
+            snprintf(entry, sizeof(entry), "%s (R_OK) failed: %s\n", filepath, RAW_SYSCALL_TO_ERRNO(ret));
             strcat(report, entry);
         }
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) cstr, mode1, flags1, 0, 0);
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "faccessat(%s) - mode: F_OK - flags: AT_EACCESS -> SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "%s\n", RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-
     }
 
     return (*env)->NewStringUTF(env, report);
@@ -358,7 +353,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
                                        jStatusChTime
     );
 
-    LOGI("Created object!");
     close(fd);
     return result;
 }
@@ -445,9 +439,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, j
                                        jStatusChTime
                                        );
 
-    LOGI("Created object!");
     return result;
-
 }
 
 JNIEXPORT jstring JNICALL
@@ -465,7 +457,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobjec
     ret = arm64_raw_syscall(__NR_statx, 0 , (long) ARBITRARY_PATH, (long) flags, mask, (long) &statxbuf, 0);
 
     if (ret == 0) {
-        snprintf(report, sizeof(report), "'statx' worked");
+        snprintf(report, sizeof(report), "statx worked");
     } else {
         snprintf(report, sizeof(report), "%s", RAW_SYSCALL_TO_ERRNO(ret));
     }
@@ -478,6 +470,7 @@ JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
     char report[20000] = {0};
     char entry[PATH_MAX + 100] = {0};
+    unsigned char linesLogged = 0;
 
     FILE* fp = fopen("/proc/self/maps", "r");
     if (!fp) {
@@ -508,9 +501,10 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
             }
             // ignore problematic lines
         }
-        if (FIND_BIPAN_TRACES(libName)) {
+        if (FIND_BIPAN_TRACES(libName) && linesLogged < 2) {
             snprintf(entry, sizeof(entry), "%s", buf);
             strcat(report, entry);
+            linesLogged++;
         }
     }
 
@@ -524,6 +518,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
     size_t reportCap = 65536;
     size_t reportLen = 0;
     char* report = malloc(reportCap);
+    unsigned char linesLogged = 0;
     if (!report) {
         return (*env)->NewStringUTF(env, "Allocation failed");
     }
@@ -577,12 +572,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
         if (ret == 8) {
             matchedCurrentRegion = (FIND_BIPAN_TRACES(libName)) != 0;
 
-            if (matchedCurrentRegion) {
+            if (matchedCurrentRegion && linesLogged < 2) {
                 APPEND(buf);
+                linesLogged++;
             }
         } else {
-            if (matchedCurrentRegion) {
+            if (matchedCurrentRegion && linesLogged < 2) {
                 APPEND(buf);
+                linesLogged++;
             }
         }
     }
