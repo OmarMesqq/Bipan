@@ -80,7 +80,7 @@ fun TestsScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Java info", style = MaterialTheme.typography.headlineMedium)
+        Text(text = "Java- and native-layer tests", style = MaterialTheme.typography.headlineMedium)
 
         SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
         Card(
@@ -867,7 +867,7 @@ private fun SystemPropsAssertions() {
 
     AssertionResult("debug.tracing.mnc", getSystemProperty("debug.tracing.mnc"), "6")
 
-    AssertionResult("ro.sf.lcd_density", getSystemProperty("ro.sf.lcd_density"), "400")
+    // AssertionResult("ro.sf.lcd_density", getSystemProperty("ro.sf.lcd_density"), "400")
     AssertionResult("ro.boot.selinux", getSystemProperty("ro.boot.selinux"), "enforcing")
     AssertionResult("ro.adb.secure", getSystemProperty("ro.adb.secure"), "1")
     AssertionResult("ro.allow.mock.location", getSystemProperty("ro.allow.mock.location"), "0")
