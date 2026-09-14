@@ -55,6 +55,7 @@ class GrunfeldConfigs(private val context: Context) {
             prefs[flagSecureEnabledPref] = !currentState
         }
     }
+
     suspend fun toggleFirstLaunch() {
         val currentState = isFirstLaunchFlow.first()
         context.dataStore.edit { prefs ->

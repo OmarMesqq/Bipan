@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -46,14 +45,13 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotEqualStrings
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
-import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
-import com.omarmesqq.grunfeld.utils.dumpDevProperties
 import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.getSensorsInfo
 import com.omarmesqq.grunfeld.utils.getSsaid
+import com.omarmesqq.grunfeld.utils.getSystemProperty
 import com.omarmesqq.grunfeld.utils.getWifiManagerInfo
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
@@ -72,8 +70,6 @@ fun JavaInfoScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
     val cr = context.contentResolver
-
-    var devPropsInfo by remember { mutableStateOf("Dev properties not queried") }
 
     Column(
         modifier = Modifier
@@ -142,22 +138,11 @@ fun JavaInfoScreen() {
         SectionHeader("ROOTBER ROOT CHECK")
         RootCheckAssertions(context)
 
-        SectionHeader("SYSTEM PROPERTIES")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { devPropsInfo = dumpDevProperties() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Dump prop contexts")
-            }
-            ReportTextWithCopy(devPropsInfo, "Dev properties not queried")
-        }
-
         SectionHeader("DEVICE IDENTIFIERS")
         DeviceIdAssertions(context, cr)
+
+        SectionHeader("SYSTEM PROPERTIES TESTS")
+        SystemPropsAssertions()
     }
 }
 
@@ -585,6 +570,294 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             }
         }
     }
+}
+
+@Composable
+private fun SystemPropsAssertions() {
+    val defaultValue = "<empty>"
+
+    AssertionResult("ro.serialno", getSystemProperty("ro.serialno"), defaultValue)
+    AssertionResult("ro.bootimage.build.fingerprint", getSystemProperty("ro.bootimage.build.fingerprint"), defaultValue)
+    AssertionResult("ro.bootimage.build.type", getSystemProperty("ro.bootimage.build.type"), defaultValue)
+    AssertionResult("ro.bootimage.build.tags", getSystemProperty("ro.bootimage.build.tags"), defaultValue)
+
+    AssertionResult("ro.product.board", getSystemProperty("ro.product.board"), "husky")
+    AssertionResult("ro.product.brand", getSystemProperty("ro.product.brand"), "google")
+    AssertionResult("ro.product.device", getSystemProperty("ro.product.device"), "husky")
+    AssertionResult("ro.product.manufacturer", getSystemProperty("ro.product.manufacturer"), "google")
+    AssertionResult("ro.product.model", getSystemProperty("ro.product.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.name", getSystemProperty("ro.product.name"), "husky")
+
+    // ro.product.odm.*
+    AssertionResult("ro.product.odm.brand", getSystemProperty("ro.product.odm.brand"), "google")
+    AssertionResult("ro.product.odm.device", getSystemProperty("ro.product.odm.device"), "husky")
+    AssertionResult("ro.product.odm.manufacturer", getSystemProperty("ro.product.odm.manufacturer"), "google")
+    AssertionResult("ro.product.odm.model", getSystemProperty("ro.product.odm.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.odm.name", getSystemProperty("ro.product.odm.name"), "husky")
+
+    // ro.product.product.*
+    AssertionResult("ro.product.product.brand", getSystemProperty("ro.product.product.brand"), "google")
+    AssertionResult("ro.product.product.device", getSystemProperty("ro.product.product.device"), "husky")
+    AssertionResult("ro.product.product.manufacturer", getSystemProperty("ro.product.product.manufacturer"), "google")
+    AssertionResult("ro.product.product.model", getSystemProperty("ro.product.product.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.product.name", getSystemProperty("ro.product.product.name"), "husky")
+
+    AssertionResult("ro.build.product", getSystemProperty("ro.build.product"), "husky")
+
+    // ro.product.system.*
+    AssertionResult("ro.product.system.brand", getSystemProperty("ro.product.system.brand"), "google")
+    AssertionResult("ro.product.system.device", getSystemProperty("ro.product.system.device"), "husky")
+    AssertionResult("ro.product.system.manufacturer", getSystemProperty("ro.product.system.manufacturer"), "google")
+    AssertionResult("ro.product.system.model", getSystemProperty("ro.product.system.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.system.name", getSystemProperty("ro.product.system.name"), "husky")
+
+    // ro.product.system_ext.*
+    AssertionResult("ro.product.system_ext.brand", getSystemProperty("ro.product.system_ext.brand"), "google")
+    AssertionResult("ro.product.system_ext.device", getSystemProperty("ro.product.system_ext.device"), "husky")
+    AssertionResult("ro.product.system_ext.manufacturer", getSystemProperty("ro.product.system_ext.manufacturer"), "google")
+    AssertionResult("ro.product.system_ext.model", getSystemProperty("ro.product.system_ext.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.system_ext.name", getSystemProperty("ro.product.system_ext.name"), "husky")
+
+    // ro.product.vendor.*
+    AssertionResult("ro.product.vendor.brand", getSystemProperty("ro.product.vendor.brand"), "google")
+    AssertionResult("ro.product.vendor.device", getSystemProperty("ro.product.vendor.device"), "husky")
+    AssertionResult("ro.product.vendor.manufacturer", getSystemProperty("ro.product.vendor.manufacturer"), "google")
+    AssertionResult("ro.product.vendor.model", getSystemProperty("ro.product.vendor.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.vendor.name", getSystemProperty("ro.product.vendor.name"), "husky")
+
+    // ro.product.vendor_dlkm.*
+    AssertionResult("ro.product.vendor_dlkm.brand", getSystemProperty("ro.product.vendor_dlkm.brand"), "google")
+    AssertionResult("ro.product.vendor_dlkm.device", getSystemProperty("ro.product.vendor_dlkm.device"), "husky")
+    AssertionResult("ro.product.vendor_dlkm.manufacturer", getSystemProperty("ro.product.vendor_dlkm.manufacturer"), "google")
+    AssertionResult("ro.product.vendor_dlkm.model", getSystemProperty("ro.product.vendor_dlkm.model"), "Pixel 8 Pro")
+    AssertionResult("ro.product.vendor_dlkm.name", getSystemProperty("ro.product.vendor_dlkm.name"), "husky")
+
+    // Build host / id
+    AssertionResult("ro.build.host", getSystemProperty("ro.build.host"), "abfarm-20038")
+    AssertionResult("ro.build.id", getSystemProperty("ro.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.vendor.build.id", getSystemProperty("ro.vendor.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.product.build.id", getSystemProperty("ro.product.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.system.build.id", getSystemProperty("ro.system.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.vendor_dlkm.build.id", getSystemProperty("ro.vendor_dlkm.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.system_ext.build.id", getSystemProperty("ro.system_ext.build.id"), "BP4A.251205.006")
+    AssertionResult("ro.build.display.id", getSystemProperty("ro.build.display.id"), "BP4A.251205.006")
+
+    // Tags
+    AssertionResult("ro.build.tags", getSystemProperty("ro.build.tags"), "release-keys")
+    AssertionResult("ro.vendor.build.tags", getSystemProperty("ro.vendor.build.tags"), "release-keys")
+    AssertionResult("ro.product.build.tags", getSystemProperty("ro.product.build.tags"), "release-keys")
+    AssertionResult("ro.system.build.tags", getSystemProperty("ro.system.build.tags"), "release-keys")
+    AssertionResult("ro.vendor_dlkm.build.tags", getSystemProperty("ro.vendor_dlkm.build.tags"), "release-keys")
+    AssertionResult("ro.system_ext.build.tags", getSystemProperty("ro.system_ext.build.tags"), "release-keys")
+
+    // Type
+    AssertionResult("ro.build.type", getSystemProperty("ro.build.type"), "user")
+    AssertionResult("ro.vendor.build.type", getSystemProperty("ro.vendor.build.type"), "user")
+    AssertionResult("ro.product.build.type", getSystemProperty("ro.product.build.type"), "user")
+    AssertionResult("ro.system.build.type", getSystemProperty("ro.system.build.type"), "user")
+    AssertionResult("ro.vendor_dlkm.build.type", getSystemProperty("ro.vendor_dlkm.build.type"), "user")
+    AssertionResult("ro.system_ext.build.type", getSystemProperty("ro.system_ext.build.type"), "user")
+    AssertionResult("ro.build.user", getSystemProperty("ro.build.user"), "android-build")
+
+    // Date UTC
+    AssertionResult("ro.build.date.utc", getSystemProperty("ro.build.date.utc"), "1764954000")
+    AssertionResult("ro.odm.build.date.utc", getSystemProperty("ro.odm.build.date.utc"), "1764954000")
+    AssertionResult("ro.product.build.date.utc", getSystemProperty("ro.product.build.date.utc"), "1764954000")
+    AssertionResult("ro.system.build.date.utc", getSystemProperty("ro.system.build.date.utc"), "1764954000")
+    AssertionResult("ro.system_ext.build.date.utc", getSystemProperty("ro.system_ext.build.date.utc"), "1764954000")
+    AssertionResult("ro.vendor_dlkm.build.date.utc", getSystemProperty("ro.vendor_dlkm.build.date.utc"), "1764954000")
+    AssertionResult("ro.vendor.build.date.utc", getSystemProperty("ro.vendor.build.date.utc"), "1764954000")
+
+    AssertionResult("ro.build.version.all_codenames", getSystemProperty("ro.build.version.all_codenames"), "REL")
+    AssertionResult("ro.build.version.preview_sdk_fingerprint", getSystemProperty("ro.build.version.preview_sdk_fingerprint"), "REL")
+
+    // Build date
+    val buildDate = "Fri Dec 05 12:00:00 UTC 2025"
+    AssertionResult("ro.build.date", getSystemProperty("ro.build.date"), buildDate)
+    AssertionResult("ro.odm.build.date", getSystemProperty("ro.odm.build.date"), buildDate)
+    AssertionResult("ro.product.build.date", getSystemProperty("ro.product.build.date"), buildDate)
+    AssertionResult("ro.system.build.date", getSystemProperty("ro.system.build.date"), buildDate)
+    AssertionResult("ro.system_ext.build.date", getSystemProperty("ro.system_ext.build.date"), buildDate)
+    AssertionResult("ro.vendor.build.date", getSystemProperty("ro.vendor.build.date"), buildDate)
+    AssertionResult("ro.vendor_dlkm.build.date", getSystemProperty("ro.vendor_dlkm.build.date"), buildDate)
+
+    AssertionResult("ro.build.description", getSystemProperty("ro.build.description"), "husky-user 16 BP4A.251205.006 release-keys")
+    AssertionResult("ro.build.flavor", getSystemProperty("ro.build.flavor"), "husky-user")
+
+    // Version incremental
+    AssertionResult("ro.build.version.incremental", getSystemProperty("ro.build.version.incremental"), "14401865")
+    AssertionResult("ro.vendor.build.version.incremental", getSystemProperty("ro.vendor.build.version.incremental"), "14401865")
+    AssertionResult("ro.odm.build.version.incremental", getSystemProperty("ro.odm.build.version.incremental"), "14401865")
+    AssertionResult("ro.product.build.version.incremental", getSystemProperty("ro.product.build.version.incremental"), "14401865")
+    AssertionResult("ro.system.build.version.incremental", getSystemProperty("ro.system.build.version.incremental"), "14401865")
+    AssertionResult("ro.vendor_dlkm.build.version.incremental", getSystemProperty("ro.vendor_dlkm.build.version.incremental"), "14401865")
+    AssertionResult("ro.system_ext.build.version.incremental", getSystemProperty("ro.system_ext.build.version.incremental"), "14401865")
+
+    // Version release
+    AssertionResult("ro.build.version.release", getSystemProperty("ro.build.version.release"), "16")
+    AssertionResult("ro.product.build.version.release", getSystemProperty("ro.product.build.version.release"), "16")
+    AssertionResult("ro.vendor_dlkm.build.version.release", getSystemProperty("ro.vendor_dlkm.build.version.release"), "16")
+    AssertionResult("ro.vendor.build.version.release", getSystemProperty("ro.vendor.build.version.release"), "16")
+    AssertionResult("ro.system_ext.build.version.release", getSystemProperty("ro.system_ext.build.version.release"), "16")
+    AssertionResult("ro.system.build.version.release", getSystemProperty("ro.system.build.version.release"), "16")
+
+    // release_or_codename
+    AssertionResult("ro.build.version.release_or_codename", getSystemProperty("ro.build.version.release_or_codename"), "16")
+    AssertionResult("ro.vendor.build.version.release_or_codename", getSystemProperty("ro.vendor.build.version.release_or_codename"), "16")
+    AssertionResult("ro.product.build.version.release_or_codename", getSystemProperty("ro.product.build.version.release_or_codename"), "16")
+    AssertionResult("ro.vendor_dlkm.build.version.release_or_codename", getSystemProperty("ro.vendor_dlkm.build.version.release_or_codename"), "16")
+    AssertionResult("ro.system.build.version.release_or_codename", getSystemProperty("ro.system.build.version.release_or_codename"), "16")
+    AssertionResult("ro.system_ext.build.version.release_or_codename", getSystemProperty("ro.system_ext.build.version.release_or_codename"), "16")
+
+    AssertionResult("ro.build.version.release_or_preview_display", getSystemProperty("ro.build.version.release_or_preview_display"), "16")
+
+    // SDK
+    AssertionResult("ro.build.version.sdk", getSystemProperty("ro.build.version.sdk"), "36")
+    AssertionResult("ro.product.build.version.sdk", getSystemProperty("ro.product.build.version.sdk"), "36")
+    AssertionResult("ro.vendor.build.version.sdk", getSystemProperty("ro.vendor.build.version.sdk"), "36")
+    AssertionResult("ro.vendor_dlkm.build.version.sdk", getSystemProperty("ro.vendor_dlkm.build.version.sdk"), "36")
+    AssertionResult("ro.system_ext.build.version.sdk", getSystemProperty("ro.system_ext.build.version.sdk"), "36")
+    AssertionResult("ro.system.build.version.sdk", getSystemProperty("ro.system.build.version.sdk"), "36")
+
+    AssertionResult("ro.build.version.sdk_full", getSystemProperty("ro.build.version.sdk_full"), "36.1")
+    AssertionResult("ro.product.build.version.sdk_full", getSystemProperty("ro.product.build.version.sdk_full"), "36.1")
+    AssertionResult("ro.system_ext.build.version.sdk_full", getSystemProperty("ro.system_ext.build.version.sdk_full"), "36.1")
+    AssertionResult("ro.system.build.version.sdk_full", getSystemProperty("ro.system.build.version.sdk_full"), "36.1")
+
+    AssertionResult("ro.build.version.security_patch", getSystemProperty("ro.build.version.security_patch"), "2025-12-05")
+    AssertionResult("ro.build.version.codename", getSystemProperty("ro.build.version.codename"), "REL")
+    AssertionResult("ro.build.version.base_os", getSystemProperty("ro.build.version.base_os"), defaultValue)
+    AssertionResult("ro.build.version.preview_sdk", getSystemProperty("ro.build.version.preview_sdk"), "0")
+
+    // Fingerprint
+    val fingerprint = "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
+    AssertionResult("ro.build.fingerprint", getSystemProperty("ro.build.fingerprint"), fingerprint)
+    AssertionResult("ro.odm.build.fingerprint", getSystemProperty("ro.odm.build.fingerprint"), fingerprint)
+    AssertionResult("ro.product.build.fingerprint", getSystemProperty("ro.product.build.fingerprint"), fingerprint)
+    AssertionResult("ro.system.build.fingerprint", getSystemProperty("ro.system.build.fingerprint"), fingerprint)
+    AssertionResult("ro.system_ext.build.fingerprint", getSystemProperty("ro.system_ext.build.fingerprint"), fingerprint)
+    AssertionResult("ro.vendor.build.fingerprint", getSystemProperty("ro.vendor.build.fingerprint"), fingerprint)
+    AssertionResult("ro.vendor_dlkm.build.fingerprint", getSystemProperty("ro.vendor_dlkm.build.fingerprint"), fingerprint)
+
+    // RADIO
+    AssertionResult("gsm.version.baseband", getSystemProperty("gsm.version.baseband"), "g5300g-251108-251202-B-12876551")
+    AssertionResult("gsm.version.ril-impl", getSystemProperty("gsm.version.ril-impl"), "com.google.android.telephony.modem")
+    AssertionResult("ril.sw_ver", getSystemProperty("ril.sw_ver"), defaultValue)
+    AssertionResult("ril.sw_ver2", getSystemProperty("ril.sw_ver2"), defaultValue)
+    AssertionResult("ro.baseband", getSystemProperty("ro.baseband"), "g5300g-251108-251202-B-12876551")
+
+    // Fingerprinting vectors
+    AssertionResult("ro.config.alarm_alert", getSystemProperty("ro.config.alarm_alert"), "Hassium.ogg")
+    AssertionResult("ro.config.notification_sound", getSystemProperty("ro.config.notification_sound"), "Argon.ogg")
+    AssertionResult("ro.config.ringtone", getSystemProperty("ro.config.ringtone"), "Orion.ogg")
+    AssertionResult("ro.product.locale", getSystemProperty("ro.product.locale"), "en-US")
+    AssertionResult("persist.sys.locale", getSystemProperty("persist.sys.locale"), defaultValue)
+    AssertionResult("bluetooth.device.default_name", getSystemProperty("bluetooth.device.default_name"), "Pixel 8 Pro")
+
+    // User-set
+    AssertionResult("debug.debuggerd.wait_for_debugger", getSystemProperty("debug.debuggerd.wait_for_debugger"), defaultValue)
+
+    // General tuning
+    AssertionResult("nfc.initialized", getSystemProperty("nfc.initialized"), "false")
+    AssertionResult("ro.support_one_handed_mode", getSystemProperty("ro.support_one_handed_mode"), "false")
+
+    // OEM/ROM specific
+    AssertionResult("init.svc.vaultkeeper", getSystemProperty("init.svc.vaultkeeper"), defaultValue)
+    AssertionResult("init.svc.vendor_flash_recovery", getSystemProperty("init.svc.vendor_flash_recovery"), defaultValue)
+    AssertionResult("init.svc.lineage-bugreport", getSystemProperty("init.svc.lineage-bugreport"), defaultValue)
+    AssertionResult("ro.board.api_frozen", getSystemProperty("ro.board.api_frozen"), defaultValue)
+
+    // AOSP
+    AssertionResult("ro.debuggable", getSystemProperty("ro.debuggable"), defaultValue)
+    AssertionResult("ro.secure", getSystemProperty("ro.secure"), defaultValue)
+    AssertionResult("ro.force.debuggable", getSystemProperty("ro.force.debuggable"), "0")
+    AssertionResult("init.svc.adb_root", getSystemProperty("init.svc.adb_root"), defaultValue)
+    AssertionResult("service.adb.root", getSystemProperty("service.adb.root"), defaultValue)
+    AssertionResult("persist.sys.usb.config", getSystemProperty("persist.sys.usb.config"), defaultValue)
+    AssertionResult("sys.usb.config", getSystemProperty("sys.usb.config"), "mtp")
+    AssertionResult("sys.usb.configfs", getSystemProperty("sys.usb.configfs"), "1")
+    AssertionResult("init.svc.usbd", getSystemProperty("init.svc.usbd"), "stopped")
+    AssertionResult("init.svc.adbd", getSystemProperty("init.svc.adbd"), "stopped")
+    AssertionResult("sys.usb.controller", getSystemProperty("sys.usb.controller"), defaultValue)
+    AssertionResult("ro.kernel.version", getSystemProperty("ro.kernel.version"), "6.6")
+
+    // 64-bit only
+    AssertionResult("ro.odm.product.cpu.abilist32", getSystemProperty("ro.odm.product.cpu.abilist32"), defaultValue)
+    AssertionResult("ro.product.cpu.abilist32", getSystemProperty("ro.product.cpu.abilist32"), defaultValue)
+    AssertionResult("ro.system.product.cpu.abilist32", getSystemProperty("ro.system.product.cpu.abilist32"), defaultValue)
+    AssertionResult("ro.vendor.product.cpu.abilist32", getSystemProperty("ro.vendor.product.cpu.abilist32"), defaultValue)
+    AssertionResult("ro.odm.product.cpu.abilist", getSystemProperty("ro.odm.product.cpu.abilist"), defaultValue)
+    AssertionResult("ro.product.cpu.abilist", getSystemProperty("ro.product.cpu.abilist"), "arm64-v8a")
+    AssertionResult("ro.system.product.cpu.abilist", getSystemProperty("ro.system.product.cpu.abilist"), "arm64-v8a")
+    AssertionResult("ro.vendor.product.cpu.abilist", getSystemProperty("ro.vendor.product.cpu.abilist"), "arm64-v8a")
+    AssertionResult("ro.zygote", getSystemProperty("ro.zygote"), "zygote64")
+    AssertionResult("init.svc.zygote_secondary", getSystemProperty("init.svc.zygote_secondary"), defaultValue)
+
+    // Hardware fingerprinting
+    AssertionResult("ro.bootmode", getSystemProperty("ro.bootmode"), "normal")
+    AssertionResult("bootreceiver.enable", getSystemProperty("bootreceiver.enable"), "1")
+
+    val bootloader = "ripcurrent-15.0-12455211"
+    AssertionResult("ro.bootloader", getSystemProperty("ro.bootloader"), bootloader)
+    AssertionResult("ro.soc.manufacturer", getSystemProperty("ro.soc.manufacturer"), "Google")
+    AssertionResult("ro.soc.model", getSystemProperty("ro.soc.model"), "Tensor G3")
+    AssertionResult("ro.boot.boot_devices", getSystemProperty("ro.boot.boot_devices"), "soc/1d84000.ufshc")
+    AssertionResult("ro.boot.bootloader", getSystemProperty("ro.boot.bootloader"), bootloader)
+    AssertionResult("ro.boot.em.did", getSystemProperty("ro.boot.em.did"), defaultValue)
+    AssertionResult("ro.boot.em.model", getSystemProperty("ro.boot.em.model"), bootloader)
+    AssertionResult("ro.boot.hardware", getSystemProperty("ro.boot.hardware"), "zuma")
+    AssertionResult("ro.boot.odin_download", getSystemProperty("ro.boot.odin_download"), defaultValue)
+    AssertionResult("ro.boot.wb.snapQB", getSystemProperty("ro.boot.wb.snapQB"), defaultValue)
+    AssertionResult("ro.com.google.clientidbase", getSystemProperty("ro.com.google.clientidbase"), "android-google")
+    AssertionResult("ro.hardware", getSystemProperty("ro.hardware"), "zuma")
+    AssertionResult("ro.boot.ap_serial", getSystemProperty("ro.boot.ap_serial"), defaultValue)
+    AssertionResult("ro.boot.verifiedbootstate", getSystemProperty("ro.boot.verifiedbootstate"), "green")
+    AssertionResult("ro.boot.warranty_bit", getSystemProperty("ro.boot.warranty_bit"), defaultValue)
+    AssertionResult("ro.boot.force_upload", getSystemProperty("ro.boot.force_upload"), defaultValue)
+    AssertionResult("sys.oem_unlock_allowed", getSystemProperty("sys.oem_unlock_allowed"), "0")
+    AssertionResult("ro.boot.write_protect", getSystemProperty("ro.boot.write_protect"), "1")
+    AssertionResult("ro.boot.veritymode.managed", getSystemProperty("ro.boot.veritymode.managed"), "yes")
+    AssertionResult("ro.boot.veritymode", getSystemProperty("ro.boot.veritymode"), "enforcing")
+    AssertionResult("ro.boot.vbmeta.hash_alg", getSystemProperty("ro.boot.vbmeta.hash_alg"), "sha256")
+    AssertionResult("ro.boot.vbmeta.device_state", getSystemProperty("ro.boot.vbmeta.device_state"), "locked")
+    AssertionResult("ro.boot.vbmeta.avb_version", getSystemProperty("ro.boot.vbmeta.avb_version"), "1.2")
+    AssertionResult("ro.boot.secure_hardware", getSystemProperty("ro.boot.secure_hardware"), "1")
+    AssertionResult("ro.boot.mode", getSystemProperty("ro.boot.mode"), "normal")
+    AssertionResult("ro.boot.force_normal_boot", getSystemProperty("ro.boot.force_normal_boot"), "1")
+    AssertionResult("ro.boot.flash.locked", getSystemProperty("ro.boot.flash.locked"), "1")
+    AssertionResult("ro.boot.avb_version", getSystemProperty("ro.boot.avb_version"), "1.2")
+    AssertionResult("ro.carrier", getSystemProperty("ro.carrier"), "retbr")
+    AssertionResult("ro.boot.carrierid", getSystemProperty("ro.boot.carrierid"), defaultValue)
+
+    // SIM / carrier
+    AssertionResult("gsm.sim.state", getSystemProperty("gsm.sim.state"), "READY,")
+    AssertionResult("gsm.sim.eventList", getSystemProperty("gsm.sim.eventList"), defaultValue)
+    AssertionResult("ril.simoperator", getSystemProperty("ril.simoperator"), ",")
+    AssertionResult("ril.cidManager.initiated", getSystemProperty("ril.cidManager.initiated"), "1")
+    AssertionResult("ril.dds.call.ongoing0", getSystemProperty("ril.dds.call.ongoing0"), "0")
+    AssertionResult("ril.dds.call.ongoing1", getSystemProperty("ril.dds.call.ongoing1"), defaultValue)
+    AssertionResult("ril.modem.board", getSystemProperty("ril.modem.board"), defaultValue)
+    AssertionResult("ril.modem.board2", getSystemProperty("ril.modem.board2"), defaultValue)
+    AssertionResult("ril.attach.apn0", getSystemProperty("ril.attach.apn0"), defaultValue)
+    AssertionResult("ril.hw_ver", getSystemProperty("ril.hw_ver"), defaultValue)
+    AssertionResult("ril.hw_ver2", getSystemProperty("ril.hw_ver2"), defaultValue)
+    AssertionResult("ril.model_id", getSystemProperty("ril.model_id"), defaultValue)
+    AssertionResult("ril.model_id2", getSystemProperty("ril.model_id2"), defaultValue)
+    AssertionResult("ril.rfcal_date", getSystemProperty("ril.rfcal_date"), defaultValue)
+    AssertionResult("ril.rfcal_date2", getSystemProperty("ril.rfcal_date2"), defaultValue)
+    AssertionResult("ril.product_code", getSystemProperty("ril.product_code"), defaultValue)
+    AssertionResult("ril.product_code2", getSystemProperty("ril.product_code2"), defaultValue)
+
+    AssertionResult("gsm.operator.iso-country", getSystemProperty("gsm.operator.iso-country"), "br,")
+    AssertionResult("gsm.sim.operator.iso-country", getSystemProperty("gsm.sim.operator.iso-country"), "br,")
+
+    AssertionResult("gsm.sim.operator.numeric", getSystemProperty("gsm.sim.operator.numeric"), "72406,")
+    AssertionResult("gsm.operator.numeric", getSystemProperty("gsm.operator.numeric"), "72406,")
+
+    AssertionResult("gsm.sim.operator.alpha", getSystemProperty("gsm.sim.operator.alpha"), "Vivo,")
+    AssertionResult("gsm.operator.alpha", getSystemProperty("gsm.operator.alpha"), "Vivo,")
+
+    AssertionResult("debug.tracing.mnc", getSystemProperty("debug.tracing.mnc"), "6")
 }
 
 private fun hasPermission(context: Context, permission: String): Boolean {
