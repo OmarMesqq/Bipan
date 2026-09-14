@@ -347,7 +347,7 @@ private fun HookingDepthAssertions() {
     val expectedRelease = "6.6.56-android16-11-g8a3e2b1c4d5f"
 
     AssertionResult("UNAME via inline assembly", inlineAsm, expectedRelease)
-    AssertionResult("UNAME raw syscall wrapper", rawSyscall, expectedRelease)
+    AssertionResult("UNAME via raw syscall wrapper", rawSyscall, expectedRelease)
     AssertionResult("UNAME via 'syscall' bionic function", syscallLibc, expectedRelease)
     AssertionResult("UNAME via standard bionic function", bionicFn, expectedRelease)
 }

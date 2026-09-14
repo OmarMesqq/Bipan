@@ -67,7 +67,7 @@ private const val FAKE_IP = "10.111.222.1"
 private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 
 @Composable
-fun JavaInfoScreen() {
+fun TestsScreen() {
     val context = LocalContext.current
     val screenScrollState = rememberScrollState()
     val cr = context.contentResolver
