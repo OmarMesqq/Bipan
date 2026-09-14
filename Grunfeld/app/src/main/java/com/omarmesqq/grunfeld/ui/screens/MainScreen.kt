@@ -23,7 +23,6 @@ fun MainScreen() {
     val items = listOf(
         Screen.TestsScreen,
         Screen.WebviewScreen,
-        Screen.NativeScreen,
         Screen.MoreScreen
     )
 
@@ -61,8 +60,6 @@ fun MainScreen() {
         ) {
             composable(Screen.TestsScreen.route) { TestsScreen() }
             composable(Screen.WebviewScreen.route) { WebviewScreen() }
-            composable(Screen.NativeScreen.route) { NativeScreen() }
-
             composable(Screen.MoreScreen.route) { MoreScreen(navController) }
 
             composable(Screen.SettingsScreen.route) { SettingsScreen() }
