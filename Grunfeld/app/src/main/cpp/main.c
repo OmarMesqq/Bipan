@@ -26,7 +26,6 @@
 #include "athena.h"
 
 #define TAG "GrunfeldNative"
-#define MAX_REPORT_SIZE 8192
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -50,8 +49,6 @@
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data);
-static void dump_newfstatat_info(const char* path, char* const report, struct stat* statbuf);
-static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
 static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap);
 
 static int sys_prop_get(const char* propName, char* outBuf);
@@ -272,102 +269,185 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
 }
 
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobject thiz,jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
+JNIEXPORT jobject JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobject thiz,jstring filename) {
 
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        int fd = (int) arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
-        if (fd < 0) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Failed to openat(%s): %s\n\n", cstr, RAW_SYSCALL_TO_ERRNO(fd));
-            strcat(report, errorBuffer);
-            (*env)->ReleaseStringUTFChars(env, jstr, cstr);
-            (*env)->DeleteLocalRef(env, jstr);
-            continue;
-        }
-
-        long ret = 0;
-
-        struct stat statbuf = {0};
-
-        // int fstat(int fd, struct stat *statbuf);
-        ret = arm64_raw_syscall(__NR_fstat, fd , (long) &statbuf, 0, 0, 0, 0);
-
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "fstat(%s) SUCCESSFUL\n\n", cstr);
-            strcat(report, entry);
-            char intermediateReport[8192] = {0};
-            dump_fstat_info(cstr, intermediateReport, &statbuf);
-            strcat(report, intermediateReport);
-        } else {
-            snprintf(entry, sizeof(entry), "fstat(%s) (fd: %d) FAILED: %s\n\n", cstr, fd, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
-        snprintf(entry, sizeof(entry), "======================================\n");
-        strcat(report, entry);
-        close(fd);
+    const char* cstr = (*env)->GetStringUTFChars(env, filename, NULL);
+    if (cstr == NULL) {
+        LOGE("filePath NULL");
+        return NULL;
     }
 
-    return (*env)->NewStringUTF(env, report);
+    int fd = (int) arm64_raw_syscall(__NR_openat, (long)AT_FDCWD, (long)cstr, (long)O_RDONLY, 0, 0, 0);
+    if (fd < 0) {
+        LOGE("openat failed");
+        return NULL;
+    }
+
+    long ret = 0;
+    struct stat statbuf = {0};
+
+    // int fstat(int fd, struct stat *statbuf);
+    ret = arm64_raw_syscall(__NR_fstat, fd , (long) &statbuf, 0, 0, 0, 0);
+
+    if (ret != 0) {
+        LOGE("fstat failed");
+        return NULL;
+    }
+
+    jclass statResultClass = (*env)->FindClass(env, "com/omarmesqq/grunfeld/utils/StatResult");
+    if (statResultClass == NULL) {
+        LOGE("statResultClass is NULL");
+        return NULL;
+    }
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+    }
+
+    jmethodID ctor = (*env)->GetMethodID(env, statResultClass, "<init>",
+                                         "(JJJJJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+
+    if (ctor == NULL) {
+        LOGE("ctor is NULL");
+        return NULL;
+    }
+
+
+    unsigned long dev = (unsigned long)statbuf.st_dev;
+    unsigned long ino = (unsigned long)statbuf.st_ino;
+    long size = (long)statbuf.st_size;
+    long blocks = statbuf.st_blocks;
+    long blkSiz = statbuf.st_blksize;
+
+    // Timestamps
+    char access_time_str[64] = {0};
+    char modify_time_str[64] = {0};
+    char change_time_str[64] = {0};
+    struct tm tm_info;
+
+    localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+    localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+    localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+
+    char accessTime[128] = {0};
+    char modTime[128] = {0};
+    char statusChTime[128] = {0};
+
+    snprintf(accessTime, sizeof(accessTime), "%s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+    snprintf(modTime, sizeof(modTime), "%s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+    snprintf(statusChTime, sizeof(statusChTime), "%s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
+
+
+    jstring jAccessTime = (*env)->NewStringUTF(env, accessTime);
+    jstring jModTime = (*env)->NewStringUTF(env, modTime);
+    jstring jStatusChTime = (*env)->NewStringUTF(env, statusChTime);
+
+    jobject result = (*env)->NewObject(env, statResultClass, ctor,
+                                       (jlong) dev,
+                                       (jlong) ino,
+                                       (jlong) size,
+                                       (jlong) blkSiz,
+                                       (jlong) blocks,
+                                       jAccessTime,
+                                       jModTime,
+                                       jStatusChTime
+    );
+
+    LOGI("Created object!");
+    close(fd);
+    return result;
 }
 
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jobjectArray filenames) {
-    jsize len = (*env)->GetArrayLength(env, filenames);
-    char report[20000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
-
-    for (int i = 0; i < len; i++) {
-        jstring jstr = (jstring)(*env)->GetObjectArrayElement(env, filenames, i);
-        if (jstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "Some jstring in array is NULL!");
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        const char* cstr = (*env)->GetStringUTFChars(env, jstr, NULL);
-        if (cstr == NULL) {
-            snprintf(errorBuffer, sizeof(errorBuffer), "C-string from JNI String in array is NULL!");
-            (*env)->DeleteLocalRef(env, jstr);
-            return (*env)->NewStringUTF(env, errorBuffer);
-        }
-
-        struct stat statbuf = {0};
-        // if path is a symbolic link, do not dereference it: instead return information about the link itself
-        int flags = AT_SYMLINK_NOFOLLOW;
-
-        long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)cstr, (long)&statbuf, flags, 0, 0);
-        if (ret != 0) {
-            snprintf(entry, sizeof(entry), "newfstatat(%s) failed! errno: %s\n", cstr, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-            continue;
-        }
-
-        snprintf(entry, sizeof (entry),"newfstatat(%s) successful.\n", cstr);
-        strcat(report, entry);
-        char intermediateReport[8192] = {0};
-        dump_newfstatat_info(cstr, intermediateReport, &statbuf);
-        strcat(report, intermediateReport);
+JNIEXPORT jobject JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jstring filename) {
+    const char* filePath = (*env)->GetStringUTFChars(env, filename, NULL);
+    if (filePath == NULL) {
+        LOGE("filePath NULL");
+        return NULL;
     }
 
-    return (*env)->NewStringUTF(env, report);
+    struct stat statbuf = {0};
+    // if path is a symbolic link, do not dereference it: instead return information about the link itself
+    int flags = AT_SYMLINK_NOFOLLOW;
+
+    long ret = arm64_raw_syscall(__NR_newfstatat, (long)AT_FDCWD, (long)filePath, (long)&statbuf, flags, 0, 0);
+    if (ret != 0) {
+        LOGE("ret != 0");
+        return NULL;
+    }
+
+    jclass statResultClass = (*env)->FindClass(env, "com/omarmesqq/grunfeld/utils/StatResult");
+    if (statResultClass == NULL) {
+        LOGE("statResultClass is NULL");
+        return NULL;
+    }
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+    }
+
+    jmethodID ctor = (*env)->GetMethodID(env, statResultClass, "<init>",
+                                         "(JJJJJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+
+    if (ctor == NULL) {
+        LOGE("ctor is NULL");
+        return NULL;
+    }
+
+
+    unsigned long dev = (unsigned long)statbuf.st_dev;
+    unsigned long ino = (unsigned long)statbuf.st_ino;
+    long size = (long)statbuf.st_size;
+    long blocks = statbuf.st_blocks;
+    long blkSiz = statbuf.st_blksize;
+
+    // Timestamps
+    char access_time_str[64] = {0};
+    char modify_time_str[64] = {0};
+    char change_time_str[64] = {0};
+    struct tm tm_info;
+
+    localtime_r(&statbuf.st_atim.tv_sec, &tm_info);
+    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+    localtime_r(&statbuf.st_mtim.tv_sec, &tm_info);
+    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+    localtime_r(&statbuf.st_ctim.tv_sec, &tm_info);
+    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+
+    char accessTime[128] = {0};
+    char modTime[128] = {0};
+    char statusChTime[128] = {0};
+
+    snprintf(accessTime, sizeof(accessTime), "%s.%09ld\n", access_time_str, statbuf.st_atim.tv_nsec);
+    snprintf(modTime, sizeof(modTime), "%s.%09ld\n", modify_time_str, statbuf.st_mtim.tv_nsec);
+    snprintf(statusChTime, sizeof(statusChTime), "%s.%09ld\n", change_time_str, statbuf.st_ctim.tv_nsec);
+
+
+    jstring jAccessTime = (*env)->NewStringUTF(env, accessTime);
+    jstring jModTime = (*env)->NewStringUTF(env, modTime);
+    jstring jStatusChTime = (*env)->NewStringUTF(env, statusChTime);
+
+    jobject result = (*env)->NewObject(env, statResultClass, ctor,
+                                       (jlong) dev,
+                                       (jlong) ino,
+                                       (jlong) size,
+                                       (jlong) blkSiz,
+                                       (jlong) blocks,
+                                       jAccessTime,
+                                       jModTime,
+                                       jStatusChTime
+                                       );
+
+    LOGI("Created object!");
+    return result;
+
 }
 
 JNIEXPORT jstring JNICALL
@@ -731,7 +811,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadCb(JNIEnv *env, j
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
     long ret = -1;
-    char report[MAX_REPORT_SIZE] = {0};
+    char report[512] = {0};
     char entry[256] = {0};
 
     const int port_dns = 53;
@@ -1023,84 +1103,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv
     }
 
     return JNI_TRUE;
-}
-
-
-static void dump_newfstatat_info(const char* path, char* const report, struct stat* statbuf) {
-    char entry[PATH_MAX] = {0};
-
-    snprintf(entry, sizeof(entry), "\tDevice: %lu\n", (unsigned long)statbuf->st_dev);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
-    strcat(report, entry);
-
-    // Timestamps
-    char access_time_str[64] = {0};
-    char modify_time_str[64] = {0};
-    char change_time_str[64] = {0};
-    struct tm tm_info;
-
-    // 1. Format Access Time
-    localtime_r(&statbuf->st_atim.tv_sec, &tm_info);
-    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    // 2. Format Modification Time
-    localtime_r(&statbuf->st_mtim.tv_sec, &tm_info);
-    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    // 3. Format Status Change Time
-    localtime_r(&statbuf->st_ctim.tv_sec, &tm_info);
-    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    // Log the human-readable versions with their nanoseconds appended
-    snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf->st_atim.tv_nsec);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf->st_mtim.tv_nsec);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf->st_ctim.tv_nsec);
-    strcat(report, entry);
-}
-
-static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf) {
-    char entry[PATH_MAX] = {0};
-
-    snprintf(entry, sizeof(entry), "\tDevice: %lu\n", (unsigned long)statbuf->st_dev);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tInode: %lu\n", (unsigned long)statbuf->st_ino);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tSize: %ld bytes\n", (long)statbuf->st_size);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tBlock size: %ld\n", (long)statbuf->st_blksize);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tBlocks allocated: %ld\n", (long)statbuf->st_blocks);
-    strcat(report, entry);
-
-    // Timestamps
-    char access_time_str[64] = {0};
-    char modify_time_str[64] = {0};
-    char change_time_str[64] = {0};
-    struct tm tm_info;
-
-    // 1. Format Access Time
-    localtime_r(&statbuf->st_atim.tv_sec, &tm_info);
-    strftime(access_time_str, sizeof(access_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    // 2. Format Modification Time
-    localtime_r(&statbuf->st_mtim.tv_sec, &tm_info);
-    strftime(modify_time_str, sizeof(modify_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    // 3. Format Status Change Time
-    localtime_r(&statbuf->st_ctim.tv_sec, &tm_info);
-    strftime(change_time_str, sizeof(change_time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-
-    snprintf(entry, sizeof(entry), "\tAccess time: %s.%09ld\n", access_time_str, statbuf->st_atim.tv_nsec);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tModification time: %s.%09ld\n", modify_time_str, statbuf->st_mtim.tv_nsec);
-    strcat(report, entry);
-    snprintf(entry, sizeof(entry), "\tStatus Change Time: %s.%09ld\n", change_time_str, statbuf->st_ctim.tv_nsec);
-    strcat(report, entry);
 }
 
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context) {

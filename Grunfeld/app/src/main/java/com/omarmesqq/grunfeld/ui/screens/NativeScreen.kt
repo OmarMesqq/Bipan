@@ -25,25 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
-import com.omarmesqq.grunfeld.ui.composables.CodeTitle
-import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
+import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotEqualLongs
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun NativeScreen() {
-    var fstatInfo by remember { mutableStateOf("Files not stated") }
-    var newfstatatInfo by remember { mutableStateOf("Files not stated") }
-
-    val hostsNodes = arrayOf(
-        "/etc",
-        "/etc/hosts",
-
-        "/system/etc",
-        "/system/etc/hosts",
-    )
-
-
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -68,41 +55,6 @@ fun NativeScreen() {
 
             SectionHeader("FILESYSTEM TESTS")
             FilesystemAssertions()
-
-
-            SectionHeader("STAT FAMILY")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("fstat")
-                    ReportTextWithCopy(fstatInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            fstatInfo = NativeLibWrapper.testFstat(hostsNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("fstat()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("newfstatat")
-                    ReportTextWithCopy(newfstatatInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            newfstatatInfo = NativeLibWrapper.testNewfstatat(hostsNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("newfstatat()")
-                    }
-                }
-            }
 
             SectionHeader("SYSTEM PROPS TESTS")
             SysPropsAssertions()
@@ -262,7 +214,7 @@ private fun FilesystemAssertions() {
         .split("\n")
         .take(2) // /system/etc/hosts and /etc/hosts
         .forEach {
-            AssertionResult("statfs to hosts file", it, "Function not implemented")
+            AssertionResult("'statfs' to hosts file", it, "Function not implemented")
         }
     HorizontalDivider()
 
@@ -282,6 +234,47 @@ private fun FilesystemAssertions() {
             AssertionResult("faccessat(${rootNodes[idx]})", it, "No such file or directory")
         }
     HorizontalDivider()
+
+    val hostsNodes1 = arrayOf(
+        "/etc",
+        "/etc/hosts",
+    )
+
+    val hostsNodes2 = arrayOf(
+        "/system/etc",
+        "/system/etc/hosts",
+    )
+
+    val fstatEtc = NativeLibWrapper.testFstat(hostsNodes1[0])
+    val fstatEtcHosts = NativeLibWrapper.testFstat(hostsNodes1[1])
+
+    AssertionResult("/etc and /etc/hosts device should match", fstatEtc.dev, fstatEtcHosts.dev)
+    AssertionResultNotEqualLongs("/etc and /etc/hosts inode shouldn't match", fstatEtc.ino, fstatEtcHosts.ino)
+
+    AssertionResult("/etc/hosts size", fstatEtcHosts.size, 46)
+    AssertionResult("/etc/hosts block size", fstatEtcHosts.blkSiz, 4096)
+    AssertionResult("/etc/hosts allocated blocks", fstatEtcHosts.blksAllocated, 8)
+
+    AssertionResult("/etc/hosts and /etc access time should match", fstatEtc.accessTime, fstatEtcHosts.accessTime)
+    AssertionResult("/etc/hosts and /etc modification time should match", fstatEtc.modTime, fstatEtcHosts.modTime)
+    AssertionResult("/etc/hosts and /etc status change time should match", fstatEtc.modTime, fstatEtcHosts.modTime)
+
+
+    HorizontalDivider()
+
+    val newfstatatSystemEtc = NativeLibWrapper.testNewfstatat(hostsNodes2[0])
+    val newfstatatSystemEtcHosts = NativeLibWrapper.testNewfstatat(hostsNodes2[1])
+
+    AssertionResult("/system/etc and /system/etc/hosts device should match", newfstatatSystemEtc.dev, newfstatatSystemEtcHosts.dev)
+    AssertionResultNotEqualLongs("/system/etc and /system/etc/hosts inode shouldn't match", newfstatatSystemEtc.ino, newfstatatSystemEtcHosts.ino)
+
+    AssertionResult("/system/etc/hosts size", newfstatatSystemEtcHosts.size, 46)
+    AssertionResult("/system/etc/hosts block size", newfstatatSystemEtcHosts.blkSiz, 4096)
+    AssertionResult("/system/etc/hosts allocated blocks", newfstatatSystemEtcHosts.blksAllocated, 8)
+
+    AssertionResult("/system/etc/hosts and /system/etc access time should match", newfstatatSystemEtc.accessTime, newfstatatSystemEtcHosts.accessTime)
+    AssertionResult("/system/etc/hosts and /system/etc modification time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
+    AssertionResult("/system/etc/hosts and /system/etc status change time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
 
 }
 
