@@ -34,9 +34,10 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
   private static final String MCCMNC_TUPLE = "72406";
   private static final String SIM_ISO_COUNTRY_CODE = "br";
 
-  private static final Set<String> ALLOW_LIST = new HashSet<>(Arrays.asList(
-      "com.whatsapp",
-      "com.instagram.android"));
+  private static String pkgName = "";
+
+  private static final Set<String> TM_CARRIER_BYPASS_LIST = new HashSet<>(Arrays.asList(
+      "com.whatsapp"));
 
   private Object createEmptyCellIdentity() throws Throwable {
     Class<?> cellIdentityGsmClass = Class.forName("android.telephony.CellIdentityGsm");
@@ -64,9 +65,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
   @Override
   public void install(Context context) throws Exception {
-    if (ALLOW_LIST.contains(context.getPackageName())) {
-      return;
-    }
+    pkgName = context.getPackageName();
 
     realTm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
 
@@ -130,6 +129,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimOperatorNameForPhone":
         case "getSimOperatorNameForSubscription":
         case "getSubscriptionCarrierName": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           Log.i(TAG, "Neutered " + methodName);
           return CARRIER_NAME;
         }
@@ -139,6 +141,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimCountryIso":
         case "getSimCountryIsoForPhone":
         case "getSimCountryIsoForSubscription": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           Log.i(TAG, "Neutered " + methodName);
           return SIM_ISO_COUNTRY_CODE;
         }
@@ -146,6 +151,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimOperator":
         case "getSimOperatorNumeric":
         case "getSimOperatorForSubscription": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           Log.i(TAG, "Neutered " + methodName);
           return MCCMNC_TUPLE;
         }
@@ -168,6 +176,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
         case "getServiceState":
         case "getServiceStateForSlot": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           Log.i(TAG, "Neutered " + methodName);
           return new ServiceState();
         }
@@ -181,6 +192,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimSpecificCarrierId":
         case "getSubscriptionCarrierId":
         case "getSubscriptionSpecificCarrierId": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           Log.i(TAG, "Neutered " + methodName);
           return CARRIER_ID;
         }
@@ -198,6 +212,9 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         }
 
         case "getCarrierIdFromMccMnc": {
+          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+            return method.invoke(originalITelephony, args);
+          }
           String mccmnc = (args != null && args.length > 1 && args[1] instanceof String)
               ? (String) args[1]
               : "";

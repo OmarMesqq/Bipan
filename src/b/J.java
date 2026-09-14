@@ -38,7 +38,7 @@ public class J {
   public static volatile Field s_mDisabledField = null;
 
   // Spare GMS and Play Store from most hooks
-  private static final Set<String> GLOBAL_ALLOW_LIST = new HashSet<>(Arrays.asList(
+  private static final Set<String> BIPAN_JAVA_GLOBAL_BYPASS = new HashSet<>(Arrays.asList(
       "com.android.vending",
       "com.google.android.gms"));
 
@@ -228,7 +228,7 @@ public class J {
     String packageName = context.getPackageName();
     List<BaseHook> modules = new ArrayList<>();
 
-    if (GLOBAL_ALLOW_LIST.contains(packageName)) {
+    if (BIPAN_JAVA_GLOBAL_BYPASS.contains(packageName)) {
       modules.add(new AntiNetworkDiscoveryHook());
       modules.add(new SystemPropertiesHook());
     } else {
