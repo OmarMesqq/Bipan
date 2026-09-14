@@ -168,7 +168,7 @@ fun AssertionResultContains(testTitle: String, actual: String, expected: String)
 
     Text(
         text = if (passed) {
-            "$testTitle: $actual contains \"$expected\""
+            "$testTitle: \"$actual\" contains \"$expected\""
         } else  {
             "$testTitle test FAIL: actual (\"$actual\") does NOT contain: expected(\"$expected\")"
         },
@@ -237,14 +237,14 @@ fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, actual: 
 }
 
 @Composable
-fun <T> AssertionResultSomeValuesInIterable(testTitle: String, actual: Iterable<T>, expected: List<String>) {
+fun <T> AssertionResultSomeValuesInIterable(testTitle: String, actual: Iterable<T>, expected: List<String?>) {
     val actualSet = actual.toSet() as Set<String>
     val expectedSet = expected.toSet()
     val passed = TestRunner.ensureEqualSets(actualSet, expectedSet)
 
     Text(
         text = if (passed) {
-            "$testTitle: list == $expected"
+            "$testTitle: Set(\"actual\") == Set(\"expected\") -> $expected "
         } else  {
             "$testTitle test FAIL: some (or all) values in 'actual' are different than of those in 'expected'"
         },

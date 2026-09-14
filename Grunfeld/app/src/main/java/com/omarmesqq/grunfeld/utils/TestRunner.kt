@@ -5,7 +5,7 @@ object TestRunner {
         return actual == expected
     }
 
-    fun ensureEqualSets(actual: Set<String>, expected: Set<String>): Boolean {
+    fun ensureEqualSets(actual: Set<String>, expected: Set<String?>): Boolean {
         return actual == expected
     }
 

@@ -20,6 +20,7 @@ import com.omarmesqq.grunfeld.ui.Screen
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
+
     val items = listOf(
         Screen.TestsScreen,
         Screen.WebviewScreen,
