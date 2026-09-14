@@ -49,6 +49,9 @@ fun getSensorsInfo(ctx: Context): String {
         sb.appendLine("getDefaultSensor(ALL): ${defaultSensorAll.name}")
     }
 
+    val sensorsInfoNativeLayer = NativeLibWrapper.testSensors()
+    sb.append(sensorsInfoNativeLayer)
+
     return sb.toString()
 }
 
