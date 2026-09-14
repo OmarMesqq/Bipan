@@ -236,11 +236,8 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_statfs) {
     const char* path = (const char*)arg0;
-    if (path &&
-        (isHostsFile(path) ||
-         shouldSpoofExistence(path) ||
-         shouldDenyStat(path))) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) in-app: replying not implemented");
+    if (path && isHostsFile(path)) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) to hosts file: replying not implemented");
       ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
       in_sigsys_handler = false;
       return;
@@ -319,15 +316,13 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   }
 #if defined(__aarch64__)
-  else if (nr == __NR_faccessat ||
-           nr == __NR_newfstatat ||
+  else if (nr == __NR_newfstatat ||
            nr == __NR_inotify_add_watch ||
            nr == __NR_readlinkat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   }
 #else
-  else if (nr == __NR_faccessat ||
-           nr == __NR_inotify_add_watch ||
+  else if (nr == __NR_inotify_add_watch ||
            nr == __NR_readlinkat) {
     local_strncpy(ipc_mem->string_payload, (const char*)arg1, 255);
   }

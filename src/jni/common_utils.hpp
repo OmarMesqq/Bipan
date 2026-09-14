@@ -71,33 +71,4 @@ inline bool isHostsFile(const char* pathname) {
       (local_strcmp(pathname, "/system/etc/hosts") == 0));
 }
 
-inline bool shouldSpoofExistence(const char* pathname) {
-  if (localStartsWith(pathname, "/proc/meminfo_extra")) {
-    return true;
-  }
-
-  if (localStartsWith(pathname, "/system/lib") &&
-      local_strstr(pathname, "zygisk")) {
-    return true;
-  }
-
-  if (
-      (localStartsWith(pathname, "/product/bin") ||
-       localStartsWith(pathname, "/debug_ramdisk")) &&
-      (local_strstr(pathname, "magisk") ||
-       local_strstr(pathname, "resetprop") ||
-       local_strstr(pathname, "su"))) {
-    return true;
-  }
-  return false;
-}
-
-inline bool shouldDenyStat(const char* pathname) {
-  return (
-      (local_strcmp(pathname, "/proc/version") == 0) ||
-      (local_strcmp(pathname, "/proc/sys/kernel/version") == 0) ||
-      (local_strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) ||
-      (local_strcmp(pathname, "/proc/asound/version") == 0));
-}
-
 #endif

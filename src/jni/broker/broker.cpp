@@ -202,11 +202,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
           break;
-        } else if (shouldSpoofExistence(path_payload)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) does not exist...", path_payload);
-          ipc_mem->ret = -ENOENT;
-          ipc_mem->action = ACTION_USE_RET;
-          break;
         } else if (isMapsFile(path_payload) || isSmapsFile(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
           char real_path[IPC_STRING_STRUCT_BUF_SIZ];
@@ -275,35 +270,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 #endif
         break;
       }
-      case __NR_faccessat: {
-        const char* path = ipc_mem->string_payload;
-
-        ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "faccessat(%s) denied", path);
-          ipc_mem->ret = -EACCES;
-          break;
-        }
-        if (shouldSpoofExistence(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "faccessat(%s) spoofed", path);
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
-
-        ipc_mem->action = ACTION_EXECUTE_NATIVE;
-#ifdef BROKER_DEBUG_LOGGING
-        if (shouldLog(path)) {
-          int dirfd = (int)ipc_mem->arg0;
-          bool isRelativeLookup = (dirfd == AT_FDCWD);
-          if (isRelativeLookup) {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: AT_FDCWD) allowed", path);
-          } else {
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "faccessat(%s) (fd: %d) allowed", path, dirfd);
-          }
-        }
-#endif
-        break;
-      }
       case __NR_fstat: {
         int fd = (int)ipc_mem->arg0;
 
@@ -324,20 +290,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         }
         resolved_link_path[len] = '\0';
-
-        if (shouldDenyStat(resolved_link_path)) {
-          free(proc_pid_fd_path);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "fstat(%s) denied", resolved_link_path);
-          ipc_mem->ret = -EACCES;
-          break;
-        }
-
-        if (shouldSpoofExistence(resolved_link_path)) {
-          free(proc_pid_fd_path);
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "fstat(%s) spoofed", resolved_link_path);
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
 
         if (strstr(resolved_link_path, "/memfd:")) {
           char* actualPath = extract_real_path_from_memfd(resolved_link_path);
@@ -382,16 +334,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
         int flags = (int)ipc_mem->arg3;
 
         ipc_mem->action = ACTION_USE_RET;
-        if (shouldDenyStat(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "newfstatat(%s) denied", path);
-          ipc_mem->ret = -EACCES;
-          break;
-        }
-        if (shouldSpoofExistence(path)) {
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "newfstatat(%s) spoofed", path);
-          ipc_mem->ret = -ENOENT;
-          break;
-        }
 
         // for absolute path lookups
         if (isHostsFile(path)) {
@@ -749,7 +691,9 @@ dead_client_exit:
 
 static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
   FILE* f = fopen("/proc/self/stat", "r");
-  if (!f) return false;
+  if (!f) {
+    return false;
+  }
 
   char buf[PATH_MAX] = {0};
   if (!fgets(buf, sizeof(buf), f)) {
@@ -859,7 +803,7 @@ static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_p
   uintptr_t target_addr = caller_pc - 4;
 
   if (patched_pcs.count(target_addr)) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Reentrancy in remote patcher: PC already patched!");
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Race condition in remote patcher: PC already patched!");
     inside_remote_patcher = false;
     return;
   }
