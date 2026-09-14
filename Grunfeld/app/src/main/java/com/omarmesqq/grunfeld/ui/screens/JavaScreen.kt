@@ -581,6 +581,10 @@ private fun SystemPropsAssertions() {
     AssertionResult("ro.bootimage.build.type", getSystemProperty("ro.bootimage.build.type"), defaultValue)
     AssertionResult("ro.bootimage.build.tags", getSystemProperty("ro.bootimage.build.tags"), defaultValue)
 
+    AssertionResult("ro.debuggable", getSystemProperty("ro.debuggable"), defaultValue)
+    AssertionResult("ro.secure", getSystemProperty("ro.secure"), defaultValue)
+    AssertionResult("ro.force.debuggable", getSystemProperty("ro.force.debuggable"), "0")
+
     AssertionResult("ro.product.board", getSystemProperty("ro.product.board"), "husky")
     AssertionResult("ro.product.brand", getSystemProperty("ro.product.brand"), "google")
     AssertionResult("ro.product.device", getSystemProperty("ro.product.device"), "husky")
@@ -768,9 +772,6 @@ private fun SystemPropsAssertions() {
     AssertionResult("ro.board.api_frozen", getSystemProperty("ro.board.api_frozen"), defaultValue)
 
     // AOSP
-    AssertionResult("ro.debuggable", getSystemProperty("ro.debuggable"), defaultValue)
-    AssertionResult("ro.secure", getSystemProperty("ro.secure"), defaultValue)
-    AssertionResult("ro.force.debuggable", getSystemProperty("ro.force.debuggable"), "0")
     AssertionResult("init.svc.adb_root", getSystemProperty("init.svc.adb_root"), defaultValue)
     AssertionResult("service.adb.root", getSystemProperty("service.adb.root"), defaultValue)
     AssertionResult("persist.sys.usb.config", getSystemProperty("persist.sys.usb.config"), defaultValue)
@@ -835,7 +836,7 @@ private fun SystemPropsAssertions() {
     AssertionResult("ril.simoperator", getSystemProperty("ril.simoperator"), ",")
     AssertionResult("ril.cidManager.initiated", getSystemProperty("ril.cidManager.initiated"), "1")
     AssertionResult("ril.dds.call.ongoing0", getSystemProperty("ril.dds.call.ongoing0"), "0")
-    AssertionResult("ril.dds.call.ongoing1", getSystemProperty("ril.dds.call.ongoing1"), defaultValue)
+    AssertionResult("ril.dds.call.ongoing1", getSystemProperty("ril.dds.call.ongoing1"), "0")
     AssertionResult("ril.modem.board", getSystemProperty("ril.modem.board"), defaultValue)
     AssertionResult("ril.modem.board2", getSystemProperty("ril.modem.board2"), defaultValue)
     AssertionResult("ril.attach.apn0", getSystemProperty("ril.attach.apn0"), defaultValue)
@@ -858,6 +859,20 @@ private fun SystemPropsAssertions() {
     AssertionResult("gsm.operator.alpha", getSystemProperty("gsm.operator.alpha"), "Vivo,")
 
     AssertionResult("debug.tracing.mnc", getSystemProperty("debug.tracing.mnc"), "6")
+
+    AssertionResult("ro.sf.lcd_density", getSystemProperty("ro.sf.lcd_density"), "400")
+    AssertionResult("ro.boot.selinux", getSystemProperty("ro.boot.selinux"), "enforcing")
+    AssertionResult("ro.adb.secure", getSystemProperty("ro.adb.secure"), "1")
+    AssertionResult("ro.allow.mock.location", getSystemProperty("ro.allow.mock.location"), "0")
+    AssertionResult("persist.sys.strictmode.disable", getSystemProperty("persist.sys.strictmode.disable"), "true")
+    AssertionResult("ro.control_privapp_permissions", getSystemProperty("ro.control_privapp_permissions"), "enforce")
+    AssertionResult("ro.build.characteristics", getSystemProperty("ro.build.characteristics"), "default")
+    AssertionResult("ro.surface_flinger.enable_frame_rate_override", getSystemProperty("ro.surface_flinger.enable_frame_rate_override"), "false")
+    AssertionResult("ro.surface_flinger.game_default_frame_rate_override", getSystemProperty("ro.surface_flinger.game_default_frame_rate_override"), "60")
+    AssertionResult("security.perf_harden", getSystemProperty("security.perf_harden"), "1")
+    AssertionResult("ril.halservice.registered.slot1", getSystemProperty("ril.halservice.registered.slot1"), "true")
+    AssertionResult("ril.halservice.registered.slot2", getSystemProperty("ril.halservice.registered.slot2"), "true")
+    AssertionResult("ril.rejectedPlmn", getSystemProperty("ril.rejectedPlmn"), ",")
 }
 
 private fun hasPermission(context: Context, permission: String): Boolean {

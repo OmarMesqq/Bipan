@@ -152,7 +152,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.system_ext.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.vendor.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
     {"ro.vendor_dlkm.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
-    {"ro.bootimage.build.fingerprint", "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"},
 
     // RADIO
     {"gsm.version.baseband", "g5300g-251108-251202-B-12876551"},
@@ -180,12 +179,9 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // OEM/ROM specific
     {"init.svc.vaultkeeper", ""},
     {"init.svc.vendor_flash_recovery", ""},
-    {"init.svc.lineage-bugreport", "stopped"},
     {"ro.board.api_frozen", ""},
 
     // AOSP
-    {"ro.debuggable", "0"},
-    {"ro.secure", "1"},
     {"ro.force.debuggable", "0"},
     {"init.svc.adb_root", ""},
     {"service.adb.root", ""},
@@ -198,11 +194,9 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.kernel.version", "6.6"},
 
     // 64-bit only
-    {"ro.odm.product.cpu.abilist32", ""},
     {"ro.product.cpu.abilist32", ""},
     {"ro.system.product.cpu.abilist32", ""},
     {"ro.vendor.product.cpu.abilist32", ""},
-    {"ro.odm.product.cpu.abilist", "arm64-v8a"},
     {"ro.product.cpu.abilist", "arm64-v8a"},
     {"ro.system.product.cpu.abilist", "arm64-v8a"},
     {"ro.vendor.product.cpu.abilist", "arm64-v8a"},
@@ -267,7 +261,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
 
     // No calls rn..
     {"ril.dds.call.ongoing0", "0"},
-    {"ril.dds.call.ongoing1", ""},
+    {"ril.dds.call.ongoing1", "0"},
 
     // Telephony (potentially) unique identifiers
     {"ril.modem.board", ""},

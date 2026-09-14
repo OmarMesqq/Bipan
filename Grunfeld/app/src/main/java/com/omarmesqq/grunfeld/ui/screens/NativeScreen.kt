@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.omarmesqq.grunfeld.BuildConfig
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.ReportTextWithCopy
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
@@ -39,9 +40,6 @@ fun NativeScreen() {
 
     var getsocknameReport by remember { mutableStateOf("getsockname not tested yet") }
 
-
-    var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
-    var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
     var dliteratephdrInfo by remember { mutableStateOf("dl_iterate_phdr not run yet") }
     var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
 
@@ -239,63 +237,67 @@ fun NativeScreen() {
                 }
             }
 
-            SectionHeader("SIGNAL HANDLING")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { NativeLibWrapper.raiseSegv() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("raise(SIGSEGV)")
+            if (BuildConfig.DEBUG) {
+                SectionHeader("SIGNAL HANDLING")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { NativeLibWrapper.raiseSegv() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("raise(SIGSEGV)")
+                        }
                     }
                 }
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { NativeLibWrapper.raiseAbrt() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("raise(SIGABRT)")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { NativeLibWrapper.raiseAbrt() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("raise(SIGABRT)")
+                        }
                     }
                 }
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { NativeLibWrapper.raiseTrap() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("raise(SIGTRAP)")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { NativeLibWrapper.raiseTrap() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("raise(SIGTRAP)")
+                        }
                     }
                 }
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { NativeLibWrapper.raiseQuit() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("raise(SIGQUIT)")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { NativeLibWrapper.raiseQuit() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("raise(SIGQUIT)")
+                        }
                     }
                 }
-            }
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                var signalHandlerStatus by remember { mutableStateOf("Try to overwrite SIGSYS handler") }
+                var sigsysBlockStatus by remember { mutableStateOf("Try to block SIGSYS") }
+
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = "Install SIGSYS handler and trigger action", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = signalHandlerStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
                     Button(
                         onClick = {
                             val installed = NativeLibWrapper.installSigsysHandler()
@@ -317,20 +319,22 @@ fun NativeScreen() {
                     }
                 }
 
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
-                Button(
-                    onClick = {
-                        val success = NativeLibWrapper.blockSigSys()
-                        sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("sigprocmask SIGSYS")
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = "Attempt to halt SIGSYS delivery", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = sigsysBlockStatus, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                    Button(
+                        onClick = {
+                            val success = NativeLibWrapper.blockSigSys()
+                            sigsysBlockStatus = if (success) "SIGSYS Blocked" else "Failed to block SIGSYS"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("sigprocmask SIGSYS")
+                    }
                 }
             }
+
 
             SectionHeader("ACCESS FAMILY")
             Card(
