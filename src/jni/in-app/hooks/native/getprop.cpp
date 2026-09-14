@@ -17,6 +17,12 @@
 static int (*orig_system_property_get)(const char* name, char* value) = nullptr;
 static void (*orig_system_property_read_callback)(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) = nullptr;
 static int (*orig_system_property_read)(const void* pi, char* name, char* value) = nullptr;
+static const prop_info* (*orig_system_property_find)(const char* name) = nullptr;
+
+// Unique fake address for props added on-the-fly
+static char g_synthetic_sentinel;
+// set by find, consumed by read/callback
+static thread_local std::string g_last_synthetic_name;
 
 // Helpers
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
@@ -25,6 +31,7 @@ static void capture_cb(void* cookie, const char* name, const char* value, uint32
 static int hook_system_property_get(const char* name, char* value);
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie);
 static int hook_system_property_read(const void* pi, char* name, char* value);
+static const prop_info* hook_system_property_find(const char* name);
 
 // Data structures
 static const std::unordered_map<std::string, std::string> g_prop_overrides = {
@@ -168,7 +175,6 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.config.notification_sound", "Argon.ogg"},
     {"ro.config.ringtone", "Orion.ogg"},
     {"ro.product.locale", "en-US"},
-    {"persist.sys.locale", "en-US"},
     {"bluetooth.device.default_name", "Pixel 8 Pro"},
     // {"ro.sf.lcd_density", "400"},
 
@@ -187,8 +193,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     // AOSP
     {"ro.force.debuggable", "0"},
     {"init.svc.adb_root", ""},
-    {"service.adb.root", ""},
-    {"persist.sys.usb.config", ""},
+    {"persist.sys.usb.config", "mtp"},
     {"sys.usb.config", "mtp"},
     {"sys.usb.configfs", "1"},
     {"init.svc.usbd", "stopped"},
@@ -309,24 +314,28 @@ static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
 #define PROP_GET_SYM "__system_property_get"
 #define PROP_READ_CB_SYM "__system_property_read_callback"
 #define PROP_READ_SYM "__system_property_read"
-#define GETPROP_METHOD_COUNT 3
+#define PROP_FIND_SYM "__system_property_find"
+#define GETPROP_METHOD_COUNT 4
 
 void registerDobbyNativeSysPropsHooks(void) {
   const char* symbols[] = {
       PROP_GET_SYM,
       PROP_READ_CB_SYM,
-      PROP_READ_SYM};
+      PROP_READ_SYM,
+      PROP_FIND_SYM};
 
   void* hooks[] = {
       (void*)hook_system_property_get,
       (void*)hook_system_property_read_callback,
       (void*)hook_system_property_read,
+      (void*)hook_system_property_find,
   };
 
   void** originals[] = {
       (void**)&orig_system_property_get,
       (void**)&orig_system_property_read_callback,
       (void**)&orig_system_property_read,
+      (void**)&orig_system_property_find,
   };
 
   for (int i = 0; i < GETPROP_METHOD_COUNT; i++) {
@@ -385,13 +394,57 @@ static int hook_system_property_read(const void* pi, char* name, char* value) {
     return 0;
   }
 
-  // Always obtain the *full* name + value via the original callback.
-  // This bypasses the truncation that happens inside the legacy Read path.
+  // non-existent properties
+  if (pi == reinterpret_cast<const prop_info*>(&g_synthetic_sentinel)) {
+    const std::string& full_name = g_last_synthetic_name;
+    if (full_name.empty()) {
+      if (value) {
+        value[0] = '\0';
+      }
+      return 0;
+    }
+
+    const char* effective_value = "";
+    int effective_len = 0;
+
+    auto globalIt = g_prop_overrides.find(full_name);
+    if (globalIt != g_prop_overrides.end()) {
+      effective_value = globalIt->second.c_str();
+      effective_len = static_cast<int>(globalIt->second.size());
+    } else if (g_telephony_spoofing_allowlist.find(g_package_name) ==
+               g_telephony_spoofing_allowlist.end()) {
+      auto telIt = g_telephony_prop_overrides.find(full_name);
+      if (telIt != g_telephony_prop_overrides.end()) {
+        effective_value = telIt->second.c_str();
+        effective_len = static_cast<int>(telIt->second.size());
+      }
+    }
+
+    // Satisfy the contract of the legacy `__system_property_read`
+    if (name != nullptr) {
+      strlcpy(name, full_name.c_str(), PROP_NAME_MAX);
+    }
+    if (value != nullptr) {
+      size_t copy_len = std::min(static_cast<size_t>(effective_len),
+                                 static_cast<size_t>(PROP_VALUE_MAX - 1));
+      memcpy(value, effective_value, copy_len);
+      value[copy_len] = '\0';
+      return static_cast<int>(copy_len);
+    }
+    return effective_len;
+  }
+
+  /**
+   * 1. Get the FULL name + value via original the original cb,
+   * bypassing the truncation of `__system_property_read`
+   */
   CaptureCtx ctx = {};
   orig_system_property_read_callback(pi, capture_cb, &ctx);
 
   if (!ctx.got) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sys prop read): Failed to capture callback for prop: %s. Aborting for privacy", name == nullptr ? "(null)" : name);
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG,
+                          "(sys prop read): Failed to capture callback for prop: %s",
+                          name ? name : "(null)");
     BIPAN_PANIC();
     // return orig_system_property_read(pi, name, value);
   }
@@ -400,7 +453,7 @@ static int hook_system_property_read(const void* pi, char* name, char* value) {
   const char* effective_value = ctx.value;
   int effective_len = static_cast<int>(strlen(effective_value));
 
-  // Override lookup with the FULL name
+  // 2. Override the prop lookup with the full name
   if (full_name[0] != '\0') {
     auto globalIt = g_prop_overrides.find(full_name);
     if (globalIt != g_prop_overrides.end()) {
@@ -416,19 +469,18 @@ static int hook_system_property_read(const void* pi, char* name, char* value) {
     }
   }
 
-  // Now satisfy the legacy contract of __system_property_read
+  // 3. Satisfy the contract of the legacy `__system_property_read`
   if (name != nullptr) {
-    // Truncate exactly like the real libc does
+    // Truncate just like the real bionic
     size_t namelen = strlcpy(name, full_name, PROP_NAME_MAX);
     if (namelen >= PROP_NAME_MAX) {
-      // Optional: you can still emit the same log if you want perfect fidelity,
-      // but it is not required for correctness of the spoof.
+      write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
+                            "(sys prop read): prop's (%s) name exceeds PROP_NAME_MAX",
+                            full_name);
     }
   }
 
   if (value != nullptr) {
-    // Respect PROP_VALUE_MAX (legacy limit). Long values should really
-    // go through the callback path, but we still provide a best-effort copy.
     size_t copy_len = std::min(static_cast<size_t>(effective_len),
                                static_cast<size_t>(PROP_VALUE_MAX - 1));
     memcpy(value, effective_value, copy_len);
@@ -436,7 +488,7 @@ static int hook_system_property_read(const void* pi, char* name, char* value) {
     return static_cast<int>(copy_len);
   }
 
-  return effective_len;  // name-only request
+  return effective_len;
 }
 
 struct PropCallbackCtx {
@@ -445,7 +497,52 @@ struct PropCallbackCtx {
 };
 
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie) {
+  // synthetic prop:
+  if (pi == reinterpret_cast<const prop_info*>(&g_synthetic_sentinel)) {
+    const std::string& full_name = g_last_synthetic_name;
+    if (full_name.empty()) {
+      return;
+    }
+
+    const char* effective = "";
+    auto globalIt = g_prop_overrides.find(full_name);
+    if (globalIt != g_prop_overrides.end()) {
+      effective = globalIt->second.c_str();
+    } else if (g_telephony_spoofing_allowlist.find(g_package_name) ==
+               g_telephony_spoofing_allowlist.end()) {
+      auto telIt = g_telephony_prop_overrides.find(full_name);
+      if (telIt != g_telephony_prop_overrides.end()) {
+        effective = telIt->second.c_str();
+      }
+    }
+
+    /**
+     * Call the *user* callback with the spoofed value
+     * (serial being zero – let's see who cares)
+     */
+    callback(cookie, full_name.c_str(), effective, 0);
+    return;
+  }
+
   orig_system_property_read_callback(pi, intercept_prop_callback, new PropCallbackCtx{callback, cookie});
+}
+
+static const prop_info* hook_system_property_find(const char* name) {
+  if (name != nullptr) {
+    bool is_override =
+        g_prop_overrides.count(name) > 0 ||
+        (g_telephony_spoofing_allowlist.find(g_package_name) == g_telephony_spoofing_allowlist.end() &&
+         g_telephony_prop_overrides.count(name) > 0);
+
+    if (is_override) {
+      // remember for the subsequent read/callback
+      g_last_synthetic_name = name;
+      return reinterpret_cast<const prop_info*>(&g_synthetic_sentinel);
+    }
+  }
+
+  g_last_synthetic_name.clear();
+  return orig_system_property_find(name);
 }
 
 // Helpers below

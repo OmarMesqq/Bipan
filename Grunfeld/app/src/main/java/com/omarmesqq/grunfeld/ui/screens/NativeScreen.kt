@@ -318,23 +318,23 @@ fun NativeScreen() {
 
 @Composable
 private fun StealthAssertions() {
-    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps()
-    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps()
-    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
-
     val defaultValue = ""
 
-    AssertionResult("/proc/self/maps", procSelfMaps, defaultValue)
-    AssertionResult("/proc/self/smaps", procSelfSmaps, defaultValue)
-    AssertionResult("dl_iterate_phdr", dlIteratePhdr, defaultValue)
-
+    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps()
+    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps()
     val procSelfMountinfo = NativeLibWrapper.scanMountPoint("/proc/self/mountinfo")
     val procMounts = NativeLibWrapper.scanMountPoint("/proc/mounts")
     val procSelfMountstats = NativeLibWrapper.scanMountPoint("/proc/self/mountstats")
 
+    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
+
+    AssertionResult("/proc/self/maps", procSelfMaps, defaultValue)
+    AssertionResult("/proc/self/smaps", procSelfSmaps, defaultValue)
     AssertionResult("/proc/self/mountinfo", procSelfMountinfo, defaultValue)
     AssertionResult("/proc/mounts", procMounts, defaultValue)
     AssertionResult("/proc/self/mountstats", procSelfMountstats, "Permission denied")
+
+    AssertionResult("dl_iterate_phdr", dlIteratePhdr, defaultValue)
 }
 
 @Composable
@@ -1032,20 +1032,15 @@ private fun SysPropsAssertions() {
     AssertionResult("ro.product.locale", NativeLibWrapper.sysPropsRead("ro.product.locale"), "en-US")
     AssertionResult("ro.product.locale", NativeLibWrapper.sysPropsReadCb("ro.product.locale"), "en-US")
 
-//    AssertionResult("persist.sys.locale", NativeLibWrapper.sysPropsGet("persist.sys.locale"), defaultValue)
-//    AssertionResult("persist.sys.locale", NativeLibWrapper.sysPropsReadWithNullName("persist.sys.locale"), propInfoNull)
-//    AssertionResult("persist.sys.locale", NativeLibWrapper.sysPropsRead("persist.sys.locale"), defaultValue)
-//    AssertionResult("persist.sys.locale", NativeLibWrapper.sysPropsReadCb("persist.sys.locale"), defaultValue)
-
     AssertionResult("bluetooth.device.default_name", NativeLibWrapper.sysPropsGet("bluetooth.device.default_name"), "Pixel 8 Pro")
     AssertionResult("bluetooth.device.default_name", NativeLibWrapper.sysPropsReadWithNullName("bluetooth.device.default_name"), "Pixel 8 Pro")
     AssertionResult("bluetooth.device.default_name", NativeLibWrapper.sysPropsRead("bluetooth.device.default_name"), "Pixel 8 Pro")
     AssertionResult("bluetooth.device.default_name", NativeLibWrapper.sysPropsReadCb("bluetooth.device.default_name"), "Pixel 8 Pro")
 
     AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsGet("debug.debuggerd.wait_for_debugger"), defaultValue)
-    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsReadWithNullName("debug.debuggerd.wait_for_debugger"), propInfoNull)
-    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsRead("debug.debuggerd.wait_for_debugger"), propInfoNull)
-    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsReadCb("debug.debuggerd.wait_for_debugger"), propInfoNull)
+    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsReadWithNullName("debug.debuggerd.wait_for_debugger"), defaultValue)
+    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsRead("debug.debuggerd.wait_for_debugger"), defaultValue)
+    AssertionResult("debug.debuggerd.wait_for_debugger", NativeLibWrapper.sysPropsReadCb("debug.debuggerd.wait_for_debugger"), defaultValue)
 
     AssertionResult("nfc.initialized", NativeLibWrapper.sysPropsGet("nfc.initialized"), "false")
     AssertionResult("nfc.initialized", NativeLibWrapper.sysPropsReadWithNullName("nfc.initialized"), "false")
@@ -1082,15 +1077,10 @@ private fun SysPropsAssertions() {
     AssertionResult("init.svc.adb_root", NativeLibWrapper.sysPropsRead("init.svc.adb_root"), defaultValue)
     AssertionResult("init.svc.adb_root", NativeLibWrapper.sysPropsReadCb("init.svc.adb_root"), defaultValue)
 
-    AssertionResult("service.adb.root", NativeLibWrapper.sysPropsGet("service.adb.root"), defaultValue)
-    AssertionResult("service.adb.root", NativeLibWrapper.sysPropsReadWithNullName("service.adb.root"), propInfoNull)
-    AssertionResult("service.adb.root", NativeLibWrapper.sysPropsRead("service.adb.root"), propInfoNull)
-    AssertionResult("service.adb.root", NativeLibWrapper.sysPropsReadCb("service.adb.root"), propInfoNull)
-
-    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsGet("persist.sys.usb.config"), defaultValue)
-    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsReadWithNullName("persist.sys.usb.config"), defaultValue)
-    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsRead("persist.sys.usb.config"), defaultValue)
-    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsReadCb("persist.sys.usb.config"), defaultValue)
+    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsGet("persist.sys.usb.config"), "mtp")
+    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsReadWithNullName("persist.sys.usb.config"), "mtp")
+    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsRead("persist.sys.usb.config"), "mtp")
+    AssertionResult("persist.sys.usb.config", NativeLibWrapper.sysPropsReadCb("persist.sys.usb.config"), "mtp")
 
     AssertionResult("sys.usb.config", NativeLibWrapper.sysPropsGet("sys.usb.config"), "mtp")
     AssertionResult("sys.usb.config", NativeLibWrapper.sysPropsReadWithNullName("sys.usb.config"), "mtp")
@@ -1262,67 +1252,65 @@ private fun SysPropsAssertions() {
     AssertionResult("ro.boot.force_upload", NativeLibWrapper.sysPropsRead("ro.boot.force_upload"), defaultValue)
     AssertionResult("ro.boot.force_upload", NativeLibWrapper.sysPropsReadCb("ro.boot.force_upload"), defaultValue)
 
-    // TODO: figure out how to insert the non-existing props on-the-fly
     AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsGet("sys.oem_unlock_allowed"), "0")
-    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsReadWithNullName("sys.oem_unlock_allowed"), propInfoNull)
-    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsRead("sys.oem_unlock_allowed"), propInfoNull)
-    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsReadCb("sys.oem_unlock_allowed"), propInfoNull)
+    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsReadWithNullName("sys.oem_unlock_allowed"), "0")
+    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsRead("sys.oem_unlock_allowed"), "0")
+    AssertionResult("sys.oem_unlock_allowed", NativeLibWrapper.sysPropsReadCb("sys.oem_unlock_allowed"), "0")
 
     AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsGet("ro.boot.write_protect"), "1")
-    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.write_protect"), propInfoNull)
-    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsRead("ro.boot.write_protect"), propInfoNull)
-    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsReadCb("ro.boot.write_protect"), propInfoNull)
+    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.write_protect"), "1")
+    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsRead("ro.boot.write_protect"), "1")
+    AssertionResult("ro.boot.write_protect", NativeLibWrapper.sysPropsReadCb("ro.boot.write_protect"), "1")
 
     AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsGet("ro.boot.veritymode.managed"), "yes")
-    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.veritymode.managed"), propInfoNull)
-    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsRead("ro.boot.veritymode.managed"), propInfoNull)
-    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsReadCb("ro.boot.veritymode.managed"), propInfoNull)
+    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.veritymode.managed"), "yes")
+    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsRead("ro.boot.veritymode.managed"), "yes")
+    AssertionResult("ro.boot.veritymode.managed", NativeLibWrapper.sysPropsReadCb("ro.boot.veritymode.managed"), "yes")
 
     AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsGet("ro.boot.veritymode"), "enforcing")
-    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.veritymode"), propInfoNull)
-    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsRead("ro.boot.veritymode"), propInfoNull)
-    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsReadCb("ro.boot.veritymode"), propInfoNull)
+    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.veritymode"), "enforcing")
+    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsRead("ro.boot.veritymode"), "enforcing")
+    AssertionResult("ro.boot.veritymode", NativeLibWrapper.sysPropsReadCb("ro.boot.veritymode"), "enforcing")
 
     AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsGet("ro.boot.vbmeta.hash_alg"), "sha256")
-    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.hash_alg"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.hash_alg"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.hash_alg"), propInfoNull)
+    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.hash_alg"), "sha256")
+    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.hash_alg"), "sha256")
+    AssertionResult("ro.boot.vbmeta.hash_alg", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.hash_alg"), "sha256")
 
     AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsGet("ro.boot.vbmeta.device_state"), "locked")
-    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.device_state"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.device_state"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.device_state"), propInfoNull)
+    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.device_state"), "locked")
+    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.device_state"), "locked")
+    AssertionResult("ro.boot.vbmeta.device_state", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.device_state"), "locked")
 
     AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsGet("ro.boot.vbmeta.avb_version"), "1.2")
-    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.avb_version"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.avb_version"), propInfoNull)
-    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.avb_version"), propInfoNull)
+    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.vbmeta.avb_version"), "1.2")
+    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsRead("ro.boot.vbmeta.avb_version"), "1.2")
+    AssertionResult("ro.boot.vbmeta.avb_version", NativeLibWrapper.sysPropsReadCb("ro.boot.vbmeta.avb_version"), "1.2")
 
     AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsGet("ro.boot.secure_hardware"), "1")
-    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.secure_hardware"), propInfoNull)
-    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsRead("ro.boot.secure_hardware"), propInfoNull)
-    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsReadCb("ro.boot.secure_hardware"), propInfoNull)
+    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.secure_hardware"), "1")
+    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsRead("ro.boot.secure_hardware"), "1")
+    AssertionResult("ro.boot.secure_hardware", NativeLibWrapper.sysPropsReadCb("ro.boot.secure_hardware"), "1")
 
     AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsGet("ro.boot.mode"), "normal")
-    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.mode"), propInfoNull)
-    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsRead("ro.boot.mode"), propInfoNull)
-    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsReadCb("ro.boot.mode"), propInfoNull)
+    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.mode"), "normal")
+    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsRead("ro.boot.mode"), "normal")
+    AssertionResult("ro.boot.mode", NativeLibWrapper.sysPropsReadCb("ro.boot.mode"), "normal")
 
     AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsGet("ro.boot.force_normal_boot"), "1")
-    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.force_normal_boot"), propInfoNull)
-    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsRead("ro.boot.force_normal_boot"), propInfoNull)
-    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsReadCb("ro.boot.force_normal_boot"), propInfoNull)
+    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.force_normal_boot"), "1")
+    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsRead("ro.boot.force_normal_boot"), "1")
+    AssertionResult("ro.boot.force_normal_boot", NativeLibWrapper.sysPropsReadCb("ro.boot.force_normal_boot"), "1")
 
     AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsGet("ro.boot.flash.locked"), "1")
-    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.flash.locked"), propInfoNull)
-    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsRead("ro.boot.flash.locked"), propInfoNull)
-    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsReadCb("ro.boot.flash.locked"), propInfoNull)
+    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.flash.locked"), "1")
+    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsRead("ro.boot.flash.locked"), "1")
+    AssertionResult("ro.boot.flash.locked", NativeLibWrapper.sysPropsReadCb("ro.boot.flash.locked"), "1")
 
     AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsGet("ro.boot.avb_version"), "1.2")
-    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.avb_version"), propInfoNull)
-    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsRead("ro.boot.avb_version"), propInfoNull)
-    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsReadCb("ro.boot.avb_version"), propInfoNull)
-    // END TODO
+    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsReadWithNullName("ro.boot.avb_version"), "1.2")
+    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsRead("ro.boot.avb_version"), "1.2")
+    AssertionResult("ro.boot.avb_version", NativeLibWrapper.sysPropsReadCb("ro.boot.avb_version"), "1.2")
 
     AssertionResult("ro.carrier", NativeLibWrapper.sysPropsGet("ro.carrier"), "retbr")
     AssertionResult("ro.carrier", NativeLibWrapper.sysPropsReadWithNullName("ro.carrier"), "retbr")
