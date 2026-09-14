@@ -1,6 +1,9 @@
 #ifndef FEATURE_FLAGS_HPP
 #define FEATURE_FLAGS_HPP
 
+
+// #define SHOULD_SPOOF_SDK_LEVEL
+
 /**
  * Prints memory mappings, `fd`s and
  * technical details of Bipan once injected into
