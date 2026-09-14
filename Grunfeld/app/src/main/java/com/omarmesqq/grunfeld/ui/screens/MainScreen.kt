@@ -21,7 +21,7 @@ import com.omarmesqq.grunfeld.ui.Screen
 fun MainScreen() {
     val navController = rememberNavController()
     val items = listOf(
-        Screen.JavaScreen,
+        Screen.TestsScreen,
         Screen.WebviewScreen,
         Screen.NativeScreen,
         Screen.MoreScreen
@@ -54,12 +54,12 @@ fun MainScreen() {
         // Handles the actual switching of screens
         NavHost(
             navController = navController,
-            startDestination = Screen.JavaScreen.route,
+            startDestination = Screen.TestsScreen.route,
             modifier = Modifier
                 .padding(innerPadding) // Handles system bar/bottom bar space
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            composable(Screen.JavaScreen.route) { JavaInfoScreen() }
+            composable(Screen.TestsScreen.route) { TestsScreen() }
             composable(Screen.WebviewScreen.route) { WebviewScreen() }
             composable(Screen.NativeScreen.route) { NativeScreen() }
 
