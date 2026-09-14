@@ -14,6 +14,7 @@ import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.lang.Long.toHexString
 import java.lang.String.format
@@ -136,6 +137,24 @@ fun runtimeExecWithCmd(cmd: String):String {
         sb.append(bufferedReader.readLine())
     } catch (tr: Throwable) {
         sb.appendLine("Throwable: ${tr.cause} | ${tr.message}")
+    }
+    return sb.toString()
+}
+
+
+fun openFileKt(filename: String): String {
+    val sb = StringBuilder()
+    try {
+        val file = File(filename)
+        val br = BufferedReader(InputStreamReader(file.inputStream()))
+        val linesToShow = 5
+        sb.appendLine("=== $linesToShow of $filename ===")
+        repeat(linesToShow) {
+            sb.append(br.readLine())
+        }
+        sb.append("\n")
+    } catch (tr: Throwable) {
+        sb.appendLine("${tr.message}")
     }
     return sb.toString()
 }

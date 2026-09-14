@@ -46,6 +46,7 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultNotEqualStrings
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
+import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 import com.omarmesqq.grunfeld.utils.getGsfId
@@ -55,6 +56,7 @@ import com.omarmesqq.grunfeld.utils.getSensorsInfo
 import com.omarmesqq.grunfeld.utils.getSsaid
 import com.omarmesqq.grunfeld.utils.getSystemProperty
 import com.omarmesqq.grunfeld.utils.getWifiManagerInfo
+import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.scottyab.rootbeer.RootBeer
@@ -604,16 +606,13 @@ private fun StealthAssertions() {
     val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps()
     val procSelfMountinfo = NativeLibWrapper.scanMountPoint("/proc/self/mountinfo")
     val procMounts = NativeLibWrapper.scanMountPoint("/proc/mounts")
-    val procSelfMountstats = NativeLibWrapper.scanMountPoint("/proc/self/mountstats")
-
-    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
 
     AssertionResult("/proc/self/maps", procSelfMaps, defaultValue)
     AssertionResult("/proc/self/smaps", procSelfSmaps, defaultValue)
     AssertionResult("/proc/self/mountinfo", procSelfMountinfo, defaultValue)
     AssertionResult("/proc/mounts", procMounts, defaultValue)
-    AssertionResult("/proc/self/mountstats", procSelfMountstats, "Permission denied")
 
+    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
     AssertionResult("dl_iterate_phdr", dlIteratePhdr, defaultValue)
 }
 
@@ -640,10 +639,11 @@ private fun LanLeakAssertions() {
 
 @Composable
 private fun FilesystemAssertions() {
+    CodeTitle("statx()", Color.Magenta)
     val statxTest = NativeLibWrapper.testStatx()
 
     AssertionResult("'statx'", statxTest, "Function not implemented")
-    HorizontalDivider()
+    CodeTitle("statfs()", Color.Magenta)
 
     val statfsToHosts = NativeLibWrapper.testStatfsToHosts()
     statfsToHosts
@@ -652,33 +652,42 @@ private fun FilesystemAssertions() {
         .forEach {
             AssertionResult("'statfs' to hosts file", it, "Function not implemented")
         }
-    HorizontalDivider()
+    CodeTitle("faccessat()", Color.Magenta)
 
     val rootNodes = arrayOf(
-        "/system/lib/libzygisk.so",
-        "/system/lib64/libzygisk.so",
+       "/system/lib/libzygisk.so",
+       "/system/lib64/libzygisk.so",
 
-        "/product/bin/su",
-        "/debug_ramdisk/magisk",
+       "/product/bin/magisk",
+       "/product/bin/magiskpolicy",
+       "/product/bin/resetprop",
+       "/product/bin/su",
+       "/product/bin/supolicy",
+
+       "/debug_ramdisk/.magisk",
+       "/debug_ramdisk/magisk",
+       "/debug_ramdisk/magisk32",
+
+        "/debug_ramdisk/magiskinit",
+        "/debug_ramdisk/magiskpolicy",
+        "/debug_ramdisk/resetprop",
+        "/debug_ramdisk/su",
+        "/debug_ramdisk/supolicy",
     )
 
     val faccessatRootPoints = NativeLibWrapper.testFaccessat(rootNodes)
     faccessatRootPoints
         .split("\n")
-        .take(rootNodes.size)
-        .forEachIndexed { idx, it ->
-            AssertionResult("faccessat(${rootNodes[idx]})", it, "No such file or directory")
+        .forEach { f ->
+            AssertionResultContains("faccessat", f, "No such file or directory")
+            HorizontalDivider()
         }
-    HorizontalDivider()
+
+    CodeTitle("fstat()", Color.Magenta)
 
     val hostsNodes1 = arrayOf(
         "/etc",
         "/etc/hosts",
-    )
-
-    val hostsNodes2 = arrayOf(
-        "/system/etc",
-        "/system/etc/hosts",
     )
 
     val fstatEtc = NativeLibWrapper.testFstat(hostsNodes1[0])
@@ -695,8 +704,12 @@ private fun FilesystemAssertions() {
     AssertionResult("/etc/hosts and /etc modification time should match", fstatEtc.modTime, fstatEtcHosts.modTime)
     AssertionResult("/etc/hosts and /etc status change time should match", fstatEtc.modTime, fstatEtcHosts.modTime)
 
+    CodeTitle("newfstatat()", Color.Magenta)
 
-    HorizontalDivider()
+    val hostsNodes2 = arrayOf(
+        "/system/etc",
+        "/system/etc/hosts",
+    )
 
     val newfstatatSystemEtc = NativeLibWrapper.testNewfstatat(hostsNodes2[0])
     val newfstatatSystemEtcHosts = NativeLibWrapper.testNewfstatat(hostsNodes2[1])
@@ -712,6 +725,21 @@ private fun FilesystemAssertions() {
     AssertionResult("/system/etc/hosts and /system/etc modification time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
     AssertionResult("/system/etc/hosts and /system/etc status change time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
 
+    Text(
+        text = "Sensitive file read",
+        color = Color.Magenta
+    )
+
+    val senstiveFiles = arrayOf(
+        "/proc/self/mountstats",
+        "/proc/sys/kernel/version",
+        "/proc/sys/kernel/osrelease",
+        "/proc/version",
+        "/proc/asound/version"
+    )
+    senstiveFiles.forEach { file ->
+        AssertionResultContains("open", openFileKt(file), "Permission denied")
+    }
 }
 
 @Composable
@@ -2166,7 +2194,6 @@ private fun NativeSysPropsAssertions() {
     AssertionResult("ril.rejectedPlmn", NativeLibWrapper.sysPropsRead("ril.rejectedPlmn"), ",")
     AssertionResult("ril.rejectedPlmn", NativeLibWrapper.sysPropsReadCb("ril.rejectedPlmn"), ",")
 }
-
 
 private fun hasPermission(context: Context, permission: String): Boolean {
     return ContextCompat.checkSelfPermission(
