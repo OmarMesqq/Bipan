@@ -21,7 +21,7 @@ fun AssertionResult(testTitle: String, actual: String, expected: String) {
         text = if (passed) {
             "$testTitle: $prettyExpected"
         } else  {
-            "$testTitle test FAIL: \"$actual\" != \"$prettyExpected\""
+            "$testTitle test FAIL: actual (\"$actual\") != expected(\"$prettyExpected\")"
         },
         color = if (passed) {
             Color.Green
@@ -44,7 +44,7 @@ fun AssertionResultNotEqualStrings(testTitle: String, actual: String, expected: 
         text = if (passed) {
             "$testTitle: $actual != $prettyExpected"
         } else  {
-            "$testTitle test FAIL: \"$actual\" == \"$prettyExpected\""
+            "$testTitle test FAIL: actual (\"$actual\") == expected(\"$prettyExpected\")"
         },
         color = if (passed) {
             Color.Green
@@ -62,7 +62,7 @@ fun AssertionResult(testTitle: String, actual: Long, expected: String) {
         text = if (passed) {
             "$testTitle: $actual"
         } else  {
-            "$testTitle test FAIL: \"$actual\" != \"$expected\""
+            "$testTitle test FAIL: actual (\"$actual\") != expected(\"$expected\")"
         },
         color = if (passed) {
             Color.Green
@@ -80,7 +80,7 @@ fun AssertionResult(testTitle: String, actual: Int, expected: String) {
         text = if (passed) {
             "$testTitle: $actual"
         } else  {
-            "$testTitle test FAIL: \"$actual\" != \"$expected\""
+            "$testTitle test FAIL: actual (\"$actual\") != expected(\"$expected\")"
         },
         color = if (passed) {
             Color.Green
@@ -98,7 +98,7 @@ fun AssertionResult(testTitle: String, actual: Boolean, expected: Boolean) {
         text = if (passed) {
             "$testTitle: $actual"
         } else  {
-            "$testTitle test FAIL: \"$actual\" != \"$expected\""
+            "$testTitle test FAIL: actual (\"$actual\") != expected(\"$expected\")"
         },
         color = if (passed) {
             Color.Green
@@ -116,7 +116,7 @@ fun AssertionResultNotContains(testTitle: String, actual: String, expected: Stri
         text = if (passed) {
             "$testTitle: $actual does not contain  \"$expected\""
         } else  {
-            "$testTitle test FAIL: \"$actual\" contains \"$expected\""
+            "$testTitle test FAIL: actual (\"$actual\") contains: expected(\"$expected\")"
         },
         color = if (passed) {
             Color.Green
@@ -134,7 +134,7 @@ fun AssertionResultContains(testTitle: String, actual: String, expected: String)
         text = if (passed) {
             "$testTitle: $actual contains \"$expected\""
         } else  {
-            "$testTitle test FAIL: \"$actual\" does NOT contain \"$expected\""
+            "$testTitle test FAIL: actual (\"$actual\") does NOT contain: expected(\"$expected\")"
         },
         color = if (passed) {
             Color.Green
@@ -152,7 +152,7 @@ fun AssertionResultNull(testTitle: String, actual: Any?) {
         text = if (passed) {
             "$testTitle: (null)"
         } else  {
-            "$testTitle test FAIL: not null -> actually: $actual "
+            "$testTitle test FAIL: 'actual' is NOT null"
         },
         color = if (passed) {
             Color.Green
@@ -170,7 +170,7 @@ fun <T> AssertionResultEmpty(testTitle: String, actual: Iterable<T>) {
         text = if (passed) {
             "$testTitle: (empty)"
         } else  {
-            "$testTitle test FAIL: not empty"
+            "$testTitle test FAIL: 'actual' is NOT empty"
         },
         color = if (passed) {
             Color.Green
@@ -190,7 +190,7 @@ fun <T> AssertionResultSingleSpecificValueInIterable(testTitle: String, actual: 
         text = if (passed) {
             "$testTitle: list[0] == $expected"
         } else  {
-            "$testTitle test FAIL: not single-element and/or actual does not match expected ($expected)"
+            "$testTitle test FAIL: 'expected' is not single-element and/or doesn't match 'actual'"
         },
         color = if (passed) {
             Color.Green
@@ -210,7 +210,7 @@ fun <T> AssertionResultSomeValuesInIterable(testTitle: String, actual: Iterable<
         text = if (passed) {
             "$testTitle: list == $expected"
         } else  {
-            "$testTitle test FAIL: some values in actual are different than of those in expected"
+            "$testTitle test FAIL: some (or all) values in 'actual' are different than of those in 'expected'"
         },
         color = if (passed) {
             Color.Green

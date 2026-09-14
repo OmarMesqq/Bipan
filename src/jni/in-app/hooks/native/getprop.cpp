@@ -20,6 +20,7 @@ static int (*orig_system_property_read)(const void* pi, char* name, char* value)
 
 // Helpers
 static void intercept_prop_callback(void* cookie, const char* name, const char* value, uint32_t serial);
+static void capture_cb(void* cookie, const char* name, const char* value, uint32_t serial);
 // Hooks
 static int hook_system_property_get(const char* name, char* value);
 static void hook_system_property_read_callback(const void* pi, void (*callback)(void* cookie, const char* name, const char* value, uint32_t serial), void* cookie);
@@ -129,6 +130,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.system.build.version.release_or_codename", "16"},
     {"ro.system_ext.build.version.release_or_codename", "16"},
     {"ro.build.version.release_or_preview_display", "16"},
+#ifdef SHOULD_SPOOF_SDK_LEVEL
     {"ro.build.version.sdk", "36"},
     {"ro.product.build.version.sdk", "36"},
     {"ro.vendor.build.version.sdk", "36"},
@@ -139,6 +141,7 @@ static const std::unordered_map<std::string, std::string> g_prop_overrides = {
     {"ro.product.build.version.sdk_full", "36.1"},
     {"ro.system_ext.build.version.sdk_full", "36.1"},
     {"ro.system.build.version.sdk_full", "36.1"},
+#endif
 
     {"ro.build.version.security_patch", "2025-12-05"},
     {"ro.build.version.codename", "REL"},
@@ -367,44 +370,73 @@ static int hook_system_property_get(const char* name, char* value) {
   return orig_system_property_get(name, value);
 }
 
+struct CaptureCtx {
+  char name[256];
+  char value[PROP_VALUE_MAX];
+  uint32_t serial;
+  bool got;
+};
+
 static int hook_system_property_read(const void* pi, char* name, char* value) {
-  // Handle cases when `name` is NULL
-  char name_buf[PROP_NAME_MAX] = {0};
-  char* name_to_use = name;
-  if (name == nullptr) {
-    name_to_use = name_buf;
+  if (pi == nullptr) {
+    if (value) {
+      value[0] = '\0';
+    }
+    return 0;
   }
 
-  // Let the orig function fill name/value
-  int len = orig_system_property_read(pi, name_to_use, value);
+  // Always obtain the *full* name + value via the original callback.
+  // This bypasses the truncation that happens inside the legacy Read path.
+  CaptureCtx ctx = {};
+  orig_system_property_read_callback(pi, capture_cb, &ctx);
 
-  if (name_to_use != nullptr && name_to_use[0] != '\0') {
-    auto globalIt = g_prop_overrides.find(name_to_use);
+  if (!ctx.got) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "(sys prop read): Failed to capture callback for prop: %s. Aborting for privacy", name == nullptr ? "(null)" : name);
+    BIPAN_PANIC();
+    // return orig_system_property_read(pi, name, value);
+  }
+
+  const char* full_name = ctx.name;
+  const char* effective_value = ctx.value;
+  int effective_len = static_cast<int>(strlen(effective_value));
+
+  // Override lookup with the FULL name
+  if (full_name[0] != '\0') {
+    auto globalIt = g_prop_overrides.find(full_name);
     if (globalIt != g_prop_overrides.end()) {
-      if (value != nullptr) {
-        strncpy(value, globalIt->second.c_str(), PROP_VALUE_MAX - 1);
-        value[PROP_VALUE_MAX - 1] = '\0';
-        return static_cast<int>(strlen(value));
-      }
-      // name-only request: no override
-      return len;
-    }
-
-    if (g_telephony_spoofing_allowlist.find(g_package_name) ==
-        g_telephony_spoofing_allowlist.end()) {
-      auto telIt = g_telephony_prop_overrides.find(name_to_use);
+      effective_value = globalIt->second.c_str();
+      effective_len = static_cast<int>(globalIt->second.size());
+    } else if (g_telephony_spoofing_allowlist.find(g_package_name) ==
+               g_telephony_spoofing_allowlist.end()) {
+      auto telIt = g_telephony_prop_overrides.find(full_name);
       if (telIt != g_telephony_prop_overrides.end()) {
-        if (value != nullptr) {
-          strncpy(value, telIt->second.c_str(), PROP_VALUE_MAX - 1);
-          value[PROP_VALUE_MAX - 1] = '\0';
-          return static_cast<int>(strlen(value));
-        }
-        return len;
+        effective_value = telIt->second.c_str();
+        effective_len = static_cast<int>(telIt->second.size());
       }
     }
   }
 
-  return len;
+  // Now satisfy the legacy contract of __system_property_read
+  if (name != nullptr) {
+    // Truncate exactly like the real libc does
+    size_t namelen = strlcpy(name, full_name, PROP_NAME_MAX);
+    if (namelen >= PROP_NAME_MAX) {
+      // Optional: you can still emit the same log if you want perfect fidelity,
+      // but it is not required for correctness of the spoof.
+    }
+  }
+
+  if (value != nullptr) {
+    // Respect PROP_VALUE_MAX (legacy limit). Long values should really
+    // go through the callback path, but we still provide a best-effort copy.
+    size_t copy_len = std::min(static_cast<size_t>(effective_len),
+                               static_cast<size_t>(PROP_VALUE_MAX - 1));
+    memcpy(value, effective_value, copy_len);
+    value[copy_len] = '\0';
+    return static_cast<int>(copy_len);
+  }
+
+  return effective_len;  // name-only request
 }
 
 struct PropCallbackCtx {
@@ -437,4 +469,22 @@ static void intercept_prop_callback(void* cookie, const char* name, const char* 
   }
   ctx->user_cb(ctx->user_cookie, name, effective, serial);
   delete ctx;
+}
+
+static void capture_cb(void* cookie, const char* name, const char* value, uint32_t serial) {
+  auto* ctx = static_cast<CaptureCtx*>(cookie);
+  if (name) {
+    strncpy(ctx->name, name, sizeof(ctx->name) - 1);
+    ctx->name[sizeof(ctx->name) - 1] = '\0';
+  } else {
+    ctx->name[0] = '\0';
+  }
+  if (value) {
+    strncpy(ctx->value, value, PROP_VALUE_MAX - 1);
+    ctx->value[PROP_VALUE_MAX - 1] = '\0';
+  } else {
+    ctx->value[0] = '\0';
+  }
+  ctx->serial = serial;
+  ctx->got = true;
 }
