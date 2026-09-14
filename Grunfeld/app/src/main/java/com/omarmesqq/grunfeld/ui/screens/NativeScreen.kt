@@ -1,6 +1,5 @@
 package com.omarmesqq.grunfeld.ui.screens
 
-import android.os.Process
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,33 +32,17 @@ import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 
 @Composable
 fun NativeScreen() {
-    var vfsFilesInfo by remember { mutableStateOf("VFS files not probed yet") }
-
-    var faccessatInfo by remember { mutableStateOf("Files not stated") }
-
     var fstatInfo by remember { mutableStateOf("Files not stated") }
     var newfstatatInfo by remember { mutableStateOf("Files not stated") }
-    var statxInfo by remember { mutableStateOf("Files not stated") }
-    var statfsHostsInfo by remember { mutableStateOf("") }
 
-    val pid = Process.myPid()
-
-    val statAndAccessNodes = arrayOf(
+    val hostsNodes = arrayOf(
         "/etc",
         "/etc/hosts",
 
         "/system/etc",
         "/system/etc/hosts",
+    )
 
-        "/system/lib",
-        "/system/lib/libzygisk.so",
-
-        "/system/lib64",
-        "/system/lib64/libzygisk.so",
-
-        "/product/bin/su",
-        "/debug_ramdisk/magisk",
-        )
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -82,73 +66,9 @@ fun NativeScreen() {
             SectionHeader("LAN LEAK TEST")
             LanLeakAssertions()
 
-            SectionHeader("STEALTH")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Get info on VFS files and their symlinks", style = MaterialTheme.typography.titleMedium)
-                    ReportTextWithCopy(vfsFilesInfo, "VFS files not probed yet")
-                    Button(
-                        onClick = {
-                            val filenames = arrayOf(
-                                "/proc/self/maps",
-                                "/proc/$pid/maps",
+            SectionHeader("FILESYSTEM TESTS")
+            FilesystemAssertions()
 
-                                "/proc/self/smaps",
-                                "/proc/$pid/smaps",
-
-                                "/proc/self/mounts",
-                                "/proc/$pid/mounts",
-
-                                "/proc/self/mountstats",
-                                "/proc/$pid/mountstats",
-
-                                "/proc/self/mountinfo",
-                                "/proc/$pid/mountinfo",
-
-                                "/proc/mounts",
-
-                                "/proc/version",
-                                "/proc/sys/kernel/version",
-                                "/proc/sys/kernel/osrelease",
-
-                                "/proc/asound/version",
-
-                                "/etc/hosts",
-                                "/system/etc/hosts",
-                            )
-                            vfsFilesInfo = NativeLibWrapper.testOpenFileAndReadLink(filenames)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("readlink of some VFS nodes")
-                    }
-                }
-
-            }
-
-            SectionHeader("ACCESS FAMILY")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("faccessat")
-                    ReportTextWithCopy(faccessatInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            faccessatInfo = NativeLibWrapper.testFaccessat(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("faccessat()")
-                    }
-                }
-            }
 
             SectionHeader("STAT FAMILY")
             Card(
@@ -160,7 +80,7 @@ fun NativeScreen() {
                     ReportTextWithCopy(fstatInfo, "Files not stated")
                     Button(
                         onClick = {
-                            fstatInfo = NativeLibWrapper.testFstat(statAndAccessNodes)
+                            fstatInfo = NativeLibWrapper.testFstat(hostsNodes)
                         },
                         modifier = Modifier.fillMaxWidth()
 
@@ -174,40 +94,12 @@ fun NativeScreen() {
                     ReportTextWithCopy(newfstatatInfo, "Files not stated")
                     Button(
                         onClick = {
-                            newfstatatInfo = NativeLibWrapper.testNewfstatat(statAndAccessNodes)
+                            newfstatatInfo = NativeLibWrapper.testNewfstatat(hostsNodes)
                         },
                         modifier = Modifier.fillMaxWidth()
 
                     ) {
                         Text("newfstatat()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("statx")
-                    ReportTextWithCopy(statxInfo, "Files not stated")
-                    Button(
-                        onClick = {
-                            statxInfo = NativeLibWrapper.testStatx(statAndAccessNodes)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("statx()")
-                    }
-                }
-
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CodeTitle("statfs to hosts file(s)")
-                    ReportTextWithCopy(statfsHostsInfo, "")
-                    Button(
-                        onClick = {
-                            statfsHostsInfo = NativeLibWrapper.testStatfsToHosts()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-
-                    ) {
-                        Text("statfs(hosts)")
                     }
                 }
             }
@@ -359,9 +251,44 @@ private fun LanLeakAssertions() {
 }
 
 @Composable
+private fun FilesystemAssertions() {
+    val statxTest = NativeLibWrapper.testStatx()
+
+    AssertionResult("'statx'", statxTest, "Function not implemented")
+    HorizontalDivider()
+
+    val statfsToHosts = NativeLibWrapper.testStatfsToHosts()
+    statfsToHosts
+        .split("\n")
+        .take(2) // /system/etc/hosts and /etc/hosts
+        .forEach {
+            AssertionResult("statfs to hosts file", it, "Function not implemented")
+        }
+    HorizontalDivider()
+
+    val rootNodes = arrayOf(
+        "/system/lib/libzygisk.so",
+        "/system/lib64/libzygisk.so",
+
+        "/product/bin/su",
+        "/debug_ramdisk/magisk",
+    )
+
+    val faccessatRootPoints = NativeLibWrapper.testFaccessat(rootNodes)
+    faccessatRootPoints
+        .split("\n")
+        .take(rootNodes.size)
+        .forEachIndexed { idx, it ->
+            AssertionResult("faccessat(${rootNodes[idx]})", it, "No such file or directory")
+        }
+    HorizontalDivider()
+
+}
+
+@Composable
 private fun SysPropsAssertions() {
     val defaultValue = "(empty)"
-    val propInfoNull = "pi is NULL"
+    val propInfoNull = "prop_info* is NULL"
 
     val buildDate = "Fri Dec 05 12:00:00 UTC 2025"
     val fingerprint = "google/husky/husky:16/BP4A.251205.006/14401865:user/release-keys"
