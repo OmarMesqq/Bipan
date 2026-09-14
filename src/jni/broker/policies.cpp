@@ -147,22 +147,6 @@ const char* shouldFakeFile(const char* pathname) {
   if (strcmp(pathname, "/etc/hosts") == 0 || strcmp(pathname, "/system/etc/hosts") == 0) {
     return "127.0.0.1       localhost\n::1       localhost\n";
   }
-  if (strcmp(pathname, "/proc/version") == 0) {
-    return "Linux version 6.6.56-android16-11-g8a3e2b1c4d5f (build-user@build-host) (Android clang version 17.0.2) #1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
-  }
-
-  if (strcmp(pathname, "/proc/sys/kernel/version") == 0) {
-    return "#1 SMP PREEMPT Fri Dec 05 12:00:00 UTC 2025\n";
-  }
-
-  if (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) {
-    return "6.6.56-android16-11-g8a3e2b1c4d5f\n";
-  }
-
-  if (strcmp(pathname, "/proc/asound/version") == 0) {
-    return "Advanced Linux Sound Architecture Driver Version k6.6.56-android16-11-g8a3e2b1c4d5f.\n";
-  }
-
   return nullptr;
 }
 
