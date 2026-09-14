@@ -236,8 +236,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
 
   if (nr == __NR_statfs) {
     const char* path = (const char*)arg0;
-    if (path && isHostsFile(path)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) to hosts file: replying not implemented");
+    if (path &&
+        (isHostsFile(path) ||
+         shouldSpoofExistence(path) ||
+         shouldDenyStat(path))) {
+      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) in-app: replying not implemented");
       ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
       in_sigsys_handler = false;
       return;

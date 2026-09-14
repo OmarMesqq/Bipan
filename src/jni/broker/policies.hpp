@@ -7,12 +7,10 @@
 
 bool isLanAddress(struct sockaddr* addr);
 bool shouldLog(const char* pathname);
-bool shouldSpoofExistence(const char* pathname);
 bool shouldDenyOpen(const char* pathname);
-bool shouldDenyStat(const char* pathname);
 const char* shouldFakeFile(const char* pathname);
-bool is_maps(const char* pathname);
-bool is_smaps(const char* pathname);
+bool isMapsFile(const char* pathname);
+bool isSmapsFile(const char* pathname);
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid);
 struct stat* fixHostsFileStat(const char* pathname, int flags);
 

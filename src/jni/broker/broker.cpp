@@ -207,7 +207,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -ENOENT;
           ipc_mem->action = ACTION_USE_RET;
           break;
-        } else if (is_maps(path_payload) || is_smaps(path_payload) || shouldFakeFile(path_payload)) {
+        } else if (isMapsFile(path_payload) || isSmapsFile(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
           char real_path[IPC_STRING_STRUCT_BUF_SIZ];
           if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -218,9 +218,9 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           // Broker generates the fake file locally
           int fake_fd = -1;
-          if (is_maps(path_payload)) {
+          if (isMapsFile(path_payload)) {
             fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
-          } else if (is_smaps(path_payload)) {
+          } else if (isSmapsFile(path_payload)) {
             fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
           } else {
             fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
@@ -684,7 +684,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
               break;
             }
 
-            write_to_logcat_async(ANDROID_LOG_WARN, TAG, "(readlinkat AT_FDCWD) spoofed: original link: %s | true path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
+            write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(readlinkat AT_FDCWD) spoofed: original link: %s | true path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
             if (strcmp(fixedSymlink, "ENOENT") == 0) {
               free(actualPath);
               free(fixedSymlink);
@@ -1003,8 +1003,8 @@ static inline bool looks_like_proc_fd(const char* pathname, pid_t pid) {
   snprintf(proc_pid, PATH_MAX, "/proc/%d", pid);
 
   if (
-      (startsWith(pathname, "/proc/self") ||
-       startsWith(pathname, proc_pid)) &&
+      (localStartsWith(pathname, "/proc/self") ||
+       localStartsWith(pathname, proc_pid)) &&
       strstr(pathname, "/fd/")) {
     return true;
   }

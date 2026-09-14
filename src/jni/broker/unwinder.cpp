@@ -514,24 +514,24 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
 
 static inline bool is_trusted_lib(const char* lib_path) {
   return (
-      startsWith(lib_path, "/apex") ||
-      startsWith(lib_path, "/vendor") ||
-      startsWith(lib_path, "/system") ||
-      startsWith(lib_path, "/product") ||
-      startsWith(lib_path, "/data/resource-cache") ||
-      startsWith(lib_path, "/dev") ||
-      startsWith(lib_path, "/metadata") ||
-      startsWith(lib_path, "[vdso]") ||
-      startsWith(lib_path, "[vvar]") ||
-      startsWith(lib_path, "[anon:dalvik-") ||
-      startsWith(lib_path, "[anon:bionic") ||
-      startsWith(lib_path, "[anon:cfi") ||
-      startsWith(lib_path, "[stack]") ||
-      startsWith(lib_path, "[anon:cfi") ||
-      startsWith(lib_path, "[anon:linker_alloc]") ||
-      startsWith(lib_path, ZYGISK_LIB) ||
-      startsWith(lib_path, ZYGISK_LIB32) ||
-      startsWith(lib_path, ZYGISK_INJECTED_CODE));
+      localStartsWith(lib_path, "/apex") ||
+      localStartsWith(lib_path, "/vendor") ||
+      localStartsWith(lib_path, "/system") ||
+      localStartsWith(lib_path, "/product") ||
+      localStartsWith(lib_path, "/data/resource-cache") ||
+      localStartsWith(lib_path, "/dev") ||
+      localStartsWith(lib_path, "/metadata") ||
+      localStartsWith(lib_path, "[vdso]") ||
+      localStartsWith(lib_path, "[vvar]") ||
+      localStartsWith(lib_path, "[anon:dalvik-") ||
+      localStartsWith(lib_path, "[anon:bionic") ||
+      localStartsWith(lib_path, "[anon:cfi") ||
+      localStartsWith(lib_path, "[stack]") ||
+      localStartsWith(lib_path, "[anon:cfi") ||
+      localStartsWith(lib_path, "[anon:linker_alloc]") ||
+      localStartsWith(lib_path, ZYGISK_LIB) ||
+      localStartsWith(lib_path, ZYGISK_LIB32) ||
+      localStartsWith(lib_path, ZYGISK_INJECTED_CODE));
 }
 
 static inline bool should_passthrough(const char* libPath) {
@@ -540,9 +540,9 @@ static inline bool should_passthrough(const char* libPath) {
   }
 
   if (
-      startsWith(libPath, ZYGISK_LIB) ||
-      startsWith(libPath, ZYGISK_LIB32) ||
-      startsWith(libPath, ZYGISK_INJECTED_CODE)) {
+      localStartsWith(libPath, ZYGISK_LIB) ||
+      localStartsWith(libPath, ZYGISK_LIB32) ||
+      localStartsWith(libPath, ZYGISK_INJECTED_CODE)) {
     return true;
   }
   return false;

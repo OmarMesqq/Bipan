@@ -43,61 +43,61 @@ bool shouldLog(const char* pathname) {
   }
 
   // Ignore spammy app/system areas
-  if (startsWith(pathname, "/data/data") ||
-      startsWith(pathname, "/data/resource-cache") ||
-      startsWith(pathname, "/data/dalvik-cache") ||
-      startsWith(pathname, "/data/app") ||
-      startsWith(pathname, "/system/framework") ||
-      startsWith(pathname, "/system_ext/framework") ||
-      startsWith(pathname, "/system_ext/bin/hwservicemanager") ||
-      startsWith(pathname, "/data/misc/apexdata/com.android.art") ||
-      startsWith(pathname, "/data/user/0") ||
-      startsWith(pathname, "/data/user_de/0/") ||
-      startsWith(pathname, "/storage/emulated/0/Android/media") ||
-      startsWith(pathname, "/storage/emulated/0/Android/data") ||
-      startsWith(pathname, "/data/misc/profiles/") ||
-      startsWith(pathname, "/data/misc/shared_relro") ||
-      startsWith(pathname, "/product/app/webview") ||
-      startsWith(pathname, "/sys/devices/system/cpu") ||
-      startsWith(pathname, "/proc/sys/kernel/random/boot_id") ||
-      startsWith(pathname, "/data/misc/user/0/cacerts-") ||
-      startsWith(pathname, "/system/fonts") ||
-      startsWith(pathname, "/vendor/fonts") ||
-      startsWith(pathname, "/data/misc/keychain") ||
-      startsWith(pathname, "/data/local/debug/vulkan") ||
-      startsWith(pathname, "/vendor/etc/mali_platform.config") ||
-      startsWith(pathname, "/system/etc/llndk.libraries.txt") ||
-      startsWith(pathname, "/system/lib64/libwebview") ||
-      startsWith(pathname, "/data/local/chrome-trace-config.json") ||
-      startsWith(pathname, "/odm/lib64/hw") ||
-      startsWith(pathname, "/product/fonts") ||
-      startsWith(pathname, "/apex/com.android") ||
-      startsWith(pathname, "/mnt/expand")) {
+  if (localStartsWith(pathname, "/data/data") ||
+      localStartsWith(pathname, "/data/resource-cache") ||
+      localStartsWith(pathname, "/data/dalvik-cache") ||
+      localStartsWith(pathname, "/data/app") ||
+      localStartsWith(pathname, "/system/framework") ||
+      localStartsWith(pathname, "/system_ext/framework") ||
+      localStartsWith(pathname, "/system_ext/bin/hwservicemanager") ||
+      localStartsWith(pathname, "/data/misc/apexdata/com.android.art") ||
+      localStartsWith(pathname, "/data/user/0") ||
+      localStartsWith(pathname, "/data/user_de/0/") ||
+      localStartsWith(pathname, "/storage/emulated/0/Android/media") ||
+      localStartsWith(pathname, "/storage/emulated/0/Android/data") ||
+      localStartsWith(pathname, "/data/misc/profiles/") ||
+      localStartsWith(pathname, "/data/misc/shared_relro") ||
+      localStartsWith(pathname, "/product/app/webview") ||
+      localStartsWith(pathname, "/sys/devices/system/cpu") ||
+      localStartsWith(pathname, "/proc/sys/kernel/random/boot_id") ||
+      localStartsWith(pathname, "/data/misc/user/0/cacerts-") ||
+      localStartsWith(pathname, "/system/fonts") ||
+      localStartsWith(pathname, "/vendor/fonts") ||
+      localStartsWith(pathname, "/data/misc/keychain") ||
+      localStartsWith(pathname, "/data/local/debug/vulkan") ||
+      localStartsWith(pathname, "/vendor/etc/mali_platform.config") ||
+      localStartsWith(pathname, "/system/etc/llndk.libraries.txt") ||
+      localStartsWith(pathname, "/system/lib64/libwebview") ||
+      localStartsWith(pathname, "/data/local/chrome-trace-config.json") ||
+      localStartsWith(pathname, "/odm/lib64/hw") ||
+      localStartsWith(pathname, "/product/fonts") ||
+      localStartsWith(pathname, "/apex/com.android") ||
+      localStartsWith(pathname, "/mnt/expand")) {
     return false;
   }
 
   if (
-      startsWith(pathname, "/vendor/lib64/egl") ||
-      startsWith(pathname, "/vendor/lib64/hw")) {
+      localStartsWith(pathname, "/vendor/lib64/egl") ||
+      localStartsWith(pathname, "/vendor/lib64/hw")) {
     return false;
   }
 
   // Ignore noisy special file stats
-  if (startsWith(pathname, "/dev/ashmem") ||
-      startsWith(pathname, "/dev/urandom") ||
-      startsWith(pathname, "/dev/random") ||
-      startsWith(pathname, "/dev/hwbinder") ||
-      startsWith(pathname, "/dev/binder") ||
-      startsWith(pathname, "/dev/ion") ||
-      startsWith(pathname, "/dev/dma") ||
-      startsWith(pathname, "/dev/mali") ||
-      startsWith(pathname, "/dev/zero") ||
-      startsWith(pathname, "/dev/null")) {
+  if (localStartsWith(pathname, "/dev/ashmem") ||
+      localStartsWith(pathname, "/dev/urandom") ||
+      localStartsWith(pathname, "/dev/random") ||
+      localStartsWith(pathname, "/dev/hwbinder") ||
+      localStartsWith(pathname, "/dev/binder") ||
+      localStartsWith(pathname, "/dev/ion") ||
+      localStartsWith(pathname, "/dev/dma") ||
+      localStartsWith(pathname, "/dev/mali") ||
+      localStartsWith(pathname, "/dev/zero") ||
+      localStartsWith(pathname, "/dev/null")) {
     return false;
   }
 
   // Ignore some /proc stats
-  if (startsWith(pathname, "/proc/")) {
+  if (localStartsWith(pathname, "/proc/")) {
     if (strstr(pathname, "/cmdline") ||
         strstr(pathname, "/oom") ||
         strstr(pathname, "/comm") ||
@@ -133,43 +133,14 @@ bool shouldLog(const char* pathname) {
   return true;
 }
 
-bool shouldSpoofExistence(const char* pathname) {
-  if (startsWith(pathname, "/proc/meminfo_extra")) {
-    return true;
-  }
-
-  if (startsWith(pathname, "/system/lib") &&
-      strstr(pathname, "zygisk")) {
-    return true;
-  }
-
-  if (
-      (startsWith(pathname, "/product/bin") ||
-       startsWith(pathname, "/debug_ramdisk")) &&
-      (strstr(pathname, "magisk") ||
-       strstr(pathname, "resetprop") ||
-       strstr(pathname, "su"))) {
-    return true;
-  }
-  return false;
-}
-
 bool shouldDenyOpen(const char* pathname) {
-  return ((startsWith(pathname, "/dev/socket") ||
-           startsWith(pathname, "/dev/tty") ||
-           startsWith(pathname, "/sys/class/thermal") ||
-           startsWith(pathname, "/sys/class/power_supply") ||
-           startsWith(pathname, "/sys/devices/platform") ||
-           startsWith(pathname, "/sys/bus/platform") ||
-           startsWith(pathname, "/sys/module")));
-}
-
-bool shouldDenyStat(const char* pathname) {
-  return (
-      (strcmp(pathname, "/proc/version") == 0) ||
-      (strcmp(pathname, "/proc/sys/kernel/version") == 0) ||
-      (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0) ||
-      (strcmp(pathname, "/proc/asound/version") == 0));
+  return ((localStartsWith(pathname, "/dev/socket") ||
+           localStartsWith(pathname, "/dev/tty") ||
+           localStartsWith(pathname, "/sys/class/thermal") ||
+           localStartsWith(pathname, "/sys/class/power_supply") ||
+           localStartsWith(pathname, "/sys/devices/platform") ||
+           localStartsWith(pathname, "/sys/bus/platform") ||
+           localStartsWith(pathname, "/sys/module")));
 }
 
 const char* shouldFakeFile(const char* pathname) {
@@ -195,12 +166,12 @@ const char* shouldFakeFile(const char* pathname) {
   return nullptr;
 }
 
-bool is_maps(const char* pathname) {
+bool isMapsFile(const char* pathname) {
   return (strcmp(pathname, "/proc/self/maps") == 0) ||
          is_dynamic_proc_file(pathname, "/maps");
 }
 
-bool is_smaps(const char* pathname) {
+bool isSmapsFile(const char* pathname) {
   return (strcmp(pathname, "/proc/self/smaps") == 0) ||
          is_dynamic_proc_file(pathname, "/smaps");
 }
