@@ -183,7 +183,6 @@ public class NetworkSpoofingHook implements BaseHook {
         result = method.invoke(originalWifiService, args);
         if ("getConnectionInfo".equals(method.getName()) && result instanceof WifiInfo) {
           spoofWifiInfo((WifiInfo) result);
-          return result;
         }
         return result;
       } catch (InvocationTargetException e) {
