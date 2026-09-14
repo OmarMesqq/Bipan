@@ -307,8 +307,7 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
 static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.android.vending",
     "com.google.android.gms",
-    "com.whatsapp",
-    "com.instagram.android"};
+    "com.whatsapp"};
 
 // Symbol names
 #define PROP_GET_SYM "__system_property_get"
