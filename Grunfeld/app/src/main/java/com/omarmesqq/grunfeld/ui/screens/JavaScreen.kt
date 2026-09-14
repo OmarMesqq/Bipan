@@ -46,6 +46,7 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultNull
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueInIterable
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
+import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
@@ -93,7 +94,7 @@ fun JavaInfoScreen() {
             SystemPropertiesAssertions()
         }
 
-        SectionHeader("RUNTIME EXEC TESTS")
+        SectionHeader("EXEC TESTS")
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -101,7 +102,7 @@ fun JavaInfoScreen() {
             RuntimeAssertions()
         }
 
-        SectionHeader("SENSORS TESTS")
+        SectionHeader("SENSORS TESTS (Java API and NDK)")
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -229,8 +230,9 @@ private fun SystemPropertiesAssertions() {
 
 @Composable
 private fun RuntimeAssertions() {
-    AssertionResult("which su", runtimeExecWithCmdArray(arrayOf("which", "su")), "")
-    AssertionResult("getprop", runtimeExecWithCmd("getprop"), "null")
+    AssertionResult("Runtime.exec('which', 'su')", runtimeExecWithCmdArray(arrayOf("which", "su")), "")
+    AssertionResult("Runtime.exec('getprop')", runtimeExecWithCmd("getprop"), "null")
+    AssertionResult("fork()/exec('uname')", NativeLibWrapper.testForkExec(""), "")
 }
 
 @Composable
@@ -539,8 +541,9 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                 val ssaid = getSsaid(cr)
                 val gsfId = getGsfId(context)
                 val drmId = getMediaDrmId()
+                val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
 
-                app.configRepository.updateDeviceIds(ssaid, gsfId, drmId)
+                app.configRepository.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
                 app.configRepository.toggleFirstLaunch()
             }
         }
@@ -549,24 +552,28 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             var ssaidFromPref by remember { mutableStateOf<String?>(null) }
             var gsfIdFromPref by remember { mutableStateOf<String?>(null) }
             var drmIdFromPref by remember { mutableStateOf<String?>(null) }
+            var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
 
             LaunchedEffect(Unit) {
                 ssaidFromPref = app.configRepository.ssaidFlow.first()
                 gsfIdFromPref = app.configRepository.gsfIdFlow.first()
                 drmIdFromPref = app.configRepository.drmIdFlow.first()
+                drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
                 fetchedFromPrefs = true
             }
 
             val currentSsaid = getSsaid(cr)
             val currentGsfId = getGsfId(context)
             val currentDrmId = getMediaDrmId()
+            val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
 
             if (!fetchedFromPrefs) {
                 Text("Fetching data from SharedPrefs...")
             } else {
                 AssertionResultNotEqualStrings("SSAID", currentSsaid, ssaidFromPref!!)
                 AssertionResultNotEqualStrings("GSF ID", currentGsfId, gsfIdFromPref!!)
-                AssertionResultNotEqualStrings("DRM ID", currentDrmId, drmIdFromPref!!)
+                AssertionResultNotEqualStrings("DRM ID (Java API)", currentDrmId, drmIdFromPref!!)
+                AssertionResultNotEqualStrings("DRM ID (NDK)", currentDrmIdNdk, drmIdNdkFromPref!!)
             }
         }
     }

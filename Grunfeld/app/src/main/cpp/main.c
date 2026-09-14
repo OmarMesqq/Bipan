@@ -42,7 +42,7 @@
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
 #define FIND_BIPAN_TRACES(path) \
-    strstr(path, "/memfd:jit-cache (deleted)") || \
+    strstr(path, "/memfd:jit-cache") || \
     strstr(path, "Bipan") || \
     strstr(path, "bipan") || \
     strstr(path, "zygisk")
@@ -156,63 +156,54 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *e
 
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountNodes(JNIEnv *env, jobject thiz) {
-    char report[50000] = {0};
-    char entry[PATH_MAX] = {0};
-    char errorBuffer[128] = {0};
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, jobject thiz, jstring mountPoint) {
+    char errBuf[128] = {0};
 
-    #define PATHS 3
-    const char* paths[PATHS] = {
-            "/proc/self/mountinfo",
-            "/proc/mounts",
-            "/proc/self/mountstats"
-    };
+    const char* mountPointCstr = (*env)->GetStringUTFChars(env, mountPoint, NULL);
+    if (mountPointCstr == NULL) {
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        (*env)->DeleteLocalRef(env, mountPoint);
+        return (*env)->NewStringUTF(env, errBuf);
+    }
+
+    char report[PATH_MAX * 3] = {0};
+    char entry[PATH_MAX] = {0};
 
     size_t reportLen = 0;
 
-    for (int i = 0; i < PATHS; i++) {
-        // Header so the UI can tell the two sources apart
-        int headerLen = snprintf(entry, sizeof(entry), "\n==== %s ====\n", paths[i]);
-        if (headerLen > 0 && reportLen + (size_t)headerLen < sizeof(report)) {
-            memcpy(report + reportLen, entry, (size_t)headerLen);
-            reportLen += (size_t)headerLen;
+    FILE *fp = fopen(mountPointCstr, "r");
+    if (!fp) {
+        strerror_r(errno, errBuf, sizeof(errBuf));
+        int errLen = snprintf(entry, sizeof(entry), "%s\n", errBuf);
+        if (errLen > 0 && reportLen + (size_t)errLen < sizeof(report)) {
+            memcpy(report + reportLen, entry, (size_t)errLen);
+            reportLen += (size_t)errLen;
         }
+        return (*env)->NewStringUTF(env, errBuf);
+    }
 
-        FILE *fp = fopen(paths[i], "r");
-        if (!fp) {
-            strerror_r(errno, errorBuffer, sizeof(errorBuffer));
-            int errLen = snprintf(entry, sizeof(entry), "[error opening %s: %s]\n", paths[i], errorBuffer);
-            if (errLen > 0 && reportLen + (size_t)errLen < sizeof(report)) {
-                memcpy(report + reportLen, entry, (size_t)errLen);
-                reportLen += (size_t)errLen;
-            }
+    while (fgets(entry, sizeof(entry), fp) != NULL) {
+        if (
+                !strstr(entry, "magisk") &&
+                !strstr(entry, "hosts") &&
+                !strstr(entry, "zygisk") &&
+                !strstr(entry, "debug_ramdisk") &&
+                !strstr(entry, "/cache/") &&
+                !strstr(entry, "/product/bin") &&
+                !strstr(entry, "modules")
+                ) {
             continue;
         }
 
-        while (fgets(entry, sizeof(entry), fp) != NULL) {
-            if (
-                    !strstr(entry, "magisk") &&
-                    !strstr(entry, "hosts") &&
-                    !strstr(entry, "zygisk") &&
-                    !strstr(entry, "debug_ramdisk") &&
-                    !strstr(entry, "/cache/") &&
-                    !strstr(entry, "/product/bin") &&
-                    !strstr(entry, "modules")
-                    ) {
-                continue;
-            }
-
-            size_t lineLen = strlen(entry);
-            if (reportLen + lineLen >= sizeof(report) - 1) {
-                // Not enough room left in report; stop reading this file
-                break;
-            }
-            memcpy(report + reportLen, entry, lineLen);
-            reportLen += lineLen;
+        size_t lineLen = strlen(entry);
+        if (reportLen + lineLen >= sizeof(report) - 1) {
+            // Not enough room left in report; stop reading this file
+            break;
         }
-
-        fclose(fp);
+        memcpy(report + reportLen, entry, lineLen);
+        reportLen += lineLen;
     }
+    fclose(fp);
 
     report[reportLen] = '\0';
 
@@ -633,51 +624,129 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env
     return result;
 }
 
-
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsGet(JNIEnv *env, jobject thiz, jstring propName) {
+    char errBuf[128] = {0};
+
+    const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
+    if (propNameCstr == NULL) {
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        (*env)->DeleteLocalRef(env, propName);
+        return (*env)->NewStringUTF(env, errBuf);
+    }
+
     char report[PATH_MAX] = {0};
-    char out[PROP_VALUE_MAX] = {0};
     char entry[512] = {0};
     int len = -1;
-    const char* PROP_NAME = "ro.product.board";
+    char outBuf[PROP_VALUE_MAX] = {0};
 
-    const prop_info* pi = sys_prop_find(PROP_NAME);
-
-    len = sys_prop_get(PROP_NAME, out);
+    len = sys_prop_get(propNameCstr, outBuf);
     if (len <= 0) {
-        snprintf(entry, sizeof(entry), "get(%s): (empty)\n", PROP_NAME);
+        snprintf(entry, sizeof(entry), "(empty)");
     } else {
-        snprintf(entry, sizeof(entry), "get(%s): %s\n", PROP_NAME, out);
+        snprintf(entry, sizeof(entry), "%s\n", outBuf);
     }
     strcat(report, entry);
 
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadWithNullName(JNIEnv *env, jobject thiz, jstring propName) {
+    char errBuf[128] = {0};
+
+    const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
+    if (propNameCstr == NULL) {
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        (*env)->DeleteLocalRef(env, propName);
+        return (*env)->NewStringUTF(env, errBuf);
+    }
+
+    char report[PATH_MAX] = {0};
+    char entry[512] = {0};
+    int len = -1;
+    char outBuf[PROP_VALUE_MAX] = {0};
+
+    const prop_info* pi = sys_prop_find(propNameCstr);
 
     if (pi == NULL) {
-        snprintf(entry, sizeof(entry), "read(%s): pi is NULL\n", PROP_NAME);
+        snprintf(entry, sizeof(entry), "pi is NULL");
     } else {
-        len = sys_prop_read(pi, NULL, out);
+        len = sys_prop_read(pi, NULL, outBuf);
         if (len <= 0) {
-            snprintf(entry, sizeof(entry), "read(%s): (empty)\n", PROP_NAME);
+            snprintf(entry, sizeof(entry), "(empty)");
         } else {
-            snprintf(entry, sizeof(entry), "read(%s): %s\n", PROP_NAME, out);
+            snprintf(entry, sizeof(entry), "%s", outBuf);
         }
     }
     strcat(report, entry);
+
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsRead(JNIEnv *env, jobject thiz, jstring propName) {
+    char errBuf[128] = {0};
+
+    const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
+    if (propNameCstr == NULL) {
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        (*env)->DeleteLocalRef(env, propName);
+        return (*env)->NewStringUTF(env, errBuf);
+    }
+
+    char report[PATH_MAX] = {0};
+    char entry[512] = {0};
+    int len = -1;
+    char outBuf[PROP_VALUE_MAX] = {0};
+
+    const prop_info* pi = sys_prop_find(propNameCstr);
 
     if (pi == NULL) {
-        snprintf(entry, sizeof(entry), "read_cb(%s): pi is NULL\n", PROP_NAME);
+        snprintf(entry, sizeof(entry), "pi is NULL");
     } else {
-        sys_prop_read_cb(pi, sys_prop_read_cbFn, out);
-        if (out[0] == '\0') {
-            snprintf(entry, sizeof(entry), "read_cb(%s): (empty)\n", PROP_NAME);
+        char propNameBuf[PROP_NAME_MAX] = {0};
+        len = sys_prop_read(pi, propNameBuf, outBuf);
+        if (len <= 0) {
+            snprintf(entry, sizeof(entry), "(empty)");
         } else {
-            snprintf(entry, sizeof(entry), "read_cb(%s): %s\n", PROP_NAME, out);
+            snprintf(entry, sizeof(entry), "%s", outBuf);
         }
     }
     strcat(report, entry);
 
-    snprintf(entry, sizeof(entry), "============================================\n");
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadCb(JNIEnv *env, jobject thiz, jstring propName) {
+    char errBuf[128] = {0};
+
+    const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
+    if (propNameCstr == NULL) {
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        (*env)->DeleteLocalRef(env, propName);
+        return (*env)->NewStringUTF(env, errBuf);
+    }
+
+
+    char report[PATH_MAX] = {0};
+    char entry[512] = {0};
+    int len = -1;
+    char outBuf[PROP_VALUE_MAX] = {0};
+
+    const prop_info* pi = sys_prop_find(propNameCstr);
+
+    if (pi == NULL) {
+        snprintf(entry, sizeof(entry), "pi is NULL");
+    } else {
+        sys_prop_read_cb(pi, sys_prop_read_cbFn, outBuf);
+        if (outBuf[0] == '\0') {
+            snprintf(entry, sizeof(entry), "(empty)");
+        } else {
+            snprintf(entry, sizeof(entry), "%s", outBuf);
+        }
+    }
     strcat(report, entry);
 
     return (*env)->NewStringUTF(env, report);
@@ -797,7 +866,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN] = {0};
         inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET_ADDRSTRLEN);
-        snprintf(entry, sizeof(entry), "Socket IP: %s\n", ip);
+        snprintf(entry, sizeof(entry), "%s", ip);
     } else {
         snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
     }
@@ -809,9 +878,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameInlineAsm(JNIEnv *env, jobject thiz) {
     struct utsname buffer = {0};
-    long ret;
+    long ret = -1;
     __asm__ volatile(
             "mov x0, %[buf] \n\t"   // place `buffer`'s address in x0
             "mov x8, #160   \n\t"   // 160 is the syscall number for uname
@@ -826,16 +895,53 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getUname(JNIEnv *env, jobject
         return (*env)->NewStringUTF(env, "Error: uname syscall failed");
     }
 
-    char result_str[512] ={0};
-    snprintf(result_str, sizeof(result_str),
-             "System: %s\nNode: %s\nRelease: %s\nVersion: %s\nMachine: %s\nDomain Name: %s",
-             buffer.sysname,
-             buffer.nodename,
-             buffer.release,
-             buffer.version,
-             buffer.machine,
-             buffer.domainname
-             );
+    char result_str[128] = {0};
+    snprintf(result_str, sizeof(result_str), "%s", buffer.release);
+
+    return (*env)->NewStringUTF(env, result_str);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameRawAsmSyscall(JNIEnv *env, jobject thiz) {
+    struct utsname buffer = {0};
+    long ret = arm64_raw_syscall(__NR_uname, (long) &buffer, 0, 0, 0, 0, 0);
+
+    if (ret < 0) {
+        return (*env)->NewStringUTF(env, "Error: uname syscall failed");
+    }
+
+    char result_str[128] = {0};
+    snprintf(result_str, sizeof(result_str), "%s", buffer.release);
+
+    return (*env)->NewStringUTF(env, result_str);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameSyscallLibcWrapper(JNIEnv *env, jobject thiz) {
+    struct utsname buffer = {0};
+    long ret = syscall(__NR_uname, &buffer);
+
+    if (ret < 0) {
+        return (*env)->NewStringUTF(env, "Error: uname syscall failed");
+    }
+
+    char result_str[128] = {0};
+    snprintf(result_str, sizeof(result_str), "%s", buffer.release);
+
+    return (*env)->NewStringUTF(env, result_str);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameBionic(JNIEnv *env, jobject thiz) {
+    struct utsname buffer = {0};
+    long ret = uname(&buffer);
+
+    if (ret < 0) {
+        return (*env)->NewStringUTF(env, "Error: uname syscall failed");
+    }
+
+    char result_str[128] = {0};
+    snprintf(result_str, sizeof(result_str), "%s", buffer.release);
 
     return (*env)->NewStringUTF(env, result_str);
 }
@@ -902,8 +1008,8 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     // On API >= 26 we get the sensor sensorManager for our specific package
     ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
 
-    if (!sensorManager) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NULL\n");
+    if (sensorManager != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NOT null\n");
         strcat(result_buffer, entry);
     }
 
@@ -911,10 +1017,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     ASensorList list = {0};
     int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
 
-    if (sensorListCount == 0) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: empty\n");
-        strcat(result_buffer, entry);
-    } else {
+    if (sensorListCount != 0) {
         snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
         strcat(result_buffer, entry);
         for (int i = 0; i < sensorListCount; i++) {
@@ -928,12 +1031,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
     // Get some famous sensors
     const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
     const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
-    if (!accel) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): null\n");
+    if (accel != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): NOT null\n");
         strcat(result_buffer, entry);
     }
-    if (!gyro) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): null\n");
+    if (gyro != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): NOT null\n");
         strcat(result_buffer, entry);
     }
 
@@ -946,10 +1049,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
 
     // Create an event queue get streamed sensor data
     ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
-    if (queue == NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: is NULL\n");
-        strcat(result_buffer, entry);
-    } else {
+    if (queue != NULL) {
         snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
         strcat(result_buffer, entry);
 

@@ -7,7 +7,10 @@ import com.omarmesqq.grunfeld.utils.TestRunner
 
 @Composable
 fun AssertionResult(testTitle: String, actual: String, expected: String) {
-    val passed = TestRunner.ensureEqualStrings(actual, expected)
+    val trimmedActual = actual.trim()
+    val trimmedExpected = expected.trim()
+
+    val passed = TestRunner.ensureEqualStrings(trimmedActual, trimmedExpected)
     val prettyExpected = if (expected == "") {
         "(empty)"
     } else {

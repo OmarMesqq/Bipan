@@ -23,6 +23,7 @@ class GrunfeldConfigs(private val context: Context) {
     private val deviceidSsaidPref = stringPreferencesKey("DEVICE_SSAID")
     private val deviceidGsfIdPref = stringPreferencesKey("DEVICE_GSF_ID")
     private val deviceidDrmIdPref = stringPreferencesKey("DEVICE_DRM_ID")
+    private val deviceidDrmIdNdkPref = stringPreferencesKey("DEVICE_DRM_ID_NDK")
 
     val flagSecureEnabledFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
@@ -49,6 +50,11 @@ class GrunfeldConfigs(private val context: Context) {
             preferences[deviceidDrmIdPref] ?: UNIQUE_DEVICE_ID_DEFAULT
         }
 
+    val drmIdNdkFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[deviceidDrmIdNdkPref] ?: UNIQUE_DEVICE_ID_DEFAULT
+        }
+
     suspend fun toggleFlagSecure() {
         val currentState = flagSecureEnabledFlow.first()
         context.dataStore.edit { prefs ->
@@ -63,11 +69,12 @@ class GrunfeldConfigs(private val context: Context) {
         }
     }
 
-    suspend fun updateDeviceIds(ssaid: String, gsfId: String, drmId: String) {
+    suspend fun updateDeviceIds(ssaid: String, gsfId: String, drmId: String, drmIdNdk: String) {
         context.dataStore.edit { prefs ->
             prefs[deviceidSsaidPref] = ssaid
             prefs[deviceidGsfIdPref] = gsfId
             prefs[deviceidDrmIdPref] = drmId
+            prefs[deviceidDrmIdNdkPref] = drmIdNdk
         }
     }
 }
