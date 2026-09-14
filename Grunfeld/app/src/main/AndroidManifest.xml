@@ -47,7 +47,7 @@
         android:theme="@style/Theme.Grunfeld"
         android:allowCrossUidActivitySwitchFromBelow="false"
         android:allowNativeHeapPointerTagging="true"
-        android:enableOnBackInvokedCallback="false"
+        android:enableOnBackInvokedCallback="true"
         android:forceQueryable="false"
         android:hardwareAccelerated="true"
         android:extractNativeLibs="false"

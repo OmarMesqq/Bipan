@@ -368,11 +368,18 @@ static int hook_system_property_get(const char* name, char* value) {
 }
 
 static int hook_system_property_read(const void* pi, char* name, char* value) {
-  // Let the orig function fill name/value
-  int len = orig_system_property_read(pi, name, value);
+  // Handle cases when `name` is NULL
+  char name_buf[PROP_NAME_MAX] = {0};
+  char* name_to_use = name;
+  if (name == nullptr) {
+    name_to_use = name_buf;
+  }
 
-  if (name != nullptr && name[0] != '\0') {
-    auto globalIt = g_prop_overrides.find(name);
+  // Let the orig function fill name/value
+  int len = orig_system_property_read(pi, name_to_use, value);
+
+  if (name_to_use != nullptr && name_to_use[0] != '\0') {
+    auto globalIt = g_prop_overrides.find(name_to_use);
     if (globalIt != g_prop_overrides.end()) {
       if (value != nullptr) {
         strncpy(value, globalIt->second.c_str(), PROP_VALUE_MAX - 1);
@@ -385,7 +392,7 @@ static int hook_system_property_read(const void* pi, char* name, char* value) {
 
     if (g_telephony_spoofing_allowlist.find(g_package_name) ==
         g_telephony_spoofing_allowlist.end()) {
-      auto telIt = g_telephony_prop_overrides.find(name);
+      auto telIt = g_telephony_prop_overrides.find(name_to_use);
       if (telIt != g_telephony_prop_overrides.end()) {
         if (value != nullptr) {
           strncpy(value, telIt->second.c_str(), PROP_VALUE_MAX - 1);

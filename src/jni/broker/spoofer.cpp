@@ -12,6 +12,9 @@
 
 #define TAG "BipanSpoofer"
 
+static constexpr const char* BIPAN_IPC = "BipanSharedIPCMemfd";
+static constexpr const char* ZYGISK_INJECTED_CODE = "/memfd:jit-cache (deleted)";
+
 int uname_spoofer(struct utsname* buf) {
   if (!buf) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "uname_spoofer: received null utsname buf!");
@@ -76,8 +79,8 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
   auto process_and_write_line = [&](char* l, unsigned long len) {
     l[len] = '\0';
 
-    bool is_dirty = strstr(l, "/memfd:jit-cache (deleted)") ||
-                    strstr(l, "BipanSharedIPCMemfd");
+    bool is_dirty = strstr(l, ZYGISK_INJECTED_CODE) ||
+                    strstr(l, BIPAN_IPC);
 
     if (!is_dirty) {
       write(fake_fd, l, len);
@@ -139,8 +142,8 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
         bool is_header = ((line[0] >= '0' && line[0] <= '9') || (line[0] >= 'a' && line[0] <= 'f')) && strchr(line, '-');
 
         if (is_header) {
-          skip_current_region = strstr(line, "/memfd:jit-cache (deleted)") ||
-                                strstr(line, "BipanSharedIPCMemfd");
+          skip_current_region = strstr(line, ZYGISK_INJECTED_CODE) ||
+                                strstr(line, BIPAN_IPC);
         }
 
         if (!skip_current_region) {

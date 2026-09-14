@@ -29,6 +29,10 @@ static LIB_IN_MAPS_RET find_lib_name_in_maps(uintptr_t pc, ManualDlInfo* info, p
 static inline bool is_trusted_lib(const char* lib_path);
 static inline bool should_passthrough(const char* libPath);
 
+static constexpr const char* ZYGISK_LIB = "/system/lib64/libzygisk.so";
+static constexpr const char* ZYGISK_LIB32 = "/system/lib/libzygisk.so";
+static constexpr const char* ZYGISK_INJECTED_CODE = "/memfd:jit-cache (deleted)";
+
 UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   char mem_path[64] = {0};
   snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
@@ -46,8 +50,8 @@ UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   char sym_name[PATH_MAX] = UNRESOLVED_SYMBOL_NAME;
 
   // Strip arm64 PAC auth bits
-  pc &= 0x0000FFFFFFFFFFFFULL; 
-  lr &= 0x0000FFFFFFFFFFFFULL;  
+  pc &= 0x0000FFFFFFFFFFFFULL;
+  lr &= 0x0000FFFFFFFFFFFFULL;
 
   // Try the actual PC first (like for inline asm)
   LIB_IN_MAPS_RET ret = find_lib_name_in_maps(pc, &info, pid);
@@ -525,9 +529,9 @@ static inline bool is_trusted_lib(const char* lib_path) {
       startsWith(lib_path, "[stack]") ||
       startsWith(lib_path, "[anon:cfi") ||
       startsWith(lib_path, "[anon:linker_alloc]") ||
-      startsWith(lib_path, "/system/lib64/libzygisk.so") ||
-      startsWith(lib_path, "/memfd:jit-cache (deleted)")  // TODO: ourselves
-  );
+      startsWith(lib_path, ZYGISK_LIB) ||
+      startsWith(lib_path, ZYGISK_LIB32) ||
+      startsWith(lib_path, ZYGISK_INJECTED_CODE));
 }
 
 static inline bool should_passthrough(const char* libPath) {
@@ -536,8 +540,9 @@ static inline bool should_passthrough(const char* libPath) {
   }
 
   if (
-      startsWith(libPath, "/system/lib64/libzygisk.so") ||
-      startsWith(libPath, "/memfd:jit-cache (deleted)")) {
+      startsWith(libPath, ZYGISK_LIB) ||
+      startsWith(libPath, ZYGISK_LIB32) ||
+      startsWith(libPath, ZYGISK_INJECTED_CODE)) {
     return true;
   }
   return false;
