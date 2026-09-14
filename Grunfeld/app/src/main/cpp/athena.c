@@ -7,6 +7,7 @@
 #include <string.h>
 #include <android/log.h>
 #include <sys/syscall.h>
+#include <unistd.h>
 
 #define TAG "Athena"
 
@@ -27,6 +28,7 @@ static int capture_backtrace(void** out_frames, int max_frames);
 static void print_native_backtrace(void);
 static void athena_sig_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
+static void reraise_to_previous_handler(int sig);
 
 static char g_altstack[SIGSTKSZ * 4];
 static struct sigaction g_old_segv_act = {0}; // SIGSEGV
@@ -173,10 +175,43 @@ static void athena_sig_handler(int sig, siginfo_t* info, void* void_context) {
             break;
         }
     }
-    
-    // TODO: not AS-safe
-    print_native_backtrace();
-    arm64_raw_syscall(__NR_exit_group, -1, 0, 0, 0, 0, 0);
+
+    reraise_to_previous_handler(sig);
+}
+
+static void reraise_to_previous_handler(int sig) {
+    struct sigaction* old_act = NULL;
+
+    switch (sig) {
+        case SIGSEGV: {
+            old_act = &g_old_segv_act;
+            break;
+        }
+        case SIGABRT: {
+            old_act = &g_old_abrt_act;
+            break;
+        }
+        case SIGTRAP: {
+            old_act = &g_old_trap_act;
+            break;
+        }
+        case SIGQUIT: {
+            old_act = &g_old_quit_act;
+            break;
+        }
+        default: {
+            _exit(128 + sig);
+        }
+    }
+
+    sigaction(sig, old_act, NULL);
+
+    pid_t pid = (pid_t) arm64_raw_syscall(__NR_getpid, 0,0,0,0,0,0);
+    pid_t tid = (pid_t) arm64_raw_syscall(__NR_gettid, 0,0,0,0,0,0);
+    // Redeliver the signal to the offending thread
+    arm64_raw_syscall(__NR_tgkill, pid, tid, sig, 0, 0, 0);
+
+    _exit(128 + sig);
 }
 
 #pragma clang diagnostic push

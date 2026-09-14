@@ -41,14 +41,27 @@
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
+#define FIND_BIPAN_TRACES(path) \
+    strstr(path, "/memfd:jit-cache (deleted)") || \
+    strstr(path, "Bipan") || \
+    strstr(path, "bipan") || \
+    strstr(path, "zygisk")
+
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
-static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val);
-static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data);
-static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf);
+static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data);
+static void dump_newfstatat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_fstat_info(const char* path, char* const report, struct stat* statbuf);
 static void dump_statx_info(const char* path, char* const report, struct statx* statxbuf);
+static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap);
 
+static int sys_prop_get(const char* propName, char* outBuf);
+static int sys_prop_read(const prop_info* pi, char* propName, char* outBuf);
+static void sys_prop_read_cbFn(void* cookie, const char* name, const char* value, uint32_t serial);
+static void sys_prop_read_cb(const prop_info* pi,
+                             void (*cb)(void *, const char *, const char *, uint32_t),
+                             void* cookie);
+static const prop_info* sys_prop_find(const char* propName);
 
 static const long BOGUS_SYSCALL = 0xB050517;
 static const int  BOGUS_SYSCALL_EXPECTED_RET = 21;
@@ -71,29 +84,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     // requestNativeBacktrace();
     return JNI_VERSION_1_6;
 }
-
-
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {
-    raise(SIGSEGV);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseAbrt(JNIEnv *env, jobject thiz) {
-    raise(SIGABRT);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseTrap(JNIEnv *env, jobject thiz) {
-    raise(SIGTRAP);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobject thiz) {
-    raise(SIGQUIT);
-}
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
@@ -122,26 +112,13 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
         snprintf(entry, sizeof(entry), "statfs(/etc/hosts) succeeded :/\n");
         strcat(report, entry);
     }
-
-
+    
     return (*env)->NewStringUTF(env, report);
 }
 
 
-static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
-    static const char *hex = "0123456789abcdef";
-    size_t i, o = 0;
-    for (i = 0; i < len && o + 2 < out_cap; i++) {
-        out[o++] = hex[(in[i] >> 4) & 0xf];
-        out[o++] = hex[in[i] & 0xf];
-    }
-    out[o] = '\0';
-}
-
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(
-        JNIEnv *env, jobject thiz) {
-
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *env, jobject thiz) {
     char report[1024];
     report[0] = '\0';
 
@@ -306,8 +283,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
 
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobject thiz,
-                                                             jobjectArray filenames) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobject thiz,jobjectArray filenames) {
     jsize len = (*env)->GetArrayLength(env, filenames);
     char report[20000] = {0};
     char entry[PATH_MAX] = {0};
@@ -396,7 +372,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, j
         snprintf(entry, sizeof (entry),"newfstatat(%s) successful.\n", cstr);
         strcat(report, entry);
         char intermediateReport[8192] = {0};
-        dump_newfstat_info(cstr, intermediateReport, &statbuf);
+        dump_newfstatat_info(cstr, intermediateReport, &statbuf);
         strcat(report, intermediateReport);
     }
 
@@ -478,24 +454,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
-            if (
-                    strstr(libName, "/memfd:jit-cache (deleted)") ||
-                    strstr(libName, "Bipan") ||
-                    strstr(libName, "bipan") ||
-                    strstr(libName, "zygisk")
-                    ) {
+            if (FIND_BIPAN_TRACES(libName)) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
                 strcat(report, entry);
                 return (*env)->NewStringUTF(env, report);
             }
             // ignore problematic lines
         }
-        if (
-                strstr(libName, "/memfd:jit-cache (deleted)") ||
-                strstr(libName, "Bipan") ||
-                strstr(libName, "bipan") ||
-                strstr(libName, "zygisk")
-                ) {
+        if (FIND_BIPAN_TRACES(libName)) {
             snprintf(entry, sizeof(entry), "%s", buf);
             strcat(report, entry);
         }
@@ -562,12 +528,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
 
         if (ret == 8) {
-            matchedCurrentRegion = (
-                                           strstr(libName, "/memfd:jit-cache (deleted)") ||
-                                           strstr(libName, "Bipan") ||
-                                           strstr(libName, "bipan") ||
-                                           strstr(libName, "zygisk")
-                                   ) != 0;
+            matchedCurrentRegion = (FIND_BIPAN_TRACES(libName)) != 0;
 
             if (matchedCurrentRegion) {
                 APPEND(buf);
@@ -658,7 +619,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
 }
 
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
     char *report = (char *) calloc(50000, sizeof(char));
@@ -666,7 +626,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env
         return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
     }
 
-    dl_iterate_phdr(dlIteratePhdrCallback, report);
+    dl_iterate_phdr(dl_iterate_phdr_cb, report);
 
     jstring result = (*env)->NewStringUTF(env, report);
     free(report);
@@ -676,106 +636,51 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getDeviceData(JNIEnv *env, jobject thiz, jobject context) {
+    char report[PATH_MAX] = {0};
+    char out[PROP_VALUE_MAX] = {0};
+    char entry[512] = {0};
+    int len = -1;
+    const char* PROP_NAME = "ro.product.board";
 
-    char board[PROP_VALUE_MAX]        = {0};
-    char bootloader[PROP_VALUE_MAX]   = {0};
-    char brand[PROP_VALUE_MAX]        = {0};
-    char device[PROP_VALUE_MAX]       = {0};
-    char display[PROP_VALUE_MAX]      = {0};
-    char fingerprint[PROP_VALUE_MAX]  = {0};
-    char hardware[PROP_VALUE_MAX]     = {0};
-    char host[PROP_VALUE_MAX]         = {0};
-    char build_id[PROP_VALUE_MAX]     = {0};
-    char manufacturer[PROP_VALUE_MAX] = {0};
-    char model[PROP_VALUE_MAX]        = {0};
-    char odm_sku[PROP_VALUE_MAX]      = {0};
-    char product[PROP_VALUE_MAX]      = {0};
-    char sku[PROP_VALUE_MAX]          = {0};
-    char soc_mfr[PROP_VALUE_MAX]      = {0};
-    char soc_model[PROP_VALUE_MAX]    = {0};
-    char abi1[PROP_VALUE_MAX]         = {0};
-    char abi2[PROP_VALUE_MAX]         = {0};
-    char abi3[PROP_VALUE_MAX]         = {0};
-    char tags[PROP_VALUE_MAX]         = {0};
-    char type[PROP_VALUE_MAX]         = {0};
-    char user[PROP_VALUE_MAX]         = {0};
-    char radio[PROP_VALUE_MAX]        = {0};
-    char base_os[PROP_VALUE_MAX]      = {0};
-    char codename[PROP_VALUE_MAX]     = {0};
-    char incremental[PROP_VALUE_MAX]  = {0};
-    char security_patch[PROP_VALUE_MAX] = {0};
+    const prop_info* pi = sys_prop_find(PROP_NAME);
 
-    get_sys_prop("ro.product.board",              board,                      sizeof(board),                      "unknown");
-    get_sys_prop("ro.bootloader",                 bootloader,                 sizeof(bootloader),                 "unknown");
-    get_sys_prop("ro.product.brand",              brand,                      sizeof(brand),                      "unknown");
-    get_sys_prop("ro.product.device",             device,                     sizeof(device),                     "unknown");
-    get_sys_prop("ro.build.display.id",           display,                    sizeof(display),                    "unknown");
-    get_sys_prop("ro.build.fingerprint",          fingerprint,                sizeof(fingerprint),                "unknown");
-    get_sys_prop("ro.hardware",                   hardware,                   sizeof(hardware),                   "unknown");
-    get_sys_prop("ro.build.host",                 host,                       sizeof(host),                       "unknown");
-    get_sys_prop("ro.build.id",                   build_id,                   sizeof(build_id),                   "unknown");
-    get_sys_prop("ro.product.manufacturer",       manufacturer,               sizeof(manufacturer),               "unknown");
-    get_sys_prop("ro.product.model",              model,                      sizeof(model),                      "unknown");
-    get_sys_prop("ro.product.odm.sku",            odm_sku,                    sizeof(odm_sku),                    "unknown");
-    get_sys_prop("ro.product.name",               product,                    sizeof(product),                    "unknown");
-    get_sys_prop("ro.boot.product.hardware.sku",  sku,                        sizeof(sku),                        "unknown");
-    get_sys_prop("ro.soc.manufacturer",           soc_mfr,                    sizeof(soc_mfr),                    "unknown");
-    get_sys_prop("ro.soc.model",                  soc_model,                  sizeof(soc_model),                  "unknown");
-    get_sys_prop("ro.product.cpu.abilist",        abi1,                       sizeof(abi1),                       "unknown");
-    get_sys_prop("ro.product.cpu.abilist32",      abi2,                       sizeof(abi2),                       "unknown");
-    get_sys_prop("ro.product.cpu.abilist64",      abi3,                       sizeof(abi3),                       "unknown");
-    get_sys_prop("ro.build.tags",                 tags,                       sizeof(tags),                       "unknown");
-    get_sys_prop("ro.build.type",                 type,                       sizeof(type),                       "unknown");
-    get_sys_prop("ro.build.user",                 user,                       sizeof(user),                       "unknown");
-    get_sys_prop("gsm.version.baseband",          radio,                      sizeof(radio),                      "unknown");
-    get_sys_prop("ro.build.version.base_os",      base_os,                    sizeof(base_os),                    "");
-    get_sys_prop("ro.build.version.codename",     codename,                   sizeof(codename),                   "unknown");
-    get_sys_prop("ro.build.version.incremental",  incremental,                sizeof(incremental),                "unknown");
-    get_sys_prop("ro.build.version.security_patch", security_patch,           sizeof(security_patch),             "unknown");
+    len = sys_prop_get(PROP_NAME, out);
+    if (len <= 0) {
+        snprintf(entry, sizeof(entry), "get(%s): (empty)\n", PROP_NAME);
+    } else {
+        snprintf(entry, sizeof(entry), "get(%s): %s\n", PROP_NAME, out);
+    }
+    strcat(report, entry);
 
-    // TIME is ro.build.date.utc (seconds) — Build.TIME is milliseconds
-    char build_date_utc[32] = {0};
-    get_sys_prop("ro.build.date.utc", build_date_utc, sizeof(build_date_utc), "0");
-    long long build_time_ms = atoll(build_date_utc) * 1000LL;
 
-    // ── 3. Build output ───────────────────────────────────────────────────
-    char buffer[PATH_MAX * 2] = {0};
-    snprintf(buffer, sizeof(buffer),
-             "BOARD: %s\n"
-             "BOOTLOADER: %s\n"
-             "BRAND: %s\n"
-             "DEVICE: %s\n"
-             "DISPLAY: %s\n"
-             "FINGERPRINT: %s\n"
-             "HARDWARE: %s\n"
-             "HOST: %s\n"
-             "ID: %s\n"
-             "MANUFACTURER: %s\n"
-             "MODEL: %s\n"
-             "ODM_SKU: %s\n"
-             "PRODUCT: %s\n"
-             "SKU: %s\n"
-             "SOC_MANUFACTURER: %s\n"
-             "SOC_MODEL: %s\n"
-             "SUPPORTED_CPU_ABIs: %s\n"
-             "SUPPORTED_CPU_ABIs_32: %s\n"
-             "SUPPORTED_CPU_ABIs_64: %s\n"
-             "TAGS: %s\n"
-             "TIME: %lld\n"
-             "TYPE: %s\n"
-             "USER: %s\n"
-             "RADIO: %s\n"
-             "BASE_OS: %s\n"
-             "CODENAME: %s\n"
-             "INCREMENTAL: %s\n"
-             "SECURITY_PATCH: %s\n",
-             board, bootloader, brand, device, display, fingerprint,
-             hardware, host, build_id, manufacturer, model,
-             odm_sku, product, sku, soc_mfr, soc_model,
-             abi1, abi2, abi3, tags, build_time_ms, type, user,
-             radio, base_os, codename, incremental,security_patch);
+    if (pi == NULL) {
+        snprintf(entry, sizeof(entry), "read(%s): pi is NULL\n", PROP_NAME);
+    } else {
+        len = sys_prop_read(pi, NULL, out);
+        if (len <= 0) {
+            snprintf(entry, sizeof(entry), "read(%s): (empty)\n", PROP_NAME);
+        } else {
+            snprintf(entry, sizeof(entry), "read(%s): %s\n", PROP_NAME, out);
+        }
+    }
+    strcat(report, entry);
 
-    return (*env)->NewStringUTF(env, buffer);
+    if (pi == NULL) {
+        snprintf(entry, sizeof(entry), "read_cb(%s): pi is NULL\n", PROP_NAME);
+    } else {
+        sys_prop_read_cb(pi, sys_prop_read_cbFn, out);
+        if (out[0] == '\0') {
+            snprintf(entry, sizeof(entry), "read_cb(%s): (empty)\n", PROP_NAME);
+        } else {
+            snprintf(entry, sizeof(entry), "read_cb(%s): %s\n", PROP_NAME, out);
+        }
+    }
+    strcat(report, entry);
+
+    snprintf(entry, sizeof(entry), "============================================\n");
+    strcat(report, entry);
+
+    return (*env)->NewStringUTF(env, report);
 }
 
 
@@ -860,8 +765,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testOpenFileAndReadLink(JNIEn
 
     return (*env)->NewStringUTF(env, report);
 }
-
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
@@ -1130,7 +1033,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_triggerSigsysViolation(JNIEnv
 }
 
 
-static void dump_newfstat_info(const char* path, char* const report, struct stat* statbuf) {
+static void dump_newfstatat_info(const char* path, char* const report, struct stat* statbuf) {
     char entry[PATH_MAX] = {0};
 
     snprintf(entry, sizeof(entry), "\tDevice: %lu\n", (unsigned long)statbuf->st_dev);
@@ -1382,14 +1285,7 @@ static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context
     ctx->uc_mcontext.regs[0] = (__u64) -1;
 }
 
-static void get_sys_prop(const char* key, char* out_val, size_t max_len, const char* default_val) {
-    int len = __system_property_get(key, out_val);
-    if (len <= 0) {
-        strncpy(out_val, default_val, max_len);
-    }
-}
-
-static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *data) {
+static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data) {
     char* report = (char *) data;
 
     char line[512] ={0};
@@ -1408,6 +1304,63 @@ static int dlIteratePhdrCallback(struct dl_phdr_info *info, size_t size, void *d
     }
 
     return 0;
+}
+
+static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap) {
+    static const char *hex = "0123456789abcdef";
+    size_t i, o = 0;
+    for (i = 0; i < len && o + 2 < out_cap; i++) {
+        out[o++] = hex[(in[i] >> 4) & 0xf];
+        out[o++] = hex[in[i] & 0xf];
+    }
+    out[o] = '\0';
+}
+
+static int sys_prop_get(const char* propName, char* outBuf) {
+    int len = __system_property_get(propName, outBuf);
+    return len;
+}
+
+static int sys_prop_read(const prop_info* pi, char* propName, char* outBuf) {
+    int len = __system_property_read(pi, propName, outBuf);
+    return len;
+}
+
+static void sys_prop_read_cbFn(void* cookie, const char* name, const char* value, uint32_t serial) {
+    char* out_buf = (char*)cookie;
+    strncpy(out_buf, value, PROP_VALUE_MAX - 1);
+    out_buf[PROP_VALUE_MAX - 1] = '\0';
+}
+
+static void sys_prop_read_cb(const prop_info* pi,
+                             void (*cb)(void *, const char *, const char *, uint32_t),
+                             void* cookie) {
+    __system_property_read_callback(pi, cb, cookie);
+}
+
+static const prop_info* sys_prop_find(const char* propName) {
+    return __system_property_find(propName);
+}
+
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {
+    raise(SIGSEGV);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseAbrt(JNIEnv *env, jobject thiz) {
+    raise(SIGABRT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseTrap(JNIEnv *env, jobject thiz) {
+    raise(SIGTRAP);
+}
+
+JNIEXPORT void JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobject thiz) {
+    raise(SIGQUIT);
 }
 
 #pragma clang diagnostic push
