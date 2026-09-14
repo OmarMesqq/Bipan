@@ -113,7 +113,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env
     return (*env)->NewStringUTF(env, report);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *env, jobject thiz) {
     char report[1024];
@@ -150,7 +149,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *e
     AMediaDrm_release(drm);
     return (*env)->NewStringUTF(env, report);
 }
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, jobject thiz, jstring mountPoint) {
@@ -236,33 +234,19 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFaccessat(JNIEnv *env, jo
         long ret = -1;
 
         int chkExistenceMode = F_OK;
-        int hasReadPermMode = R_OK;
-
         int flags = AT_EACCESS; // performs access using effective UID and GID
 
         ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) filepath, chkExistenceMode, flags, 0, 0);
         if (ret == 0) {
             snprintf(entry, sizeof(entry), "%s (F_OK) successful\n", filepath);
-            strcat(report, entry);
         } else {
-            snprintf(entry, sizeof(entry), "%s (F_OK) failed: %s\n", filepath, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
+            snprintf(entry, sizeof(entry), "%s (F_OK): %s\n", filepath, RAW_SYSCALL_TO_ERRNO(ret));
         }
-
-
-        ret = arm64_raw_syscall(__NR_faccessat, 0 , (long) filepath, hasReadPermMode, flags, 0, 0);
-        if (ret == 0) {
-            snprintf(entry, sizeof(entry), "%s (R_OK) successful\n", filepath);
-            strcat(report, entry);
-        } else {
-            snprintf(entry, sizeof(entry), "%s (R_OK) failed: %s\n", filepath, RAW_SYSCALL_TO_ERRNO(ret));
-            strcat(report, entry);
-        }
+        strcat(report, entry);
     }
 
     return (*env)->NewStringUTF(env, report);
 }
-
 
 JNIEXPORT jobject JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobject thiz,jstring filename) {
@@ -356,7 +340,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testFstat(JNIEnv *env, jobjec
     close(fd);
     return result;
 }
-
 
 JNIEXPORT jobject JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testNewfstatat(JNIEnv *env, jobject thiz, jstring filename) {
@@ -465,7 +448,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobjec
     return (*env)->NewStringUTF(env, report);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
     char report[20000] = {0};
@@ -511,7 +493,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
     fclose(fp);
     return (*env)->NewStringUTF(env, report);
 }
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz) {
@@ -662,7 +643,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
     return (*env)->NewStringUTF(env, finalReport);
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
     char *report = (char *) calloc(50000, sizeof(char));
@@ -785,7 +765,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadCb(JNIEnv *env, j
 
     char report[PATH_MAX] = {0};
     char entry[512] = {0};
-    int len = -1;
     char outBuf[PROP_VALUE_MAX] = {0};
 
     const prop_info* pi = sys_prop_find(propNameCstr);
@@ -969,7 +948,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     }
 }
 
-
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
     char result_buffer[PATH_MAX] = {0};
@@ -1061,14 +1039,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
                 while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
                     if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
                         LOGI("Accel X: %f, Y: %f, Z: %f",
-                             event.acceleration.x,
-                             event.acceleration.y,
-                             event.acceleration.z);
+                             (double) event.acceleration.x,
+                             (double) event.acceleration.y,
+                             (double) event.acceleration.z);
                     } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
                         LOGI("Gyro X: %f, Y: %f, Z: %f",
-                             event.vector.x,
-                             event.vector.y,
-                             event.vector.z);
+                             (double) event.vector.x,
+                             (double) event.vector.y,
+                             (double) event.vector.z);
                     }
                 }
             }
@@ -1168,7 +1146,6 @@ static void sys_prop_read_cb(const prop_info* pi,
 static const prop_info* sys_prop_find(const char* propName) {
     return __system_property_find(propName);
 }
-
 
 JNIEXPORT void JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {

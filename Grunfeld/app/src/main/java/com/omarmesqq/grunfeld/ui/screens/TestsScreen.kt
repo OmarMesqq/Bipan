@@ -35,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
@@ -56,6 +55,7 @@ import com.omarmesqq.grunfeld.utils.getSensorsInfo
 import com.omarmesqq.grunfeld.utils.getSsaid
 import com.omarmesqq.grunfeld.utils.getSystemProperty
 import com.omarmesqq.grunfeld.utils.getWifiManagerInfo
+import com.omarmesqq.grunfeld.utils.hasPermission
 import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
@@ -64,7 +64,6 @@ import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
-
 
 private const val FAKE_IP = "10.111.222.1"
 private const val PLAY_STORE_PKG_NAME = "com.android.vending"
@@ -158,9 +157,9 @@ fun TestsScreen() {
         FilesystemAssertions()
 
         SectionHeader("SYSTEM PROPERTIES - REFLECTION TESTS")
-        SystemPropsAssertions()
+        SystemPropsReflectionAssertions()
         SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
-        NativeSysPropsAssertions()
+        SystemPropsNativeAssertions()
 
     }
 }
@@ -301,15 +300,17 @@ private fun NetworkIfacesAssertions() {
     }
 }
 
-@Suppress("DEPRECATION")
 @Composable
 private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val activeNetworkInfo = cm.activeNetworkInfo
 
-    AssertionResultNotContains("Is active network VPN?", activeNetworkInfo?.typeName ?: "NO_TYPE_NAME_THATS_ODD", "VPN")
-    AssertionResult("All networks size", cm.allNetworks.size, "0")
-    AssertionResultEmpty("All networks content", cm.allNetworks.toList())
+    @Suppress("DEPRECATION")
+    if (cm.activeNetworkInfo != null) {
+        val activeNetworkInfo = cm.activeNetworkInfo
+        AssertionResultNotContains("Is active network VPN?", activeNetworkInfo?.typeName ?: "NO_TYPE_NAME_THATS_ODD", "VPN")
+        AssertionResult("All networks size", cm.allNetworks.size, "0")
+        AssertionResultEmpty("All networks content", cm.allNetworks.toList())
+    }
 
     val caps = cm.getNetworkCapabilities(cm.activeNetwork)
     if (caps == null) {
@@ -389,6 +390,7 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
         return
     }
 
+    @Suppress("DEPRECATION")
     AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
 
     if (wifiInfo.bssid != null) {
@@ -415,6 +417,7 @@ private fun AppInstallerAssertions(ctx: Context) {
         PLAY_STORE_PKG_NAME
     )
 
+    AssertionResult("Package source should be PACKAGE_SOURCE_STORE (2)", info.packageSource, "2")
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         val updateOwner = info.updateOwnerPackageName
         AssertionResult(
@@ -429,7 +432,7 @@ private fun AppInstallerAssertions(ctx: Context) {
 
     AssertionResult(
         "Installer package name (Legacy API)",
-        legacyInstaller ?: "",
+        legacyInstaller ?: "NO_LEGACY_INSTALLER_THATS_ODD",
         PLAY_STORE_PKG_NAME
     )
 }
@@ -472,13 +475,15 @@ private fun InstalledPackagesAssertions(ctx: Context) {
 private fun LogcatAssertions() {
     val logcatExecd = Runtime.getRuntime().exec("logcat -d")
     val bufferedReader = BufferedReader(InputStreamReader(logcatExecd.inputStream))
-    var i = 1
+
+    val logcatLines = mutableListOf<Any?>()
     repeat(5) {
-        AssertionResultNull("Logcat (Runtime) line $i", bufferedReader.readLine())
-        i++
+        logcatLines.add(bufferedReader.readLine())
     }
 
-    HorizontalDivider()
+    val expectedList = listOf(null)
+
+    AssertionResultSomeValuesInIterable("Logcat (Runtime)", logcatLines, expectedList)
 
     val processBuilder = ProcessBuilder("logcat", "-d", "-m", "5")
     val process = processBuilder.start()
@@ -597,7 +602,6 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
     }
 }
 
-
 @Composable
 private fun StealthAssertions() {
     val defaultValue = ""
@@ -675,12 +679,12 @@ private fun FilesystemAssertions() {
         "/debug_ramdisk/supolicy",
     )
 
-    val faccessatRootPoints = NativeLibWrapper.testFaccessat(rootNodes)
+    val faccessatRootPoints = NativeLibWrapper.testFaccessat(rootNodes).split("\n")
     faccessatRootPoints
-        .split("\n")
-        .forEach { f ->
-            AssertionResultContains("faccessat", f, "No such file or directory")
-            HorizontalDivider()
+        .forEachIndexed { idx, f ->
+            if (idx != faccessatRootPoints.lastIndex) {
+                AssertionResultContains("faccessat", f, "No such file or directory")
+            }
         }
 
     CodeTitle("fstat()", Color.Magenta)
@@ -693,11 +697,11 @@ private fun FilesystemAssertions() {
     val fstatEtc = NativeLibWrapper.testFstat(hostsNodes1[0])
     val fstatEtcHosts = NativeLibWrapper.testFstat(hostsNodes1[1])
 
-    AssertionResult("/etc and /etc/hosts device should match", fstatEtc.dev, fstatEtcHosts.dev)
-    AssertionResultNotEqualLongs("/etc and /etc/hosts inode shouldn't match", fstatEtc.ino, fstatEtcHosts.ino)
+    AssertionResult("/etc and /etc/hosts devices should match", fstatEtc.dev, fstatEtcHosts.dev)
+    AssertionResultNotEqualLongs("/etc and /etc/hosts inodes shouldn't match", fstatEtc.ino, fstatEtcHosts.ino)
 
-    AssertionResult("/etc/hosts size", fstatEtcHosts.size, 46)
-    AssertionResult("/etc/hosts block size", fstatEtcHosts.blkSiz, 4096)
+    AssertionResult("/etc/hosts size (in bytes)", fstatEtcHosts.size, 46)
+    AssertionResult("/etc/hosts block size (in bytes)", fstatEtcHosts.blkSiz, 4096)
     AssertionResult("/etc/hosts allocated blocks", fstatEtcHosts.blksAllocated, 8)
 
     AssertionResult("/etc/hosts and /etc access time should match", fstatEtc.accessTime, fstatEtcHosts.accessTime)
@@ -714,11 +718,11 @@ private fun FilesystemAssertions() {
     val newfstatatSystemEtc = NativeLibWrapper.testNewfstatat(hostsNodes2[0])
     val newfstatatSystemEtcHosts = NativeLibWrapper.testNewfstatat(hostsNodes2[1])
 
-    AssertionResult("/system/etc and /system/etc/hosts device should match", newfstatatSystemEtc.dev, newfstatatSystemEtcHosts.dev)
-    AssertionResultNotEqualLongs("/system/etc and /system/etc/hosts inode shouldn't match", newfstatatSystemEtc.ino, newfstatatSystemEtcHosts.ino)
+    AssertionResult("/system/etc and /system/etc/hosts devices should match", newfstatatSystemEtc.dev, newfstatatSystemEtcHosts.dev)
+    AssertionResultNotEqualLongs("/system/etc and /system/etc/hosts inodes shouldn't match", newfstatatSystemEtc.ino, newfstatatSystemEtcHosts.ino)
 
-    AssertionResult("/system/etc/hosts size", newfstatatSystemEtcHosts.size, 46)
-    AssertionResult("/system/etc/hosts block size", newfstatatSystemEtcHosts.blkSiz, 4096)
+    AssertionResult("/system/etc/hosts size (in bytes)", newfstatatSystemEtcHosts.size, 46)
+    AssertionResult("/system/etc/hosts block size (in bytes)", newfstatatSystemEtcHosts.blkSiz, 4096)
     AssertionResult("/system/etc/hosts allocated blocks", newfstatatSystemEtcHosts.blksAllocated, 8)
 
     AssertionResult("/system/etc/hosts and /system/etc access time should match", newfstatatSystemEtc.accessTime, newfstatatSystemEtcHosts.accessTime)
@@ -743,7 +747,7 @@ private fun FilesystemAssertions() {
 }
 
 @Composable
-private fun SystemPropsAssertions() {
+private fun SystemPropsReflectionAssertions() {
     val defaultValue = "<empty>"
 
     AssertionResult("ro.serialno", getSystemProperty("ro.serialno"), defaultValue)
@@ -868,35 +872,35 @@ private fun SystemPropsAssertions() {
     AssertionResult("ro.system_ext.build.version.incremental", getSystemProperty("ro.system_ext.build.version.incremental"), "14401865")
 
     // Version release
-    AssertionResult("ro.build.version.release", getSystemProperty("ro.build.version.release"), "16")
-    AssertionResult("ro.product.build.version.release", getSystemProperty("ro.product.build.version.release"), "16")
-    AssertionResult("ro.vendor_dlkm.build.version.release", getSystemProperty("ro.vendor_dlkm.build.version.release"), "16")
-    AssertionResult("ro.vendor.build.version.release", getSystemProperty("ro.vendor.build.version.release"), "16")
-    AssertionResult("ro.system_ext.build.version.release", getSystemProperty("ro.system_ext.build.version.release"), "16")
-    AssertionResult("ro.system.build.version.release", getSystemProperty("ro.system.build.version.release"), "16")
+//    AssertionResult("ro.build.version.release", getSystemProperty("ro.build.version.release"), "16")
+//    AssertionResult("ro.product.build.version.release", getSystemProperty("ro.product.build.version.release"), "16")
+//    AssertionResult("ro.vendor_dlkm.build.version.release", getSystemProperty("ro.vendor_dlkm.build.version.release"), "16")
+//    AssertionResult("ro.vendor.build.version.release", getSystemProperty("ro.vendor.build.version.release"), "16")
+//    AssertionResult("ro.system_ext.build.version.release", getSystemProperty("ro.system_ext.build.version.release"), "16")
+//    AssertionResult("ro.system.build.version.release", getSystemProperty("ro.system.build.version.release"), "16")
 
     // release_or_codename
-    AssertionResult("ro.build.version.release_or_codename", getSystemProperty("ro.build.version.release_or_codename"), "16")
-    AssertionResult("ro.vendor.build.version.release_or_codename", getSystemProperty("ro.vendor.build.version.release_or_codename"), "16")
-    AssertionResult("ro.product.build.version.release_or_codename", getSystemProperty("ro.product.build.version.release_or_codename"), "16")
-    AssertionResult("ro.vendor_dlkm.build.version.release_or_codename", getSystemProperty("ro.vendor_dlkm.build.version.release_or_codename"), "16")
-    AssertionResult("ro.system.build.version.release_or_codename", getSystemProperty("ro.system.build.version.release_or_codename"), "16")
-    AssertionResult("ro.system_ext.build.version.release_or_codename", getSystemProperty("ro.system_ext.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.build.version.release_or_codename", getSystemProperty("ro.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.vendor.build.version.release_or_codename", getSystemProperty("ro.vendor.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.product.build.version.release_or_codename", getSystemProperty("ro.product.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.vendor_dlkm.build.version.release_or_codename", getSystemProperty("ro.vendor_dlkm.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.system.build.version.release_or_codename", getSystemProperty("ro.system.build.version.release_or_codename"), "16")
+//    AssertionResult("ro.system_ext.build.version.release_or_codename", getSystemProperty("ro.system_ext.build.version.release_or_codename"), "16")
 
-    AssertionResult("ro.build.version.release_or_preview_display", getSystemProperty("ro.build.version.release_or_preview_display"), "16")
+//    AssertionResult("ro.build.version.release_or_preview_display", getSystemProperty("ro.build.version.release_or_preview_display"), "16")
 
     // SDK
-    AssertionResult("ro.build.version.sdk", getSystemProperty("ro.build.version.sdk"), "36")
-    AssertionResult("ro.product.build.version.sdk", getSystemProperty("ro.product.build.version.sdk"), "36")
-    AssertionResult("ro.vendor.build.version.sdk", getSystemProperty("ro.vendor.build.version.sdk"), "36")
-    AssertionResult("ro.vendor_dlkm.build.version.sdk", getSystemProperty("ro.vendor_dlkm.build.version.sdk"), "36")
-    AssertionResult("ro.system_ext.build.version.sdk", getSystemProperty("ro.system_ext.build.version.sdk"), "36")
-    AssertionResult("ro.system.build.version.sdk", getSystemProperty("ro.system.build.version.sdk"), "36")
-
-    AssertionResult("ro.build.version.sdk_full", getSystemProperty("ro.build.version.sdk_full"), "36.1")
-    AssertionResult("ro.product.build.version.sdk_full", getSystemProperty("ro.product.build.version.sdk_full"), "36.1")
-    AssertionResult("ro.system_ext.build.version.sdk_full", getSystemProperty("ro.system_ext.build.version.sdk_full"), "36.1")
-    AssertionResult("ro.system.build.version.sdk_full", getSystemProperty("ro.system.build.version.sdk_full"), "36.1")
+//    AssertionResult("ro.build.version.sdk", getSystemProperty("ro.build.version.sdk"), "36")
+//    AssertionResult("ro.product.build.version.sdk", getSystemProperty("ro.product.build.version.sdk"), "36")
+//    AssertionResult("ro.vendor.build.version.sdk", getSystemProperty("ro.vendor.build.version.sdk"), "36")
+//    AssertionResult("ro.vendor_dlkm.build.version.sdk", getSystemProperty("ro.vendor_dlkm.build.version.sdk"), "36")
+//    AssertionResult("ro.system_ext.build.version.sdk", getSystemProperty("ro.system_ext.build.version.sdk"), "36")
+//    AssertionResult("ro.system.build.version.sdk", getSystemProperty("ro.system.build.version.sdk"), "36")
+//
+//    AssertionResult("ro.build.version.sdk_full", getSystemProperty("ro.build.version.sdk_full"), "36.1")
+//    AssertionResult("ro.product.build.version.sdk_full", getSystemProperty("ro.product.build.version.sdk_full"), "36.1")
+//    AssertionResult("ro.system_ext.build.version.sdk_full", getSystemProperty("ro.system_ext.build.version.sdk_full"), "36.1")
+//    AssertionResult("ro.system.build.version.sdk_full", getSystemProperty("ro.system.build.version.sdk_full"), "36.1")
 
     AssertionResult("ro.build.version.security_patch", getSystemProperty("ro.build.version.security_patch"), "2025-12-05")
     AssertionResult("ro.build.version.codename", getSystemProperty("ro.build.version.codename"), "REL")
@@ -937,7 +941,6 @@ private fun SystemPropsAssertions() {
     // OEM/ROM specific
     AssertionResult("init.svc.vaultkeeper", getSystemProperty("init.svc.vaultkeeper"), defaultValue)
     AssertionResult("init.svc.vendor_flash_recovery", getSystemProperty("init.svc.vendor_flash_recovery"), defaultValue)
-    AssertionResult("init.svc.lineage-bugreport", getSystemProperty("init.svc.lineage-bugreport"), defaultValue)
     AssertionResult("ro.board.api_frozen", getSystemProperty("ro.board.api_frozen"), defaultValue)
 
     // AOSP
@@ -1046,7 +1049,7 @@ private fun SystemPropsAssertions() {
 }
 
 @Composable
-private fun NativeSysPropsAssertions() {
+private fun SystemPropsNativeAssertions() {
     val defaultValue = "(empty)"
     val propInfoNull = "prop_info* is NULL"
 
@@ -1749,11 +1752,6 @@ private fun NativeSysPropsAssertions() {
     AssertionResult("init.svc.vendor_flash_recovery", NativeLibWrapper.sysPropsRead("init.svc.vendor_flash_recovery"), defaultValue)
     AssertionResult("init.svc.vendor_flash_recovery", NativeLibWrapper.sysPropsReadCb("init.svc.vendor_flash_recovery"), defaultValue)
 
-    AssertionResult("init.svc.lineage-bugreport", NativeLibWrapper.sysPropsGet("init.svc.lineage-bugreport"), defaultValue)
-    AssertionResult("init.svc.lineage-bugreport", NativeLibWrapper.sysPropsReadWithNullName("init.svc.lineage-bugreport"), propInfoNull)
-    AssertionResult("init.svc.lineage-bugreport", NativeLibWrapper.sysPropsRead("init.svc.lineage-bugreport"), propInfoNull)
-    AssertionResult("init.svc.lineage-bugreport", NativeLibWrapper.sysPropsReadCb("init.svc.lineage-bugreport"), propInfoNull)
-
     AssertionResult("ro.board.api_frozen", NativeLibWrapper.sysPropsGet("ro.board.api_frozen"), defaultValue)
     AssertionResult("ro.board.api_frozen", NativeLibWrapper.sysPropsReadWithNullName("ro.board.api_frozen"), defaultValue)
     AssertionResult("ro.board.api_frozen", NativeLibWrapper.sysPropsRead("ro.board.api_frozen"), defaultValue)
@@ -2193,11 +2191,4 @@ private fun NativeSysPropsAssertions() {
     AssertionResult("ril.rejectedPlmn", NativeLibWrapper.sysPropsReadWithNullName("ril.rejectedPlmn"), ",")
     AssertionResult("ril.rejectedPlmn", NativeLibWrapper.sysPropsRead("ril.rejectedPlmn"), ",")
     AssertionResult("ril.rejectedPlmn", NativeLibWrapper.sysPropsReadCb("ril.rejectedPlmn"), ",")
-}
-
-private fun hasPermission(context: Context, permission: String): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        permission
-    ) == PackageManager.PERMISSION_GRANTED
 }

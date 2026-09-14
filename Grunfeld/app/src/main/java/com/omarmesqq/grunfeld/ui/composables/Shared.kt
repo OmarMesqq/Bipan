@@ -1,25 +1,17 @@
 package com.omarmesqq.grunfeld.ui.composables
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
 
 @Composable
 fun SectionHeader(title: String) {
@@ -53,24 +45,5 @@ fun CodeTitle(text: String, cl: Color) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
-    }
-}
-
-@Composable
-fun ReportTextWithCopy(
-    text: String,
-    initialText: String,
-    style: TextStyle = MaterialTheme.typography.bodyMedium
-) {
-    val clipboardManager = LocalClipboardManager.current
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SelectionContainer(modifier = Modifier.weight(1f)) {
-            Text(text = text, style = style)
-        }
     }
 }
