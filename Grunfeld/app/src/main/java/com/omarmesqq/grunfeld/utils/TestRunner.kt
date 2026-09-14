@@ -9,6 +9,10 @@ object TestRunner {
         return actual == expected
     }
 
+    fun ensureEqualLongs(actual: Long, expected: Long): Boolean {
+        return actual == expected
+    }
+
     fun ensureEqualBooleans(actual: Boolean, expected: Boolean): Boolean {
         return actual == expected
     }
