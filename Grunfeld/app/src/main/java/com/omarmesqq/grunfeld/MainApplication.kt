@@ -23,6 +23,7 @@ private const val TAG = "MainApplication"
 class MainApplication: Application() {
     companion object {
         init {
+            System.loadLibrary("toolChecker")
             System.loadLibrary("grunfeld")
         }
     }

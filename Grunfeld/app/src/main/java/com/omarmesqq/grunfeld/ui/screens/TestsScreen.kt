@@ -47,7 +47,9 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueI
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
+import com.omarmesqq.grunfeld.utils.CoroutineMode
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
+import com.omarmesqq.grunfeld.utils.debugCoroutine
 import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
@@ -60,7 +62,10 @@ import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.scottyab.rootbeer.RootBeer
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
@@ -260,8 +265,16 @@ private fun SensorsAssertions(ctx: Context) {
 @Composable
 private fun NetworkIfacesAssertions() {
     var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
+
     LaunchedEffect(Unit) {
-        ifaceList = getNetworkInterfaces()
+        val start = System.currentTimeMillis()
+
+        ifaceList = getNetworkInterfaces() // already does its own withContext(IO) internally
+
+        debugCoroutine(CoroutineName("NetworkIfacesAssertionsCr"),
+            CoroutineMode.LAUNCHED_EFFECT,
+            System.currentTimeMillis() - start
+        )
     }
 
     when (val interfaceList = ifaceList) {
@@ -524,7 +537,20 @@ private fun RootCheckAssertions(ctx: Context) {
     var isRooted by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        isRooted = RootBeer(ctx).isRooted
+        val isRootedInCr = withContext(Dispatchers.IO + CoroutineName("RootCheckAssertionsCr")) {
+            val start = System.currentTimeMillis()
+
+            val rootRes = RootBeer(ctx).isRooted
+
+            debugCoroutine(coroutineContext[CoroutineName],
+                CoroutineMode.LAUNCHED_EFFECT,
+                System.currentTimeMillis() - start
+            )
+            rootRes
+        }
+        isRooted = isRootedInCr
+
+
     }
 
     when (val rooted = isRooted) {
@@ -548,7 +574,16 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
     var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
+        withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_fetch")) {
+            val start = System.currentTimeMillis()
+
+            isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
+
+            debugCoroutine(coroutineContext[CoroutineName],
+                CoroutineMode.LAUNCHED_EFFECT,
+                System.currentTimeMillis() - start
+            )
+        }
     }
 
     when (isFirstAppLaunch) {
@@ -561,13 +596,23 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                 color = Color.Yellow
             )
             LaunchedEffect(Unit) {
-                val ssaid = getSsaid(cr)
-                val gsfId = getGsfId(context)
-                val drmId = getMediaDrmId()
-                val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_true")) {
+                    val start = System.currentTimeMillis()
 
-                app.configRepository.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
-                app.configRepository.toggleFirstLaunch()
+                    val ssaid = getSsaid(cr)
+                    val gsfId = getGsfId(context)
+                    val drmId = getMediaDrmId()
+                    val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
+
+                    app.configRepository.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
+                    app.configRepository.toggleFirstLaunch()
+
+                    debugCoroutine(coroutineContext[CoroutineName],
+                        CoroutineMode.LAUNCHED_EFFECT,
+                        System.currentTimeMillis() - start
+                    )
+                }
+
             }
         }
         else -> {
@@ -578,11 +623,21 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
 
             LaunchedEffect(Unit) {
-                ssaidFromPref = app.configRepository.ssaidFlow.first()
-                gsfIdFromPref = app.configRepository.gsfIdFlow.first()
-                drmIdFromPref = app.configRepository.drmIdFlow.first()
-                drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
-                fetchedFromPrefs = true
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_false")) {
+                    val start = System.currentTimeMillis()
+
+                    ssaidFromPref = app.configRepository.ssaidFlow.first()
+                    gsfIdFromPref = app.configRepository.gsfIdFlow.first()
+                    drmIdFromPref = app.configRepository.drmIdFlow.first()
+                    drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
+                    fetchedFromPrefs = true
+
+                    debugCoroutine(coroutineContext[CoroutineName],
+                        CoroutineMode.LAUNCHED_EFFECT,
+                        System.currentTimeMillis() - start
+                    )
+                }
+
             }
 
             val currentSsaid = getSsaid(cr)
