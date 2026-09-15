@@ -11,6 +11,7 @@ import android.net.wifi.WifiManager
 import android.provider.Settings
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -21,11 +22,20 @@ import java.lang.reflect.Method
 import java.net.NetworkInterface
 import java.util.UUID
 
+private var ifaces: List<NetworkInterface>? = null
 suspend fun getNetworkInterfaces(): List<NetworkInterface>? {
+    if (ifaces != null) {
+        return ifaces
+    }
     try {
-        var ifaces: List<NetworkInterface>
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.IO + CoroutineName("getNetworkInterfacesCr")) {
             ifaces = NetworkInterface.getNetworkInterfaces().toList()
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+                msg = "${coroutineContext[CoroutineName]}:\n" +
+                        "\tthName: ${Thread.currentThread().name}\n" +
+                        "\ttid: ${Thread.currentThread().threadId()}"
+            )
         }
         return ifaces
     } catch (e: Exception) {
@@ -58,7 +68,8 @@ fun getSensorsInfo(ctx: Context): String {
 @Suppress("DEPRECATION")
 fun getWifiManagerInfo(ctx: Context): WifiInfo {
     try {
-        val wifiManager = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wifiManager =
+            ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         return wifiManager.connectionInfo
     } catch (e: Exception) {
         throw e
@@ -75,7 +86,7 @@ fun getSystemProperty(key: String, defaultValue: String = "<empty>"): String {
 }
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun getGsfId(ctx: Context) : String {
+fun getGsfId(ctx: Context): String {
     val cr = ctx.contentResolver
     val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
     val idKey = "android_id"
@@ -95,7 +106,7 @@ fun getGsfId(ctx: Context) : String {
 }
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun getMediaDrmId() : String {
+fun getMediaDrmId(): String {
     val widevineUUidMostSigBits = -0x121074568629b532L
     val widevineUUidLeastSigBits = -0x5c37d8232ae2de13L
     val widevineUUID = UUID(widevineUUidMostSigBits, widevineUUidLeastSigBits)
@@ -114,10 +125,10 @@ fun getSsaid(cr: ContentResolver): String {
     return ssaid
 }
 
-fun runtimeExecWithCmdArray(cmdarray: Array<String>):String {
+fun runtimeExecWithCmdArray(cmdarray: Array<String>): String {
     val sb = StringBuilder()
     try {
-        val process =  Runtime.getRuntime().exec(cmdarray)
+        val process = Runtime.getRuntime().exec(cmdarray)
         val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
         bufferedReader.forEachLine { line ->
             sb.appendLine(line)
@@ -128,10 +139,10 @@ fun runtimeExecWithCmdArray(cmdarray: Array<String>):String {
     return sb.toString()
 }
 
-fun runtimeExecWithCmd(cmd: String):String {
+fun runtimeExecWithCmd(cmd: String): String {
     val sb = StringBuilder()
     try {
-        val process =  Runtime.getRuntime().exec(cmd)
+        val process = Runtime.getRuntime().exec(cmd)
         val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
         sb.append(bufferedReader.readLine())
     } catch (tr: Throwable) {
