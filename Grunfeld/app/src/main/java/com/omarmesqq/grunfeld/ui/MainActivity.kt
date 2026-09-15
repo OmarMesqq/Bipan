@@ -83,6 +83,9 @@ class MainActivity : ComponentActivity() {
 
         launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
         launcherApps.registerCallback(launcherAppsCb)
+        dumpLauncherActivityInfos()
+        dumpLaunchUserInfos()
+        dumpPiInfo()
 
         super.onCreate(savedInstanceState)
 
@@ -119,20 +122,48 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onDestroy")
 
-        loadAllApps()
         launcherApps.unregisterCallback(launcherAppsCb)
 
         wipeWebviewTraces(this)
     }
 
-    private fun loadAllApps() {
-        val activities = launcherApps.getActivityList(null, myUserHandle())
+    private fun dumpLauncherActivityInfos() {
+        val laiList = launcherApps.getActivityList(null, myUserHandle())
         val sb = StringBuilder()
-        for (ac in activities) {
-            val pkgName = ac.applicationInfo.packageName
-            val component = ac.componentName
+        for (lai in laiList) {
+            val pkgName = lai.applicationInfo.packageName
+            val component = lai.componentName
+
             sb.appendLine("pkg: $pkgName | component: $component")
+            sb.appendLine("firstInstallTime: ${lai.firstInstallTime} | label: ${lai.label} | loadingProgress: ${lai.loadingProgress}")
         }
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "loadAllApps: activities info = $sb")
+    }
+
+    private fun dumpLaunchUserInfos() {
+        val sb = StringBuilder()
+
+        val lui = launcherApps.getLauncherUserInfo(myUserHandle())
+
+        sb.appendLine("userSerialNumber: ${lui?.userSerialNumber}")
+        sb.appendLine("userType: ${lui?.userType}")
+
+        val userConfig = lui?.userConfig
+        if (userConfig == null) {
+            sb.appendLine("userConfig is null")
+        } else {
+            for (k in userConfig.keySet()) {
+                val v = userConfig.get(k)
+                sb.appendLine("userConfig: key($k) -> value($v)")
+            }
+        }
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "dumpLaunchUserInfos: $sb")
+    }
+
+    private fun dumpPiInfo() {
+        val sb = StringBuilder()
+        val packageInstaller = this.packageManager.packageInstaller
+        sb.appendLine("activeStagedSessions: ${packageInstaller.activeStagedSessions}")
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "dumpPiInfo: $sb")
     }
 }
