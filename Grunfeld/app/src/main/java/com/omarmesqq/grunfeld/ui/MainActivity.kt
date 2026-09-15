@@ -1,7 +1,9 @@
 package com.omarmesqq.grunfeld.ui
 
+import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
+import android.os.Process.myUserHandle
 import android.view.WindowManager
 import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
 import androidx.activity.ComponentActivity
@@ -23,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.omarmesqq.grunfeld.MainApplication
+import com.omarmesqq.grunfeld.impls.launcherAppsCb
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -53,11 +56,12 @@ class MainActivity : ComponentActivity() {
     private val screenCaptureCallback = ScreenCaptureCallback {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screenshot detected!", shouldToast = true)
     }
-    private val screenRecordCallback = Consumer<Int> {state ->
+    private val screenRecordCallback = Consumer<Int> { state ->
         if (state == SCREEN_RECORDING_STATE_VISIBLE) {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screen recording in progress!", shouldToast = true)
         }
     }
+    private lateinit var launcherApps: LauncherApps
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
@@ -76,6 +80,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
+        launcherApps.registerCallback(launcherAppsCb)
 
         super.onCreate(savedInstanceState)
 
@@ -111,6 +118,21 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onDestroy")
+
+        loadAllApps()
+        launcherApps.unregisterCallback(launcherAppsCb)
+
         wipeWebviewTraces(this)
+    }
+
+    private fun loadAllApps() {
+        val activities = launcherApps.getActivityList(null, myUserHandle())
+        val sb = StringBuilder()
+        for (ac in activities) {
+            val pkgName = ac.applicationInfo.packageName
+            val component = ac.componentName
+            sb.appendLine("pkg: $pkgName | component: $component")
+        }
+        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "loadAllApps: activities info = $sb")
     }
 }
