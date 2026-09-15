@@ -29,12 +29,13 @@ suspend fun getNetworkInterfaces(): List<NetworkInterface>? {
     }
     try {
         withContext(Dispatchers.IO + CoroutineName("getNetworkInterfacesCr")) {
+            val start = System.currentTimeMillis()
+
             ifaces = NetworkInterface.getNetworkInterfaces().toList()
-            avocadoLog(
-                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
-                msg = "${coroutineContext[CoroutineName]}:\n" +
-                        "\tthName: ${Thread.currentThread().name}\n" +
-                        "\ttid: ${Thread.currentThread().threadId()}"
+
+            debugCoroutine(coroutineContext[CoroutineName],
+                CoroutineMode.SUSPEND_FUN,
+                System.currentTimeMillis() - start
             )
         }
         return ifaces
