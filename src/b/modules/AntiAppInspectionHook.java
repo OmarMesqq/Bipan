@@ -97,7 +97,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.telecom",
 
       "android.hardware.sensor.hifi_sensors",
-      "android.hardware.camera.ar"));
+      "android.hardware.camera.ar",
+      
+      "android.hardware.telephony.subscription"
+      ));
 
   private static final Set<String> FEATURE_ADD_LIST = new HashSet<>(Arrays.asList(
       "android.software.verified_boot",
@@ -724,7 +727,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Object result = method.invoke(originalPM, args);
-          // Log.w(TAG, "Allowing PM method: " + method.getName());
+          Log.w(TAG, "Allowing PM method: " + method.getName());
           return result;
         }
       }
