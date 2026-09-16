@@ -127,6 +127,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
         "android.provider.Settings$Secure"
     };
 
+    //TODO: spoof GSF's `cr` here?
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
 
     for (String className : targetClasses) {
