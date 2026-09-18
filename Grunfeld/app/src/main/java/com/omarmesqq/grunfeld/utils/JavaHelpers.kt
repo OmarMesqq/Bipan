@@ -3,6 +3,7 @@ package com.omarmesqq.grunfeld.utils
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Process
 import androidx.core.content.ContextCompat
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.CoroutineName
@@ -49,12 +50,29 @@ fun debugCoroutine(crName: CoroutineName?, crMode: CoroutineMode, elapsed: Long)
         return
     }
 
-    avocadoLog(
-        AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
-        COROUTINE_TAG,
-        "$crName (${crMode.value}):\n" +
-                "\tname: ${Thread.currentThread().name}\n" +
-                "\tTID: ${Thread.currentThread().threadId()}\n" +
-                "\ttook $elapsed ms to complete"
-    )
+    val thName = Thread.currentThread().name
+    val processTid = Process.myTid()
+    val threadTid = Thread.currentThread().threadId()
+
+    try {
+        avocadoLog(
+            AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+            COROUTINE_TAG,
+            "$crName (${crMode.value}):\n" +
+                    "\tname: $thName\n" +
+                    "\tTID: $threadTid/$processTid\n" +
+                    "\tThread priority: ${Process.getThreadPriority(threadTid.toInt())}/${Process.getThreadPriority(processTid)}\n" +
+                    "\ttook $elapsed ms to complete"
+        )
+    } catch (e: IllegalArgumentException) {
+        avocadoLog(
+            AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+            COROUTINE_TAG,
+            "$crName (${crMode.value}):\n" +
+                    "\tname: $thName\n" +
+                    "\tTID: $threadTid/$processTid\n" +
+                    "\tThread priority: ${Process.getThreadPriority(processTid)}\n" +
+                    "\ttook $elapsed ms to complete"
+        )
+    }
 }
