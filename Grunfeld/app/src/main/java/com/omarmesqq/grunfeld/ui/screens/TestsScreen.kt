@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
@@ -166,6 +167,38 @@ fun TestsScreen() {
         SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
         SystemPropsNativeAssertions()
 
+    }
+}
+
+@Composable
+private fun TestResolveActivity() {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    val i = Intent(Intent.ACTION_VIEW).apply {
+        data = "http://example.com".toUri()
+        addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+
+    val resolveInfo = pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)
+    Text("resolveActivity: Activity name = ${resolveInfo?.activityInfo?.name} | Pkg = ${resolveInfo?.activityInfo?.packageName}")
+}
+
+@Composable
+private fun TestQueryIntentActivities() {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    val i = Intent(Intent.ACTION_VIEW).apply {
+        data = "http://example.com".toUri()
+        addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+
+    val list = pm.queryIntentActivities(i, PackageManager.MATCH_ALL)
+    if (list.isEmpty()) {
+        Text("queryIntentActivities: empty list")
+    } else {
+        list.forEachIndexed { idx, info ->
+            Text("queryIntentActivities: $idx: Activity name = ${info.activityInfo.name} | Pkg = ${info.activityInfo.packageName}")
+        }
     }
 }
 
@@ -574,7 +607,7 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
     var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_fetch")) {
+        withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstLaunchFetch")) {
             val start = System.currentTimeMillis()
 
             isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
@@ -596,7 +629,7 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                 color = Color.Yellow
             )
             LaunchedEffect(Unit) {
-                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_true")) {
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/firstAppLaunch")) {
                     val start = System.currentTimeMillis()
 
                     val ssaid = getSsaid(cr)
@@ -622,14 +655,24 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             var drmIdFromPref by remember { mutableStateOf<String?>(null) }
             var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
 
+
+            val currentSsaid = getSsaid(cr)
+            val currentGsfId = getGsfId(context)
+            val currentDrmId = getMediaDrmId()
+            val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
+
+
             LaunchedEffect(Unit) {
-                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstAppLaunch_false")) {
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/fetchAndUpdatePrefs")) {
                     val start = System.currentTimeMillis()
 
                     ssaidFromPref = app.configRepository.ssaidFlow.first()
                     gsfIdFromPref = app.configRepository.gsfIdFlow.first()
                     drmIdFromPref = app.configRepository.drmIdFlow.first()
                     drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
+
+                    app.configRepository.updateDeviceIds(currentSsaid, currentGsfId, currentDrmId, currentDrmIdNdk)
+
                     fetchedFromPrefs = true
 
                     debugCoroutine(coroutineContext[CoroutineName],
@@ -637,13 +680,7 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                         System.currentTimeMillis() - start
                     )
                 }
-
             }
-
-            val currentSsaid = getSsaid(cr)
-            val currentGsfId = getGsfId(context)
-            val currentDrmId = getMediaDrmId()
-            val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
 
             if (!fetchedFromPrefs) {
                 Text("Fetching data from SharedPrefs...")
@@ -692,8 +729,11 @@ private fun HookingDepthAssertions() {
 
 @Composable
 private fun LanLeakAssertions() {
-    val socketIp = NativeLibWrapper.testGetsockname()
-    AssertionResult("Socket IP via 'getsockname'", socketIp, "10.111.222.1")
+    val socketIp4 = NativeLibWrapper.testGetsocknameV4()
+    val socketIp6 = NativeLibWrapper.testGetsocknameV6()
+
+    AssertionResult("IPv4 via 'getsockname'", socketIp4, "10.111.222.1")
+    AssertionResult("IPv6 via 'getsockname'", socketIp6, "fd00::1")
 }
 
 @Composable

@@ -785,7 +785,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadCb(JNIEnv *env, j
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV4(JNIEnv *env, jobject thiz) {
     long ret = -1;
     char report[512] = {0};
     char entry[256] = {0};
@@ -799,7 +799,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
 
     // 1. `connect` to WAN w/ a regular socket
     if (connect(res->sock, (struct sockaddr*)&res->sas.sas4, sizeof(res->sas.sas4)) == -1) {
-        snprintf(entry, sizeof(entry), "connect failed \n");
+        snprintf(entry, sizeof(entry), "connect failed: %s \n", strerror(errno));
         strcat(report, entry);
 
         close(res->sock);
@@ -815,6 +815,48 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
     if (ret == 0) {
         char ip[INET_ADDRSTRLEN] = {0};
         inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET_ADDRSTRLEN);
+        snprintf(entry, sizeof(entry), "%s", ip);
+    } else {
+        snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
+    }
+
+    strcat(report, entry);
+    close(res->sock);
+    free(res);
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV6(JNIEnv *env, jobject thiz) {
+    long ret = -1;
+    char report[512] = {0};
+    char entry[256] = {0};
+
+    const int port_dns = 53;
+    const char* cloudflareDnsIp6 = "2606:4700:4700::1111";
+    SockFactoryRes* res = CreateSocket(IPv6, UDP, cloudflareDnsIp6, port_dns, 0, 0);
+    if (!res) {
+        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
+    }
+
+    // 1. `connect` to WAN w/ a regular socket
+    if (connect(res->sock, (struct sockaddr*)&res->sas.sas6, sizeof(res->sas.sas6)) == -1) {
+        snprintf(entry, sizeof(entry), "connect failed: %s \n", strerror(errno));
+        strcat(report, entry);
+
+        close(res->sock);
+        free(res);
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    // 2. `getsockname` of this socket to get the device's local IP
+    struct sockaddr_in local_addr;
+    socklen_t len = sizeof(local_addr);
+    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&local_addr, (long)&len, 0, 0, 0);
+
+    if (ret == 0) {
+        char ip[INET6_ADDRSTRLEN] = {0};
+        inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET6_ADDRSTRLEN);
         snprintf(entry, sizeof(entry), "%s", ip);
     } else {
         snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
