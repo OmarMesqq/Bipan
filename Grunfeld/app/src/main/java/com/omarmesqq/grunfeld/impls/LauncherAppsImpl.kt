@@ -6,6 +6,11 @@ import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 
 private const val TAG = "LauncherAppsCb"
+
+/**
+ * Toasts a lot, but with Bipan the very callback registration should
+ * be nullified so none of this code should trigger.
+ */
 val launcherAppsCb = object : LauncherApps.Callback() {
     override fun onPackageAdded(packageName: String, user: UserHandle) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
@@ -23,7 +28,8 @@ val launcherAppsCb = object : LauncherApps.Callback() {
 
     override fun onPackageChanged(packageName: String, user: UserHandle) {
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
-            "packageChanged: $packageName"
+            "packageChanged: $packageName",
+            shouldToast = true
         )
     }
 
@@ -42,7 +48,8 @@ val launcherAppsCb = object : LauncherApps.Callback() {
 
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
             "packagesAvailable: replacing? $replacing\n" +
-                    "3 packages: ${curatedPkgs.contentToString()}"
+                    "3 packages: ${curatedPkgs.contentToString()}",
+            shouldToast = true
         )
     }
 
@@ -61,7 +68,8 @@ val launcherAppsCb = object : LauncherApps.Callback() {
 
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
             "packagesUnavailable: replacing? $replacing\n" +
-                    "3 packages: ${curatedPkgs.contentToString()}"
+                    "3 packages: ${curatedPkgs.contentToString()}",
+            shouldToast = true
         )
     }
 }

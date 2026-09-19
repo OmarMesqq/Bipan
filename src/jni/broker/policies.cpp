@@ -167,32 +167,11 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     return nullptr;
   }
 
-  if (
-      strstr(resolvedPath, "mountstats") ||
-      strstr(resolvedPath, "version") ||
-      strstr(resolvedPath, "osrelease")) {
-    strcpy(fixed, "ENOENT");
-    return fixed;
-  }
-
   if (strstr(resolvedPath, "hosts")) {
     strcpy(fixed, "/system/etc/hosts");
     return fixed;
   }
 
-  if (strstr(resolvedPath, "mountinfo")) {
-    char proc_pid_mountinfo[PATH_MAX] = {0};
-    snprintf(proc_pid_mountinfo, sizeof(proc_pid_mountinfo), "/proc/%d/mountinfo", pid);
-    strcpy(fixed, proc_pid_mountinfo);
-    return fixed;
-  }
-
-  if (strstr(resolvedPath, "mounts")) {
-    char proc_pid_mounts[PATH_MAX] = {0};
-    snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/mounts", pid);
-    strcpy(fixed, proc_pid_mounts);
-    return fixed;
-  }
 
   if (strstr(resolvedPath, "smaps")) {
     char proc_pid_mounts[PATH_MAX] = {0};
