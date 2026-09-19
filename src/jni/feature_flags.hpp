@@ -1,7 +1,9 @@
 #ifndef FEATURE_FLAGS_HPP
 #define FEATURE_FLAGS_HPP
 
-
+/**
+ * Hardcodes SDK level to 36.1 (Android 16)
+ */
 // #define SHOULD_SPOOF_SDK_LEVEL
 
 /**

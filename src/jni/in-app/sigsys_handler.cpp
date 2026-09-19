@@ -156,6 +156,8 @@ void registerSignalHandler() {
 #endif
 }
 
+// Register macros for 32 and 64 bit ARM
+
 #if defined(__aarch64__)
 
 #define BP_REG_R0 regs[0]
@@ -230,21 +232,6 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
   if (nr == __NR_statx) {
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statx): replying not implemented");
     ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
-    in_sigsys_handler = false;
-    return;
-  }
-
-  if (nr == __NR_statfs) {
-    const char* path = (const char*)arg0;
-    if (path && isHostsFile(path)) {
-      write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(statfs) to hosts file: replying not implemented");
-      ctx->uc_mcontext.BP_REG_R0 = (__u64)-ENOSYS;
-      in_sigsys_handler = false;
-      return;
-    }
-
-    long nativeRet = raw_syscall(nr, arg0, arg1, arg2, arg3, arg4, arg5);
-    ctx->uc_mcontext.BP_REG_R0 = (__u64)nativeRet;
     in_sigsys_handler = false;
     return;
   }
