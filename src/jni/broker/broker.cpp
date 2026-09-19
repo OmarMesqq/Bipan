@@ -393,7 +393,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(bind) to LAN spoofed. Socket info: %s", sockInfo.c_str());
-          patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
+          // patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
         }
         break;
       }
@@ -791,6 +791,7 @@ static void set_broker_proctitle(const char* pkgName) {
   set_linux_proctitle(fullTitle.c_str());
 }
 
+[[maybe_unused]]
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
   if (inside_remote_patcher) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Thread reentrancy in remote patcher!");
