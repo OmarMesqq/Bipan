@@ -313,6 +313,13 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         if (returnType == int.class || returnType == long.class) {
           return 0;
         }
+        if (returnType == List.class) {
+          return List.of();
+        }
+        if (returnType == Class.forName("android.content.pm.ParceledListSlice")) {
+          return emptyParceledListSlice();
+        }
+
         return null;
       } catch (UndeclaredThrowableException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -835,7 +842,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   }
 
   private String dumpIntent(Intent intent) {
-    String intentInfo = "\naction=" + intent.getAction()
+    String intentInfo = "action=" + intent.getAction()
         + " data=" + intent.getDataString()
         + " pkg=" + intent.getPackage()
         + " component=" + intent.getComponent()
