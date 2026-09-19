@@ -1,6 +1,7 @@
 package b.modules;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
@@ -52,6 +53,7 @@ public class NetworkSpoofingHook implements BaseHook {
   private static Object wifiProxy;
 
   private static boolean hasFineLocationPerm = false;
+  private static boolean isCurrentlyOnWifi = false;
 
   @Override
   public void install(Context context) throws Exception {
@@ -65,6 +67,22 @@ public class NetworkSpoofingHook implements BaseHook {
     Map<String, IBinder> cache = (Map<String, IBinder>) sCacheField.get(null);
 
     hasFineLocationPerm = J.hasPermission(context, Manifest.permission.ACCESS_FINE_LOCATION);
+    
+    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+    Network currentlyActiveNw = cm.getActiveNetwork();
+    if (currentlyActiveNw == null) {
+      Log.e(TAG, "currentlyActiveNw is null");
+      throw J.cleanThrowable(new OutOfMemoryError());
+    }
+
+    NetworkCapabilities caps = cm.getNetworkCapabilities(currentlyActiveNw);
+    if (caps == null) {
+      Log.e(TAG, "currentlyActiveNw's capabilities is null");
+      throw J.cleanThrowable(new OutOfMemoryError());
+    }
+
+    isCurrentlyOnWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+
     setupConnectivitySpoofing(getService, cache);
     setupWifiSpoofing(getService, cache);
   }
@@ -375,7 +393,13 @@ public class NetworkSpoofingHook implements BaseHook {
         spoofSsid(info);
       }
 
-      InetAddress fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
+      InetAddress fakeIp;
+      if (isCurrentlyOnWifi) {
+        fakeIp = InetAddress.getByAddress(new byte[] { (byte) 10, (byte) 111, (byte) 222, (byte) 1 });
+      } else {
+        fakeIp = InetAddress.getByAddress(new byte[] { (byte) 0, (byte) 0, (byte) 0, (byte) 0 });
+      }
+
       setField(info, "mIpAddress", fakeIp);
     } catch (UndeclaredThrowableException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
