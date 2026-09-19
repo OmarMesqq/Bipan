@@ -543,13 +543,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
 
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
-            if (strcmp(fixedSymlink, "ENOENT") == 0) {
-              ipc_mem->ret = -ENOENT;
-              free(actualPath);
-              free(fixedSymlink);
-              free(proc_pid_fd_path);
-              break;
-            }
 
             memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
             ipc_mem->ret = (long)strlen(fixedSymlink);
@@ -627,20 +620,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
 
             write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(readlinkat AT_FDCWD) spoofed: original link: %s | true path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
-            if (strcmp(fixedSymlink, "ENOENT") == 0) {
-              free(actualPath);
-              free(fixedSymlink);
-              free(proc_pid_fd_path);
-              ipc_mem->ret = -ENOENT;
-              break;
-            }
 
-            free(fixedSymlink);
             free(actualPath);
             free(proc_pid_fd_path);
 
             memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
             ipc_mem->ret = (long)strlen(fixedSymlink);
+            free(fixedSymlink);
             break;
           }
 
