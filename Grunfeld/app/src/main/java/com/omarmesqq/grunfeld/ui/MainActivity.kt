@@ -4,6 +4,7 @@ import android.content.pm.CrossProfileApps
 import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.os.Process.myUserHandle
 import android.view.WindowManager
 import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
@@ -37,8 +38,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.security.KeyStore
 import java.util.function.Consumer
-import android.os.PerformanceHintManager
-import android.os.Process
 
 
 open class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -88,7 +87,6 @@ class MainActivity : ComponentActivity() {
         launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
         launcherApps.registerCallback(launcherAppsCb)
         dumpLauncherActivityInfos()
-        dumpLaunchUserInfos()
         dumpPiInfo()
         foo()
 
@@ -139,33 +137,13 @@ class MainActivity : ComponentActivity() {
             val pkgName = lai.applicationInfo.packageName
             val component = lai.componentName
 
-            sb.appendLine("pkg: $pkgName | " +
+            sb.appendLine("LauncherActivityInfo:\n\tpkg: $pkgName | " +
                     "component: $component | " +
                     "firstInstallTime: ${lai.firstInstallTime} | " +
                     "label: ${lai.label}"
             )
         }
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "$sb")
-    }
-
-    private fun dumpLaunchUserInfos() {
-        val sb = StringBuilder()
-
-        val lui = launcherApps.getLauncherUserInfo(myUserHandle())
-
-        sb.appendLine("userSerialNumber: ${lui?.userSerialNumber}")
-        sb.appendLine("userType: ${lui?.userType}")
-
-        val userConfig = lui?.userConfig
-        if (userConfig == null) {
-            sb.appendLine("userConfig is null")
-        } else {
-            for (k in userConfig.keySet()) {
-                val v = userConfig.get(k)
-                sb.appendLine("userConfig: key($k) -> value($v)")
-            }
-        }
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "$sb")
     }
 
     private fun dumpPiInfo() {
@@ -179,20 +157,26 @@ class MainActivity : ComponentActivity() {
         val sb = StringBuilder()
 
         val ksDefaultType = KeyStore.getDefaultType()
-
         sb.appendLine("KeyStore.getDefaultType = $ksDefaultType")
 
-        sb.appendLine("elapsedCpuTime: ${Process.getElapsedCpuTime()}")
-        Process.getExclusiveCores().forEachIndexed { idx, i ->
-            sb.appendLine("exclusiveCpuCores($idx): $i")
-        }
-        sb.appendLine("elapsedStartElapsedRealtime: ${Process.getStartElapsedRealtime()}")
-        sb.appendLine("getStartRequestedUptimeMillis: ${Process.getStartRequestedUptimeMillis()} ms")
-        sb.appendLine("getStartRequestedElapsedRealtime: ${Process.getStartRequestedElapsedRealtime()}")
 
-        sb.appendLine("isIsolated: ${Process.isIsolated()}")
-        sb.appendLine("is 64-bit: ${Process.is64Bit()}")
-        sb.appendLine("isSdkSandbox: ${Process.isSdkSandbox()}")
+        val exclusiveCoresList = Process.getExclusiveCores()
+        if (exclusiveCoresList.isEmpty()) {
+            sb.appendLine("Process.getExclusiveCores() returned an empty list")
+        } else {
+            exclusiveCoresList.forEachIndexed { idx, i ->
+                sb.appendLine("exclusiveCpuCores($idx): $i")
+            }
+        }
+
+        sb.appendLine("elapsedCpuTime: ${Process.getElapsedCpuTime()}")
+        sb.appendLine("elapsedStartElapsedRealtime: ${Process.getStartElapsedRealtime()}")
+        sb.appendLine("startRequestedUptimeMillis: ${Process.getStartRequestedUptimeMillis()} ms")
+        sb.appendLine("startRequestedElapsedRealtime: ${Process.getStartRequestedElapsedRealtime()}")
+
+        sb.appendLine("is Isolated? ${Process.isIsolated()}")
+        sb.appendLine("is 64-bit? ${Process.is64Bit()}")
+        sb.appendLine("is SDK Sandbox? ${Process.isSdkSandbox()}")
 
 
         val crossProfSvc = this.getSystemService(CROSS_PROFILE_APPS_SERVICE) as CrossProfileApps

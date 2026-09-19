@@ -26,7 +26,8 @@ object NativeLibWrapper {
     external fun unameSyscallLibcWrapper(): String
     external fun unameBionic(): String
 
-    external fun testGetsockname(): String
+    external fun testGetsocknameV4(): String
+    external fun testGetsocknameV6(): String
 
     external fun testSensors(): String
     external fun getMediaDrmIdNative(): String
