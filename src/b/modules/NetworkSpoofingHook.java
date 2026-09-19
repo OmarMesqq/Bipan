@@ -142,20 +142,23 @@ public class NetworkSpoofingHook implements BaseHook {
         return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        Log.e(TAG, "connHandler InvocationTargetException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (UndeclaredThrowableException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        Log.e(TAG, "connHandler UndeclaredThrowableException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
+        Log.e(TAG, "connHandler Exception:", e);
         throw J.cleanThrowable(new OutOfMemoryError());
       }
     };
 
-    cmProxy = Proxy.newProxyInstance(iConnManagerClz.getClassLoader(), new Class[] { iConnManagerClz },
+    cmProxy = Proxy.newProxyInstance(
+        iConnManagerClz.getClassLoader(),
+        new Class[] { iConnManagerClz },
         connHandler);
+
     IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
         IBinder.class.getClassLoader(),
         new Class[] { IBinder.class },
@@ -187,14 +190,14 @@ public class NetworkSpoofingHook implements BaseHook {
         return result;
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        Log.e(TAG, "wifiHandler InvocationTargetException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (UndeclaredThrowableException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        Log.e(TAG, "wifiHandler UndeclaredThrowableException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
+        Log.e(TAG, "wifiHandler Exception:", e);
         throw J.cleanThrowable(new OutOfMemoryError());
       }
     };

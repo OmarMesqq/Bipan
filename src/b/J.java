@@ -78,20 +78,22 @@ public class J {
                 .invoke(null);
 
             if (ctx == null) {
-              throw cleanThrowable(
-                  new OutOfMemoryError(TAG + " [!] Context still null during Instrumentation.onCreate!"));
+              Log.e(TAG, "Instrumentation.onCreate: Context still null!");
+              throw cleanThrowable(new OutOfMemoryError());
             }
             loadModules(ctx);
-          } catch (Throwable e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause()));
+          } catch (Throwable tr) {
+            Log.e(TAG, "Instrumentation.onCreate: loadModules:", tr);
+            throw cleanThrowable(new OutOfMemoryError());
           }
 
           try {
             realInstr.getClass()
                 .getMethod("onCreate", Bundle.class)
                 .invoke(realInstr, args);
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " Instrumentation.onCreate e: " + e.getCause()));
+          } catch (Exception tr) {
+            Log.e(TAG, "Instrumentation.onCreate: realInstr call:", tr);
+            throw cleanThrowable(new OutOfMemoryError());
           }
         }
 
@@ -101,25 +103,19 @@ public class J {
           if (s_cmProxy != null) {
             try {
               patchConnectivityManager(app);
-            } catch (Throwable e) {
-              throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
+            } catch (Throwable tr) {
+              Log.e(TAG, "Instrumentation.callApplicationOnCreate: patchConnectivityManager:", tr);
+              throw cleanThrowable(new OutOfMemoryError());
             }
-          }
-
-          // Hijack Application's ContextResolver for GSF
-          try {
-            GsfIdSpoofHook.reInject();
-            // Log.d(TAG, "callApplicationOnCreate: reInjected GSF spoof in Application");
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
           }
 
           try {
             realInstr.getClass()
                 .getMethod("callApplicationOnCreate", Application.class)
                 .invoke(realInstr, app);
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callApplicationOnCreate e: " + e.getCause()));
+          } catch (Exception tr) {
+            Log.e(TAG, "Instrumentation.callApplicationOnCreate: realInstr call:", tr);
+            throw cleanThrowable(new OutOfMemoryError());
           }
         }
 
@@ -129,25 +125,19 @@ public class J {
           if (s_mPMField != null && s_pmProxy != null) {
             try {
               patchPackageManager(activity.getPackageManager());
-            } catch (Throwable e) {
-              throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
+            } catch (Throwable tr) {
+              Log.e(TAG, "Instrumentation.callActivityOnCreate: patchPackageManager:", tr);
+              throw cleanThrowable(new OutOfMemoryError());
             }
-          }
-
-          // Hijack Activity's ContextResolver for GSF
-          try {
-            GsfIdSpoofHook.reInject();
-            // Log.d(TAG, "callActivityOnCreate: reInjected GSF spoof in Activity");
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
           }
 
           // Hijack Activity's ConnectivityManager
           if (s_cmProxy != null) {
             try {
               patchConnectivityManager(activity);
-            } catch (Throwable e) {
-              throw cleanThrowable(new OutOfMemoryError(TAG + "callActivityOnCreate e: " + e.getCause()));
+            } catch (Throwable tr) {
+              Log.e(TAG, "Instrumentation.callActivityOnCreate: patchConnectivityManager:", tr);
+              throw cleanThrowable(new OutOfMemoryError());
             }
           }
 
@@ -157,26 +147,9 @@ public class J {
                     Activity.class,
                     Bundle.class)
                 .invoke(realInstr, activity, icicle);
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnCreate e: " + e.getCause()));
-          }
-        }
-
-        @Override
-        public void callActivityOnResume(Activity activity) {
-          // Also hijack Application's Context's `cr` for GSF, once again
-          try {
-            GsfIdSpoofHook.reInject();
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnResume: " + e));
-          }
-
-          try {
-            realInstr.getClass()
-                .getMethod("callActivityOnResume", Activity.class)
-                .invoke(realInstr, activity);
-          } catch (Exception e) {
-            throw cleanThrowable(new OutOfMemoryError(TAG + " callActivityOnResume: " + e));
+          } catch (Exception tr) {
+            Log.e(TAG, "Instrumentation.callActivityOnCreate: realInstr call:", tr);
+            throw cleanThrowable(new OutOfMemoryError());
           }
         }
       };
