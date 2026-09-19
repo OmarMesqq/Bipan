@@ -134,11 +134,10 @@ fun TestsScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             QueryIntentActivitiesAssertions(context)
+            TestResolveActivity()
             InstalledApplicationsAssertions(context)
             InstalledPackagesAssertions(context)
             TestLauncherApps()
-            TestResolveActivity()
-            TestQueryIntentActivities()
         }
 
         SectionHeader("SELF-ANALYSIS TESTS")
@@ -208,19 +207,6 @@ private fun TestResolveActivity() {
 
     val resolveInfo = pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)
     AssertionResultNull("resolveActivity/resolveIntent", resolveInfo)
-}
-
-@Composable
-private fun TestQueryIntentActivities() {
-    val context = LocalContext.current
-    val pm = context.packageManager
-    val i = Intent(Intent.ACTION_VIEW).apply {
-        data = "http://example.com".toUri()
-        addCategory(Intent.CATEGORY_BROWSABLE)
-    }
-
-    val list = pm.queryIntentActivities(i, PackageManager.MATCH_ALL)
-    AssertionResultEmpty("queryIntentActivities", list)
 }
 
 @Composable
@@ -779,11 +765,15 @@ private fun StealthAssertions() {
     val procPidSmapsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/smaps")
     val etcHostsFd = NativeLibWrapper.openFileNative("/etc/hosts")
     val systemEtcHostsFd = NativeLibWrapper.openFileNative("/system/etc/hosts")
+    val procSelfMountinfoFd = NativeLibWrapper.openFileNative("/proc/self/mountinfo")
+    val procPidMountinfoFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/mountinfo")
 
     AssertionResult("/proc/self/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procSelfMapsFd), "/proc/${Process.myPid()}/maps")
     AssertionResult("/proc/<PID>/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procPidMapsFd), "/proc/${Process.myPid()}/maps")
     AssertionResult("/proc/self/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procSelfSmapsFd), "/proc/${Process.myPid()}/smaps")
     AssertionResult("/proc/<PID>/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procPidSmapsFd), "/proc/${Process.myPid()}/smaps")
+    AssertionResult("/proc/self/mountinfo -> /proc/<PID>/mountinfo", NativeLibWrapper.getFdSymlink(procSelfMountinfoFd), "/proc/${Process.myPid()}/mountinfo")
+    AssertionResult("/proc/<PID>/mountinfo -> /proc/<PID>/mountinfo", NativeLibWrapper.getFdSymlink(procPidMountinfoFd), "/proc/${Process.myPid()}/mountinfo")
     AssertionResult("/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(etcHostsFd), "/system/etc/hosts")
     AssertionResult("/system/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(systemEtcHostsFd), "/system/etc/hosts")
 }
@@ -884,7 +874,7 @@ private fun FilesystemAssertions() {
     AssertionResult("/system/etc/hosts and /system/etc status change time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
 
     Text(
-        text = "Sensitive file read",
+        text = "Sensitive file read (should be blocked by SELinux)",
         color = Color.Magenta
     )
 
