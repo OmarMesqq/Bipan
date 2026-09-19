@@ -166,12 +166,15 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
                     Log.i(TAG, "Neutering NSD method: " + cMethodName);
 
                     Class<?> returnType = cMethod.getReturnType();
-                    if (returnType == void.class)
+                    if (returnType == void.class) {
                       return null;
-                    if (returnType == boolean.class)
+                    }
+                    if (returnType == boolean.class) {
                       return true;
-                    if (returnType == int.class || returnType == long.class)
+                    }
+                    if (returnType == int.class || returnType == long.class) {
                       return 0;
+                    }
                     return null;
                   }
                   return cMethod.invoke(originalConnector, cArgs);

@@ -4,8 +4,10 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageInstaller;
 import android.os.IBinder;
+import android.os.Parcelable;
 import android.util.Log;
 import b.BaseHook;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -18,8 +20,12 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.pm.PackageManager.ComponentEnabledSetting;
+import android.content.pm.ActivityInfo;
 import android.content.pm.FeatureInfo;
+import android.content.pm.LauncherApps;
+
 import java.util.ArrayList;
 import java.util.List;
 import b.J;
@@ -285,6 +291,88 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       sPMField.set(null, pmProxy);
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
+    }
+
+    // Launcher Apps silecing
+    LauncherApps realLauncherApps = (LauncherApps) context.getSystemService(Context.LAUNCHER_APPS_SERVICE);
+    Class<?> serviceManagerLa = Class.forName("android.os.ServiceManager");
+    Method getServiceLa = serviceManagerLa.getDeclaredMethod("getService", String.class);
+
+    IBinder reaLaBinder = (IBinder) getServiceLa.invoke(null, "launcherapps");
+    if (reaLaBinder == null) {
+      throw new Exception(TAG + "Could not get 'launcherapps' service binder");
+    }
+
+    InvocationHandler launcherAppsHandler = (proxy, method, args) -> {
+      try {
+        String methodName = method.getName();
+        Class<?> returnType = method.getReturnType();
+        Log.i(TAG, "Neutering LauncherApps method: " + methodName);
+
+        if (returnType == void.class) {
+          return null;
+        }
+        if (returnType == boolean.class) {
+          return true;
+        }
+        if (returnType == int.class || returnType == long.class) {
+          return 0;
+        }
+        return null;
+      } catch (UndeclaredThrowableException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "launcherAppsHandler UndeclaredThrowableException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (Exception e) {
+        Log.e(TAG, "launcherAppsHandler Exception:", e);
+        throw J.cleanThrowable(new OutOfMemoryError());
+      }
+    };
+
+    Class<?> iLauncherAppsClass = Class.forName("android.content.pm.ILauncherApps");
+    Object launcherAppsProxy = Proxy.newProxyInstance(
+        iLauncherAppsClass.getClassLoader(),
+        new Class[] { iLauncherAppsClass },
+        launcherAppsHandler);
+
+    IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
+        IBinder.class.getClassLoader(),
+        new Class[] { IBinder.class },
+        (p, method, args) -> {
+          if ("queryLocalInterface".equals(method.getName()))
+            return launcherAppsProxy;
+          return method.invoke(reaLaBinder, args);
+        });
+
+    Field sCacheFieldLa = serviceManagerLa.getDeclaredField("sCache");
+    sCacheFieldLa.setAccessible(true);
+
+    @SuppressWarnings("unchecked")
+    Map<String, IBinder> cacheLa = (Map<String, IBinder>) sCacheFieldLa.get(null);
+    cacheLa.put("launcherapps", proxyBinder);
+
+    replaceBinderInLauncherApps(realLauncherApps, proxyBinder, launcherAppsProxy);
+  }
+
+  private void replaceBinderInLauncherApps(LauncherApps launcherApps, IBinder proxyBinder, Object proxy)
+      throws Exception {
+
+    try {
+      Field mServiceField = launcherApps.getClass().getDeclaredField("mService");
+      mServiceField.setAccessible(true);
+      mServiceField.set(launcherApps, proxy);
+      return;
+    } catch (NoSuchFieldException ignored) {
+      // fall through for older/newer Android variants
+    }
+
+    Log.d(TAG, "replaceBinderInLauncherApps: resorting to fallback");
+    // Fallback: replace fields whose declared type is IBinder
+    for (Field f : launcherApps.getClass().getDeclaredFields()) {
+      if (f.getType() == IBinder.class) {
+        f.setAccessible(true);
+        f.set(launcherApps, proxyBinder);
+      }
     }
   }
 
@@ -727,8 +815,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         }
 
         default: {
-          Object result = method.invoke(originalPM, args);
           Log.w(TAG, "Allowing PM method: " + method.getName());
+          Object result = method.invoke(originalPM, args);
           return result;
         }
       }
