@@ -8,7 +8,6 @@ import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.os.IInterface;
 import android.util.Log;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -60,7 +59,6 @@ public class GsfIdSpoofHook implements BaseHook {
     }
 
     Class<?> iface = Class.forName("android.content.IContentProvider");
-    final IBinder realBinder = ((IInterface) realProvider).asBinder();
 
     Object proxy = Proxy.newProxyInstance(
         iface.getClassLoader(),
@@ -70,11 +68,6 @@ public class GsfIdSpoofHook implements BaseHook {
           public Object invoke(Object p, Method method, Object[] args) throws Throwable {
             try {
               String name = method.getName();
-
-              // Keep Binder identity so the system does not drop us
-              if ("asBinder".equals(name)) {
-                return realBinder;
-              }
 
               if ("query".equals(name)) {
                 Cursor spoofed = trySpoof(args);
@@ -103,8 +96,7 @@ public class GsfIdSpoofHook implements BaseHook {
     patchActivityManagerSingleton(); // primary
     installActivityManagerProxy();
 
-    // Log.d(TAG, "GSF ID spoof installed, id=" +
-    // Long.toHexString(Long.parseLong(SPOOFED_ID)));
+    // Log.d(TAG, "GSF ID spoof installed");
   }
 
   private static Cursor trySpoof(Object[] args) {
@@ -149,18 +141,8 @@ public class GsfIdSpoofHook implements BaseHook {
     MatrixCursor c = new MatrixCursor(new String[] { "key", "value" });
     c.addRow(new Object[] { GSF_KEY, SPOOFED_ID });
 
-    Log.i(TAG, "Spoofed GSF android_id → " + Long.toHexString(Long.parseLong(SPOOFED_ID)));
+    Log.i(TAG, "Spoofed GSF ID: " + Long.toHexString(Long.parseLong(SPOOFED_ID)));
     return c;
-  }
-
-  public static void reInject() throws Exception {
-    if (sGsfProxy == null) {
-      return;
-    }
-    if (!injectProviderProxy(sGsfProxy)) {
-      // Entry gone or replaced with a real proxy – force a new acquire
-      forceAcquireAndInject();
-    }
   }
 
   private static boolean injectProviderProxy(Object proxy) throws Exception {
@@ -207,41 +189,14 @@ public class GsfIdSpoofHook implements BaseHook {
       Object old = providerField.get(record);
       if (old != proxy) {
         providerField.set(record, proxy);
-        // Log.d(TAG, "Replaced IContentProvider for " + auth + " (old=" + (old != null
-        // ? old.getClass().getName() : "null") + ")");
+        // Log.d(TAG, "Replaced IContentProvider");
       }
       found = true;
     }
     return found;
   }
 
-  private static void forceAcquireAndInject() {
-    try {
-      Object at = getActivityThread();
-      if (at == null) {
-        return;
-      }
-      Method getApp = at.getClass().getMethod("getApplication");
-      Object app = getApp.invoke(at);
-      if (!(app instanceof Context)) {
-        return;
-      }
-
-      ContentResolver cr = ((Context) app).getContentResolver();
-      ContentProviderClient client = cr.acquireUnstableContentProviderClient(GSF_AUTHORITY);
-      if (client == null) {
-        return;
-      }
-
-      injectProviderProxy(sGsfProxy);
-      // Log.d(TAG, "forceAcquireAndInject: re-acquired GSF provider");
-    } catch (Throwable t) {
-      Log.e(TAG, "forceAcquireAndInject failed", t);
-    }
-  }
-
-  private static Object extractIContentProvider(ContentProviderClient client)
-      throws Exception {
+  private static Object extractIContentProvider(ContentProviderClient client) throws Exception {
     Field f = findField(ContentProviderClient.class, "mContentProvider", "mProvider");
     if (f == null) {
       return null;
@@ -463,7 +418,6 @@ public class GsfIdSpoofHook implements BaseHook {
     // android.util.Singleton<T> → mInstance
     Field mInstanceField = findField(singleton.getClass(), "mInstance");
     if (mInstanceField == null) {
-      // some builds: field is on superclass
       mInstanceField = findField(singleton.getClass().getSuperclass(), "mInstance");
     }
     if (mInstanceField == null) {

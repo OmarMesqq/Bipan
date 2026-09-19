@@ -95,12 +95,10 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.companion_device_setup",
 
       "android.software.telecom",
+      "android.hardware.telephony.subscription",
 
       "android.hardware.sensor.hifi_sensors",
-      "android.hardware.camera.ar",
-      
-      "android.hardware.telephony.subscription"
-      ));
+      "android.hardware.camera.ar"));
 
   private static final Set<String> FEATURE_ADD_LIST = new HashSet<>(Arrays.asList(
       "android.software.verified_boot",
@@ -591,12 +589,15 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         case "resolveActivity": {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
+            // TODO: make this DRY
             boolean isSelf = (intent.getComponent() != null
                 && selfPackageName.equals(intent.getComponent().getPackageName()))
                 || selfPackageName.equals(intent.getPackage());
+
             if (isSelf) {
               return method.invoke(originalPM, args);
             }
+
           }
           Log.i(TAG, "Blinded: resolveActivity");
           return null;
