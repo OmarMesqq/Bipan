@@ -794,8 +794,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
 
         default: {
           Log.w(TAG, "Allowing PM method: " + method.getName());
-          Object result = method.invoke(originalPM, args);
-          return result;
+          return method.invoke(originalPM, args);
         }
       }
     } catch (InvocationTargetException e) {
