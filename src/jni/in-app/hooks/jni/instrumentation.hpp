@@ -37,7 +37,11 @@ void my_clampGrowthLimit(JNIEnv* env, jobject obj) {
 
   if (!seccomp_applied) {
     if (g_bipan_lib_start == 0 || g_bipan_lib_end == 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clampGrowthLimit: can't apply seccomp: lib bounds are 0!");
+      write_to_logcat_async(
+          ANDROID_LOG_FATAL,
+          TAG,
+          "[!] clampGrowthLimit: can't apply seccomp: lib bounds are 0! (start: %lu) | (end: %lu)",
+          g_bipan_lib_start, g_bipan_lib_end);
       BIPAN_PANIC();
     }
 
@@ -72,7 +76,11 @@ void my_clearGrowthLimit(JNIEnv* env, jobject obj) {
 
   if (!seccomp_applied) {
     if (g_bipan_lib_start == 0 || g_bipan_lib_end == 0) {
-      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "[!] clearGrowthLimit: can't apply seccomp: lib bounds are 0!");
+      write_to_logcat_async(
+          ANDROID_LOG_FATAL,
+          TAG,
+          "[!] clearGrowthLimit: can't apply seccomp: lib bounds are 0! (start: %lu) | (end: %lu)",
+          g_bipan_lib_start, g_bipan_lib_end);
       BIPAN_PANIC();
     }
 
