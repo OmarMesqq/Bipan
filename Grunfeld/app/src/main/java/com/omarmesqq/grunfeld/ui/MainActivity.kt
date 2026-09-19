@@ -3,7 +3,6 @@ package com.omarmesqq.grunfeld.ui
 import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
-import android.os.Process.myUserHandle
 import android.view.WindowManager
 import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
 import androidx.activity.ComponentActivity
@@ -85,8 +84,6 @@ class MainActivity : ComponentActivity() {
         launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
         launcherApps.registerCallback(launcherAppsCb)
 
-        dumpLauncherActivityInfos()
-
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
@@ -125,21 +122,5 @@ class MainActivity : ComponentActivity() {
         launcherApps.unregisterCallback(launcherAppsCb)
 
         wipeWebviewTraces(this)
-    }
-
-    private fun dumpLauncherActivityInfos() {
-        val laiList = launcherApps.getActivityList(null, myUserHandle())
-        val sb = StringBuilder()
-        for (lai in laiList) {
-            val pkgName = lai.applicationInfo.packageName
-            val component = lai.componentName
-
-            sb.appendLine("LauncherActivityInfo:\n\tpkg: $pkgName | " +
-                    "component: $component | " +
-                    "firstInstallTime: ${lai.firstInstallTime} | " +
-                    "label: ${lai.label}"
-            )
-        }
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "$sb")
     }
 }

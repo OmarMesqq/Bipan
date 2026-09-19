@@ -31,7 +31,6 @@ static inline bool should_passthrough(const char* libPath);
 
 static constexpr const char* ZYGISK_LIB = "/system/lib64/libzygisk.so";
 static constexpr const char* ZYGISK_LIB32 = "/system/lib/libzygisk.so";
-static constexpr const char* ZYGISK_INJECTED_CODE = "/memfd:jit-cache (deleted)";
 
 UNWIND_DECISION unwinder(uintptr_t pc, uintptr_t fp, uintptr_t lr, pid_t pid) {
   char mem_path[64] = {0};
@@ -313,7 +312,7 @@ void prefetchMaps(pid_t pid) {
 }
 
 /**
- * Parses the physical (in-disk ?) ELF file to find a name for a relative offset.
+ * Parses the physical (in-disk?) ELF file to find a name for a relative offset.
  * This sees STATIC labels that `dladdr` cannot. (really?)
  */
 static void find_label_in_elf(const char* path, uintptr_t offset, char* out_name, size_t max_len) {
