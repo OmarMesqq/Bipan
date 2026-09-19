@@ -4,10 +4,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.pm.PackageInstaller;
 import android.os.IBinder;
-import android.os.Parcelable;
 import android.util.Log;
 import b.BaseHook;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -20,12 +18,9 @@ import java.util.Map;
 import java.util.Set;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.content.pm.PackageManager.ComponentEnabledSetting;
-import android.content.pm.ActivityInfo;
 import android.content.pm.FeatureInfo;
 import android.content.pm.LauncherApps;
-
 import java.util.ArrayList;
 import java.util.List;
 import b.J;
@@ -381,15 +376,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Intent intent = (Intent) args[0];
             String action = intent.getAction();
 
-            // Allow self-targeted queries (component or package matches self)
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
@@ -489,27 +476,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
 
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
 
-            boolean isSafeQuery = false;
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
-              isSafeQuery = true;
-            }
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
-              isSafeQuery = true;
-            }
-
-            // TODO: make this DRY
+            boolean isSafeQuery = isSafeQuery(intent);
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -523,26 +495,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
 
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
 
-            boolean isSafeQuery = false;
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
-              isSafeQuery = true;
-            }
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
-              isSafeQuery = true;
-            }
-
+            boolean isSafeQuery = isSafeQuery(intent);
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -848,6 +806,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     setHiddenField(info, "mPackageSource", PackageInstaller.PACKAGE_SOURCE_STORE);
 
     return info;
+  }
+
+  private boolean isSelfQuery(Intent intent) {
+    if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+      return true;
+    }
+    if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+      return true;
+    }
+    return false;
+  }
+
+  private boolean isSafeQuery(Intent intent) {
+    if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
+      return true;
+    }
+    if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
+      return true;
+    }
+    return false;
   }
 
   private void setHiddenField(Object obj, String name, Object value) throws Throwable {

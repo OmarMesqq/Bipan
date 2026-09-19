@@ -393,7 +393,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
           std::string sockInfo = get_sockaddr_info(sock_payload);
           write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(bind) to LAN spoofed. Socket info: %s", sockInfo.c_str());
-          // patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
+          patch_instruction_remote(ipc_mem->target_pid, pc, 0, patched_pcs);
         }
         break;
       }
