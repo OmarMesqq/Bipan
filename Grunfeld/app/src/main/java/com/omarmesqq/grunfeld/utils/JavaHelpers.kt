@@ -1,6 +1,8 @@
 package com.omarmesqq.grunfeld.utils
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
@@ -33,6 +35,17 @@ fun hasPermission(context: Context, permission: String): Boolean {
         context,
         permission
     ) == PackageManager.PERMISSION_GRANTED
+}
+
+fun Context.findActivity(): Activity {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) {
+            return context
+        }
+        context = context.baseContext
+    }
+    throw IllegalStateException("no activity found")
 }
 
 enum class CoroutineMode(val value: String) {

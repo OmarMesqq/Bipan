@@ -10,40 +10,36 @@ which mitigate fingerprinting:
 
 - **Sensors blinding**: Some apps will map all available sensors in your device, which, by itself, can be a quite unique identification vector. Furthermore, they query those sensors for behavioral tracking (e.g.: how close you are to the phone (proximity), whether you are in car (accelerometer)) and so on. Bipan blocks this at native and at the Java layer.
 
-- **Randomization of uniquely identifying fields**: Your Android phone features a ton of OS- and hardware-backed IDs that can be queried without your consent and - if done smartly - can permanently fingerprint your device, surviving even factory resets. Your phone's `boot_count`, the GSF (Google Services Framework) ID, the `Settings Secure Android ID` a.k.a. SSAID, the ID tied to your phone's DRM blackbox (for playing protected (copyrighted) content) which, [according to Google, is unique and made so at device provisioning](https://developer.android.com/reference/android/media/MediaDrm#PROPERTY_DEVICE_UNIQUE_ID). Bipan handles these and some others, once again, natively and at the JVM boundary.<sup>[1]</sup>
+- **Randomization of uniquely identifying fields**: Your Android phone features a ton of OS- and hardware-backed IDs that can be queried without your consent and - if done smartly - a permanent fingerprint of your device can be established, surviving even factory resets. How many times your phone was rebooted, the Google Services Framework ID, the `Settings Secure Android ID` a.k.a. SSAID, the ID tied to your phone's DRM blackbox (for playing protected (copyrighted) content) which, [according to Google, is unique and made so at device provisioning](https://developer.android.com/reference/android/media/MediaDrm#PROPERTY_DEVICE_UNIQUE_ID). Bipan spoofs these and some others, once again, natively and at the JVM boundary.<sup>[1]</sup>
 
-- **Unlocking usage of apps**: apps will unceasingly check whether they were installed from Google's Play Store or if they were "sideloaded" - cool word for downloading apps. With Bipan, the Play Store (`com.android.vending`) is returned as the installer and maintainer package for targeted apps so you don't stand out in the crowd nor get blocked by some "anti-fraud" SDK. Additionally, some apps, like banking and gaming ones, will flag or even block you if Development Settings, for instance, is enabled. Bipan also handles this.
-
+- **Unlocking usage of apps**: apps will unceasingly check whether they were installed from Google's Play Store or if they were "sideloaded" - cool word for downloading apps. With Bipan, the Play Store is returned as the installer and maintainer package for targeted apps so you don't stand out in the crowd nor get blocked by some "anti-fraud" SDK. Additionally, some apps, like banking and gaming ones, will flag or even block you if Development Settings, for instance, is enabled. Bipan also handles this.
 
 - **Blocks app discovery**: Although Google made this harder in Android 11+,
-apps can still query and gather info on arbitrary packages declared in their Manifest through the `<queries>` which, needless to say, can have a ton of entries. Furthermore, if you have a convincing reason, your app can be shipped with the `QUERY_ALL_PACKAGES` permission, which does precisely what is states.
-attribute. Bipan blinds all these attempts.
+apps can still query and gather info on arbitrary packages declared in their Manifest via the `<queries>` attribute which, needless to say, can have a ton of entries. Furthermore, if you have a convincing reason, you can ship your app to the Play Store holding the `QUERY_ALL_PACKAGES` permission, which does precisely what is states. Bipan blinds all these attempts.
 
 - **Screen-related patches**: Google introduced new APIs
 which allow developers to write apps that detect screenshots and
-screen captures/recordings while the app is visible.
+screen recordings while the app is visible.
 Furthermore, those actions *can be blocked* by the application 
 if it deems the currently shown content as sensitive. Bipan bypasses
-these detection and blocking mechanisms, allowing you to screenshot and record
-whatever you want that's in **your** phone. **But please, do me a favor, exercise caution and be a good person.**
+these detection and blocking mechanisms, thus allowing screenshots and recordings
+in any app screen. **But please, do me a favor, exercise caution and be a good person.**
 
 - **Privacy preserving and powerful networking**: Surely apps may have legitimate reasons to learn about your local network topology or get details of your connection. Nonetheless, Bipan is quite agressive when it comes to networking.
-If you choose Bipan, your sandboxed apps will consistently get a fake and fixed IPv4 address and have no LAN IPv6 (this is a personal choice obviously, but IPv6 addresses are a gazillion times more unique than IPv4 ones. It was created for this purpose!). Additionaly, VPNs, Private DNS usage, your precious Wi-Fi network name (SSID) and its associated hardware address (BSSID) are also hidden from jailed apps. Finally, I nudged the MTU of the active network interface to 1500. This can help you conceal VPN usage even further or aid in online games.
+If you choose Bipan, your sandboxed apps will consistently get a fake and fixed IPv4 address and have no LAN IPv6 (this is a personal choice, but IPv6 addresses are a gazillion times more unique than IPv4 ones. It was created for this purpose!). Additionaly, VPNs, Private DNS usage, your precious Wi-Fi network name (SSID) and its associated hardware address (BSSID) are also hidden from jailed apps. Finally, I bumped the MTU of the active network interface to 1500. This may help conceal VPN usage even further and aid in online games.
 
-
-- **Some security measures**: Bipan fools apps requesting the `listen` syscall, which allows your phone to act as server and accept inbound connections, by always returning success<sup>[2]</sup>. Binary execution - at both the Java layer with `Runtime.exec()` and whatnots as well as the good oldd unix `fork()/exec()` - is blocked.
+- **Some security measures**: Bipan fools apps requesting the `listen` syscall, which allows your phone to act as server and accept inbound connections, by always returning success<sup>[2]</sup>. Binary execution - at both the Java layer with `Runtime.exec()` and whatnots as well as the good old unix `fork()/exec()` - is blocked.
 This works because Bipan operates at the syscall level: you can't (I think?) lie to the kernel ;)
 
 
-[1] Randomizing such IDs, in particular the SSAID, may log you out of several apps, so an allowlist is available.(for now, in-code only).
+[1] Randomizing such IDs, in particular the SSAID, may log you out of several apps, so an allowlist is available (for now, in code only).
 
 [2] This obviously breaks apps which may use this for good reasons such setting up a hotspot or a NAS-like server.
 
 
-
 ## Usage
 ### Prerequisites
-- An Android device running the `aarch64`/`arm64-v8a` and/or `armeabi-v7a` architecture which supports at least SDK `28` and is rooted with Magisk >= 26
+- An Android device running the `aarch64`/`arm64-v8a` and/or `armeabi-v7a` (WIP) architecture which supports at least SDK `28` and is rooted with Magisk >= 26
 
 At each app launch, Bipan is injected by Zygisk and applies the patches to the app
 using info at the module's private folder: `/data/adb/modules/bipan/targets/`  
@@ -72,12 +68,9 @@ any sort of modification to the app's memory.
   - `ANDROID_HOME` and `NDK_HOME` set
 
 2. Ensure you also have common Unix CLI utils in `PATH`, in special, `xxd` and `zip`
-
 3. `r8`'s JAR file at root of repo:
   - at least `9.3.7-dev`
   - you can get it with `curl --get https://storage.googleapis.com/r8-releases/raw/9.3.7-dev/r8lib.jar -o r8lib.jar`
-
-
 4. Clone this repo
 5. Run the `build_module.sh` script
 6. The module's flashable zip will be at the project's root with the name `bipan.zip`

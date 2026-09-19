@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Process
+import android.os.Process.myUserHandle
 import android.provider.Settings.Global
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
@@ -37,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.MainApplication
+import com.omarmesqq.grunfeld.ui.MainActivity
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
@@ -51,6 +54,7 @@ import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.CoroutineMode
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 import com.omarmesqq.grunfeld.utils.debugCoroutine
+import com.omarmesqq.grunfeld.utils.findActivity
 import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
@@ -118,17 +122,13 @@ fun TestsScreen() {
             SensorsAssertions(context)
         }
 
+        SectionHeader("NETWORKING TESTS")
+        NetworkingAssertions(context)
 
-        SectionHeader("NETWORK INTERFACES TESTS")
-        NetworkIfacesAssertions()
-
-        SectionHeader("LINK PROPERTIES AND WIFI MANAGER TESTS")
-        LinkPropertiesAndWifiAssertions(context)
-
-        SectionHeader("APP INSTALLER TEST")
+        SectionHeader("APP INSTALLER TESTS")
         AppInstallerAssertions(context)
 
-        SectionHeader("FOREIGN APP INSPECTION TESTS")
+        SectionHeader("APP INSPECTION TESTS")
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -136,6 +136,9 @@ fun TestsScreen() {
             QueryIntentActivitiesAssertions(context)
             InstalledApplicationsAssertions(context)
             InstalledPackagesAssertions(context)
+            TestLauncherApps()
+            TestResolveActivity()
+            TestQueryIntentActivities()
         }
 
         SectionHeader("SELF-ANALYSIS TESTS")
@@ -156,9 +159,6 @@ fun TestsScreen() {
         SectionHeader("HOOKING DEPTH TESTS")
         HookingDepthAssertions()
 
-        SectionHeader("LAN LEAK TEST")
-        LanLeakAssertions()
-
         SectionHeader("FILESYSTEM TESTS")
         FilesystemAssertions()
 
@@ -170,6 +170,33 @@ fun TestsScreen() {
     }
 }
 
+
+@Composable
+private fun TestLauncherApps() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        Text(
+            text = "Unsupported API level",
+            color = Color.Yellow
+        )
+    } else {
+        val context = LocalContext.current
+        val activity = context.findActivity() as MainActivity
+
+        val launcherAcInfos = activity.launcherApps.getActivityList(null, myUserHandle())
+        val launcherUserInfo = activity.launcherApps.getLauncherUserInfo(myUserHandle())
+        val preInstalledSystemPkgs = activity.launcherApps.getPreInstalledSystemPackages(myUserHandle())
+        val hasShortcutHostPermission = activity.launcherApps.hasShortcutHostPermission()
+        val allPackageInstallerSessions = activity.launcherApps.allPackageInstallerSessions
+        val profiles = activity.launcherApps.profiles
+
+        AssertionResultEmpty("LauncherActivityInfo[]", launcherAcInfos)
+        AssertionResultNull("LauncherUserInfo", launcherUserInfo)
+        AssertionResultEmpty("preInstalledSystemPkgs[]", preInstalledSystemPkgs)
+        AssertionResult("hasShortcutHostPermission", hasShortcutHostPermission, true)
+        AssertionResultEmpty("allPackageInstallerSessions[]", allPackageInstallerSessions)
+        AssertionResultEmpty("profiles", profiles)
+    }
+}
 @Composable
 private fun TestResolveActivity() {
     val context = LocalContext.current
@@ -180,7 +207,7 @@ private fun TestResolveActivity() {
     }
 
     val resolveInfo = pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)
-    Text("resolveActivity: Activity name = ${resolveInfo?.activityInfo?.name} | Pkg = ${resolveInfo?.activityInfo?.packageName}")
+    AssertionResultNull("resolveActivity/resolveIntent", resolveInfo)
 }
 
 @Composable
@@ -193,13 +220,7 @@ private fun TestQueryIntentActivities() {
     }
 
     val list = pm.queryIntentActivities(i, PackageManager.MATCH_ALL)
-    if (list.isEmpty()) {
-        Text("queryIntentActivities: empty list")
-    } else {
-        list.forEachIndexed { idx, info ->
-            Text("queryIntentActivities: $idx: Activity name = ${info.activityInfo.name} | Pkg = ${info.activityInfo.packageName}")
-        }
-    }
+    AssertionResultEmpty("queryIntentActivities", list)
 }
 
 @Composable
@@ -295,8 +316,14 @@ private fun SensorsAssertions(ctx: Context) {
     AssertionResult("Sensors", getSensorsInfo(ctx), "")
 }
 
+
+
 @Composable
-private fun NetworkIfacesAssertions() {
+private fun NetworkingAssertions(ctx: Context) {
+    Text(
+        text = "Network interface enumeration",
+        color = Color.Magenta
+    )
     var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
 
     LaunchedEffect(Unit) {
@@ -344,10 +371,12 @@ private fun NetworkIfacesAssertions() {
                 }
         }
     }
-}
 
-@Composable
-private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
+    Text(
+        text = "Link Properties via Connectivity Manager",
+        color = Color.Magenta
+    )
+
     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     @Suppress("DEPRECATION")
@@ -368,8 +397,8 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     }
     val hasTransportVpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
     val hasCapNotVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-    AssertionResult("Network has VPN transport?", hasTransportVpn, false)
-    AssertionResult("Network has cap NOT_VPN?", hasCapNotVpn, true)
+    AssertionResult("Network has VPN transport ?", hasTransportVpn, false)
+    AssertionResult("Network has cap NOT_VPN ?", hasCapNotVpn, true)
 
     val activeNetwork = cm.activeNetwork
     if (activeNetwork == null) {
@@ -424,7 +453,10 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
     AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
 
-    HorizontalDivider()
+    Text(
+        text = "Wifi Manager (deprecated)",
+        color = Color.Magenta
+    )
 
     val wifiInfo = try {
         getWifiManagerInfo(ctx)
@@ -436,13 +468,30 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
         return
     }
 
+    val isOnWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+
     @Suppress("DEPRECATION")
-    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
+    if (isOnWifi) {
+        AssertionResult("(Connected to Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
+    } else {
+        AssertionResult("(Not on Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
+    }
 
     if (wifiInfo.bssid != null) {
         AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
     }
     AssertionResultContains("SSID", wifiInfo.ssid, "<unknown ssid>")
+
+    Text(
+        text = "LAN leak tests",
+        color = Color.Magenta
+    )
+
+    val socketIp4 = NativeLibWrapper.testGetsocknameV4()
+    val socketIp6 = NativeLibWrapper.testGetsocknameV6()
+
+    AssertionResult("IPv4 via 'getsockname'", socketIp4, "10.111.222.1")
+    AssertionResult("IPv6 via 'getsockname'", socketIp6, "fd00::1")
 }
 
 @Composable
@@ -698,18 +747,45 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
 private fun StealthAssertions() {
     val defaultValue = ""
 
-    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps()
-    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps()
+    CodeTitle("Traces of injection in VFS", Color.Magenta)
+    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps("/proc/self/maps")
+    val procPidMaps = NativeLibWrapper.scanProcSelfMaps("/proc/${Process.myPid()}/maps")
+    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps("/proc/self/smaps")
+    val procPidSmaps = NativeLibWrapper.scanProcSelfMaps("/proc/${Process.myPid()}/smaps")
     val procSelfMountinfo = NativeLibWrapper.scanMountPoint("/proc/self/mountinfo")
+    val procPidMountinfo = NativeLibWrapper.scanMountPoint("/proc/${Process.myPid()}/mountinfo")
     val procMounts = NativeLibWrapper.scanMountPoint("/proc/mounts")
+    val procSelfMounts = NativeLibWrapper.scanMountPoint("/proc/self/mounts")
+    val procPidMounts = NativeLibWrapper.scanMountPoint("/proc/${Process.myPid()}/mounts")
 
     AssertionResult("/proc/self/maps", procSelfMaps, defaultValue)
+    AssertionResult("/proc/<PID>/maps", procPidMaps, defaultValue)
     AssertionResult("/proc/self/smaps", procSelfSmaps, defaultValue)
+    AssertionResult("/proc/<PID>/smaps", procPidSmaps, defaultValue)
     AssertionResult("/proc/self/mountinfo", procSelfMountinfo, defaultValue)
+    AssertionResult("/proc/<PID>/mountinfo", procPidMountinfo, defaultValue)
     AssertionResult("/proc/mounts", procMounts, defaultValue)
+    AssertionResult("/proc/self/mounts", procSelfMounts, defaultValue)
+    AssertionResult("/proc/<PID>/mounts", procPidMounts, defaultValue)
 
-    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
+    CodeTitle("Traces of injection in linker's soinfo", Color.Magenta)
+    val dlIteratePhdr = NativeLibWrapper.testDlIteratePhdr()
     AssertionResult("dl_iterate_phdr", dlIteratePhdr, defaultValue)
+
+    CodeTitle("Correct symlinks of spoofed files", Color.Magenta)
+    val procSelfMapsFd = NativeLibWrapper.openFileNative("/proc/self/maps")
+    val procPidMapsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/maps")
+    val procSelfSmapsFd = NativeLibWrapper.openFileNative("/proc/self/smaps")
+    val procPidSmapsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/smaps")
+    val etcHostsFd = NativeLibWrapper.openFileNative("/etc/hosts")
+    val systemEtcHostsFd = NativeLibWrapper.openFileNative("/system/etc/hosts")
+
+    AssertionResult("/proc/self/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procSelfMapsFd), "/proc/${Process.myPid()}/maps")
+    AssertionResult("/proc/<PID>/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procPidMapsFd), "/proc/${Process.myPid()}/maps")
+    AssertionResult("/proc/self/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procSelfSmapsFd), "/proc/${Process.myPid()}/smaps")
+    AssertionResult("/proc/<PID>/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procPidSmapsFd), "/proc/${Process.myPid()}/smaps")
+    AssertionResult("/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(etcHostsFd), "/system/etc/hosts")
+    AssertionResult("/system/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(systemEtcHostsFd), "/system/etc/hosts")
 }
 
 @Composable
@@ -728,29 +804,12 @@ private fun HookingDepthAssertions() {
 }
 
 @Composable
-private fun LanLeakAssertions() {
-    val socketIp4 = NativeLibWrapper.testGetsocknameV4()
-    val socketIp6 = NativeLibWrapper.testGetsocknameV6()
-
-    AssertionResult("IPv4 via 'getsockname'", socketIp4, "10.111.222.1")
-    AssertionResult("IPv6 via 'getsockname'", socketIp6, "fd00::1")
-}
-
-@Composable
 private fun FilesystemAssertions() {
     CodeTitle("statx()", Color.Magenta)
+
     val statxTest = NativeLibWrapper.testStatx()
-
     AssertionResult("'statx'", statxTest, "Function not implemented")
-    CodeTitle("statfs()", Color.Magenta)
 
-    val statfsToHosts = NativeLibWrapper.testStatfsToHosts()
-    statfsToHosts
-        .split("\n")
-        .take(2) // /system/etc/hosts and /etc/hosts
-        .forEach {
-            AssertionResult("'statfs' to hosts file", it, "Function not implemented")
-        }
     CodeTitle("faccessat()", Color.Magenta)
 
     val rootNodes = arrayOf(
