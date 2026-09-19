@@ -225,6 +225,7 @@ public class J {
         modules.add(new TelephonyManagerHook());
         modules.add(new AntiScreenshotDetectionHook());
         modules.add(new GsfIdSpoofHook());
+        modules.add(new BroadcastReceiverHook());
       }
     }
 
