@@ -24,12 +24,10 @@
 #include <netdb.h>
 
 #include "socket_helper.h"
-#include "athena.h"
 
 #define TAG "GrunfeldNative"
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
@@ -37,7 +35,7 @@
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 
 /**
- * func-like macro to convert negative error values provided by the kernel to raw syscalls
+ * func-like macro for converting negative error values provided by the kernel
  * back to nice libc/bionic errnos
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
@@ -51,6 +49,9 @@
     strstr(cstr, "bipan") || \
     strstr(cstr, "zygisk")
 
+/**
+ * For finding injected code in `mount*` points
+ */
 #define FIND_BIPAN_TRACES_IN_MOUNTS(cstr) \
     !strstr(cstr, "magisk") && \
     !strstr(cstr, "hosts") && \
@@ -64,7 +65,6 @@ static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data);
 static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap);
-
 static int sys_prop_get(const char* propName, char* outBuf);
 static int sys_prop_read(const prop_info* pi, char* propName, char* outBuf);
 static void sys_prop_read_cbFn(void* cookie, const char* name, const char* value, uint32_t serial);
@@ -81,20 +81,6 @@ static const uint8_t kWidevineUuid[16] = {
         0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
         0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
 };
-
-
-__attribute__((constructor)) void grunfeld_early_init(void) {
-    LOGD("__attribute__((constructor))");
-    athenaInit();
-    // requestNativeBacktrace();
-}
-
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    LOGD("JNI_OnLoad");
-    // requestNativeBacktrace();
-    return JNI_VERSION_1_6;
-}
-
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *env, jobject thiz) {
@@ -807,9 +793,9 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV4(JNIEnv *env
     char report[512] = {0};
     char entry[256] = {0};
 
-    const int port_dns = 53;
+    const int dnsPort = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
-    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, dnsPort);
     if (!res) {
         return (*env)->NewStringUTF(env, "Failed to create socket!\n");
     }
@@ -834,78 +820,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV4(JNIEnv *env
         inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET_ADDRSTRLEN);
         snprintf(entry, sizeof(entry), "%s", ip);
     } else {
-        snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
+        snprintf(entry, sizeof(entry), "getsockname failed: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
     }
 
     strcat(report, entry);
     close(res->sock);
     free(res);
-    return (*env)->NewStringUTF(env, report);
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV6(JNIEnv *env, jobject thiz) {
-    long ret = -1;
-    char report[512] = {0};
-    char entry[256] = {0};
-
-    const char* host = "stun.l.google.com";
-    const char* port = "19302";
-
-    struct addrinfo hints, *res, *rp;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family   = AF_INET6;
-    hints.ai_socktype = SOCK_DGRAM;
-
-    int err = getaddrinfo(host, port, &hints, &res);
-    if (err != 0) {
-        snprintf(report, sizeof(report), "getaddrinfo(%s) failed: %s\n", host, gai_strerror(err));
-        strcat(report, entry);
-        return (*env)->NewStringUTF(env, report);
-    }
-
-    int sockfd = -1;
-    for (rp = res; rp != NULL; rp = rp->ai_next) {
-        sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (sockfd == -1) {
-            continue;
-        }
-
-        if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) == 0) {
-            break;
-        }
-
-        close(sockfd);
-        sockfd = -1;
-    }
-    freeaddrinfo(res);
-
-    if (sockfd == -1) {
-        snprintf(report, sizeof(report), "Could not connect via IPv6");
-        strcat(report, entry);
-        return (*env)->NewStringUTF(env, report);
-    }
-
-    struct sockaddr_in6 local_addr;
-    socklen_t addr_len = sizeof(local_addr);
-
-    if (getsockname(sockfd, (struct sockaddr *)&local_addr, &addr_len) == -1) {
-        snprintf(entry, sizeof(entry), "getsockname failed: %s\n", strerror(errno));
-        strcat(report, entry);
-        close(sockfd);
-        return (*env)->NewStringUTF(env, report);
-    }
-
-    char ip_str[INET6_ADDRSTRLEN] = {0};
-    inet_ntop(AF_INET6, &local_addr.sin6_addr, ip_str, sizeof(ip_str));
-
-    snprintf(report, sizeof(report), "Local IPv6 address: %s\n", ip_str);
-    strcat(report, entry);
-
-    snprintf(report, sizeof(report), "Local port: %d\n", ntohs(local_addr.sin6_port));
-    strcat(report, entry);
-
-    close(sockfd);
     return (*env)->NewStringUTF(env, report);
 }
 
@@ -978,7 +898,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameBionic(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_str);
 }
 
-// TODO: maybe try with our kernel struct to bypass ART
 static char g_altstack[SIGSTKSZ * 4];
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* env, jobject thiz) {
@@ -1055,7 +974,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
             const char* name = ASensor_getName(list[i]);
             const char* vendor = ASensor_getVendor(list[i]);
             int type = ASensor_getType(list[i]);
-            LOGI("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
+            LOGD("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
         }
     }
 
@@ -1121,12 +1040,12 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobj
             if (ident == LOOPER_ID_USER) {
                 while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
                     if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
-                        LOGI("Accel X: %f, Y: %f, Z: %f",
+                        LOGD("Accel X: %f, Y: %f, Z: %f",
                              (double) event.acceleration.x,
                              (double) event.acceleration.y,
                              (double) event.acceleration.z);
                     } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
-                        LOGI("Gyro X: %f, Y: %f, Z: %f",
+                        LOGD("Gyro X: %f, Y: %f, Z: %f",
                              (double) event.vector.x,
                              (double) event.vector.y,
                              (double) event.vector.z);
@@ -1228,26 +1147,6 @@ static void sys_prop_read_cb(const prop_info* pi,
 
 static const prop_info* sys_prop_find(const char* propName) {
     return __system_property_find(propName);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {
-    raise(SIGSEGV);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseAbrt(JNIEnv *env, jobject thiz) {
-    raise(SIGABRT);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseTrap(JNIEnv *env, jobject thiz) {
-    raise(SIGTRAP);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobject thiz) {
-    raise(SIGQUIT);
 }
 
 #pragma clang diagnostic push

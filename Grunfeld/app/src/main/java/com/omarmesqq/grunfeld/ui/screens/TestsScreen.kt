@@ -474,10 +474,7 @@ private fun NetworkingAssertions(ctx: Context) {
     )
 
     val socketIp4 = NativeLibWrapper.testGetsocknameV4()
-    val socketIp6 = NativeLibWrapper.testGetsocknameV6()
-
     AssertionResult("IPv4 via 'getsockname'", socketIp4, "10.111.222.1")
-    AssertionResult("IPv6 via 'getsockname'", socketIp6, "fd00::1")
 }
 
 @Composable

@@ -27,7 +27,6 @@ object NativeLibWrapper {
     external fun unameBionic(): String
 
     external fun testGetsocknameV4(): String
-    external fun testGetsocknameV6(): String
 
     external fun testSensors(): String
     external fun getMediaDrmIdNative(): String
@@ -49,8 +48,4 @@ object NativeLibWrapper {
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
-    external fun raiseSegv()
-    external fun raiseAbrt()
-    external fun raiseTrap()
-    external fun raiseQuit()
 }

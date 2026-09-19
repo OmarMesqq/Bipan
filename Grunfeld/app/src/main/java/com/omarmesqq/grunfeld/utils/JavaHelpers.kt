@@ -77,7 +77,7 @@ fun debugCoroutine(crName: CoroutineName?, crMode: CoroutineMode, elapsed: Long)
                     "\tThread priority: ${Process.getThreadPriority(threadTid.toInt())}/${Process.getThreadPriority(processTid)}\n" +
                     "\ttook $elapsed ms to complete"
         )
-    } catch (e: IllegalArgumentException) {
+    } catch (_: IllegalArgumentException) {
         avocadoLog(
             AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
             COROUTINE_TAG,

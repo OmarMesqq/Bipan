@@ -3,6 +3,7 @@ package com.omarmesqq.grunfeld.ui
 import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
+import android.os.UserHandle
 import android.view.WindowManager
 import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
 import androidx.activity.ComponentActivity
@@ -24,7 +25,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.omarmesqq.grunfeld.MainApplication
-import com.omarmesqq.grunfeld.impls.launcherAppsCb
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -34,8 +34,6 @@ import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.function.Consumer
-
-
 open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object TestsScreen : Screen("tests", "Tests", Icons.Default.CheckCircle)
     object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
@@ -67,6 +65,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition {
             !viewModel.isAppReady.value
         }
+        super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
             viewModel.isFlagSecureEnabled.collectLatest { isEnabled ->
@@ -83,8 +82,6 @@ class MainActivity : ComponentActivity() {
 
         launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
         launcherApps.registerCallback(launcherAppsCb)
-
-        super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
         setContent {
@@ -122,5 +119,68 @@ class MainActivity : ComponentActivity() {
         launcherApps.unregisterCallback(launcherAppsCb)
 
         wipeWebviewTraces(this)
+    }
+
+    private val launcherAppsCb = object : LauncherApps.Callback() {
+        override fun onPackageAdded(packageName: String, user: UserHandle) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+                "packageAdded: $packageName",
+                shouldToast = true
+            )
+        }
+
+        override fun onPackageRemoved(packageName: String, user: UserHandle) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+                "packageRemoved: $packageName",
+                shouldToast = true
+            )
+        }
+
+        override fun onPackageChanged(packageName: String, user: UserHandle) {
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+                "packageChanged: $packageName",
+                shouldToast = true
+            )
+        }
+
+        override fun onPackagesAvailable(
+            packageNames: Array<out String>,
+            user: UserHandle,
+            replacing: Boolean
+        ) {
+            val curatedPkgs = arrayOf<String>()
+            packageNames
+                .take(3)
+                .forEachIndexed { idx, pkgName ->
+                    curatedPkgs[idx] = pkgName
+                }
+
+
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+                "packagesAvailable: replacing? $replacing\n" +
+                        "3 packages: ${curatedPkgs.contentToString()}",
+                shouldToast = true
+            )
+        }
+
+        override fun onPackagesUnavailable(
+            packageNames: Array<out String>,
+            user: UserHandle,
+            replacing: Boolean
+        ) {
+            val curatedPkgs = arrayOf<String>()
+            packageNames
+                .take(3)
+                .forEachIndexed { idx, pkgName ->
+                    curatedPkgs[idx] = pkgName
+                }
+
+
+            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+                "packagesUnavailable: replacing? $replacing\n" +
+                        "3 packages: ${curatedPkgs.contentToString()}",
+                shouldToast = true
+            )
+        }
     }
 }
