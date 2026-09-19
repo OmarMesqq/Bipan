@@ -12,8 +12,6 @@
 
 #define TAG "BipanSpoofer"
 
-static constexpr const char* BIPAN_IPC = "BipanSharedIPCMemfd";
-static constexpr const char* ZYGISK_INJECTED_CODE = "/memfd:jit-cache (deleted)";
 
 int uname_spoofer(struct utsname* buf) {
   if (!buf) {
@@ -80,7 +78,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     l[len] = '\0';
 
     bool is_dirty = strstr(l, ZYGISK_INJECTED_CODE) ||
-                    strstr(l, BIPAN_IPC);
+                    strstr(l, SHARED_MEMFD_NAME);
 
     if (!is_dirty) {
       write(fake_fd, l, len);
@@ -143,7 +141,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
         if (is_header) {
           skip_current_region = strstr(line, ZYGISK_INJECTED_CODE) ||
-                                strstr(line, BIPAN_IPC);
+                                strstr(line, SHARED_MEMFD_NAME);
         }
 
         if (!skip_current_region) {

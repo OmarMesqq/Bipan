@@ -5,6 +5,9 @@
 
 #include "as_safe_string.hpp"
 
+static inline constexpr const char* SHARED_MEMFD_NAME = "BipanSharedIPCMemfd";
+static constexpr const char* ZYGISK_INJECTED_CODE = "/memfd:jit-cache (deleted)";
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wregister"
 

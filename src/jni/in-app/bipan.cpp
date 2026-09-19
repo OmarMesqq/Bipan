@@ -91,7 +91,18 @@ class Bipan : public zygisk::ModuleBase {
 
     api->setOption(zygisk::Option::FORCE_DENYLIST_UNMOUNT);
 
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s", raw_process_name);
+    const char* abi = env->GetStringUTFChars(args->instruction_set, nullptr);
+    if (!abi) {
+      env->ReleaseStringUTFChars(args->instruction_set, abi);
+      api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+      return;
+    }
+
+    if (strcmp(abi, "arm64") != 0) {
+      write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Bipan is still WIP for 32-bit processes. Aborting!");
+      BIPAN_PANIC();
+    }
+    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Will apply sandbox for %s (arch: %s)", raw_process_name, abi);
 #ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] In-app logcat fd: %d", getLogcatFd());
 #endif
@@ -130,7 +141,7 @@ class Bipan : public zygisk::ModuleBase {
     write(g_broker_socket, &cmd, sizeof(cmd));
 
     // Create the RAM-backed IPC memory
-    int memfd = (int)raw_syscall(__NR_memfd_create, (long)"BipanSharedIPCMemfd", MFD_CLOEXEC, 0, 0, 0, 0);
+    int memfd = (int)raw_syscall(__NR_memfd_create, (long)SHARED_MEMFD_NAME, MFD_CLOEXEC, 0, 0, 0, 0);
     if (memfd < 0) {
       write_to_logcat_async(ANDROID_LOG_FATAL, TAG, "Failed to memfd_create IPC mem! Aborting!");
       BIPAN_PANIC();
@@ -165,6 +176,7 @@ class Bipan : public zygisk::ModuleBase {
     sv[1] = g_broker_socket;
 
     env->ReleaseStringUTFChars(args->nice_name, raw_process_name);
+    env->ReleaseStringUTFChars(args->instruction_set, abi);
   }
 
   void postAppSpecialize(const AppSpecializeArgs* args) override {
