@@ -20,17 +20,17 @@ public class BroadcastReceiverHook implements BaseHook {
   }
 
   private void hookBroadcastRegistration(Context context) throws Exception {
-    // 1. Obtain the real IActivityManager
+    // Get the real IActivityManager
     Class<?> amClz = Class.forName("android.app.ActivityManager");
     Method getService = amClz.getDeclaredMethod("getService");
-    Object realAm = getService.invoke(null); // IActivityManager
+    Object realAm = getService.invoke(null);
 
     Class<?> iAmClz = Class.forName("android.app.IActivityManager");
 
     InvocationHandler amHandler = (proxy, method, args) -> {
-      String name = method.getName();
+      String methodName = method.getName();
 
-      if (name.startsWith("registerReceiver")) {
+      if (methodName.startsWith("registerReceiver")) {
         IntentFilter filter = null;
         for (Object arg : args) {
           if (arg instanceof IntentFilter) {
@@ -52,36 +52,82 @@ public class BroadcastReceiverHook implements BaseHook {
         new Class[] { iAmClz },
         amHandler);
 
-    // 2. Replace the singleton that ActivityManager holds
+    // Replace the singleton that ActivityManager holds
     Field iActivityManagerSingleton = amClz.getDeclaredField("IActivityManagerSingleton");
     iActivityManagerSingleton.setAccessible(true);
     Object singleton = iActivityManagerSingleton.get(null);
 
-    // Singleton is a android.util.Singleton<T>
+    // Get a Singleton (android.util.Singleton<T>) for setting AM's proxy
     Field mInstance = singleton.getClass().getSuperclass().getDeclaredField("mInstance");
     mInstance.setAccessible(true);
     mInstance.set(singleton, amProxy);
-
-    Log.i(TAG, "IActivityManager proxy installed for broadcast filtering");
   }
 
   private boolean shouldBlockFilter(IntentFilter filter) {
+    if (filter.countDataSchemes() > 0) {
+      Iterator<String> schemes = filter.schemesIterator();
+      if (schemes != null) {
+        while (schemes.hasNext()) {
+          if ("package".equals(schemes.next())) {
+            return true;
+          }
+        }
+      }
+    }
+
     Iterator<String> actions = filter.actionsIterator();
     while (actions != null && actions.hasNext()) {
       String action = actions.next();
       if (action == null) {
         continue;
       }
-      if (action.equals(Intent.ACTION_PACKAGE_ADDED) ||
-          action.equals(Intent.ACTION_PACKAGE_REMOVED) ||
+      if ( // Package stuff
+      action.equals(Intent.ACTION_PACKAGE_ADDED) ||
           action.equals(Intent.ACTION_PACKAGE_CHANGED) ||
-          action.equals(Intent.ACTION_PACKAGE_REPLACED) ||
-          action.equals(Intent.ACTION_MY_PACKAGE_REPLACED) ||
+          action.equals(Intent.ACTION_PACKAGE_REMOVED) ||
+          action.equals(Intent.ACTION_PACKAGE_RESTARTED) ||
           action.equals(Intent.ACTION_PACKAGE_DATA_CLEARED) ||
+          action.equals(Intent.ACTION_PACKAGE_FIRST_LAUNCH) ||
           action.equals(Intent.ACTION_PACKAGE_FULLY_REMOVED) ||
           action.equals(Intent.ACTION_PACKAGE_NEEDS_VERIFICATION) ||
+          action.equals(Intent.ACTION_PACKAGE_REPLACED) ||
+          action.equals(Intent.ACTION_PACKAGE_UNSTOPPED) ||
+          action.equals(Intent.ACTION_PACKAGES_SUSPENDED) ||
+          action.equals(Intent.ACTION_PACKAGES_UNSUSPENDED) ||
           action.equals(Intent.ACTION_PACKAGE_VERIFIED) ||
-          action.startsWith("android.intent.action.PACKAGE_")) {
+          action.startsWith("android.intent.action.PACKAGE_") ||
+          action.equals(Intent.ACTION_ALL_APPS) ||
+          action.equals(Intent.ACTION_UID_REMOVED) ||
+
+          // Device lifecycle
+          action.equals(Intent.ACTION_LOCKED_BOOT_COMPLETED) ||
+          action.equals(Intent.ACTION_BOOT_COMPLETED) ||
+          action.equals(Intent.ACTION_REBOOT) ||
+          action.equals(Intent.ACTION_SHUTDOWN) ||
+          action.equals(Intent.ACTION_USER_UNLOCKED) ||
+          action.equals(Intent.ACTION_USER_PRESENT) ||
+          action.equals(Intent.ACTION_USER_INITIALIZE) ||
+          action.equals(Intent.ACTION_USER_UNLOCKED) ||
+
+          // Additional profiles
+          action.equals(Intent.ACTION_MANAGED_PROFILE_ADDED) ||
+          action.equals(Intent.ACTION_MANAGED_PROFILE_REMOVED) ||
+          action.equals(Intent.ACTION_MANAGED_PROFILE_AVAILABLE) ||
+          action.equals(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE) ||
+          action.equals(Intent.ACTION_MANAGED_PROFILE_UNLOCKED) ||
+          action.equals(Intent.ACTION_PROFILE_ACCESSIBLE) ||
+
+          // Why should an app know this?
+          action.equals(Intent.ACTION_QUICK_CLOCK) ||
+          // Error propagation
+          action.equals(Intent.ACTION_MEDIA_BAD_REMOVAL) ||
+          action.equals(Intent.ACTION_APP_ERROR) ||
+          // System stuff
+          action.equals(Intent.ACTION_DREAMING_STARTED) ||
+          action.equals(Intent.ACTION_DREAMING_STOPPED) ||
+          action.equals(Intent.ACTION_CARRIER_SETUP) ||
+          // Battery saving
+          action.equals(Intent.ACTION_TIME_TICK)) {
         return true;
       }
     }
@@ -89,11 +135,24 @@ public class BroadcastReceiverHook implements BaseHook {
   }
 
   private String dumpFilter(IntentFilter filter) {
-    StringBuilder sb = new StringBuilder();
+    StringBuilder sb = new StringBuilder("actions=[");
     Iterator<String> actions = filter.actionsIterator();
-    while (actions != null && actions.hasNext()) {
-      sb.append(actions.next()).append(' ');
+
+    if (actions != null) {
+      while (actions.hasNext()) {
+        sb.append(actions.next()).append(',');
+      }
     }
-    return sb.toString().trim();
+
+    sb.append("] schemes=[");
+    Iterator<String> schemes = filter.schemesIterator();
+    if (schemes != null) {
+      while (schemes.hasNext()) {
+        sb.append(schemes.next()).append(',');
+      }
+    }
+
+    sb.append(']');
+    return sb.toString();
   }
 }

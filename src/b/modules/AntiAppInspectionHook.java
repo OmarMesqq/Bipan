@@ -354,28 +354,6 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     replaceBinderInLauncherApps(realLauncherApps, proxyBinder, launcherAppsProxy);
   }
 
-  private void replaceBinderInLauncherApps(LauncherApps launcherApps, IBinder proxyBinder, Object proxy)
-      throws Exception {
-
-    try {
-      Field mServiceField = launcherApps.getClass().getDeclaredField("mService");
-      mServiceField.setAccessible(true);
-      mServiceField.set(launcherApps, proxy);
-      return;
-    } catch (NoSuchFieldException ignored) {
-      // fall through for older/newer Android variants
-    }
-
-    Log.d(TAG, "replaceBinderInLauncherApps: resorting to fallback");
-    // Fallback: replace fields whose declared type is IBinder
-    for (Field f : launcherApps.getClass().getDeclaredFields()) {
-      if (f.getType() == IBinder.class) {
-        f.setAccessible(true);
-        f.set(launcherApps, proxyBinder);
-      }
-    }
-  }
-
   @Override
   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
     try {
@@ -831,6 +809,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.e(TAG, "invoke Exception:", e);
       throw J.cleanThrowable(new OutOfMemoryError());
+    }
+  }
+
+  private void replaceBinderInLauncherApps(LauncherApps la, IBinder proxyBinder, Object proxy) throws Exception {
+    try {
+      Field mServiceField = la.getClass().getDeclaredField("mService");
+      mServiceField.setAccessible(true);
+      mServiceField.set(la, proxy);
+      return;
+    } catch (NoSuchFieldException ignored) {
+    }
+
+    Log.d(TAG, "replaceBinderInLauncherApps: resorting to fallback");
+
+    // Fallback: replace fields whose declared type is IBinder
+    for (Field f : la.getClass().getDeclaredFields()) {
+      if (f.getType() == IBinder.class) {
+        f.setAccessible(true);
+        f.set(la, proxyBinder);
+      }
     }
   }
 
