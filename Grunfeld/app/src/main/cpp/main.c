@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <media/NdkMediaDrm.h>
 #include <linux/tcp.h>
+#include <netdb.h>
 
 #include "socket_helper.h"
 #include "athena.h"
@@ -41,11 +42,23 @@
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
-#define FIND_BIPAN_TRACES(path) \
-    strstr(path, "/memfd:jit-cache") || \
-    strstr(path, "Bipan") || \
-    strstr(path, "bipan") || \
-    strstr(path, "zygisk")
+/**
+ * For finding injected code in `maps` and `smaps`
+ */
+#define FIND_BIPAN_TRACES_IN_MAPPINGS(cstr) \
+    strstr(cstr, "/memfd:jit-cache") || \
+    strstr(cstr, "Bipan") || \
+    strstr(cstr, "bipan") || \
+    strstr(cstr, "zygisk")
+
+#define FIND_BIPAN_TRACES_IN_MOUNTS(cstr) \
+    !strstr(cstr, "magisk") && \
+    !strstr(cstr, "hosts") && \
+    !strstr(cstr, "zygisk") && \
+    !strstr(cstr, "debug_ramdisk") && \
+    !strstr(cstr, "/cache/") && \
+    !strstr(cstr, "/product/bin") && \
+    !strstr(cstr, "modules")
 
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
@@ -82,36 +95,6 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
-    char report[1024] = {0};
-    char entry[256] = {0};
-
-    struct statfs b1 = {0};
-    struct statfs b2 = {0};
-
-    int ret = -1;
-
-    ret = statfs("/system/etc/hosts", &b1);
-    if (ret != 0) {
-        snprintf(entry, sizeof(entry), "%s\n", strerror(errno));
-        strcat(report, entry);
-    } else {
-        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) succeeded\n");
-        strcat(report, entry);
-    }
-
-    ret = statfs("/etc/hosts", &b2);
-    if (ret != 0) {
-        snprintf(entry, sizeof(entry), "%s\n", strerror(errno));
-        strcat(report, entry);
-    } else {
-        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) succeeded\n");
-        strcat(report, entry);
-    }
-    
-    return (*env)->NewStringUTF(env, report);
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *env, jobject thiz) {
@@ -179,15 +162,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, j
     }
 
     while (fgets(entry, sizeof(entry), fp) != NULL) {
-        if (
-                !strstr(entry, "magisk") &&
-                !strstr(entry, "hosts") &&
-                !strstr(entry, "zygisk") &&
-                !strstr(entry, "debug_ramdisk") &&
-                !strstr(entry, "/cache/") &&
-                !strstr(entry, "/product/bin") &&
-                !strstr(entry, "modules")
-                ) {
+        if (FIND_BIPAN_TRACES_IN_MOUNTS(entry)) {
             continue;
         }
 
@@ -449,14 +424,20 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobjec
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz, jstring mapsPathJni) {
     char report[20000] = {0};
     char entry[PATH_MAX + 100] = {0};
     unsigned char linesLogged = 0;
 
-    FILE* fp = fopen("/proc/self/maps", "r");
+    const char* mapsPath = (*env)->GetStringUTFChars(env, mapsPathJni, NULL);
+    if (mapsPath == NULL) {
+        LOGE("mapsPathJni is NULL");
+        return NULL;
+    }
+
+    FILE* fp = fopen(mapsPath, "r");
     if (!fp) {
-        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/maps (errno: %s)\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", mapsPath, strerror(errno));
         strcat(report, entry);
         return (*env)->NewStringUTF(env, report);
     }
@@ -476,14 +457,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
-            if (FIND_BIPAN_TRACES(libName)) {
+            if (FIND_BIPAN_TRACES_IN_MAPPINGS(libName)) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
                 strcat(report, entry);
                 return (*env)->NewStringUTF(env, report);
             }
             // ignore problematic lines
         }
-        if (FIND_BIPAN_TRACES(libName) && linesLogged < 2) {
+        if (FIND_BIPAN_TRACES_IN_MAPPINGS(libName) && linesLogged < 2) {
             snprintf(entry, sizeof(entry), "%s", buf);
             strcat(report, entry);
             linesLogged++;
@@ -495,7 +476,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz, jstring smapsPathJni) {
     size_t reportCap = 65536;
     size_t reportLen = 0;
     char* report = malloc(reportCap);
@@ -507,9 +488,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
 
     char entry[PATH_MAX + 100] = {0};
 
-    FILE* fp = fopen("/proc/self/smaps", "r");
+    const char* smapsPath = (*env)->GetStringUTFChars(env, smapsPathJni, NULL);
+    if (smapsPath == NULL) {
+        LOGE("smapsPathJni is NULL");
+        return NULL;
+    }
+
+    FILE* fp = fopen(smapsPath, "r");
     if (!fp) {
-        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/smaps (errno: %s)\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", smapsPath, strerror(errno));
         size_t entryLen = strlen(entry);
         if (reportLen + entryLen + 1 > reportCap) {
             reportCap = reportLen + entryLen + 1;
@@ -551,7 +538,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
 
         if (ret == 8) {
-            matchedCurrentRegion = (FIND_BIPAN_TRACES(libName)) != 0;
+            matchedCurrentRegion = (FIND_BIPAN_TRACES_IN_MAPPINGS(libName)) != 0;
 
             if (matchedCurrentRegion && linesLogged < 2) {
                 APPEND(buf);
@@ -644,17 +631,47 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
-    char *report = (char *) calloc(50000, sizeof(char));
-    if (!report) {
-        return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
-    }
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testDlIteratePhdr(JNIEnv *env, jobject thiz) {
+    char report[PATH_MAX] = {0};
 
     dl_iterate_phdr(dl_iterate_phdr_cb, report);
 
-    jstring result = (*env)->NewStringUTF(env, report);
-    free(report);
-    return result;
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_openFileNative(JNIEnv *env, jobject thiz, jstring pathJni) {
+    char report[PATH_MAX * 2] = {0};
+    int fd = -1;
+
+    const char* path = (*env)->GetStringUTFChars(env, pathJni, NULL);
+    if (path == NULL) {
+        return fd;
+    }
+
+    fd = open(path, O_RDONLY);
+    return fd;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getFdSymlink(JNIEnv *env, jobject thiz, jint fdJni) {
+    char report[PATH_MAX * 2] = {0};
+
+    char procPath[64] = {0};
+    snprintf(procPath, sizeof(procPath), "/proc/self/fd/%d", fdJni);
+
+    char buf[PATH_MAX] = {0};
+    ssize_t ret = readlink(procPath, buf, sizeof(buf));
+    if (ret == -1) {
+        snprintf(report, sizeof(report), "readlink failed: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    // readlink(at) doesn't null terminate...
+    buf[ret] = '\0';
+
+    snprintf(report, sizeof(report), "%s", buf);
+    return (*env)->NewStringUTF(env, report);
 }
 
 JNIEXPORT jstring JNICALL
@@ -663,7 +680,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsGet(JNIEnv *env, jobj
 
     const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
     if (propNameCstr == NULL) {
-        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String is NULL!");
         (*env)->DeleteLocalRef(env, propName);
         return (*env)->NewStringUTF(env, errBuf);
     }
@@ -832,39 +849,63 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV6(JNIEnv *env
     char report[512] = {0};
     char entry[256] = {0};
 
-    const int port_dns = 53;
-    const char* cloudflareDnsIp6 = "2606:4700:4700::1111";
-    SockFactoryRes* res = CreateSocket(IPv6, UDP, cloudflareDnsIp6, port_dns, 0, 0);
-    if (!res) {
-        return (*env)->NewStringUTF(env, "Failed to create socket!\n");
-    }
+    const char* host = "stun.l.google.com";
+    const char* port = "19302";
 
-    // 1. `connect` to WAN w/ a regular socket
-    if (connect(res->sock, (struct sockaddr*)&res->sas.sas6, sizeof(res->sas.sas6)) == -1) {
-        snprintf(entry, sizeof(entry), "connect failed: %s \n", strerror(errno));
+    struct addrinfo hints, *res, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family   = AF_INET6;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    int err = getaddrinfo(host, port, &hints, &res);
+    if (err != 0) {
+        snprintf(report, sizeof(report), "getaddrinfo(%s) failed: %s\n", host, gai_strerror(err));
         strcat(report, entry);
-
-        close(res->sock);
-        free(res);
         return (*env)->NewStringUTF(env, report);
     }
 
-    // 2. `getsockname` of this socket to get the device's local IP
-    struct sockaddr_in local_addr;
-    socklen_t len = sizeof(local_addr);
-    ret = arm64_raw_syscall(__NR_getsockname, res->sock, (long)&local_addr, (long)&len, 0, 0, 0);
+    int sockfd = -1;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sockfd == -1) {
+            continue;
+        }
 
-    if (ret == 0) {
-        char ip[INET6_ADDRSTRLEN] = {0};
-        inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET6_ADDRSTRLEN);
-        snprintf(entry, sizeof(entry), "%s", ip);
-    } else {
-        snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
+        if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) == 0) {
+            break;
+        }
+
+        close(sockfd);
+        sockfd = -1;
+    }
+    freeaddrinfo(res);
+
+    if (sockfd == -1) {
+        snprintf(report, sizeof(report), "Could not connect via IPv6");
+        strcat(report, entry);
+        return (*env)->NewStringUTF(env, report);
     }
 
+    struct sockaddr_in6 local_addr;
+    socklen_t addr_len = sizeof(local_addr);
+
+    if (getsockname(sockfd, (struct sockaddr *)&local_addr, &addr_len) == -1) {
+        snprintf(entry, sizeof(entry), "getsockname failed: %s\n", strerror(errno));
+        strcat(report, entry);
+        close(sockfd);
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    char ip_str[INET6_ADDRSTRLEN] = {0};
+    inet_ntop(AF_INET6, &local_addr.sin6_addr, ip_str, sizeof(ip_str));
+
+    snprintf(report, sizeof(report), "Local IPv6 address: %s\n", ip_str);
     strcat(report, entry);
-    close(res->sock);
-    free(res);
+
+    snprintf(report, sizeof(report), "Local port: %d\n", ntohs(local_addr.sin6_port));
+    strcat(report, entry);
+
+    close(sockfd);
     return (*env)->NewStringUTF(env, report);
 }
 

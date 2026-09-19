@@ -1,10 +1,8 @@
 package com.omarmesqq.grunfeld.ui
 
-import android.content.pm.CrossProfileApps
 import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.Bundle
-import android.os.Process
 import android.os.Process.myUserHandle
 import android.view.WindowManager
 import android.view.WindowManager.SCREEN_RECORDING_STATE_VISIBLE
@@ -36,7 +34,6 @@ import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import java.security.KeyStore
 import java.util.function.Consumer
 
 
@@ -64,7 +61,8 @@ class MainActivity : ComponentActivity() {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screen recording in progress!", shouldToast = true)
         }
     }
-    private lateinit var launcherApps: LauncherApps
+    lateinit var launcherApps: LauncherApps
+        private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
@@ -86,9 +84,8 @@ class MainActivity : ComponentActivity() {
 
         launcherApps = this.getSystemService(LAUNCHER_APPS_SERVICE) as LauncherApps
         launcherApps.registerCallback(launcherAppsCb)
+
         dumpLauncherActivityInfos()
-        dumpPiInfo()
-        foo()
 
         super.onCreate(savedInstanceState)
 
@@ -144,43 +141,5 @@ class MainActivity : ComponentActivity() {
             )
         }
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "$sb")
-    }
-
-    private fun dumpPiInfo() {
-        val sb = StringBuilder()
-        val packageInstaller = this.packageManager.packageInstaller
-        sb.appendLine("activeStagedSessions: ${packageInstaller.activeStagedSessions}")
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "$sb")
-    }
-
-    private fun foo() {
-        val sb = StringBuilder()
-
-        val ksDefaultType = KeyStore.getDefaultType()
-        sb.appendLine("KeyStore.getDefaultType = $ksDefaultType")
-
-
-        val exclusiveCoresList = Process.getExclusiveCores()
-        if (exclusiveCoresList.isEmpty()) {
-            sb.appendLine("Process.getExclusiveCores() returned an empty list")
-        } else {
-            exclusiveCoresList.forEachIndexed { idx, i ->
-                sb.appendLine("exclusiveCpuCores($idx): $i")
-            }
-        }
-
-        sb.appendLine("elapsedCpuTime: ${Process.getElapsedCpuTime()}")
-        sb.appendLine("elapsedStartElapsedRealtime: ${Process.getStartElapsedRealtime()}")
-        sb.appendLine("startRequestedUptimeMillis: ${Process.getStartRequestedUptimeMillis()} ms")
-        sb.appendLine("startRequestedElapsedRealtime: ${Process.getStartRequestedElapsedRealtime()}")
-
-        sb.appendLine("is Isolated? ${Process.isIsolated()}")
-        sb.appendLine("is 64-bit? ${Process.is64Bit()}")
-        sb.appendLine("is SDK Sandbox? ${Process.isSdkSandbox()}")
-
-
-        val crossProfSvc = this.getSystemService(CROSS_PROFILE_APPS_SERVICE) as CrossProfileApps
-
-        avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "$sb")
     }
 }
