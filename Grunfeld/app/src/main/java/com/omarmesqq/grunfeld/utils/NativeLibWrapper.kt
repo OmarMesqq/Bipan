@@ -27,18 +27,17 @@ object NativeLibWrapper {
     external fun unameBionic(): String
 
     external fun testGetsocknameV4(): String
-
     external fun testSensors(): String
+    external fun testDlIteratePhdr(): String
     external fun getMediaDrmIdNative(): String
     external fun testForkExec(progname: String): String
 
     external fun scanProcSelfMaps(mapsPath: String): String
     external fun scanProcSelfSmaps(smapsPath: String): String
+    external fun scanMountPoint(mountpoint: String): String
 
     external fun getFdSymlink(fd: Int): String
     external fun openFileNative(path: String): Int
-    external fun testDlIteratePhdr(): String
-    external fun scanMountPoint(mountpoint: String): String
 
     external fun testFaccessat(filenames: Array<String>): String
     external fun testFstat(filename: String): StatResult

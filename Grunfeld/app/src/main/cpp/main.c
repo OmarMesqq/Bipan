@@ -660,6 +660,120 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getFdSymlink(JNIEnv *env, job
     return (*env)->NewStringUTF(env, report);
 }
 
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
+    char result_buffer[PATH_MAX] = {0};
+    char entry[512] = {0};
+
+    // On API >= 26 we get the sensor sensorManager for our specific package
+    ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
+
+    if (sensorManager != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NOT null\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Enumerate all sensors
+    ASensorList list = {0};
+    int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
+
+    if (sensorListCount != 0) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
+        strcat(result_buffer, entry);
+        for (int i = 0; i < sensorListCount; i++) {
+            const char* name = ASensor_getName(list[i]);
+            const char* vendor = ASensor_getVendor(list[i]);
+            int type = ASensor_getType(list[i]);
+            LOGD("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
+        }
+    }
+
+    // Get some famous sensors
+    const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
+    const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
+    if (accel != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): NOT null\n");
+        strcat(result_buffer, entry);
+    }
+    if (gyro != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): NOT null\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Get a looper for the current thread
+    ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+    if (!looper) {
+        snprintf(entry, sizeof(entry), "testSensors: Failed to get ALooper for current thread!\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Create an event queue get streamed sensor data
+    ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
+    if (queue != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
+        strcat(result_buffer, entry);
+
+        // Add the "famous" sensors to the event stream queue
+        ASensorEventQueue_enableSensor(queue, accel);
+        ASensorEventQueue_enableSensor(queue, gyro);
+        // and set the rate at which their data is transmitted
+        ASensorEventQueue_setEventRate(queue, accel, SENSORS_SAMPLING_RATE);
+        ASensorEventQueue_setEventRate(queue, gyro, SENSORS_SAMPLING_RATE);
+
+
+        // Calculate the end time for our loop:  current time  + 3 seconds
+        struct timespec start_time, current_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
+        double end_secs = start_secs + 3.0;
+
+        int ident;      // Identifier of the event source
+        int events;     // Number of events available
+        void* data;     // User data
+        ASensorEvent event;
+
+        // Polling loop
+        bool sampling = true;
+        // Change timeout from -1 to 100 (ms).
+        // If it's -1, the loop "sleeps" until a sensor moves.
+        // If the phone is still, it won't check the 3-second limit!
+        while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
+            // Check if 3 seconds have passed and break if so
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
+            if (now >= end_secs) {
+                sampling = false;
+                continue;
+            }
+
+            // If the event came from our sensor queue, do stuff
+            if (ident == LOOPER_ID_USER) {
+                while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
+                    if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
+                        LOGD("Accel X: %f, Y: %f, Z: %f",
+                             (double) event.acceleration.x,
+                             (double) event.acceleration.y,
+                             (double) event.acceleration.z);
+                    } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
+                        LOGD("Gyro X: %f, Y: %f, Z: %f",
+                             (double) event.vector.x,
+                             (double) event.vector.y,
+                             (double) event.vector.z);
+                    }
+                }
+            }
+        }
+
+        // Cleanup
+        ASensorEventQueue_disableSensor(queue, accel);
+        ASensorEventQueue_disableSensor(queue, gyro);
+        ASensorManager_destroyEventQueue(sensorManager, queue);
+    }
+
+    return (*env)->NewStringUTF(env, result_buffer);
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsGet(JNIEnv *env, jobject thiz, jstring propName) {
     char errBuf[128] = {0};
@@ -948,119 +1062,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     } else {
         return JNI_TRUE;
     }
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
-    char result_buffer[PATH_MAX] = {0};
-    char entry[512] = {0};
-
-    // On API >= 26 we get the sensor sensorManager for our specific package
-    ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
-
-    if (sensorManager != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NOT null\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Enumerate all sensors
-    ASensorList list = {0};
-    int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
-
-    if (sensorListCount != 0) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
-        strcat(result_buffer, entry);
-        for (int i = 0; i < sensorListCount; i++) {
-            const char* name = ASensor_getName(list[i]);
-            const char* vendor = ASensor_getVendor(list[i]);
-            int type = ASensor_getType(list[i]);
-            LOGD("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
-        }
-    }
-
-    // Get some famous sensors
-    const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
-    const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
-    if (accel != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): NOT null\n");
-        strcat(result_buffer, entry);
-    }
-    if (gyro != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): NOT null\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Get a looper for the current thread
-    ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
-    if (!looper) {
-        snprintf(entry, sizeof(entry), "testSensors: Failed to get ALooper for current thread!\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Create an event queue get streamed sensor data
-    ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
-    if (queue != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
-        strcat(result_buffer, entry);
-
-        // Add the "famous" sensors to the event stream queue
-        ASensorEventQueue_enableSensor(queue, accel);
-        ASensorEventQueue_enableSensor(queue, gyro);
-        // and set the rate at which their data is transmitted
-        ASensorEventQueue_setEventRate(queue, accel, SENSORS_SAMPLING_RATE);
-        ASensorEventQueue_setEventRate(queue, gyro, SENSORS_SAMPLING_RATE);
-
-
-        // Calculate the end time for our loop:  current time  + 3 seconds
-        struct timespec start_time, current_time;
-        clock_gettime(CLOCK_MONOTONIC, &start_time);
-        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
-        double end_secs = start_secs + 3.0;
-
-        int ident;      // Identifier of the event source
-        int events;     // Number of events available
-        void* data;     // User data
-        ASensorEvent event;
-
-        // Polling loop
-        bool sampling = true;
-        // Change timeout from -1 to 100 (ms).
-        // If it's -1, the loop "sleeps" until a sensor moves.
-        // If the phone is still, it won't check the 3-second limit!
-        while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
-            // Check if 3 seconds have passed and break if so
-            clock_gettime(CLOCK_MONOTONIC, &current_time);
-            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
-            if (now >= end_secs) {
-                sampling = false;
-                continue;
-            }
-
-            // If the event came from our sensor queue, do stuff
-            if (ident == LOOPER_ID_USER) {
-                while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
-                    if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
-                        LOGD("Accel X: %f, Y: %f, Z: %f",
-                             (double) event.acceleration.x,
-                             (double) event.acceleration.y,
-                             (double) event.acceleration.z);
-                    } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
-                        LOGD("Gyro X: %f, Y: %f, Z: %f",
-                             (double) event.vector.x,
-                             (double) event.vector.y,
-                             (double) event.vector.z);
-                    }
-                }
-            }
-        }
-
-        // Cleanup
-        ASensorEventQueue_disableSensor(queue, accel);
-        ASensorEventQueue_disableSensor(queue, gyro);
-        ASensorManager_destroyEventQueue(sensorManager, queue);
-    }
-
-    return (*env)->NewStringUTF(env, result_buffer);
 }
 
 JNIEXPORT jboolean JNICALL

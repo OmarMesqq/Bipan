@@ -23,8 +23,8 @@ fun MainScreen() {
 
     val items = listOf(
         Screen.TestsScreen,
-        Screen.WebviewScreen,
-        Screen.MoreScreen
+        Screen.SettingsScreen,
+        Screen.AboutScreen
     )
 
     Scaffold(
@@ -60,9 +60,6 @@ fun MainScreen() {
                 .background(MaterialTheme.colorScheme.surface)
         ) {
             composable(Screen.TestsScreen.route) { TestsScreen() }
-            composable(Screen.WebviewScreen.route) { WebviewScreen() }
-            composable(Screen.MoreScreen.route) { MoreScreen(navController) }
-
             composable(Screen.SettingsScreen.route) { SettingsScreen() }
             composable(Screen.AboutScreen.route) { AboutScreen() }
         }

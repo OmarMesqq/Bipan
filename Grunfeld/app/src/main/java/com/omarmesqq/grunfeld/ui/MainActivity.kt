@@ -15,8 +15,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -28,16 +26,15 @@ import com.omarmesqq.grunfeld.MainApplication
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import com.omarmesqq.grunfeld.utils.Persistence.wipeWebviewTraces
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.omarmesqq.grunfeld.viewmodel.MainViewModelFactory
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.function.Consumer
+
+
 open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object TestsScreen : Screen("tests", "Tests", Icons.Default.CheckCircle)
-    object WebviewScreen : Screen("webview", "Webview", Icons.Default.Public)
-    object MoreScreen : Screen("more", "More", Icons.Default.MoreHoriz)
     object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
     object AboutScreen : Screen("about", "About", Icons.Default.Info)
 }
@@ -113,12 +110,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onDestroy")
 
         launcherApps.unregisterCallback(launcherAppsCb)
-
-        wipeWebviewTraces(this)
+        super.onDestroy()
     }
 
     private val launcherAppsCb = object : LauncherApps.Callback() {
