@@ -42,6 +42,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:gwpAsanMode="always"
         android:theme="@style/Theme.Grunfeld"
+        android:supportsRtl="false"
         android:allowCrossUidActivitySwitchFromBelow="false"
         android:allowNativeHeapPointerTagging="true"
         android:enableOnBackInvokedCallback="true"

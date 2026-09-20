@@ -38,7 +38,6 @@ SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* addr
 
         res->sas.sas6 = sas6;
         return res;
-    } else {
-        return NULL;
     }
+    return NULL;
 }
