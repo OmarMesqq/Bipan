@@ -24,10 +24,14 @@ android {
             //noinspection ChromeOsAbiSupport
             abiFilters += listOf("arm64-v8a")
         }
+
+        buildConfigField("boolean", "PROFILE", "true")
     }
 
     buildTypes {
         release {
+            buildConfigField("boolean", "PROFILE", "true")
+
             optimization {
                 enable = true
                 keepRules {
@@ -49,6 +53,8 @@ android {
         }
 
         debug {
+            buildConfigField("boolean", "PROFILE", "true")
+
             ndk {
                 debugSymbolLevel = "FULL"
             }

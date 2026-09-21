@@ -8,10 +8,12 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Process
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.currentCoroutineContext
+import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
-import kotlinx.coroutines.CoroutineName
 
 private const val COROUTINE_DEBUG_TAG = "CR_DEBUG"
 
@@ -46,34 +48,50 @@ fun isDarkMode(context: Context): Boolean {
     return nightModeFlags == Configuration.UI_MODE_NIGHT_YES
 }
 
-fun debugCoroutine(crName: CoroutineName?, crMode: CoroutineMode, elapsed: Long) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
-        jotw("API level not supported", COROUTINE_DEBUG_TAG)
-        return
-    }
+suspend inline fun profileCoroutine(crMode: CoroutineMode, codeBlock: suspend () -> Unit) {
+    if (BuildConfig.PROFILE) {
+        val coroutineDebugTag = "CR_DEBUG"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
+            jotw("API level not supported", coroutineDebugTag)
+            return
+        }
+        val startNanos = System.nanoTime()
 
-    val thName = Thread.currentThread().name
-    val processTid = Process.myTid()
-    val threadTid = Thread.currentThread().threadId()
+        codeBlock()
 
-    try {
-        jotd("$crName (${crMode.value}):\n" +
-                "\tname: $thName\n" +
-                "\tTID: $threadTid/$processTid\n" +
-                "\tThread priority: ${Process.getThreadPriority(threadTid.toInt())}/${Process.getThreadPriority(processTid)}\n" +
-                "\ttook $elapsed ms to complete",
-            COROUTINE_DEBUG_TAG
+        val crName = currentCoroutineContext()[CoroutineName]
+        val thName = Thread.currentThread().name
+        val processTid = Process.myTid()
+        val threadTid = Thread.currentThread().threadId()
+        val elapsedNanos = System.nanoTime() - startNanos
+        val elapsedMillis = elapsedNanos / 1_000_000.0
 
-        )
-    } catch (_: IllegalArgumentException) {
-        jotd(
-            "$crName (${crMode.value}):\n" +
-                    "\tname: $thName\n" +
-                    "\tTID: $threadTid/$processTid\n" +
-                    "\tThread priority: ${Process.getThreadPriority(processTid)}\n" +
-                    "\ttook $elapsed ms to complete",
-            COROUTINE_DEBUG_TAG
-        )
+        try {
+            jotd(
+                "$crName (${crMode.value}):\n" +
+                        "\tname: $thName\n" +
+                        "\tTID: $threadTid/$processTid\n" +
+                        "\tThread priority: ${Process.getThreadPriority(threadTid.toInt())}/${
+                            Process.getThreadPriority(
+                                processTid
+                            )
+                        }\n" +
+                        "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
+                coroutineDebugTag
+
+            )
+        } catch (_: IllegalArgumentException) {
+            jotd(
+                "$crName (${crMode.value}):\n" +
+                        "\tname: $thName\n" +
+                        "\tTID: $threadTid/$processTid\n" +
+                        "\tThread priority: ${Process.getThreadPriority(processTid)}\n" +
+                        "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
+                coroutineDebugTag
+            )
+        }
+    } else {
+        codeBlock()
     }
 }
 
