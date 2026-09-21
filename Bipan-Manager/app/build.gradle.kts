@@ -25,12 +25,12 @@ android {
             abiFilters += listOf("arm64-v8a")
         }
 
-        buildConfigField("boolean", "PROFILE", "true")
+        buildConfigField("boolean", "PROFILE", "false")
     }
 
     buildTypes {
         release {
-            buildConfigField("boolean", "PROFILE", "true")
+            buildConfigField("boolean", "PROFILE", "false")
 
             optimization {
                 enable = true
@@ -50,6 +50,12 @@ android {
             }
 
             signingConfig = signingConfigs.getByName("debug")
+        }
+
+        create("profile") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "PROFILE", "true")
         }
 
         debug {
