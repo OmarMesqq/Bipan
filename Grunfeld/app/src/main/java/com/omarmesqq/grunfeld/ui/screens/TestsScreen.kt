@@ -20,8 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -81,91 +80,119 @@ private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 @Composable
 fun TestsScreen() {
     val context = LocalContext.current
-    val screenScrollState = rememberScrollState()
     val cr = context.contentResolver
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .verticalScroll(screenScrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Java and native tests", style = MaterialTheme.typography.headlineMedium)
+        item { Text(text = "Java and native tests", style = MaterialTheme.typography.headlineMedium) }
 
-        SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            BuildAssertions()
-            HorizontalDivider()
-            SettingsAssertions(cr)
-            HorizontalDivider()
-            SystemPropertiesAssertions()
+        item {
+            SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                BuildAssertions()
+                HorizontalDivider()
+                SettingsAssertions(cr)
+                HorizontalDivider()
+                SystemPropertiesAssertions()
+            }
         }
 
-        SectionHeader("EXEC TESTS")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RuntimeAssertions()
+        item {
+            SectionHeader("EXEC TESTS")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RuntimeAssertions()
+            }
         }
 
-        SectionHeader("SENSORS TESTS (JAVA/NDK)")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SensorsAssertions(context)
+        item {
+            SectionHeader("SENSORS TESTS (JAVA/NDK)")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SensorsAssertions(context)
+            }
         }
 
-        SectionHeader("NETWORKING TESTS")
-        NetworkingAssertions(context)
-
-        SectionHeader("APP INSTALLER TESTS")
-        AppInstallerAssertions(context)
-
-        SectionHeader("APP INSPECTION TESTS")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            QueryIntentActivitiesAssertions(context)
-            TestResolveActivity()
-            InstalledApplicationsAssertions(context)
-            InstalledPackagesAssertions(context)
-            TestLauncherApps()
+        item {
+            SectionHeader("NETWORKING TESTS")
+            NetworkingAssertions(context)
         }
 
-        SectionHeader("SELF-ANALYSIS TESTS")
-        LogcatAssertions()
+        item {
+            SectionHeader("APP INSTALLER TESTS")
+            AppInstallerAssertions(context)
+        }
 
-        SectionHeader("TELEPHONY TESTS")
-        TelephonyAssertions(context)
+        item {
+            SectionHeader("APP INSPECTION TESTS")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                QueryIntentActivitiesAssertions(context)
+                TestResolveActivity()
+                InstalledApplicationsAssertions(context)
+                InstalledPackagesAssertions(context)
+                TestLauncherApps()
+            }
+        }
 
-        SectionHeader("ROOTBER ROOT CHECK")
-        RootCheckAssertions(context)
+        item {
+            SectionHeader("SELF-ANALYSIS TESTS")
+            LogcatAssertions()
+        }
 
-        SectionHeader("DEVICE IDENTIFIERS")
-        DeviceIdAssertions(context, cr)
+        item {
+            SectionHeader("TELEPHONY TESTS")
+            TelephonyAssertions(context)
+        }
 
-        SectionHeader("STEALTH TESTS")
-        StealthAssertions()
+        item {
+            SectionHeader("ROOTBER ROOT CHECK")
+            RootCheckAssertions(context)
+        }
 
-        SectionHeader("HOOKING DEPTH TESTS")
-        HookingDepthAssertions()
+        item {
+            SectionHeader("DEVICE IDENTIFIERS")
+            DeviceIdAssertions(context, cr)
+        }
 
-        SectionHeader("FILESYSTEM TESTS")
-        FilesystemAssertions()
+        item {
+            SectionHeader("STEALTH TESTS")
+            StealthAssertions()
+        }
 
-        SectionHeader("SYSTEM PROPERTIES - REFLECTION TESTS")
-        SystemPropsReflectionAssertions()
-        SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
-        SystemPropsNativeAssertions()
+        item {
+            SectionHeader("HOOKING DEPTH TESTS")
+            HookingDepthAssertions()
+        }
 
+        item {
+            SectionHeader("FILESYSTEM TESTS")
+            FilesystemAssertions()
+        }
+
+        item {
+            SectionHeader("SYSTEM PROPERTIES - REFLECTION TESTS")
+            SystemPropsReflectionAssertions()
+        }
+
+        item {
+            SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
+            SystemPropsNativeAssertions()
+        }
     }
 }
 
