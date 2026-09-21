@@ -18,6 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
     object AppListScreenRoute : Route("appList", "App List", Icons.AutoMirrored.Filled.List)
@@ -26,7 +27,7 @@ open class Route(val route: String, val title: String, val icon: ImageVector) {
 private val START_ROUTE = Route.AppListScreenRoute.route
 
 @Composable
-fun Entrypoint() {
+fun Entrypoint(mVM: MainViewModel) {
     val navController = rememberNavController()
     val routes = listOf(
         Route.AppListScreenRoute
@@ -62,7 +63,7 @@ fun Entrypoint() {
                 .padding(innerPadding) // System bar/bottom bar space
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            composable(Route.AppListScreenRoute.route) { AppListScreen() }
+            composable(Route.AppListScreenRoute.route) { AppListScreen(mVM) }
         }
     }
 }

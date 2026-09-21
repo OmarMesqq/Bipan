@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 lightColorScheme()
             }
             MaterialTheme(colorScheme = colors) {
-                Entrypoint()
+                Entrypoint(mainViewModel)
             }
         }
     }
