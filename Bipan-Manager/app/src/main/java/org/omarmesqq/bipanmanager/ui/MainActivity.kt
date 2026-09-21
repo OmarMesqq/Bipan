@@ -12,10 +12,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.Entrypoint
+import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
+import org.omarmesqq.bipanmanager.repository.InstalledAppsRepository
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
@@ -25,35 +28,44 @@ import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 
 private const val TAG = "MainActivity"
+
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        MainViewModelFactory(app.repoConfig, this.packageManager)
+        val pm = this.packageManager
+        val initParams = MainViewModelInitParams(app.repoConfig, InstalledAppsRepository(pm))
+        MainViewModelFactory(initParams)
     }
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
-        installSplashScreen().setKeepOnScreenCondition {
-            runBlocking {
-                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                    mainViewModel.isFirstLaunch.first() == null
-                }
-            }
-        }
+        setSplashScreenCondition()
+
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
+
+        initUi()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen().setKeepOnScreenCondition {
-            runBlocking {
-                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                    mainViewModel.isFirstLaunch.first() == null
-                }
-            }
-        }
+        setSplashScreenCondition()
+
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
 
+        initUi()
+    }
+
+    private fun setSplashScreenCondition() {
+        installSplashScreen().setKeepOnScreenCondition {
+            runBlocking(CoroutineName("setSplashScreenCondition")) {
+                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                    !mainViewModel.isAppReady.first()
+                }
+            }
+        }
+    }
+
+    private fun initUi() {
         enableEdgeToEdge()
         setContent {
             val darkTheme = isSystemInDarkTheme()
@@ -75,9 +87,11 @@ class MainActivity : ComponentActivity() {
             Configuration.UI_MODE_NIGHT_YES -> {
                 // Dark theme is active
             }
+
             Configuration.UI_MODE_NIGHT_NO -> {
                 // Light theme is active
             }
+
             Configuration.UI_MODE_NIGHT_UNDEFINED -> {
                 // App hasn't specified dark/light mode support
             }

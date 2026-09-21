@@ -1,7 +1,5 @@
 package org.omarmesqq.bipanmanager.viewmodel
 
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineName
@@ -13,37 +11,28 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.InstalledApp
-import org.omarmesqq.bipanmanager.repository.ManagerConfig
+import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 private const val TAG = "MainViewModel"
-class MainViewModel(private val repository: ManagerConfig, private val pm: PackageManager): ViewModel() {
+class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel() {
+    private val _isAppReady = MutableStateFlow(false)
     private val _isFirstLaunch = MutableStateFlow<Boolean?>(null)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
 
     val isFirstLaunch: Flow<Boolean?> = _isFirstLaunch
     val appList = _appList.asStateFlow()
+    val isAppReady: Flow<Boolean> = _isAppReady
 
-    // TODO: Should run in worker thread or in main?
     init {
         viewModelScope.launch {
-            withContext(Dispatchers.Default + CoroutineName("$TAG/init")) {
+            withContext(Dispatchers.IO + CoroutineName("$TAG/init")) {
                 profileCoroutine(CoroutineMode.LAUNCH) {
-                    _isFirstLaunch.value = repository.isFirstLaunchFlow.first()
-
-                    _appList.value = pm.getInstalledApplications(0)
-                        .map { appInfo ->
-                            InstalledApp(
-                                appInfo.packageName,
-                                appInfo.loadLabel(pm).toString(),
-                                appInfo.loadIcon(pm),
-                                (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                            )
-                        }
-                        .sortedBy { it.label.lowercase() }
-                        .sortedBy { it.isSystemApp }
+                    _isFirstLaunch.value = initParams.repository.isFirstLaunchFlow.first()
+                    _appList.value = initParams.installedAppsRepository.getInstalledApps()
+                    _isAppReady.value = true
                 }
             }
         }
