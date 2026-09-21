@@ -6,7 +6,7 @@ import android.content.res.Configuration
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
-import org.omarmesqq.bipanmanager.repository.ManagerConfig
+import org.omarmesqq.bipanmanager.repository.DataStoreRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
@@ -23,7 +23,7 @@ class MainApplication : Application() {
         }
     }
 
-    lateinit var repoConfig: ManagerConfig
+    lateinit var dataStoreRepo: DataStoreRepo
         private set
 
     override fun onCreate() {
@@ -41,7 +41,7 @@ class MainApplication : Application() {
             enableStrictMode()
         }
 
-        repoConfig = ManagerConfig(this)
+        dataStoreRepo = DataStoreRepo(this)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

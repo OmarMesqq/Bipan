@@ -6,15 +6,22 @@ import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.os.Debug
 import android.os.Process
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import org.omarmesqq.bipanmanager.BuildConfig
+import org.omarmesqq.bipanmanager.composables.Route
+import org.omarmesqq.bipanmanager.repository.DataStoreRepo
+import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
+import org.omarmesqq.bipanmanager.ui.MainActivity
+import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
+import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 
 
 enum class CoroutineMode(val value: String) {
@@ -105,28 +112,26 @@ fun printJavaBacktrace() {
 }
 
 fun dumpDebugInfo() {
-    jotd("Time this process has run: ${Process.getElapsedCpuTime()} ms")
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        jotd("is Isolated? ${Process.isIsolated()}")
+    if (!BuildConfig.PROFILE) {
+        return
     }
-}
 
-fun truncatedLogcat(): String {
-    val logcatCmd  = listOf("logcat", "-v", "tag", "-d")
-    val processBuilder = ProcessBuilder(logcatCmd)
-    processBuilder.redirectErrorStream(true)
-    val process = processBuilder.start()
+    if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+        val clzList = mutableListOf(
+            Route::class.java,
+            DataStoreRepo::class.java,
+            InstalledAppsRepo::class.java,
+            MainActivity::class.java,
+            MainViewModelFactory::class.java,
+            MainViewModel::class.java,
+        )
 
-    val sb = StringBuilder()
-
-    process.inputStream.bufferedReader().useLines { lines ->
-        lines.forEach { line ->
-            if (line.contains("Darwin") && !(line.contains("JS_CONSOLE"))) {
-                sb.appendLine(line.trim())
-            } else if (line.contains("LeakCanary")) {
-                sb.appendLine(line.trim())
-            }
+        val sb = StringBuilder()
+        clzList.forEach { clz ->
+            val count = Debug.getInstanceCount(clz, true)
+            sb.appendLine("Class (${clz.simpleName}) count: $count")
         }
+
+        jotd(sb.toString())
     }
-    return sb.toString()
 }

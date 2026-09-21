@@ -1,9 +1,9 @@
 package org.omarmesqq.bipanmanager.data
 
-import org.omarmesqq.bipanmanager.repository.InstalledAppsRepository
-import org.omarmesqq.bipanmanager.repository.ManagerConfig
+import org.omarmesqq.bipanmanager.repository.DataStoreRepo
+import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 
 data class MainViewModelInitParams(
-    val repository: ManagerConfig,
-    val installedAppsRepository: InstalledAppsRepository
+    val repository: DataStoreRepo,
+    val installedAppsRepo: InstalledAppsRepo
 )
