@@ -22,6 +22,7 @@ enum class CoroutineMode(val value: String) {
     ASYNC("async"),
     SUSPEND_FUN("suspend fun"),
     LAUNCHED_EFFECT("LaunchedEffect"),
+    RUN_BLOCKING("runBlocking"),
     NONE("none")
 }
 
@@ -48,16 +49,16 @@ fun isDarkMode(context: Context): Boolean {
     return nightModeFlags == Configuration.UI_MODE_NIGHT_YES
 }
 
-suspend inline fun profileCoroutine(crMode: CoroutineMode, codeBlock: suspend () -> Unit) {
+suspend inline fun <T> profileCoroutine(crMode: CoroutineMode, codeBlock: suspend () -> T): T {
     if (BuildConfig.PROFILE) {
         val coroutineDebugTag = "CR_DEBUG"
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
             jotw("API level not supported", coroutineDebugTag)
-            return
+            return codeBlock()
         }
         val startNanos = System.nanoTime()
 
-        codeBlock()
+        val result = codeBlock()
 
         val elapsedNanos = System.nanoTime() - startNanos
         val elapsedMillis = elapsedNanos / 1_000_000.0
@@ -84,8 +85,9 @@ suspend inline fun profileCoroutine(crMode: CoroutineMode, codeBlock: suspend ()
                     "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
             coroutineDebugTag
         )
+        return result
     } else {
-        codeBlock()
+        return codeBlock()
     }
 }
 
