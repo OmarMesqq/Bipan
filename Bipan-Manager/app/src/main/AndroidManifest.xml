@@ -34,6 +34,15 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".receivers.PackageUpdateReceiver"
+            android:exported="false"
+            >
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

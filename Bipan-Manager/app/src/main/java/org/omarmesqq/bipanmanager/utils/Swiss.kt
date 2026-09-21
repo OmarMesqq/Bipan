@@ -1,27 +1,17 @@
 package org.omarmesqq.bipanmanager.utils
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
-import android.os.Debug
 import android.os.Process
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import org.omarmesqq.bipanmanager.BuildConfig
-import org.omarmesqq.bipanmanager.composables.Route
-import org.omarmesqq.bipanmanager.repository.DataStoreRepo
-import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
-import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
-import org.omarmesqq.bipanmanager.ui.MainActivity
-import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
-import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 
 
 enum class CoroutineMode(val value: String) {
@@ -38,17 +28,6 @@ fun hasPermission(context: Context, permission: String): Boolean {
         context,
         permission
     ) == PackageManager.PERMISSION_GRANTED
-}
-
-fun Context.findActivity(): Activity {
-    var context = this
-    while (context is ContextWrapper) {
-        if (context is Activity) {
-            return context
-        }
-        context = context.baseContext
-    }
-    throw IllegalStateException("Context.findActivity extension: No activity found!")
 }
 
 fun isDarkMode(context: Context): Boolean {
@@ -95,43 +74,5 @@ suspend inline fun <T> profileCoroutine(crMode: CoroutineMode, codeBlock: suspen
         return result
     } else {
         return codeBlock()
-    }
-}
-
-fun printJavaBacktrace() {
-    val stackTrace = Throwable().stackTrace
-
-    if (stackTrace.isEmpty()) {
-        jotf("printJavaBacktrace: no stack trace available")
-        return
-    }
-
-    stackTrace.forEachIndexed { idx, frame ->
-        jotf("Java frame #$idx: $frame")
-    }
-}
-
-fun dumpDebugInfo() {
-    if (!BuildConfig.PROFILE) {
-        return
-    }
-
-    if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
-        val clzList = mutableListOf(
-            Route::class.java,
-            DataStoreRepo::class.java,
-            InstalledAppsRepo::class.java,
-            MainActivity::class.java,
-            MainViewModelFactory::class.java,
-            MainViewModel::class.java,
-        )
-
-        val sb = StringBuilder()
-        clzList.forEach { clz ->
-            val count = Debug.getInstanceCount(clz, true)
-            sb.appendLine("Class (${clz.simpleName}) count: $count")
-        }
-
-        jotd(sb.toString())
     }
 }

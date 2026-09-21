@@ -15,17 +15,23 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
+import org.omarmesqq.bipanmanager.repository.GetRootShellRepo
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
+import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
+import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
+import org.woheller69.freeDroidWarn.FreeDroidWarn.showWarningOnUpgrade
+
 
 private const val TAG = "MainActivity"
 
@@ -33,12 +39,17 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
         val pm = this.packageManager
-        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm))
+        val getRootShellRepo = GetRootShellRepo()
+
+        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm), getRootShellRepo)
         MainViewModelFactory(initParams)
     }
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         setSplashScreenCondition()
+        checkRoot()
+        // TODO: dont nag user
+        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
@@ -48,6 +59,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setSplashScreenCondition()
+        checkRoot()
+        // TODO: dont nag user
+        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
@@ -77,6 +91,14 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = colors) {
                 App(mainViewModel)
             }
+        }
+    }
+
+    private fun checkRoot() {
+        if (mainViewModel.isRootGranted.value) {
+            joti("Root granted!", TAG, null, true)
+        } else {
+            jotf("Root DENIED!", TAG, null, true)
         }
     }
 

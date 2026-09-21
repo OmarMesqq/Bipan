@@ -11,8 +11,6 @@ import org.omarmesqq.bipanmanager.singletons.Darwin
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
-import org.omarmesqq.bipanmanager.utils.dumpDebugInfo
-import org.omarmesqq.bipanmanager.utils.printJavaBacktrace
 
 private const val TAG = "MainApplication"
 
@@ -29,13 +27,6 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Darwin.init(this)
-
-        Thread.setDefaultUncaughtExceptionHandler { th, tr ->
-            dumpDebugInfo()
-            printJavaBacktrace()
-            val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-            defaultHandler?.uncaughtException(th, tr)
-        }
 
         if (BuildConfig.DEBUG) {
             enableStrictMode()

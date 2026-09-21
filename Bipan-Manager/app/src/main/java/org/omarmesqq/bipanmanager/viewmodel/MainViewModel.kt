@@ -2,6 +2,7 @@ package org.omarmesqq.bipanmanager.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -21,10 +22,13 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
     private val _isAppReady = MutableStateFlow(false)
     private val _isFirstLaunch = MutableStateFlow<Boolean?>(null)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
+    private val _rootShell = MutableStateFlow<Shell?>(null)
+    private val _isRootGranted = MutableStateFlow(false)
 
     val isFirstLaunch: Flow<Boolean?> = _isFirstLaunch
     val appList = _appList.asStateFlow()
     val isAppReady: Flow<Boolean> = _isAppReady
+    val isRootGranted = _isRootGranted
 
     init {
         viewModelScope.launch {
@@ -32,6 +36,8 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
                 profileCoroutine(CoroutineMode.LAUNCH) {
                     _isFirstLaunch.value = initParams.repository.isFirstLaunchFlow.first()
                     _appList.value = initParams.installedAppsRepo.getInstalledApps()
+                    _rootShell.value = initParams.getRootShellRepo.getRootShell()
+                    _isRootGranted.value = _rootShell.value!!.isRoot
                     _isAppReady.value = true
                 }
             }
