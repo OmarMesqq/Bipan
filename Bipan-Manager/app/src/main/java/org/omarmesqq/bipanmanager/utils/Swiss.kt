@@ -9,13 +9,13 @@ import android.os.Build
 import android.os.Process
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 
-private const val COROUTINE_DEBUG_TAG = "CR_DEBUG"
 
 enum class CoroutineMode(val value: String) {
     LAUNCH("launch"),
@@ -59,37 +59,31 @@ suspend inline fun profileCoroutine(crMode: CoroutineMode, codeBlock: suspend ()
 
         codeBlock()
 
-        val crName = currentCoroutineContext()[CoroutineName]
-        val thName = Thread.currentThread().name
-        val processTid = Process.myTid()
-        val threadTid = Thread.currentThread().threadId()
         val elapsedNanos = System.nanoTime() - startNanos
         val elapsedMillis = elapsedNanos / 1_000_000.0
 
-        try {
-            jotd(
-                "$crName (${crMode.value}):\n" +
-                        "\tname: $thName\n" +
-                        "\tTID: $threadTid/$processTid\n" +
-                        "\tThread priority: ${Process.getThreadPriority(threadTid.toInt())}/${
-                            Process.getThreadPriority(
-                                processTid
-                            )
-                        }\n" +
-                        "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
-                coroutineDebugTag
+        val crName = currentCoroutineContext()[CoroutineName]
+        val thName = Thread.currentThread().name
 
-            )
-        } catch (_: IllegalArgumentException) {
-            jotd(
-                "$crName (${crMode.value}):\n" +
-                        "\tname: $thName\n" +
-                        "\tTID: $threadTid/$processTid\n" +
-                        "\tThread priority: ${Process.getThreadPriority(processTid)}\n" +
-                        "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
-                coroutineDebugTag
-            )
-        }
+        val jvmTid = Thread.currentThread().threadId()   // JVM space TID
+        val jvmThreadPrio = Thread.currentThread().priority
+
+        val kernelTid = Process.myTid() // Linux kernel TID
+        val kernelTidPrio = Process.getThreadPriority(kernelTid)
+
+        val job = currentCoroutineContext()[Job]
+        val coroutineId = job?.let { System.identityHashCode(it) }
+
+        jotd(
+            "$crName (ID: $coroutineId) (${crMode.value}):\n" +
+                    "\tname: $thName\n" +
+                    "\tJVM TID id: $jvmTid\n" +
+                    "\tJVM thread priority: $jvmThreadPrio\n" +
+                    "\tKernel TID: $kernelTid\n" +
+                    "\tKernel thread priority: $kernelTidPrio\n" +
+                    "\ttook %.3f ms (%d ns) to complete".format(elapsedMillis, elapsedNanos),
+            coroutineDebugTag
+        )
     } else {
         codeBlock()
     }
