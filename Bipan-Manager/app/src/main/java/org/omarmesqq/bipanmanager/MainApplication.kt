@@ -46,12 +46,12 @@ class MainApplication : Application() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        jotd("onConfigurationChanged", TAG, shouldToast = true)
+        jotd("onConfigurationChanged", TAG)
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        jotw("onLowMemory", TAG, shouldToast = true)
+        jotw("onLowMemory", TAG)
     }
 
     override fun onTrimMemory(level: Int) {
@@ -64,7 +64,7 @@ class MainApplication : Application() {
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
             jotw("onTrimMemory: no longer showing UI", TAG)
         } else {
-            jote("onTrimMemory: unexpected level: $level", TAG, shouldToast = true)
+            jote("onTrimMemory: unexpected level: $level", TAG)
         }
     }
 
