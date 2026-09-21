@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -22,15 +23,17 @@ import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
     object AppListScreenRoute : Route("appList", "App List", Icons.AutoMirrored.Filled.List)
+    object AboutScreen : Route("about", "About", Icons.Default.Info)
 }
 
 private val START_ROUTE = Route.AppListScreenRoute.route
 
 @Composable
-fun Entrypoint(mVM: MainViewModel) {
+fun App(mVM: MainViewModel) {
     val navController = rememberNavController()
     val routes = listOf(
-        Route.AppListScreenRoute
+        Route.AppListScreenRoute,
+        Route.AboutScreen
     )
 
     Scaffold(
@@ -64,6 +67,7 @@ fun Entrypoint(mVM: MainViewModel) {
                 .background(MaterialTheme.colorScheme.surface)
         ) {
             composable(Route.AppListScreenRoute.route) { AppListScreen(mVM) }
+            composable(Route.AboutScreen.route) { AboutScreen() }
         }
     }
 }
