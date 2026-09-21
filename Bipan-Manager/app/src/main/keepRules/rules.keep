@@ -11,4 +11,4 @@
 #   public *;
 #}
 
--keep class org.omarmesqq.bipanmanager.singletons.TemplateJniCrossingStruct { *; }
+-keep class org.omarmesqq.bipanmanager.data.TemplateJniCrossingStruct { *; }
