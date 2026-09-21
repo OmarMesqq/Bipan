@@ -26,11 +26,13 @@ android {
         }
 
         buildConfigField("boolean", "PROFILE", "false")
+        buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
     }
 
     buildTypes {
         release {
             buildConfigField("boolean", "PROFILE", "false")
+            buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
 
             optimization {
                 enable = true
@@ -60,6 +62,7 @@ android {
 
         debug {
             buildConfigField("boolean", "PROFILE", "true")
+            buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
 
             ndk {
                 debugSymbolLevel = "FULL"
