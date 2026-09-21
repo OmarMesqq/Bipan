@@ -16,7 +16,7 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.omarmesqq.bipanmanager.MainApplication
-import org.omarmesqq.bipanmanager.composables.Entrypoint
+import org.omarmesqq.bipanmanager.composables.App
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
                 lightColorScheme()
             }
             MaterialTheme(colorScheme = colors) {
-                Entrypoint(mainViewModel)
+                App(mainViewModel)
             }
         }
     }

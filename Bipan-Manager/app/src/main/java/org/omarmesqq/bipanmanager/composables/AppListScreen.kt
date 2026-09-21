@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 
+private const val PACKAGE_NAME = "org.omarmesqq.bipanmanager"
 @Composable
 fun AppListScreen(mVM: MainViewModel) {
     val installedApps = mVM.appList.collectAsState().value
@@ -45,7 +46,7 @@ fun AppListScreen(mVM: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(
-                items = installedApps,
+                items = installedApps.filterNot { it.packageName == PACKAGE_NAME},
                 key = { it.packageName }
             ) { app ->
                 Row(
