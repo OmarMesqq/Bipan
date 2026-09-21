@@ -8,6 +8,7 @@ import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 private const val TAG = "MainViewModelFactory"
 class MainViewModelFactory(private val initParams: MainViewModelInitParams) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             return MainViewModel(initParams) as T
         }

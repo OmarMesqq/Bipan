@@ -13,7 +13,7 @@ import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-class ManagerConfig (private val ctx: Context) {
+class DataStoreRepo (private val ctx: Context) {
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
 
     val isFirstLaunchFlow: Flow<Boolean> = ctx.dataStore.data

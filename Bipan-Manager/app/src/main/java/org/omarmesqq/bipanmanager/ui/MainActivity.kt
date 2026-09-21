@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.Entrypoint
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
-import org.omarmesqq.bipanmanager.repository.InstalledAppsRepository
+import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
         val pm = this.packageManager
-        val initParams = MainViewModelInitParams(app.repoConfig, InstalledAppsRepository(pm))
+        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm))
         MainViewModelFactory(initParams)
     }
 
