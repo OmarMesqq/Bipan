@@ -18,13 +18,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import org.omarmesqq.bipanmanager.data.AppInitParams
 import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
-import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 
 @Composable
-fun AppListScreen(mVM: MainViewModel) {
+fun AppListScreen(initParams: AppInitParams) {
+    val mVM = initParams.mainViewModel
+    val currentTargets = initParams.currentTargets
+
     val installedApps = mVM.appList.collectAsState().value
 
     if (installedApps == null) {
@@ -63,7 +69,19 @@ fun AppListScreen(mVM: MainViewModel) {
                         modifier = Modifier.size(40.dp)
                     )
                     Text(
-                        text = app.label
+                        text = buildAnnotatedString {
+                            append(app.label)
+                            if (currentTargets.contains(app.packageName)) {
+                                withStyle(style = SpanStyle(color = Color.Green)) {
+                                    append("\nJailed")
+                                }
+                            }
+                            if (app.isSystemApp) {
+                                withStyle(style = SpanStyle(color = Color.Cyan)) {
+                                    append("\nSystem app")
+                                }
+                            }
+                        }
                     )
                 }
             }
