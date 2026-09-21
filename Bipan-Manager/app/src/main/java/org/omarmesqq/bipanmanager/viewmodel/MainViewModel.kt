@@ -44,6 +44,10 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
         }
     }
 
+    fun getCurrentBipanTargets(): Set<String> {
+        return initParams.getRootShellRepo.getBipanTargetsDir().toSet()
+    }
+
     override fun onCleared() {
         super.onCleared()
         jotd("onCleared: VM destroyed", TAG)

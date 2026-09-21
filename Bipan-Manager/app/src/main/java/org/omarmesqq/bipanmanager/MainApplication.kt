@@ -2,13 +2,11 @@ package org.omarmesqq.bipanmanager
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.content.res.Configuration
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin
-import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 
@@ -33,11 +31,6 @@ class MainApplication : Application() {
         }
 
         dataStoreRepo = DataStoreRepo(this)
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        jotd("onConfigurationChanged", TAG)
     }
 
     override fun onLowMemory() {

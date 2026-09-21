@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
+import org.omarmesqq.bipanmanager.data.AppInitParams
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.repository.GetRootShellRepo
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
@@ -47,26 +48,39 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         setSplashScreenCondition()
-        checkRoot()
+
         // TODO: dont nag user
         showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
 
-        initUi()
+        runBlocking {
+            mainViewModel.isAppReady.first { it }
+            checkRoot()
+        }
+        val currTgts = mainViewModel.getCurrentBipanTargets()
+        val initParams = AppInitParams(mainViewModel, currTgts)
+
+        initUi(initParams)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setSplashScreenCondition()
-        checkRoot()
         // TODO: dont nag user
         showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
 
-        initUi()
+        runBlocking {
+            mainViewModel.isAppReady.first { it }
+            checkRoot()
+        }
+        val currTgts = mainViewModel.getCurrentBipanTargets()
+        val initParams = AppInitParams(mainViewModel, currTgts)
+
+        initUi(initParams)
     }
 
     private fun setSplashScreenCondition() {
@@ -79,7 +93,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initUi() {
+    private fun initUi(initParams: AppInitParams) {
         enableEdgeToEdge()
         setContent {
             val darkTheme = isSystemInDarkTheme()
@@ -89,7 +103,7 @@ class MainActivity : ComponentActivity() {
                 lightColorScheme()
             }
             MaterialTheme(colorScheme = colors) {
-                App(mainViewModel)
+                App(initParams)
             }
         }
     }
