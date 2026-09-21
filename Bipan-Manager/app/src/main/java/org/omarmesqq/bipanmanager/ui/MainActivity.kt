@@ -12,11 +12,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.Entrypoint
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
+import org.omarmesqq.bipanmanager.utils.CoroutineMode
+import org.omarmesqq.bipanmanager.utils.profileCoroutine
 import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 
@@ -24,12 +28,16 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        MainViewModelFactory(app.repoConfig)
+        MainViewModelFactory(app.repoConfig, this.packageManager)
     }
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         installSplashScreen().setKeepOnScreenCondition {
-            mainViewModel.isFirstLaunch.value == null
+            runBlocking {
+                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                    mainViewModel.isFirstLaunch.first() == null
+                }
+            }
         }
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
@@ -37,7 +45,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
-            mainViewModel.isFirstLaunch.value == null
+            runBlocking {
+                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                    mainViewModel.isFirstLaunch.first() == null
+                }
+            }
         }
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
