@@ -1,0 +1,45 @@
+[versions]
+# Defaults
+agp = "9.4.0"
+coreKtx = "1.19.0"
+appcompat = "1.8.0"
+# Compose plugin
+kotlin = "2.3.21"
+composeBom = "2024.09.00"
+# Custom
+freeDroidWarnVersion = "V1.14"
+libsu = "6.0.0"
+webkit = "1.17.0"
+coreSplashscreen = "1.2.0"
+datastorePreferences = "1.2.1"
+leakcanaryAndroid = "2.14"
+# Compose app
+activityCompose = "1.13.0"
+# Navbar
+navigationCompose = "2.9.7"
+
+[libraries]
+# Defaults
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+# Compose plugin
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+# Custom
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
+leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanaryAndroid" }
+libsu = { module = "com.github.topjohnwu:libsu", version.ref = "libsu" }
+freeDroidWarn = { module = "com.github.woheller69:FreeDroidWarn", version.ref = "freeDroidWarnVersion"}
+# Compose app
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+# Navbar
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+
+[plugins]
+# Defaults
+android-application = { id = "com.android.application", version.ref = "agp" }
+# Compose plugin
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

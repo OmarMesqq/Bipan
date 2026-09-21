@@ -5,19 +5,21 @@
   "editor.insertSpaces": true,
   "editor.detectIndentation": false,
   "conventionalCommits.scopes": [
-    "Grunfeld",
     "Bipan",
     "BipanJava",
     "Broker",
     "Unwinder",
     "BrokerAssist",
-    "Logger"
+    "Logger",
+    "Manager",
+    "Grunfeld",
   ],
   "C_Cpp.errorSquiggles": "enabled",
   "java.import.gradle.enabled": false,
   "java.import.maven.enabled": false,
   "java.import.exclusions": [
-    "Grunfeld/**"
+    "Grunfeld/**",
+    "Bipan-Manager/**"
   ],
   "java.project.sourcePaths": [
     "src"
