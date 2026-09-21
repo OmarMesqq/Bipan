@@ -40,6 +40,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        jotd("onCleared: VM destroyed", TAG, shouldToast = true)
+        jotd("onCleared: VM destroyed", TAG)
     }
 }

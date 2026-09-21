@@ -129,12 +129,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        jotd("onDestroy", TAG, shouldToast = true)
+        jotd("onDestroy", TAG)
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        jotd("onLowMemory", TAG, shouldToast = true)
+        jotd("onLowMemory", TAG)
     }
 
     override fun onTrimMemory(level: Int) {
