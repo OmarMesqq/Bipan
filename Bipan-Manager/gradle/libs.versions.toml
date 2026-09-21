@@ -7,9 +7,9 @@ appcompat = "1.8.0"
 kotlin = "2.3.21"
 composeBom = "2024.09.00"
 # Custom
+room3Runtime = "3.0.3"
 freeDroidWarnVersion = "V1.14"
 libsu = "6.0.0"
-webkit = "1.17.0"
 coreSplashscreen = "1.2.0"
 datastorePreferences = "1.2.1"
 leakcanaryAndroid = "2.14"
@@ -25,7 +25,8 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 # Compose plugin
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 # Custom
-androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+androidx-room3-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room3Runtime" }
+androidx-room3-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room3Runtime" }
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanaryAndroid" }

@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.android.application)
     // Compose plugin
     alias(libs.plugins.compose.compiler)
+    // Kotlin Symbol Processing
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -93,7 +95,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
 
     // Custom
-    implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.datastore.preferences)
 
@@ -110,6 +111,10 @@ dependencies {
 
     // Android is dying...
     implementation(libs.freeDroidWarn)
+
+    // SQLite abstraction layer
+    implementation(libs.androidx.room3.runtime)
+    ksp(libs.androidx.room3.compiler)
 
     "debugLeakCanaryImplementation"(libs.leakcanary.android)
 }
