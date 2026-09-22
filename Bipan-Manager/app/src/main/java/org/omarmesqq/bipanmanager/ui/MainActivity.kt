@@ -58,8 +58,7 @@ class MainActivity : ComponentActivity() {
             mainViewModel.isAppReady.first { it }
             checkRoot()
         }
-        val currTgts = mainViewModel.getCurrentBipanTargets()
-        val initParams = AppInitParams(mainViewModel, currTgts)
+        val initParams = AppInitParams(mainViewModel)
 
         initUi(initParams)
     }
@@ -76,8 +75,7 @@ class MainActivity : ComponentActivity() {
             mainViewModel.isAppReady.first { it }
             checkRoot()
         }
-        val currTgts = mainViewModel.getCurrentBipanTargets()
-        val initParams = AppInitParams(mainViewModel, currTgts)
+        val initParams = AppInitParams(mainViewModel)
 
         initUi(initParams)
     }
