@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.InstalledApp
@@ -51,6 +52,36 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         }
     }
 
+    fun toggleJail(pkgName: String, jail: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = if (jail) {
+                jotd("Jailed $pkgName", TAG)
+                initParams.rootShellRepo.jailApp(pkgName)
+            } else {
+                jotd("Unjailed $pkgName", TAG)
+                initParams.rootShellRepo.unjailApp(pkgName)
+            }
+
+            if (success) {
+                _currentTargets.update { targets ->
+                    if (jail) targets + pkgName else targets - pkgName
+                }
+            }
+            // On failure, we simply don't update state — UI naturally reflects
+            // the unchanged (accurate) jailed status without extra rollback logic.
+        }
+    }
+
+    suspend fun refreshAll() {
+        withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAll")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
+                refreshTargets()
+                refreshAppList()
+            }
+        }
+        joti("Refreshed targets and apps", TAG, null, true)
+    }
+
     private fun refreshTargets() {
         viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
             profileCoroutine(CoroutineMode.LAUNCH) {
@@ -65,16 +96,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
                 _appList.value = initParams.installedAppsRepo.getInstalledApps()
             }
         }
-    }
-
-    suspend fun refreshAll() {
-        withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAll")) {
-            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
-                refreshTargets()
-                refreshAppList()
-            }
-        }
-        joti("Refreshed targets and apps", TAG, null, true)
     }
 
     override fun onCleared() {

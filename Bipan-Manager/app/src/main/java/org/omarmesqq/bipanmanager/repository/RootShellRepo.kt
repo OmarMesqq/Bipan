@@ -20,7 +20,11 @@ class RootShellRepo {
     fun getBipanTargetsDir(): List<String> {
         val result = Shell.cmd("ls $BIPAN_TARGETS_DIR").exec()
         if (result.err.isNotEmpty()) {
-            jote("Shell call returned error: ${result.err}", TAG)
+            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
+        }
+        if (!result.isSuccess) {
+            jote("getBipanTargetsDir FAILED!", TAG)
+            return emptyList()
         }
         return result.out
     }
@@ -28,7 +32,22 @@ class RootShellRepo {
     fun jailApp(pkgName: String): Boolean {
         val result = Shell.cmd("touch $BIPAN_TARGETS_DIR/$pkgName").exec()
         if (result.err.isNotEmpty()) {
-            jote("Shell call returned error: ${result.err}", TAG)
+            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
+        }
+        if (!result.isSuccess) {
+            jote("jailApp($pkgName) FAILED!", TAG)
+            return false
+        }
+        return true
+    }
+
+    fun unjailApp(pkgName: String): Boolean {
+        val result = Shell.cmd("rm $BIPAN_TARGETS_DIR/$pkgName").exec()
+        if (result.err.isNotEmpty()) {
+            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
+        }
+        if (!result.isSuccess) {
+            jote("unjailApp($pkgName) FAILED!", TAG)
             return false
         }
         return true
