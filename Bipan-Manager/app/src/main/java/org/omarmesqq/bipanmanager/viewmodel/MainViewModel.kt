@@ -36,7 +36,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
                 profileCoroutine(CoroutineMode.LAUNCH) {
                     _isFirstLaunch.value = initParams.repository.isFirstLaunchFlow.first()
                     _appList.value = initParams.installedAppsRepo.getInstalledApps()
-                    _rootShell.value = initParams.getRootShellRepo.getRootShell()
+                    _rootShell.value = initParams.rootShellRepo.getRootShell()
                     _isRootGranted.value = _rootShell.value!!.isRoot
                     _isAppReady.value = true
                 }
@@ -45,7 +45,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
     }
 
     fun getCurrentBipanTargets(): Set<String> {
-        return initParams.getRootShellRepo.getBipanTargetsDir().toSet()
+        return initParams.rootShellRepo.getBipanTargetsDir().toSet()
     }
 
     override fun onCleared() {

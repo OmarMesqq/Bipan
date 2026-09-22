@@ -6,7 +6,7 @@ import org.omarmesqq.bipanmanager.data.BIPAN_TARGETS_DIR
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 private const val TAG = "RootShellRepo"
-class GetRootShellRepo {
+class RootShellRepo {
     fun getRootShell(): Shell {
         Shell.enableVerboseLogging = BuildConfig.DEBUG
         Shell.setDefaultBuilder(
@@ -20,8 +20,17 @@ class GetRootShellRepo {
     fun getBipanTargetsDir(): List<String> {
         val result = Shell.cmd("ls $BIPAN_TARGETS_DIR").exec()
         if (result.err.isNotEmpty()) {
-            jote("Shell call returned error: ${result.err}", TAG, null, true)
+            jote("Shell call returned error: ${result.err}", TAG)
         }
         return result.out
+    }
+
+    fun jailApp(pkgName: String): Boolean {
+        val result = Shell.cmd("touch $BIPAN_TARGETS_DIR/$pkgName").exec()
+        if (result.err.isNotEmpty()) {
+            jote("Shell call returned error: ${result.err}", TAG)
+            return false
+        }
+        return true
     }
 }

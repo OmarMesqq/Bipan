@@ -1,14 +1,14 @@
 package org.omarmesqq.bipanmanager.data
 
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
-import org.omarmesqq.bipanmanager.repository.GetRootShellRepo
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
+import org.omarmesqq.bipanmanager.repository.RootShellRepo
 import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 
 data class MainViewModelInitParams(
     val repository: DataStoreRepo,
     val installedAppsRepo: InstalledAppsRepo,
-    val getRootShellRepo: GetRootShellRepo
+    val rootShellRepo: RootShellRepo
 )
 
 data class AppInitParams(

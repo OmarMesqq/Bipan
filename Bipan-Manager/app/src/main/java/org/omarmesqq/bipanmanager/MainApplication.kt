@@ -2,10 +2,15 @@ package org.omarmesqq.bipanmanager
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
+import androidx.core.content.ContextCompat
+import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
+import org.omarmesqq.bipanmanager.repository.RootShellRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
@@ -19,6 +24,8 @@ class MainApplication : Application() {
         }
     }
 
+    private val packageUpdateReceiver = PackageUpdateReceiver(RootShellRepo())
+
     lateinit var dataStoreRepo: DataStoreRepo
         private set
 
@@ -31,6 +38,19 @@ class MainApplication : Application() {
         }
 
         dataStoreRepo = DataStoreRepo(this)
+        registerPackageAddedReceiver()
+    }
+
+    private fun registerPackageAddedReceiver() {
+        val filter = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
+            addDataScheme("package")
+        }
+        ContextCompat.registerReceiver(
+            this,
+            packageUpdateReceiver,
+            filter,
+            ContextCompat.RECEIVER_EXPORTED
+        )
     }
 
     override fun onLowMemory() {
