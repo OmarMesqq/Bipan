@@ -226,7 +226,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         }
 
         default: {
-          Log.w(TAG, "Allowing TM method: " + method.getName());
+          // Log.w(TAG, "Allowing TM method: " + method.getName());
           return method.invoke(originalITelephony, args);
         }
       }

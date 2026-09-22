@@ -35,6 +35,7 @@ import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 import org.woheller69.freeDroidWarn.FreeDroidWarn.showWarningOnUpgrade
 
 private const val TAG = "MainActivity"
+
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
@@ -43,45 +44,34 @@ class MainActivity : ComponentActivity() {
 
         val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
 
-        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(installedAppsRepoInitParams), rootShellRepo)
+        val initParams = MainViewModelInitParams(
+            app.dataStoreRepo,
+            InstalledAppsRepo(installedAppsRepoInitParams),
+            rootShellRepo
+        )
         MainViewModelFactory(initParams)
     }
+    private var isRootGranted = false
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
-        setSplashScreenCondition()
-        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
+        onCreatePrep()
 
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
-
-        runBlocking(CoroutineName("onCreate.persistentState")) {
-            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                mainViewModel.isAppReady.first { it }
-                checkRoot()
-            }
-        }
 
         initUi()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        setSplashScreenCondition()
-        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
+        onCreatePrep()
 
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
 
-        runBlocking(CoroutineName("onCreate")) {
-            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                mainViewModel.isAppReady.first { it }
-                checkRoot()
-            }
-        }
-
         initUi()
     }
 
-    private fun setSplashScreenCondition() {
+    private fun onCreatePrep() {
         installSplashScreen().setKeepOnScreenCondition {
             runBlocking(CoroutineName("setSplashScreenCondition")) {
                 profileCoroutine(CoroutineMode.RUN_BLOCKING) {
@@ -89,10 +79,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        runBlocking(CoroutineName("onCreatePrep")) {
+            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                mainViewModel.isAppReady.first { it }
+                isRootGranted = checkRoot()
+            }
+        }
+        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
     }
 
     private fun initUi() {
-        val initParams = AppInitParams(mainViewModel)
+        val initParams = AppInitParams(mainViewModel, isRootGranted)
+
         enableEdgeToEdge()
         setContent {
             val darkTheme = isSystemInDarkTheme()
@@ -107,18 +105,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkRoot() {
+    private fun checkRoot(): Boolean {
         val status = Shell.isAppGrantedRoot()
         if (status == null) {
-            jotf("isAppGrantedRoot returned null!", TAG, null, true)
-            return
+            jotf("isAppGrantedRoot returned null!", TAG)
+            return false
         }
 
         if (status) {
-            joti("Root granted", TAG, null, true)
-        } else {
-            jotf("Root DENIED!", TAG, null, true)
+            joti("Root granted", TAG)
+            return true
         }
+
+        jotf("Root denied", TAG)
+        return false
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
