@@ -1,6 +1,6 @@
 id=bipan
 name=Bipan
-version=6.10.0 Feature Drop 2
-versionCode=61002
+version=6.10.0
+versionCode=61003
 author=OmarMesqq
 description=An anti-fingerprinting and security sandbox for Android 
