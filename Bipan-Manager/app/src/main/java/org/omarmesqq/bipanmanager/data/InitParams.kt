@@ -12,6 +12,5 @@ data class MainViewModelInitParams(
 )
 
 data class AppInitParams(
-    val mainViewModel: MainViewModel,
-    val currentTargets: Set<String>
+    val mainViewModel: MainViewModel
 )

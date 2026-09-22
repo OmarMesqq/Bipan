@@ -24,11 +24,13 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _isRootGranted = MutableStateFlow(false)
+    private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
 
     val isFirstLaunch: Flow<Boolean?> = _isFirstLaunch
     val appList = _appList.asStateFlow()
     val isAppReady: Flow<Boolean> = _isAppReady
     val isRootGranted = _isRootGranted
+    val currentTargets = _currentTargets.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -38,14 +40,28 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
                     _appList.value = initParams.installedAppsRepo.getInstalledApps()
                     _rootShell.value = initParams.rootShellRepo.getRootShell()
                     _isRootGranted.value = _rootShell.value!!.isRoot
+                    refreshTargets()
                     _isAppReady.value = true
                 }
             }
         }
     }
 
-    fun getCurrentBipanTargets(): Set<String> {
-        return initParams.rootShellRepo.getBipanTargetsDir().toSet()
+    fun refreshTargets() {
+        _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
+    }
+
+    fun refreshAppList() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _appList.value = initParams.installedAppsRepo.getInstalledApps()
+        }
+    }
+
+    suspend fun refreshAll() {
+        withContext(Dispatchers.IO) {
+            _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
+            _appList.value = initParams.installedAppsRepo.getInstalledApps()
+        }
     }
 
     override fun onCleared() {
