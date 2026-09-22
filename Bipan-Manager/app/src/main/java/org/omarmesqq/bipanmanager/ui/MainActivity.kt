@@ -61,8 +61,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val initParams = AppInitParams(mainViewModel)
-        initUi(initParams)
+        initUi()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,8 +78,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val initParams = AppInitParams(mainViewModel)
-        initUi(initParams)
+        initUi()
     }
 
     private fun setSplashScreenCondition() {
@@ -93,7 +91,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initUi(initParams: AppInitParams) {
+    private fun initUi() {
+        val initParams = AppInitParams(mainViewModel)
         enableEdgeToEdge()
         setContent {
             val darkTheme = isSystemInDarkTheme()

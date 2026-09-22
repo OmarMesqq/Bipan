@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
-import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 
 private const val TAG = "BootUnlockRcvr"
 class BootAndUnlockReceiver : BroadcastReceiver() {
@@ -14,18 +13,15 @@ class BootAndUnlockReceiver : BroadcastReceiver() {
             return
         }
 
-//        val app = context.applicationContext as MainApplication
-//        val rootShellRepo = app.rootShellRepo
-
         when (intent?.action) {
             Intent.ACTION_USER_UNLOCKED -> {
-                joti("ACTION_USER_UNLOCKED", TAG)
+                // no-op: just start to watch for app installs
             }
             Intent.ACTION_BOOT_COMPLETED -> {
-                joti("ACTION_BOOT_COMPLETED", TAG)
+                // no-op: just start to watch for app installs
             }
             Intent.ACTION_LOCKED_BOOT_COMPLETED -> {
-                joti("ACTION_LOCKED_BOOT_COMPLETED", TAG)
+                // no-op: just start to watch for app installs
             }
             else -> {}
         }

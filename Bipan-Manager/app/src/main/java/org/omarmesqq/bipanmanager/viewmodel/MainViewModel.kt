@@ -36,6 +36,14 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     val appList = _appList.asStateFlow()
     val isAppReady: Flow<Boolean> = _isAppReady
     val currentTargets = _currentTargets.asStateFlow()
+    val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
+        val installedPackageNames = apps?.map { it.packageName }?.toSet() ?: emptySet()
+        targets - installedPackageNames
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptySet()
+    )
 
     init {
         viewModelScope.launch {
@@ -85,15 +93,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         }
         joti("Refreshed targets and apps", TAG, null, true)
     }
-
-    val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
-        val installedPackageNames = apps?.map { it.packageName }?.toSet() ?: emptySet()
-        targets - installedPackageNames
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptySet()
-    )
 
     private fun refreshTargets() {
         viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
