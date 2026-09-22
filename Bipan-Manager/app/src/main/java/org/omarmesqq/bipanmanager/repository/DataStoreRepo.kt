@@ -8,22 +8,24 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.omarmesqq.bipanmanager.data.DataStoreRepoInitParams
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-class DataStoreRepo (private val ctx: Context) {
+class DataStoreRepo (initParams: DataStoreRepoInitParams) {
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
 
-    val isFirstLaunchFlow: Flow<Boolean> = ctx.dataStore.data
+    private val appCtx = initParams.app
+    val isFirstLaunchFlow: Flow<Boolean> = appCtx.dataStore.data
         .map { preferences ->
             preferences[isFirstLaunchPref] ?: true
         }
 
     suspend fun toggleFirstLaunch() {
         profileCoroutine(CoroutineMode.SUSPEND_FUN) {
-            ctx.dataStore.edit { prefs ->
+            appCtx.dataStore.edit { prefs ->
                 prefs[isFirstLaunchPref] = false
             }
         }

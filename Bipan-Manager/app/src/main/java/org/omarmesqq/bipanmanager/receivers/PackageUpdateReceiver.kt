@@ -6,15 +6,13 @@ import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.omarmesqq.bipanmanager.repository.RootShellRepo
+import org.omarmesqq.bipanmanager.data.PackageUpdateReceiverInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 
 private const val TAG = "PkgUpdRecvr"
-class PackageUpdateReceiver(
-    private val rootShellRepo: RootShellRepo
-): BroadcastReceiver() {
+class PackageUpdateReceiver(private val initParams: PackageUpdateReceiverInitParams): BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         when (intent?.action) {
             Intent.ACTION_PACKAGE_ADDED -> {
@@ -30,7 +28,7 @@ class PackageUpdateReceiver(
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val jailed = rootShellRepo.jailApp(packageName)
+                        val jailed = initParams.rootShellRepo.jailApp(packageName)
                         if (jailed) {
                             joti("Jailed $packageName", TAG)
                         } else {
@@ -44,5 +42,4 @@ class PackageUpdateReceiver(
             else -> {}
         }
     }
-
 }

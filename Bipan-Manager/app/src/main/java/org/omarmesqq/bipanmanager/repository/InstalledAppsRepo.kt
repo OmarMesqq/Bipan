@@ -1,11 +1,22 @@
 package org.omarmesqq.bipanmanager.repository
 
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import org.omarmesqq.bipanmanager.data.InstalledApp
+import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
+import org.omarmesqq.bipanmanager.singletons.Darwin.jote
+import java.lang.ref.WeakReference
 
-class InstalledAppsRepo(private val pm: PackageManager) {
-    fun getInstalledApps(): List<InstalledApp> {
+private const val TAG = "InstalledAppsRepo"
+class InstalledAppsRepo(initParams: InstalledAppsRepoInitParams) {
+    private val pmRef = WeakReference(initParams.pm)
+
+    fun getInstalledApps(): List<InstalledApp>? {
+        val pm = pmRef.get()
+        if (pm == null) {
+            jote("PM reference is null!", TAG)
+            return null
+        }
+
         return pm.getInstalledApplications(0)
             .map { appInfo ->
                 InstalledApp(

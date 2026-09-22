@@ -8,6 +8,8 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.core.content.ContextCompat
+import org.omarmesqq.bipanmanager.data.DataStoreRepoInitParams
+import org.omarmesqq.bipanmanager.data.PackageUpdateReceiverInitParams
 import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
 import org.omarmesqq.bipanmanager.repository.RootShellRepo
@@ -24,8 +26,10 @@ class MainApplication : Application() {
         }
     }
 
-    private val packageUpdateReceiver = PackageUpdateReceiver(RootShellRepo())
+    private lateinit var packageUpdateReceiver: PackageUpdateReceiver
 
+    lateinit var rootShellRepo: RootShellRepo
+        private set
     lateinit var dataStoreRepo: DataStoreRepo
         private set
 
@@ -37,7 +41,14 @@ class MainApplication : Application() {
             enableStrictMode()
         }
 
-        dataStoreRepo = DataStoreRepo(this)
+        val dataStoreRepoInitParams = DataStoreRepoInitParams(this)
+        dataStoreRepo = DataStoreRepo(dataStoreRepoInitParams)
+
+        rootShellRepo = RootShellRepo()
+
+        val packageUpdateReceiverInitParams = PackageUpdateReceiverInitParams(rootShellRepo)
+        packageUpdateReceiver = PackageUpdateReceiver(packageUpdateReceiverInitParams)
+
         registerPackageAddedReceiver()
     }
 
