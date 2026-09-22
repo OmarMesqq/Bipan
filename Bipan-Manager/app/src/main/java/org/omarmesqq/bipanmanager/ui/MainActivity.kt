@@ -49,36 +49,37 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         setSplashScreenCondition()
-
-        // TODO: dont nag user
         showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState, persistentState)
         jotd("onCreate with persistentState", TAG)
 
-        runBlocking {
-            mainViewModel.isAppReady.first { it }
-            checkRoot()
+        runBlocking(CoroutineName("onCreate.persistentState")) {
+            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                mainViewModel.isAppReady.first { it }
+                checkRoot()
+            }
         }
-        val initParams = AppInitParams(mainViewModel)
 
+        val initParams = AppInitParams(mainViewModel)
         initUi(initParams)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setSplashScreenCondition()
-        // TODO: dont nag user
         showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
 
-        runBlocking {
-            mainViewModel.isAppReady.first { it }
-            checkRoot()
+        runBlocking(CoroutineName("onCreate")) {
+            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
+                mainViewModel.isAppReady.first { it }
+                checkRoot()
+            }
         }
-        val initParams = AppInitParams(mainViewModel)
 
+        val initParams = AppInitParams(mainViewModel)
         initUi(initParams)
     }
 

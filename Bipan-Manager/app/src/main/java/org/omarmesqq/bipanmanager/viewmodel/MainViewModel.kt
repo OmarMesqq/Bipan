@@ -58,9 +58,11 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
     }
 
     suspend fun refreshAll() {
-        withContext(Dispatchers.IO) {
-            refreshTargets()
-            refreshAppList()
+        withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAll")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
+                refreshTargets()
+                refreshAppList()
+            }
         }
     }
 
