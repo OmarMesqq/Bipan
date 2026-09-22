@@ -34,7 +34,6 @@ import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 import org.woheller69.freeDroidWarn.FreeDroidWarn.showWarningOnUpgrade
 
-
 private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {

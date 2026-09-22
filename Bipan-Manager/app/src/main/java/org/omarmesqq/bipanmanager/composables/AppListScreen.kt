@@ -5,12 +5,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -77,10 +80,14 @@ fun AppListScreen(initParams: AppInitParams) {
                     items = installedApps.filterNot { it.packageName == PACKAGE_NAME },
                     key = { it.packageName }
                 ) { app ->
+                    val isJailed = currentTargets.contains(app.packageName)
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
                     ) {
                         val bitmap = remember(app.packageName) {
                             app.icon.toBitmap().asImageBitmap()
@@ -90,10 +97,11 @@ fun AppListScreen(initParams: AppInitParams) {
                             contentDescription = "${app.label} icon",
                             modifier = Modifier.size(40.dp)
                         )
+
                         Text(
                             text = buildAnnotatedString {
                                 append(app.label)
-                                if (currentTargets.contains(app.packageName)) {
+                                if (isJailed) {
                                     withStyle(style = SpanStyle(color = Color.Green)) {
                                         append("\nJailed")
                                     }
@@ -103,7 +111,21 @@ fun AppListScreen(initParams: AppInitParams) {
                                         append("\nSystem app")
                                     }
                                 }
-                            }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Switch(
+                            checked = isJailed,
+                            onCheckedChange = { checked ->
+                                mVM.toggleJail(app.packageName, checked)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.error,
+                                checkedTrackColor = MaterialTheme.colorScheme.errorContainer,
+                                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
                         )
                     }
                 }
