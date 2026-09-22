@@ -14,46 +14,56 @@ import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
+import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 private const val TAG = "MainViewModel"
-class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel() {
+
+class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
     private val _isAppReady = MutableStateFlow(false)
     private val _isFirstLaunch = MutableStateFlow<Boolean?>(null)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
-    private val _isRootGranted = MutableStateFlow(false)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
 
     val isFirstLaunch: Flow<Boolean?> = _isFirstLaunch
     val appList = _appList.asStateFlow()
     val isAppReady: Flow<Boolean> = _isAppReady
-    val isRootGranted = _isRootGranted
     val currentTargets = _currentTargets.asStateFlow()
 
     init {
         viewModelScope.launch {
             withContext(Dispatchers.IO + CoroutineName("$TAG/init")) {
                 profileCoroutine(CoroutineMode.LAUNCH) {
-                    _isFirstLaunch.value = initParams.dataStoreRepo.isFirstLaunchFlow.first()
-                    _appList.value = initParams.installedAppsRepo.getInstalledApps()
-                    _rootShell.value = initParams.rootShellRepo.getRootShell()
-                    _isRootGranted.value = _rootShell.value!!.isRoot
-                    refreshTargets()
+                    val dsRepo = initParams.dataStoreRepo
+                    val installedAppsRepo = initParams.installedAppsRepo
+                    val rootShellRepo = initParams.rootShellRepo
+
+                    _isFirstLaunch.value = dsRepo.isFirstLaunchFlow.first()
+                    _appList.value = installedAppsRepo.getInstalledApps()
+                    _rootShell.value = rootShellRepo.getRootShell()
+                    _currentTargets.value = rootShellRepo.getBipanTargetsDir().toSet()
+
                     _isAppReady.value = true
                 }
             }
         }
     }
 
-    fun refreshTargets() {
-        _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
+    private fun refreshTargets() {
+        viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
+            profileCoroutine(CoroutineMode.LAUNCH) {
+                _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
+            }
+        }
     }
 
-    fun refreshAppList() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _appList.value = initParams.installedAppsRepo.getInstalledApps()
+    private fun refreshAppList() {
+        viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshAppList")) {
+            profileCoroutine(CoroutineMode.LAUNCH) {
+                _appList.value = initParams.installedAppsRepo.getInstalledApps()
+            }
         }
     }
 
@@ -64,6 +74,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
                 refreshAppList()
             }
         }
+        joti("Refreshed targets and apps", TAG, null, true)
     }
 
     override fun onCleared() {

@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -109,8 +110,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkRoot() {
-        if (mainViewModel.isRootGranted.value) {
-            joti("Root granted!", TAG, null, true)
+        val status = Shell.isAppGrantedRoot()
+        if (status == null) {
+            jotf("isAppGrantedRoot returned null!", TAG, null, true)
+            return
+        }
+
+        if (status) {
+            joti("Root granted", TAG, null, true)
         } else {
             jotf("Root DENIED!", TAG, null, true)
         }

@@ -1,24 +1,26 @@
 package org.omarmesqq.bipanmanager.singletons
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import org.omarmesqq.bipanmanager.MainApplication
-import java.lang.ref.WeakReference
 
 private const val TAG = "Darwin"
 
-object Darwin {
-    // TODO: no need, application stays alive for whole lifecycle
-    private lateinit var appContextRef: WeakReference<Context>
 
-    fun init(ctx: Context) {
-        if (!ctx.javaClass.isAssignableFrom(MainApplication::class.java)) {
-            throw Exception("Logger initialized from non-Application Context!")
-        }
-        appContextRef = WeakReference(ctx)
+/**
+ * Singleton instantiated at very Application's `onCreate`.
+ * As long as app is alive, this is a valid and single context, no leak here
+ */
+@SuppressLint("StaticFieldLeak")
+object Darwin {
+    private lateinit var appCtx: Context
+
+    fun init(ctx: MainApplication) {
+        appCtx = ctx
     }
 
     fun jotv(
@@ -88,13 +90,10 @@ object Darwin {
         return "$TAG/$t"
     }
 
+
     private fun toastIfPossible(msg: String, should: Boolean) {
         if (!should) return
-        val appCtx = appContextRef.get()
-        if (appCtx == null) {
-            Log.e(TAG, "Call to toast but failed to get Application's Context")
-            return
-        }
+
         // Get main Looper as we have to toas on the Main thread
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(appCtx, msg, Toast.LENGTH_SHORT).show()
