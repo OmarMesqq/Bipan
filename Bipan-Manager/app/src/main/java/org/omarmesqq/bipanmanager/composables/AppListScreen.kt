@@ -43,6 +43,7 @@ fun AppListScreen(initParams: AppInitParams) {
 
     val installedApps = mVM.appList.collectAsState().value
     val currentTargets = mVM.currentTargets.collectAsState().value
+    val staleTargets = mVM.staleTargets.collectAsState().value
 
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -77,7 +78,10 @@ fun AppListScreen(initParams: AppInitParams) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(
-                    items = installedApps.filterNot { it.packageName == PACKAGE_NAME },
+                    items = installedApps
+                        .filterNot { it.packageName == PACKAGE_NAME }
+                        .sortedBy { !currentTargets.contains(it.packageName) }
+                    ,
                     key = { it.packageName }
                 ) { app ->
                     val isJailed = currentTargets.contains(app.packageName)

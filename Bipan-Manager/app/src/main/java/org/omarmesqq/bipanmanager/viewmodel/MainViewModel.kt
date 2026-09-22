@@ -7,8 +7,12 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +85,15 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         }
         joti("Refreshed targets and apps", TAG, null, true)
     }
+
+    val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
+        val installedPackageNames = apps?.map { it.packageName }?.toSet() ?: emptySet()
+        targets - installedPackageNames
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptySet()
+    )
 
     private fun refreshTargets() {
         viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
