@@ -33,8 +33,8 @@ class PackageUpdateReceiver(private val initParams: PackageUpdateReceiverInitPar
 
                 jotd("New app: $packageName", TAG)
 
-                // Root shell calls are blocking — don't run them on the main thread.
-                // goAsync() extends the receiver's lifetime past onReceive() returning.
+                // Root shell calls are blocking
+                // goAsync() extends the receiver's lifetime past onReceive() returning
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO + CoroutineName("$TAG/onReceive")).launch {
                     profileCoroutine(CoroutineMode.LAUNCH) {
