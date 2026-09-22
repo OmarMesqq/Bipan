@@ -12,10 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
@@ -39,19 +43,24 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
+        val dsRepo = app.dataStoreRepo
+
         val pm = this.packageManager
+        val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
+        val installedAppsRepo = InstalledAppsRepo(installedAppsRepoInitParams)
+
         val rootShellRepo = app.rootShellRepo
 
-        val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
-
         val initParams = MainViewModelInitParams(
-            app.dataStoreRepo,
-            InstalledAppsRepo(installedAppsRepoInitParams),
+            dsRepo,
+            installedAppsRepo,
             rootShellRepo
         )
         MainViewModelFactory(initParams)
     }
     private var isRootGranted = false
+    private var isFirstLaunch = true
+    private var bipanFolderExists = false
 
     override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
         onCreatePrep()
@@ -83,13 +92,27 @@ class MainActivity : ComponentActivity() {
             profileCoroutine(CoroutineMode.RUN_BLOCKING) {
                 mainViewModel.isAppReady.first { it }
                 isRootGranted = checkRoot()
+                bipanFolderExists = mainViewModel.doesBipanDirExist()
+                isFirstLaunch = mainViewModel.isFirstLaunch.first()
             }
         }
         showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
     }
 
     private fun initUi() {
-        val initParams = AppInitParams(mainViewModel, isRootGranted)
+        val initParams =
+            AppInitParams(mainViewModel, isRootGranted, bipanFolderExists, isFirstLaunch)
+
+        if (isFirstLaunch) {
+            val app = application as MainApplication
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO + CoroutineName("$TAG/initUi")) {
+                    profileCoroutine(CoroutineMode.LAUNCH) {
+                        app.dataStoreRepo.toggleFirstLaunch()
+                    }
+                }
+            }
+        }
 
         enableEdgeToEdge()
         setContent {

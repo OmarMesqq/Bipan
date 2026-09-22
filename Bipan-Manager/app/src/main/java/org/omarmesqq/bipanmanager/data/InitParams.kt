@@ -28,5 +28,7 @@ data class PackageUpdateReceiverInitParams(
 
 data class AppInitParams(
     val mainViewModel: MainViewModel,
-    val isRooted: Boolean
+    val isRooted: Boolean,
+    val bipanFolderExists: Boolean,
+    val isFirstLaunch: Boolean
 )

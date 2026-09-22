@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import org.omarmesqq.bipanmanager.data.AppInitParams
+import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
     object AppListScreenRoute : Route("appList", "App List", Icons.AutoMirrored.Filled.List)
@@ -30,12 +31,28 @@ private val START_ROUTE = Route.AppListScreenRoute.route
 
 @Composable
 fun App(initParams: AppInitParams) {
+    val mainViewModel = initParams.mainViewModel
     val rooted = initParams.isRooted
+    val bipanFolderExists = initParams.bipanFolderExists
+    val isFirstLaunch = initParams.isFirstLaunch
 
     if (!rooted) {
         NoRootScreen()
         return
     }
+
+    if (!bipanFolderExists) {
+        NoBipanScreen()
+        return
+    }
+
+    if (isFirstLaunch) {
+        val res = mainViewModel.createDefaults()
+        if (!res) {
+            jote("Failed to create default targets!", shouldToast = true)
+        }
+    }
+
 
     val navController = rememberNavController()
     val routes = listOf(

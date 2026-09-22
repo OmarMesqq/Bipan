@@ -27,12 +27,12 @@ private const val TAG = "MainViewModel"
 
 class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
     private val _isAppReady = MutableStateFlow(false)
-    private val _isFirstLaunch = MutableStateFlow<Boolean?>(null)
+    private val _isFirstLaunch = MutableStateFlow(true)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
 
-    val isFirstLaunch: Flow<Boolean?> = _isFirstLaunch
+    val isFirstLaunch: Flow<Boolean> = _isFirstLaunch
     val appList = _appList.asStateFlow()
     val isAppReady: Flow<Boolean> = _isAppReady
     val currentTargets = _currentTargets.asStateFlow()
@@ -92,6 +92,14 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
             }
         }
         joti("Refreshed targets and apps", TAG, null, true)
+    }
+
+    fun doesBipanDirExist(): Boolean {
+        return initParams.rootShellRepo.doesBipanTargetsDirExist()
+    }
+
+    fun createDefaults(): Boolean {
+        return initParams.rootShellRepo.createDefaultTargets()
     }
 
     private fun refreshTargets() {
