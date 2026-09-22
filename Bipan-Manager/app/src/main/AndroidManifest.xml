@@ -6,47 +6,44 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
-            android:allowBackup="true"
-            android:dataExtractionRules="@xml/data_extraction_rules"
-            android:fullBackupContent="@xml/backup_rules"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:theme="@style/Theme.BipanManager"
-            android:gwpAsanMode="always"
-            android:supportsRtl="false"
-            android:allowCrossUidActivitySwitchFromBelow="false"
-            android:forceQueryable="false"
-            android:hardwareAccelerated="true"
-            android:enableOnBackInvokedCallback="true"
-            android:extractNativeLibs="false"
-            android:allowNativeHeapPointerTagging="true"
-            android:name=".MainApplication">
+        android:name=".MainApplication"
+        android:allowBackup="true"
+        android:allowCrossUidActivitySwitchFromBelow="false"
+        android:allowNativeHeapPointerTagging="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:extractNativeLibs="false"
+        android:forceQueryable="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:gwpAsanMode="always"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.BipanManager">
 
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
-            >
+            android:exported="true"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!--  BootAndUnlockReceiver       -->
-<!--        <receiver-->
-<!--            android:name=""-->
-<!--            android:exported="false"-->
-<!--            android:directBootAware="true"-->
-<!--            >-->
-<!--            <intent-filter>-->
-<!--                <action android:name="android.intent.action.USER_UNLOCKED" />-->
-<!--                <action android:name="android.intent.action.BOOT_COMPLETED" />-->
-<!--                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />-->
-<!--            </intent-filter>-->
-<!--        </receiver>-->
+        <receiver
+            android:name=".receivers.BootAndUnlockReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

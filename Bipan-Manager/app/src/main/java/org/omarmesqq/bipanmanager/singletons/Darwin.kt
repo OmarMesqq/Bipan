@@ -11,6 +11,7 @@ import java.lang.ref.WeakReference
 private const val TAG = "Darwin"
 
 object Darwin {
+    // TODO: no need, application stays alive for whole lifecycle
     private lateinit var appContextRef: WeakReference<Context>
 
     fun init(ctx: Context) {

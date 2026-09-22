@@ -59,8 +59,8 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
 
     suspend fun refreshAll() {
         withContext(Dispatchers.IO) {
-            _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
-            _appList.value = initParams.installedAppsRepo.getInstalledApps()
+            refreshTargets()
+            refreshAppList()
         }
     }
 
