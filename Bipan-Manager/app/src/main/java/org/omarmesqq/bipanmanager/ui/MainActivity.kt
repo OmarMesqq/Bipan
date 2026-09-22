@@ -19,9 +19,9 @@ import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
 import org.omarmesqq.bipanmanager.data.AppInitParams
+import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
-import org.omarmesqq.bipanmanager.repository.RootShellRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
@@ -39,9 +39,11 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
         val pm = this.packageManager
-        val rootShellRepo = RootShellRepo()
+        val rootShellRepo = app.rootShellRepo
 
-        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm), rootShellRepo)
+        val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
+
+        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(installedAppsRepoInitParams), rootShellRepo)
         MainViewModelFactory(initParams)
     }
 

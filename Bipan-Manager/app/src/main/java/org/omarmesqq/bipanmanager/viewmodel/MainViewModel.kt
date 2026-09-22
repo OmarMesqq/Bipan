@@ -36,7 +36,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams): ViewModel(
         viewModelScope.launch {
             withContext(Dispatchers.IO + CoroutineName("$TAG/init")) {
                 profileCoroutine(CoroutineMode.LAUNCH) {
-                    _isFirstLaunch.value = initParams.repository.isFirstLaunchFlow.first()
+                    _isFirstLaunch.value = initParams.dataStoreRepo.isFirstLaunchFlow.first()
                     _appList.value = initParams.installedAppsRepo.getInstalledApps()
                     _rootShell.value = initParams.rootShellRepo.getRootShell()
                     _isRootGranted.value = _rootShell.value!!.isRoot
