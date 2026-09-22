@@ -39,6 +39,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.R
+import org.omarmesqq.bipanmanager.utils.CoroutineMode
+import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 @Composable
 fun AboutScreen() {
@@ -47,10 +49,12 @@ fun AboutScreen() {
     val rotation = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        rotation.animateTo(
-            targetValue = 360f,
-            animationSpec = tween(durationMillis = 800)
-        )
+        profileCoroutine(CoroutineMode.LAUNCHED_EFFECT) {
+            rotation.animateTo(
+                targetValue = 360f,
+                animationSpec = tween(durationMillis = 800)
+            )
+        }
     }
 
     Column(
