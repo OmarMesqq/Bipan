@@ -27,5 +27,6 @@ data class PackageUpdateReceiverInitParams(
 )
 
 data class AppInitParams(
-    val mainViewModel: MainViewModel
+    val mainViewModel: MainViewModel,
+    val isRooted: Boolean
 )

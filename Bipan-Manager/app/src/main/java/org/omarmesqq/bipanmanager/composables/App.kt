@@ -30,6 +30,13 @@ private val START_ROUTE = Route.AppListScreenRoute.route
 
 @Composable
 fun App(initParams: AppInitParams) {
+    val rooted = initParams.isRooted
+
+    if (!rooted) {
+        NoRootScreen()
+        return
+    }
+
     val navController = rememberNavController()
     val routes = listOf(
         Route.AppListScreenRoute,
