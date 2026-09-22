@@ -20,8 +20,8 @@ import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
 import org.omarmesqq.bipanmanager.data.AppInitParams
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
-import org.omarmesqq.bipanmanager.repository.GetRootShellRepo
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
+import org.omarmesqq.bipanmanager.repository.RootShellRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
@@ -35,14 +35,13 @@ import org.woheller69.freeDroidWarn.FreeDroidWarn.showWarningOnUpgrade
 
 
 private const val TAG = "MainActivity"
-
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
         val pm = this.packageManager
-        val getRootShellRepo = GetRootShellRepo()
+        val rootShellRepo = RootShellRepo()
 
-        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm), getRootShellRepo)
+        val initParams = MainViewModelInitParams(app.dataStoreRepo, InstalledAppsRepo(pm), rootShellRepo)
         MainViewModelFactory(initParams)
     }
 
