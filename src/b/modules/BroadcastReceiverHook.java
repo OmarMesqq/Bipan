@@ -4,7 +4,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -13,9 +16,14 @@ import b.BaseHook;
 
 public class BroadcastReceiverHook implements BaseHook {
   private static final String TAG = "BipanJavaBroadcastRec";
+  private static final Set<String> ALLOWLIST = new HashSet<>(Arrays.asList(
+      "com.aurora.store"));
 
   @Override
   public void install(Context context) throws Exception {
+    if (ALLOWLIST.contains(context.getPackageName())) {
+      return;
+    }
     hookBroadcastRegistration(context);
   }
 
@@ -107,7 +115,6 @@ public class BroadcastReceiverHook implements BaseHook {
           action.equals(Intent.ACTION_USER_UNLOCKED) ||
           action.equals(Intent.ACTION_USER_PRESENT) ||
           action.equals(Intent.ACTION_USER_INITIALIZE) ||
-          action.equals(Intent.ACTION_USER_UNLOCKED) ||
 
           // Additional profiles
           action.equals(Intent.ACTION_MANAGED_PROFILE_ADDED) ||

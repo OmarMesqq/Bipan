@@ -105,13 +105,13 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.verified_boot",
       "android.software.device_id_attestation"));
 
-  private static final Set<String> ALLOW_LIST = new HashSet<>(
+  private static final Set<String> ALLOWLIST = new HashSet<>(
       Arrays.asList("com.aurora.store"));
 
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
-    if (ALLOW_LIST.contains(this.selfPackageName)) {
+    if (ALLOWLIST.contains(this.selfPackageName)) {
       return;
     }
 
