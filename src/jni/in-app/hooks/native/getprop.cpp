@@ -304,6 +304,7 @@ static const std::unordered_map<std::string, std::string> g_telephony_prop_overr
     {"debug.tracing.mnc", "6"},
 };
 
+// TODO: ALLOWLIST
 static const std::unordered_set<std::string> g_telephony_spoofing_allowlist = {
     "com.android.vending",
     "com.google.android.gms",
