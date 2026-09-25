@@ -487,7 +487,7 @@ private fun NetworkingAssertions(ctx: Context) {
     if (isOnWifi) {
         AssertionResult("(Connected to Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
     } else {
-        AssertionResult("(Not on Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
+        AssertionResult("(Not on Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
     }
 
     if (wifiInfo.bssid != null) {
