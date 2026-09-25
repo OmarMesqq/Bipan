@@ -1,8 +1,5 @@
 package org.omarmesqq.bipanmanager.composables
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,39 +20,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import org.omarmesqq.bipanmanager.BuildConfig
-import org.omarmesqq.bipanmanager.R
-import org.omarmesqq.bipanmanager.utils.CoroutineMode
-import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 @Composable
 fun AboutScreen() {
     val uriHandler = LocalUriHandler.current
     val scrollState = rememberScrollState()
-    val rotation = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        profileCoroutine(CoroutineMode.LAUNCHED_EFFECT) {
-            rotation.animateTo(
-                targetValue = 360f,
-                animationSpec = tween(durationMillis = 800)
-            )
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -133,27 +112,9 @@ fun AboutScreen() {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "${BuildConfig.VERSION_NAME}/${BuildConfig.BUILD_TYPE}",
+                "${BuildConfig.VERSION_NAME} - ${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // #KeepAndroidOpen
-            Image(
-                painter = painterResource(id = R.mipmap.altered_deal_fg),
-                contentDescription = "Altered deal",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(250.dp)
-                    .graphicsLayer {
-                        rotationZ = rotation.value
-                    }
             )
         }
     }
