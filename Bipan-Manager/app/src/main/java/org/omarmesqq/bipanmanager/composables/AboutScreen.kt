@@ -133,13 +133,11 @@ fun AboutScreen() {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                "✦ v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦",
+                "${BuildConfig.VERSION_NAME}/${BuildConfig.BUILD_TYPE}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
             )
         }
-
-        HorizontalDivider()
 
         Row(
             horizontalArrangement = Arrangement.Center,

@@ -8,11 +8,11 @@ import android.util.Log
 import android.widget.Toast
 import org.omarmesqq.bipanmanager.MainApplication
 
-private const val TAG = "Darwin"
+private const val TAG = "Bipan-Manager"
 
 
 /**
- * Singleton instantiated at very Application's `onCreate`.
+ * Singleton instantiated at Application's `onCreate`.
  * As long as app is alive, this is a valid and single context, no leak here
  */
 @SuppressLint("StaticFieldLeak")

@@ -40,10 +40,7 @@ class RootShellRepo {
                 return@forEach
             }
         }
-        if (err) {
-            return false
-        }
-        return true
+        return !err
     }
 
     fun getBipanTargetsDir(): List<String> {
