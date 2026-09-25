@@ -19,7 +19,6 @@ import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
-import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
@@ -93,7 +92,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
                 refreshAppList()
             }
         }
-        joti("Refreshed targets and apps", TAG, null, true)
     }
 
     fun doesBipanDirExist(): Boolean {
