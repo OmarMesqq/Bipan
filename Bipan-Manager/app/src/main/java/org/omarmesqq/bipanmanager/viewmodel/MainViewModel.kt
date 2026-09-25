@@ -37,7 +37,11 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     val isAppReady: Flow<Boolean> = _isAppReady
     val currentTargets = _currentTargets.asStateFlow()
     val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
-        val installedPackageNames = apps?.map { it.packageName }?.toSet() ?: emptySet()
+        val installedPackageNames = apps
+            ?.map { it.packageName }
+            ?.toSet()
+            ?: emptySet()
+
         targets - installedPackageNames
     }.stateIn(
         scope = viewModelScope,
@@ -79,8 +83,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
                     if (jail) targets + pkgName else targets - pkgName
                 }
             }
-            // On failure, we simply don't update state — UI naturally reflects
-            // the unchanged (accurate) jailed status without extra rollback logic.
         }
     }
 
@@ -102,17 +104,17 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         return initParams.rootShellRepo.createDefaultTargets()
     }
 
-    private fun refreshTargets() {
-        viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
-            profileCoroutine(CoroutineMode.LAUNCH) {
+    private suspend fun refreshTargets() {
+        withContext(Dispatchers.IO + CoroutineName("$TAG/refreshTargets")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
                 _currentTargets.value = initParams.rootShellRepo.getBipanTargetsDir().toSet()
             }
         }
     }
 
-    private fun refreshAppList() {
-        viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/refreshAppList")) {
-            profileCoroutine(CoroutineMode.LAUNCH) {
+    private suspend fun refreshAppList() {
+        withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAppList")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
                 _appList.value = initParams.installedAppsRepo.getInstalledApps()
             }
         }

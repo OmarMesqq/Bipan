@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -110,9 +109,7 @@ fun AppListScreen(initParams: AppInitParams) {
                     items(
                         items = staleTargets.toList(),
                         key = { "orphan_$it" }
-                    )
-
-                    { pkgName ->
+                    ) { pkgName ->
                         if (pkgName != DROIDGUARD_PKG_NAME) {
                             AppRow(
                                 label = pkgName,
@@ -127,7 +124,6 @@ fun AppListScreen(initParams: AppInitParams) {
                             )
                         }
                     }
-                    item { HorizontalDivider() }
                 }
 
                 if (staleTargets.contains(DROIDGUARD_PKG_NAME)) {
@@ -232,10 +228,6 @@ private fun AppRow(
             checked = isJailed,
             onCheckedChange = { checked ->
                 if (isJailed && !checked) {
-                    // Going from jailed -> unjailed: require confirmation instead of
-                    // toggling immediately. The switch itself stays visually "on"
-                    // because `isJailed` is driven by the ViewModel and won't flip
-                    // until onToggle actually runs.
                     showUnjailConfirm = true
                 } else {
                     onToggle(checked)
@@ -312,8 +304,8 @@ private fun UnjailConfirmationDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "This will remove the jail restriction for this app. " +
-                            "It will regain its previous permissions immediately.",
+                    text = "This removes Bipan's sandbox for the app and" +
+                            " takes effect in the next app launch ",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(20.dp))
