@@ -21,14 +21,13 @@
 #include <sys/wait.h>
 #include <media/NdkMediaDrm.h>
 #include <linux/tcp.h>
+#include <netdb.h>
 
 #include "socket_helper.h"
-#include "athena.h"
 
 #define TAG "GrunfeldNative"
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PACKAGE_NAME "com.omarmesqq.grunfeld"
@@ -36,22 +35,36 @@
 #define SENSORS_SAMPLING_RATE 20000 // 50Hz (20ms)
 
 /**
- * func-like macro to convert negative error values provided by the kernel to raw syscalls
+ * func-like macro for converting negative error values provided by the kernel
  * back to nice libc/bionic errnos
  */
 #define RAW_SYSCALL_TO_ERRNO(ret) strerror((int)-ret)
 
-#define FIND_BIPAN_TRACES(path) \
-    strstr(path, "/memfd:jit-cache") || \
-    strstr(path, "Bipan") || \
-    strstr(path, "bipan") || \
-    strstr(path, "zygisk")
+/**
+ * For finding injected code in `maps` and `smaps`
+ */
+#define FIND_BIPAN_TRACES_IN_MAPPINGS(cstr) \
+    strstr(cstr, "/memfd:jit-cache") || \
+    strstr(cstr, "Bipan") || \
+    strstr(cstr, "bipan") || \
+    strstr(cstr, "zygisk")
+
+/**
+ * For finding injected code in `mount*` points
+ */
+#define FIND_BIPAN_TRACES_IN_MOUNTS(cstr) \
+    !strstr(cstr, "magisk") && \
+    !strstr(cstr, "hosts") && \
+    !strstr(cstr, "zygisk") && \
+    !strstr(cstr, "debug_ramdisk") && \
+    !strstr(cstr, "/cache/") && \
+    !strstr(cstr, "/product/bin") && \
+    !strstr(cstr, "modules")
 
 static void grunfeld_sigsys_handler(int sig, siginfo_t* info, void* void_context);
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data);
 static void bytes_to_hex(const uint8_t *in, size_t len, char *out, size_t out_cap);
-
 static int sys_prop_get(const char* propName, char* outBuf);
 static int sys_prop_read(const prop_info* pi, char* propName, char* outBuf);
 static void sys_prop_read_cbFn(void* cookie, const char* name, const char* value, uint32_t serial);
@@ -68,50 +81,6 @@ static const uint8_t kWidevineUuid[16] = {
         0xed, 0xef, 0x8b, 0xa9, 0x79, 0xd6, 0x4a, 0xce,
         0xa3, 0xc8, 0x27, 0xdc, 0xd5, 0x1d, 0x21, 0xed
 };
-
-
-__attribute__((constructor)) void grunfeld_early_init(void) {
-    LOGD("__attribute__((constructor))");
-    athenaInit();
-    // requestNativeBacktrace();
-}
-
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
-    LOGD("JNI_OnLoad");
-    // requestNativeBacktrace();
-    return JNI_VERSION_1_6;
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatfsToHosts(JNIEnv *env, jobject thiz) {
-    char report[1024] = {0};
-    char entry[256] = {0};
-
-    struct statfs b1 = {0};
-    struct statfs b2 = {0};
-
-    int ret = -1;
-
-    ret = statfs("/system/etc/hosts", &b1);
-    if (ret != 0) {
-        snprintf(entry, sizeof(entry), "%s\n", strerror(errno));
-        strcat(report, entry);
-    } else {
-        snprintf(entry, sizeof(entry), "statfs(/system/etc/hosts) succeeded\n");
-        strcat(report, entry);
-    }
-
-    ret = statfs("/etc/hosts", &b2);
-    if (ret != 0) {
-        snprintf(entry, sizeof(entry), "%s\n", strerror(errno));
-        strcat(report, entry);
-    } else {
-        snprintf(entry, sizeof(entry), "statfs(/etc/hosts) succeeded\n");
-        strcat(report, entry);
-    }
-    
-    return (*env)->NewStringUTF(env, report);
-}
 
 JNIEXPORT jstring JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getMediaDrmIdNative(JNIEnv *env, jobject thiz) {
@@ -179,15 +148,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanMountPoint(JNIEnv *env, j
     }
 
     while (fgets(entry, sizeof(entry), fp) != NULL) {
-        if (
-                !strstr(entry, "magisk") &&
-                !strstr(entry, "hosts") &&
-                !strstr(entry, "zygisk") &&
-                !strstr(entry, "debug_ramdisk") &&
-                !strstr(entry, "/cache/") &&
-                !strstr(entry, "/product/bin") &&
-                !strstr(entry, "modules")
-                ) {
+        if (FIND_BIPAN_TRACES_IN_MOUNTS(entry)) {
             continue;
         }
 
@@ -449,14 +410,20 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testStatx(JNIEnv *env, jobjec
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env, jobject thiz, jstring mapsPathJni) {
     char report[20000] = {0};
     char entry[PATH_MAX + 100] = {0};
     unsigned char linesLogged = 0;
 
-    FILE* fp = fopen("/proc/self/maps", "r");
+    const char* mapsPath = (*env)->GetStringUTFChars(env, mapsPathJni, NULL);
+    if (mapsPath == NULL) {
+        LOGE("mapsPathJni is NULL");
+        return NULL;
+    }
+
+    FILE* fp = fopen(mapsPath, "r");
     if (!fp) {
-        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/maps (errno: %s)\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", mapsPath, strerror(errno));
         strcat(report, entry);
         return (*env)->NewStringUTF(env, report);
     }
@@ -476,14 +443,14 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
                          "%10[^-]-%10s %4s %8s %2[^:]:%2s %zu %s",
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
         if (ret != 8) {
-            if (FIND_BIPAN_TRACES(libName)) {
+            if (FIND_BIPAN_TRACES_IN_MAPPINGS(libName)) {
                 snprintf(entry, sizeof(entry), "Something wrong. Matched args: %d | Culprit line: %s\n", ret, buf);
                 strcat(report, entry);
                 return (*env)->NewStringUTF(env, report);
             }
             // ignore problematic lines
         }
-        if (FIND_BIPAN_TRACES(libName) && linesLogged < 2) {
+        if (FIND_BIPAN_TRACES_IN_MAPPINGS(libName) && linesLogged < 2) {
             snprintf(entry, sizeof(entry), "%s", buf);
             strcat(report, entry);
             linesLogged++;
@@ -495,7 +462,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfMaps(JNIEnv *env,
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env, jobject thiz, jstring smapsPathJni) {
     size_t reportCap = 65536;
     size_t reportLen = 0;
     char* report = malloc(reportCap);
@@ -507,9 +474,15 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
 
     char entry[PATH_MAX + 100] = {0};
 
-    FILE* fp = fopen("/proc/self/smaps", "r");
+    const char* smapsPath = (*env)->GetStringUTFChars(env, smapsPathJni, NULL);
+    if (smapsPath == NULL) {
+        LOGE("smapsPathJni is NULL");
+        return NULL;
+    }
+
+    FILE* fp = fopen(smapsPath, "r");
     if (!fp) {
-        snprintf(entry, sizeof(entry), "Couldn't open /proc/self/smaps (errno: %s)\n", strerror(errno));
+        snprintf(entry, sizeof(entry), "Couldn't open %s (errno: %s)\n", smapsPath, strerror(errno));
         size_t entryLen = strlen(entry);
         if (reportLen + entryLen + 1 > reportCap) {
             reportCap = reportLen + entryLen + 1;
@@ -551,7 +524,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_scanProcSelfSmaps(JNIEnv *env
                          start, end, perms, offset, devMajor, devMinor, &libInode, libName);
 
         if (ret == 8) {
-            matchedCurrentRegion = (FIND_BIPAN_TRACES(libName)) != 0;
+            matchedCurrentRegion = (FIND_BIPAN_TRACES_IN_MAPPINGS(libName)) != 0;
 
             if (matchedCurrentRegion && linesLogged < 2) {
                 APPEND(buf);
@@ -644,17 +617,161 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testForkExec(JNIEnv *env, job
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_dlIteratePhdrTest(JNIEnv *env, jobject thiz) {
-    char *report = (char *) calloc(50000, sizeof(char));
-    if (!report) {
-        return (*env)->NewStringUTF(env, "Failed to allocate mem for report!");
-    }
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testDlIteratePhdr(JNIEnv *env, jobject thiz) {
+    char report[PATH_MAX] = {0};
 
     dl_iterate_phdr(dl_iterate_phdr_cb, report);
 
-    jstring result = (*env)->NewStringUTF(env, report);
-    free(report);
-    return result;
+    return (*env)->NewStringUTF(env, report);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_openFileNative(JNIEnv *env, jobject thiz, jstring pathJni) {
+    char report[PATH_MAX * 2] = {0};
+    int fd = -1;
+
+    const char* path = (*env)->GetStringUTFChars(env, pathJni, NULL);
+    if (path == NULL) {
+        return fd;
+    }
+
+    fd = open(path, O_RDONLY);
+    return fd;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_getFdSymlink(JNIEnv *env, jobject thiz, jint fdJni) {
+    char report[PATH_MAX * 2] = {0};
+
+    char procPath[64] = {0};
+    snprintf(procPath, sizeof(procPath), "/proc/self/fd/%d", fdJni);
+
+    char buf[PATH_MAX] = {0};
+    ssize_t ret = readlink(procPath, buf, sizeof(buf));
+    if (ret == -1) {
+        snprintf(report, sizeof(report), "readlink failed: %s", strerror(errno));
+        return (*env)->NewStringUTF(env, report);
+    }
+
+    // readlink(at) doesn't null terminate...
+    buf[ret] = '\0';
+
+    snprintf(report, sizeof(report), "%s", buf);
+    return (*env)->NewStringUTF(env, report);
+}
+
+
+JNIEXPORT jstring JNICALL
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
+    char result_buffer[PATH_MAX] = {0};
+    char entry[512] = {0};
+
+    // On API >= 26 we get the sensor sensorManager for our specific package
+    ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
+
+    if (sensorManager != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NOT null\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Enumerate all sensors
+    ASensorList list = {0};
+    int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
+
+    if (sensorListCount != 0) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
+        strcat(result_buffer, entry);
+        for (int i = 0; i < sensorListCount; i++) {
+            const char* name = ASensor_getName(list[i]);
+            const char* vendor = ASensor_getVendor(list[i]);
+            int type = ASensor_getType(list[i]);
+            LOGD("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
+        }
+    }
+
+    // Get some famous sensors
+    const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
+    const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
+    if (accel != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): NOT null\n");
+        strcat(result_buffer, entry);
+    }
+    if (gyro != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): NOT null\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Get a looper for the current thread
+    ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
+    if (!looper) {
+        snprintf(entry, sizeof(entry), "testSensors: Failed to get ALooper for current thread!\n");
+        strcat(result_buffer, entry);
+    }
+
+    // Create an event queue get streamed sensor data
+    ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
+    if (queue != NULL) {
+        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
+        strcat(result_buffer, entry);
+
+        // Add the "famous" sensors to the event stream queue
+        ASensorEventQueue_enableSensor(queue, accel);
+        ASensorEventQueue_enableSensor(queue, gyro);
+        // and set the rate at which their data is transmitted
+        ASensorEventQueue_setEventRate(queue, accel, SENSORS_SAMPLING_RATE);
+        ASensorEventQueue_setEventRate(queue, gyro, SENSORS_SAMPLING_RATE);
+
+
+        // Calculate the end time for our loop:  current time  + 3 seconds
+        struct timespec start_time, current_time;
+        clock_gettime(CLOCK_MONOTONIC, &start_time);
+        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
+        double end_secs = start_secs + 3.0;
+
+        int ident;      // Identifier of the event source
+        int events;     // Number of events available
+        void* data;     // User data
+        ASensorEvent event;
+
+        // Polling loop
+        bool sampling = true;
+        // Change timeout from -1 to 100 (ms).
+        // If it's -1, the loop "sleeps" until a sensor moves.
+        // If the phone is still, it won't check the 3-second limit!
+        while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
+            // Check if 3 seconds have passed and break if so
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
+            if (now >= end_secs) {
+                sampling = false;
+                continue;
+            }
+
+            // If the event came from our sensor queue, do stuff
+            if (ident == LOOPER_ID_USER) {
+                while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
+                    if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
+                        LOGD("Accel X: %f, Y: %f, Z: %f",
+                             (double) event.acceleration.x,
+                             (double) event.acceleration.y,
+                             (double) event.acceleration.z);
+                    } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
+                        LOGD("Gyro X: %f, Y: %f, Z: %f",
+                             (double) event.vector.x,
+                             (double) event.vector.y,
+                             (double) event.vector.z);
+                    }
+                }
+            }
+        }
+
+        // Cleanup
+        ASensorEventQueue_disableSensor(queue, accel);
+        ASensorEventQueue_disableSensor(queue, gyro);
+        ASensorManager_destroyEventQueue(sensorManager, queue);
+    }
+
+    return (*env)->NewStringUTF(env, result_buffer);
 }
 
 JNIEXPORT jstring JNICALL
@@ -663,7 +780,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsGet(JNIEnv *env, jobj
 
     const char* propNameCstr = (*env)->GetStringUTFChars(env, propName, NULL);
     if (propNameCstr == NULL) {
-        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String in array is NULL!");
+        snprintf(errBuf, sizeof(errBuf), "C-string from JNI String is NULL!");
         (*env)->DeleteLocalRef(env, propName);
         return (*env)->NewStringUTF(env, errBuf);
     }
@@ -785,21 +902,21 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_sysPropsReadCb(JNIEnv *env, j
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, jobject thiz) {
+Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsocknameV4(JNIEnv *env, jobject thiz) {
     long ret = -1;
     char report[512] = {0};
     char entry[256] = {0};
 
-    const int port_dns = 53;
+    const int dnsPort = 53;
     const char* cloudflareDnsIp4 = "1.1.1.1";
-    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, port_dns, 0, 0);
+    SockFactoryRes* res = CreateSocket(IPv4, UDP, cloudflareDnsIp4, dnsPort);
     if (!res) {
         return (*env)->NewStringUTF(env, "Failed to create socket!\n");
     }
 
     // 1. `connect` to WAN w/ a regular socket
     if (connect(res->sock, (struct sockaddr*)&res->sas.sas4, sizeof(res->sas.sas4)) == -1) {
-        snprintf(entry, sizeof(entry), "connect failed \n");
+        snprintf(entry, sizeof(entry), "connect failed: %s \n", strerror(errno));
         strcat(report, entry);
 
         close(res->sock);
@@ -817,7 +934,7 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testGetsockname(JNIEnv *env, 
         inet_ntop(AF_INET, &local_addr.sin_addr, ip, INET_ADDRSTRLEN);
         snprintf(entry, sizeof(entry), "%s", ip);
     } else {
-        snprintf(entry, sizeof(entry), "Test failed. errno: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
+        snprintf(entry, sizeof(entry), "getsockname failed: %s\n", RAW_SYSCALL_TO_ERRNO(ret));
     }
 
     strcat(report, entry);
@@ -895,7 +1012,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_unameBionic(JNIEnv *env, jobj
     return (*env)->NewStringUTF(env, result_str);
 }
 
-// TODO: maybe try with our kernel struct to bypass ART
 static char g_altstack[SIGSTKSZ * 4];
 JNIEXPORT jboolean JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_installSigsysHandler(JNIEnv* env, jobject thiz) {
@@ -946,119 +1062,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_blockSigSys(JNIEnv* env, jobj
     } else {
         return JNI_TRUE;
     }
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testSensors(JNIEnv *env, jobject thiz) {
-    char result_buffer[PATH_MAX] = {0};
-    char entry[512] = {0};
-
-    // On API >= 26 we get the sensor sensorManager for our specific package
-    ASensorManager* sensorManager = ASensorManager_getInstanceForPackage(PACKAGE_NAME);
-
-    if (sensorManager != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getInstanceForPackage: Sensor Manager is NOT null\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Enumerate all sensors
-    ASensorList list = {0};
-    int sensorListCount = ASensorManager_getSensorList(sensorManager, &list);
-
-    if (sensorListCount != 0) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getSensorList: %d sensors detected\n", sensorListCount);
-        strcat(result_buffer, entry);
-        for (int i = 0; i < sensorListCount; i++) {
-            const char* name = ASensor_getName(list[i]);
-            const char* vendor = ASensor_getVendor(list[i]);
-            int type = ASensor_getType(list[i]);
-            LOGI("Sensor name: %s, Vendor: %s, Type: %d", name, vendor, type);
-        }
-    }
-
-    // Get some famous sensors
-    const ASensor* accel = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_ACCELEROMETER);
-    const ASensor* gyro = ASensorManager_getDefaultSensor(sensorManager, ASENSOR_TYPE_GYROSCOPE);
-    if (accel != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(ACCELEROMETER): NOT null\n");
-        strcat(result_buffer, entry);
-    }
-    if (gyro != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_getDefaultSensor(GYROSCOPE): NOT null\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Get a looper for the current thread
-    ALooper* looper = ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS);
-    if (!looper) {
-        snprintf(entry, sizeof(entry), "testSensors: Failed to get ALooper for current thread!\n");
-        strcat(result_buffer, entry);
-    }
-
-    // Create an event queue get streamed sensor data
-    ASensorEventQueue* queue = ASensorManager_createEventQueue(sensorManager, looper, LOOPER_ID_USER, NULL, NULL);
-    if (queue != NULL) {
-        snprintf(entry, sizeof(entry), "ASensorManager_createEventQueue: created!\n");
-        strcat(result_buffer, entry);
-
-        // Add the "famous" sensors to the event stream queue
-        ASensorEventQueue_enableSensor(queue, accel);
-        ASensorEventQueue_enableSensor(queue, gyro);
-        // and set the rate at which their data is transmitted
-        ASensorEventQueue_setEventRate(queue, accel, SENSORS_SAMPLING_RATE);
-        ASensorEventQueue_setEventRate(queue, gyro, SENSORS_SAMPLING_RATE);
-
-
-        // Calculate the end time for our loop:  current time  + 3 seconds
-        struct timespec start_time, current_time;
-        clock_gettime(CLOCK_MONOTONIC, &start_time);
-        double start_secs = (double)start_time.tv_sec + (double)start_time.tv_nsec / 1e9;
-        double end_secs = start_secs + 3.0;
-
-        int ident;      // Identifier of the event source
-        int events;     // Number of events available
-        void* data;     // User data
-        ASensorEvent event;
-
-        // Polling loop
-        bool sampling = true;
-        // Change timeout from -1 to 100 (ms).
-        // If it's -1, the loop "sleeps" until a sensor moves.
-        // If the phone is still, it won't check the 3-second limit!
-        while (sampling && (ident = ALooper_pollOnce(100, NULL, &events, &data)) >= ALOOPER_POLL_WAKE) {
-            // Check if 3 seconds have passed and break if so
-            clock_gettime(CLOCK_MONOTONIC, &current_time);
-            double now = (double) current_time.tv_sec + (double)current_time.tv_nsec / 1e9;
-            if (now >= end_secs) {
-                sampling = false;
-                continue;
-            }
-
-            // If the event came from our sensor queue, do stuff
-            if (ident == LOOPER_ID_USER) {
-                while (ASensorEventQueue_getEvents(queue, &event, 1) > 0) {
-                    if (event.type == ASENSOR_TYPE_ACCELEROMETER) {
-                        LOGI("Accel X: %f, Y: %f, Z: %f",
-                             (double) event.acceleration.x,
-                             (double) event.acceleration.y,
-                             (double) event.acceleration.z);
-                    } else if (event.type == ASENSOR_TYPE_GYROSCOPE) {
-                        LOGI("Gyro X: %f, Y: %f, Z: %f",
-                             (double) event.vector.x,
-                             (double) event.vector.y,
-                             (double) event.vector.z);
-                    }
-                }
-            }
-        }
-
-        // Cleanup
-        ASensorEventQueue_disableSensor(queue, accel);
-        ASensorEventQueue_disableSensor(queue, gyro);
-        ASensorManager_destroyEventQueue(sensorManager, queue);
-    }
-
-    return (*env)->NewStringUTF(env, result_buffer);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -1145,26 +1148,6 @@ static void sys_prop_read_cb(const prop_info* pi,
 
 static const prop_info* sys_prop_find(const char* propName) {
     return __system_property_find(propName);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseSegv(JNIEnv *env, jobject thiz) {
-    raise(SIGSEGV);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseAbrt(JNIEnv *env, jobject thiz) {
-    raise(SIGABRT);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseTrap(JNIEnv *env, jobject thiz) {
-    raise(SIGTRAP);
-}
-
-JNIEXPORT void JNICALL
-Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_raiseQuit(JNIEnv *env, jobject thiz) {
-    raise(SIGQUIT);
 }
 
 #pragma clang diagnostic push

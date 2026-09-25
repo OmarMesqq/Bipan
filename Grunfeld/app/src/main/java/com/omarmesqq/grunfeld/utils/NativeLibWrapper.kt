@@ -26,28 +26,25 @@ object NativeLibWrapper {
     external fun unameSyscallLibcWrapper(): String
     external fun unameBionic(): String
 
-    external fun testGetsockname(): String
-
+    external fun testGetsocknameV4(): String
     external fun testSensors(): String
+    external fun testDlIteratePhdr(): String
     external fun getMediaDrmIdNative(): String
     external fun testForkExec(progname: String): String
 
-    external fun scanProcSelfMaps(): String
-    external fun scanProcSelfSmaps(): String
-    external fun dlIteratePhdrTest(): String
+    external fun scanProcSelfMaps(mapsPath: String): String
+    external fun scanProcSelfSmaps(smapsPath: String): String
     external fun scanMountPoint(mountpoint: String): String
+
+    external fun getFdSymlink(fd: Int): String
+    external fun openFileNative(path: String): Int
 
     external fun testFaccessat(filenames: Array<String>): String
     external fun testFstat(filename: String): StatResult
     external fun testNewfstatat(filename:String): StatResult
     external fun testStatx(): String
-    external fun testStatfsToHosts(): String
 
     external fun installSigsysHandler(): Boolean
     external fun triggerSigsysViolation(): Boolean
     external fun blockSigSys(): Boolean
-    external fun raiseSegv()
-    external fun raiseAbrt()
-    external fun raiseTrap()
-    external fun raiseQuit()
 }

@@ -36,7 +36,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
   private static String pkgName = "";
 
-  private static final Set<String> TM_CARRIER_BYPASS_LIST = new HashSet<>(Arrays.asList(
+  private static final Set<String> ALLOWLIST = new HashSet<>(Arrays.asList(
       "com.whatsapp"));
 
   private Object createEmptyCellIdentity() throws Throwable {
@@ -129,7 +129,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimOperatorNameForPhone":
         case "getSimOperatorNameForSubscription":
         case "getSubscriptionCarrierName": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           Log.i(TAG, "Neutered " + methodName);
@@ -141,7 +141,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimCountryIso":
         case "getSimCountryIsoForPhone":
         case "getSimCountryIsoForSubscription": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           Log.i(TAG, "Neutered " + methodName);
@@ -151,7 +151,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimOperator":
         case "getSimOperatorNumeric":
         case "getSimOperatorForSubscription": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           Log.i(TAG, "Neutered " + methodName);
@@ -176,7 +176,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
 
         case "getServiceState":
         case "getServiceStateForSlot": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           Log.i(TAG, "Neutered " + methodName);
@@ -192,7 +192,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         case "getSimSpecificCarrierId":
         case "getSubscriptionCarrierId":
         case "getSubscriptionSpecificCarrierId": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           Log.i(TAG, "Neutered " + methodName);
@@ -212,7 +212,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         }
 
         case "getCarrierIdFromMccMnc": {
-          if (TM_CARRIER_BYPASS_LIST.contains(pkgName)) {
+          if (ALLOWLIST.contains(pkgName)) {
             return method.invoke(originalITelephony, args);
           }
           String mccmnc = (args != null && args.length > 1 && args[1] instanceof String)
@@ -226,6 +226,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
         }
 
         default: {
+          // Log.w(TAG, "Allowing TM method: " + method.getName());
           return method.invoke(originalITelephony, args);
         }
       }

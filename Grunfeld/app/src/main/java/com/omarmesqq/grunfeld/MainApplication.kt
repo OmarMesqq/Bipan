@@ -7,22 +7,17 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.annotation.RequiresApi
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewOutcomeReceiver
-import androidx.webkit.WebViewStartUpConfig
-import androidx.webkit.WebViewStartUpResult
-import androidx.webkit.WebViewStartupException
 import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
-import java.util.concurrent.Executors
 
 private const val TAG = "MainApplication"
 
 class MainApplication: Application() {
     companion object {
         init {
+            System.loadLibrary("toolChecker")
             System.loadLibrary("grunfeld")
         }
     }
@@ -35,34 +30,9 @@ class MainApplication: Application() {
         super.onCreate()
         Avocado.init(this)
 
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "[!] UNCAUGHT_EXCEPTION: ${throwable.message} in thread ${thread.name}", tr= throwable)
-            printJavaBacktrace()
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
-
         if (BuildConfig.DEBUG) {
             setupStrictMode()
         }
-
-        // Pre-warm Chromium engine using "bleeding edge" API
-        val executor = Executors.newSingleThreadExecutor()
-        val config = WebViewStartUpConfig.Builder(executor).build()
-
-        WebViewCompat.startUpWebView(
-            this,
-            config,
-            object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
-                override fun onResult(result: WebViewStartUpResult) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG,"Chromium engine pre-warmed")
-                }
-
-                override fun onError(error: WebViewStartupException) {
-                    avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG,"Failed to pre-warm Chromium", tr = error)
-                }
-            }
-        )
 
         configRepository = GrunfeldConfigs(this)
     }
@@ -87,9 +57,6 @@ class MainApplication: Application() {
         }
     }
 
-    /**
-     * Fallback to onTrimMemory on older APIs
-     */
     override fun onLowMemory() {
         super.onLowMemory()
         avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onLowMemory")
@@ -125,18 +92,6 @@ class MainApplication: Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             VmPolicy.Builder().detectBlockedBackgroundActivityLaunch()
             ThreadPolicy.Builder().detectExplicitGc()
-        }
-    }
-    private fun printJavaBacktrace() {
-        val stackTrace = Throwable().stackTrace
-
-        if (stackTrace.isEmpty()) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "printJavaBacktrace: no stack trace available")
-            return
-        }
-
-        stackTrace.forEachIndexed { index, frame ->
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_ERROR, TAG, "Java frame #$index: $frame")
         }
     }
 }

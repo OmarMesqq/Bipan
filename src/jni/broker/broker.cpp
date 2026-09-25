@@ -257,7 +257,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           close(root_fd);  // Cleanup daemon's ref of target's pre_fd
           close(fake_fd);  // Cleanup daemon's own fake fd
 
-          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed with fd %d", path_payload, target_fd);
+          write_to_logcat_async(ANDROID_LOG_INFO, TAG, "openat(%s) spoofed", path_payload);
           // Tell target to use the fd it already has
           ipc_mem->ret = target_fd;
           ipc_mem->action = ACTION_USE_RET;
@@ -543,13 +543,6 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
 
             write_to_logcat_async(ANDROID_LOG_INFO, TAG, "(readlinkat with dirfd) spoofed: original res: %s | extracted path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
-            if (strcmp(fixedSymlink, "ENOENT") == 0) {
-              ipc_mem->ret = -ENOENT;
-              free(actualPath);
-              free(fixedSymlink);
-              free(proc_pid_fd_path);
-              break;
-            }
 
             memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
             ipc_mem->ret = (long)strlen(fixedSymlink);
@@ -627,20 +620,13 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             }
 
             write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "(readlinkat AT_FDCWD) spoofed: original link: %s | true path: %s | fixed link: %s", resolved_link_path, actualPath, fixedSymlink);
-            if (strcmp(fixedSymlink, "ENOENT") == 0) {
-              free(actualPath);
-              free(fixedSymlink);
-              free(proc_pid_fd_path);
-              ipc_mem->ret = -ENOENT;
-              break;
-            }
 
-            free(fixedSymlink);
             free(actualPath);
             free(proc_pid_fd_path);
 
             memcpy(ipc_mem->out_buffer, fixedSymlink, sizeof(ipc_mem->out_buffer));
             ipc_mem->ret = (long)strlen(fixedSymlink);
+            free(fixedSymlink);
             break;
           }
 
@@ -791,6 +777,7 @@ static void set_broker_proctitle(const char* pkgName) {
   set_linux_proctitle(fullTitle.c_str());
 }
 
+[[maybe_unused]]
 static inline void patch_instruction_remote(pid_t target_pid, uintptr_t caller_pc, int return_value, std::unordered_set<uintptr_t>& patched_pcs) {
   if (inside_remote_patcher) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "[!] Thread reentrancy in remote patcher!");

@@ -20,6 +20,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.ComponentEnabledSetting;
 import android.content.pm.FeatureInfo;
+import android.content.pm.LauncherApps;
 import java.util.ArrayList;
 import java.util.List;
 import b.J;
@@ -95,6 +96,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.companion_device_setup",
 
       "android.software.telecom",
+      "android.hardware.telephony.subscription",
 
       "android.hardware.sensor.hifi_sensors",
       "android.hardware.camera.ar"));
@@ -103,13 +105,13 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       "android.software.verified_boot",
       "android.software.device_id_attestation"));
 
-  private static final Set<String> ALLOW_LIST = new HashSet<>(
+  private static final Set<String> ALLOWLIST = new HashSet<>(
       Arrays.asList("com.aurora.store"));
 
   @Override
   public void install(Context context) throws Exception {
     this.selfPackageName = context.getPackageName();
-    if (ALLOW_LIST.contains(this.selfPackageName)) {
+    if (ALLOWLIST.contains(this.selfPackageName)) {
       return;
     }
 
@@ -285,6 +287,73 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.e(TAG, "Failed to replace sPackageManager: " + e.getMessage());
     }
+
+    // Launcher Apps silecing
+    LauncherApps realLauncherApps = (LauncherApps) context.getSystemService(Context.LAUNCHER_APPS_SERVICE);
+    Class<?> serviceManagerLa = Class.forName("android.os.ServiceManager");
+    Method getServiceLa = serviceManagerLa.getDeclaredMethod("getService", String.class);
+
+    IBinder reaLaBinder = (IBinder) getServiceLa.invoke(null, "launcherapps");
+    if (reaLaBinder == null) {
+      throw new Exception(TAG + "Could not get 'launcherapps' service binder");
+    }
+
+    InvocationHandler launcherAppsHandler = (proxy, method, args) -> {
+      try {
+        String methodName = method.getName();
+        Class<?> returnType = method.getReturnType();
+        Log.i(TAG, "Neutering LauncherApps method: " + methodName);
+
+        if (returnType == void.class) {
+          return null;
+        }
+        if (returnType == boolean.class) {
+          return true;
+        }
+        if (returnType == int.class || returnType == long.class) {
+          return 0;
+        }
+        if (returnType == List.class) {
+          return List.of();
+        }
+        if (returnType == Class.forName("android.content.pm.ParceledListSlice")) {
+          return emptyParceledListSlice();
+        }
+
+        return null;
+      } catch (UndeclaredThrowableException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "launcherAppsHandler UndeclaredThrowableException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (Exception e) {
+        Log.e(TAG, "launcherAppsHandler Exception:", e);
+        throw J.cleanThrowable(new OutOfMemoryError());
+      }
+    };
+
+    Class<?> iLauncherAppsClass = Class.forName("android.content.pm.ILauncherApps");
+    Object launcherAppsProxy = Proxy.newProxyInstance(
+        iLauncherAppsClass.getClassLoader(),
+        new Class[] { iLauncherAppsClass },
+        launcherAppsHandler);
+
+    IBinder proxyBinder = (IBinder) Proxy.newProxyInstance(
+        IBinder.class.getClassLoader(),
+        new Class[] { IBinder.class },
+        (p, method, args) -> {
+          if ("queryLocalInterface".equals(method.getName()))
+            return launcherAppsProxy;
+          return method.invoke(reaLaBinder, args);
+        });
+
+    Field sCacheFieldLa = serviceManagerLa.getDeclaredField("sCache");
+    sCacheFieldLa.setAccessible(true);
+
+    @SuppressWarnings("unchecked")
+    Map<String, IBinder> cacheLa = (Map<String, IBinder>) sCacheFieldLa.get(null);
+    cacheLa.put("launcherapps", proxyBinder);
+
+    replaceBinderInLauncherApps(realLauncherApps, proxyBinder, launcherAppsProxy);
   }
 
   @Override
@@ -314,15 +383,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
             Intent intent = (Intent) args[0];
             String action = intent.getAction();
 
-            // Allow self-targeted queries (component or package matches self)
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
@@ -422,27 +483,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
 
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
 
-            boolean isSafeQuery = false;
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
-              isSafeQuery = true;
-            }
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
-              isSafeQuery = true;
-            }
-
-            // TODO: make this DRY
+            boolean isSafeQuery = isSafeQuery(intent);
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -456,26 +502,12 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
 
-            boolean isSelfQuery = false;
-            if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
-              isSelfQuery = true;
-            }
-            if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
-              isSelfQuery = true;
-            }
-
+            boolean isSelfQuery = isSelfQuery(intent);
             if (isSelfQuery) {
               return method.invoke(originalPM, args);
             }
 
-            boolean isSafeQuery = false;
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
-              isSafeQuery = true;
-            }
-            if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
-              isSafeQuery = true;
-            }
-
+            boolean isSafeQuery = isSafeQuery(intent);
             if (isSafeQuery) {
               return method.invoke(originalPM, args);
             }
@@ -588,12 +620,15 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         case "resolveActivity": {
           if (args != null && args.length > 0 && args[0] instanceof Intent) {
             Intent intent = (Intent) args[0];
+            // TODO: make this DRY
             boolean isSelf = (intent.getComponent() != null
                 && selfPackageName.equals(intent.getComponent().getPackageName()))
                 || selfPackageName.equals(intent.getPackage());
+
             if (isSelf) {
               return method.invoke(originalPM, args);
             }
+
           }
           Log.i(TAG, "Blinded: resolveActivity");
           return null;
@@ -723,9 +758,8 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
         }
 
         default: {
-          Object result = method.invoke(originalPM, args);
           // Log.w(TAG, "Allowing PM method: " + method.getName());
-          return result;
+          return method.invoke(originalPM, args);
         }
       }
     } catch (InvocationTargetException e) {
@@ -739,6 +773,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     } catch (Exception e) {
       Log.e(TAG, "invoke Exception:", e);
       throw J.cleanThrowable(new OutOfMemoryError());
+    }
+  }
+
+  private void replaceBinderInLauncherApps(LauncherApps la, IBinder proxyBinder, Object proxy) throws Exception {
+    try {
+      Field mServiceField = la.getClass().getDeclaredField("mService");
+      mServiceField.setAccessible(true);
+      mServiceField.set(la, proxy);
+      return;
+    } catch (NoSuchFieldException ignored) {
+    }
+
+    Log.d(TAG, "replaceBinderInLauncherApps: resorting to fallback");
+
+    // Fallback: replace fields whose declared type is IBinder
+    for (Field f : la.getClass().getDeclaredFields()) {
+      if (f.getType() == IBinder.class) {
+        f.setAccessible(true);
+        f.set(la, proxyBinder);
+      }
     }
   }
 
@@ -761,6 +815,26 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
     return info;
   }
 
+  private boolean isSelfQuery(Intent intent) {
+    if (intent.getComponent() != null && selfPackageName.equals(intent.getComponent().getPackageName())) {
+      return true;
+    }
+    if (intent.getPackage() != null && selfPackageName.equals(intent.getPackage())) {
+      return true;
+    }
+    return false;
+  }
+
+  private boolean isSafeQuery(Intent intent) {
+    if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getComponent().getPackageName())) {
+      return true;
+    }
+    if (intent.getComponent() != null && TRUSTED_PACKAGES.contains(intent.getPackage())) {
+      return true;
+    }
+    return false;
+  }
+
   private void setHiddenField(Object obj, String name, Object value) throws Throwable {
     Field field = obj.getClass().getDeclaredField(name);
     field.setAccessible(true);
@@ -768,7 +842,7 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
   }
 
   private String dumpIntent(Intent intent) {
-    String intentInfo = "\naction=" + intent.getAction()
+    String intentInfo = "action=" + intent.getAction()
         + " data=" + intent.getDataString()
         + " pkg=" + intent.getPackage()
         + " component=" + intent.getComponent()

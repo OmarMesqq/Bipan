@@ -35,7 +35,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
   private static final String RANDOM_ANDROID_ID = generateRandomId();
   private static final String FAKE_BOOT_COUNT = "43";
 
-  private static final Set<String> SSAID_ALLOW_LIST = new HashSet<>(
+  private static final Set<String> ALLOWLIST = new HashSet<>(
       Arrays.asList("com.spotify.music"));
 
   private static String currentPackageName = "unknown";
@@ -62,7 +62,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
 
         if (settingKey != null) {
           if ("android_id".equals(settingKey)) {
-            if (SSAID_ALLOW_LIST.contains(currentPackageName)) {
+            if (ALLOWLIST.contains(currentPackageName)) {
               Log.i(TAG, "Returning true SSAID for allowlisted app: " + currentPackageName);
               return method.invoke(originalProvider, args);
             }
@@ -127,6 +127,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
         "android.provider.Settings$Secure"
     };
 
+    //TODO: spoof GSF's `cr` here?
     Class<?> iContentProviderClass = Class.forName("android.content.IContentProvider");
 
     for (String className : targetClasses) {

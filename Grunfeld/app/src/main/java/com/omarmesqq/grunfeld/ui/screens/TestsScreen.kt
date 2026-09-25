@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Process
+import android.os.Process.myUserHandle
 import android.provider.Settings.Global
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
@@ -18,8 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -35,7 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.MainApplication
+import com.omarmesqq.grunfeld.ui.MainActivity
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultEmpty
@@ -47,7 +50,10 @@ import com.omarmesqq.grunfeld.ui.composables.AssertionResultSingleSpecificValueI
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultSomeValuesInIterable
 import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
+import com.omarmesqq.grunfeld.utils.CoroutineMode
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
+import com.omarmesqq.grunfeld.utils.debugCoroutine
+import com.omarmesqq.grunfeld.utils.findActivity
 import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
@@ -60,7 +66,10 @@ import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.scottyab.rootbeer.RootBeer
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
@@ -71,97 +80,160 @@ private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 @Composable
 fun TestsScreen() {
     val context = LocalContext.current
-    val screenScrollState = rememberScrollState()
     val cr = context.contentResolver
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .verticalScroll(screenScrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Java and native tests", style = MaterialTheme.typography.headlineMedium)
+        item { Text(text = "Java and native tests", style = MaterialTheme.typography.headlineMedium) }
 
-        SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            BuildAssertions()
-            HorizontalDivider()
-            SettingsAssertions(cr)
-            HorizontalDivider()
-            SystemPropertiesAssertions()
+        item {
+            SectionHeader("BUILD, SETTINGS AND SYSTEM PROPERTIES TESTS")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                BuildAssertions()
+                HorizontalDivider()
+                SettingsAssertions(cr)
+                HorizontalDivider()
+                SystemPropertiesAssertions()
+            }
         }
 
-        SectionHeader("EXEC TESTS")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RuntimeAssertions()
+        item {
+            SectionHeader("EXEC TESTS")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RuntimeAssertions()
+            }
         }
 
-        SectionHeader("SENSORS TESTS (JAVA/NDK)")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SensorsAssertions(context)
+        item {
+            SectionHeader("SENSORS TESTS (JAVA/NDK)")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SensorsAssertions(context)
+            }
         }
 
-
-        SectionHeader("NETWORK INTERFACES TESTS")
-        NetworkIfacesAssertions()
-
-        SectionHeader("LINK PROPERTIES AND WIFI MANAGER TESTS")
-        LinkPropertiesAndWifiAssertions(context)
-
-        SectionHeader("APP INSTALLER TEST")
-        AppInstallerAssertions(context)
-
-        SectionHeader("FOREIGN APP INSPECTION TESTS")
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            QueryIntentActivitiesAssertions(context)
-            InstalledApplicationsAssertions(context)
-            InstalledPackagesAssertions(context)
+        item {
+            SectionHeader("NETWORKING TESTS")
+            NetworkingAssertions(context)
         }
 
-        SectionHeader("SELF-ANALYSIS TESTS")
-        LogcatAssertions()
+        item {
+            SectionHeader("APP INSTALLER TESTS")
+            AppInstallerAssertions(context)
+        }
 
-        SectionHeader("TELEPHONY TESTS")
-        TelephonyAssertions(context)
+        item {
+            SectionHeader("APP INSPECTION TESTS")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                QueryIntentActivitiesAssertions(context)
+                TestResolveActivity()
+                InstalledApplicationsAssertions(context)
+                InstalledPackagesAssertions(context)
+                TestLauncherApps()
+            }
+        }
 
-        SectionHeader("ROOTBER ROOT CHECK")
-        RootCheckAssertions(context)
+        item {
+            SectionHeader("SELF-ANALYSIS TESTS")
+            LogcatAssertions()
+        }
 
-        SectionHeader("DEVICE IDENTIFIERS")
-        DeviceIdAssertions(context, cr)
+        item {
+            SectionHeader("TELEPHONY TESTS")
+            TelephonyAssertions(context)
+        }
 
-        SectionHeader("STEALTH TESTS")
-        StealthAssertions()
+        item {
+            SectionHeader("ROOTBER ROOT CHECK")
+            RootCheckAssertions(context)
+        }
 
-        SectionHeader("HOOKING DEPTH TESTS")
-        HookingDepthAssertions()
+        item {
+            SectionHeader("DEVICE IDENTIFIERS")
+            DeviceIdAssertions(context, cr)
+        }
 
-        SectionHeader("LAN LEAK TEST")
-        LanLeakAssertions()
+        item {
+            SectionHeader("STEALTH TESTS")
+            StealthAssertions()
+        }
 
-        SectionHeader("FILESYSTEM TESTS")
-        FilesystemAssertions()
+        item {
+            SectionHeader("HOOKING DEPTH TESTS")
+            HookingDepthAssertions()
+        }
 
-        SectionHeader("SYSTEM PROPERTIES - REFLECTION TESTS")
-        SystemPropsReflectionAssertions()
-        SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
-        SystemPropsNativeAssertions()
+        item {
+            SectionHeader("FILESYSTEM TESTS")
+            FilesystemAssertions()
+        }
 
+        item {
+            SectionHeader("SYSTEM PROPERTIES - REFLECTION TESTS")
+            SystemPropsReflectionAssertions()
+        }
+
+        item {
+            SectionHeader("SYSTEM PROPERTIES - NDK TESTS")
+            SystemPropsNativeAssertions()
+        }
     }
+}
+
+
+@Composable
+private fun TestLauncherApps() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        Text(
+            text = "Unsupported API level",
+            color = Color.Yellow
+        )
+    } else {
+        val context = LocalContext.current
+        val activity = context.findActivity() as MainActivity
+
+        val launcherAcInfos = activity.launcherApps.getActivityList(null, myUserHandle())
+        val launcherUserInfo = activity.launcherApps.getLauncherUserInfo(myUserHandle())
+        val preInstalledSystemPkgs = activity.launcherApps.getPreInstalledSystemPackages(myUserHandle())
+        val hasShortcutHostPermission = activity.launcherApps.hasShortcutHostPermission()
+        val allPackageInstallerSessions = activity.launcherApps.allPackageInstallerSessions
+        val profiles = activity.launcherApps.profiles
+
+        AssertionResultEmpty("LauncherActivityInfo[]", launcherAcInfos)
+        AssertionResultNull("LauncherUserInfo", launcherUserInfo)
+        AssertionResultEmpty("preInstalledSystemPkgs[]", preInstalledSystemPkgs)
+        AssertionResult("hasShortcutHostPermission", hasShortcutHostPermission, true)
+        AssertionResultEmpty("allPackageInstallerSessions[]", allPackageInstallerSessions)
+        AssertionResultEmpty("profiles", profiles)
+    }
+}
+@Composable
+private fun TestResolveActivity() {
+    val context = LocalContext.current
+    val pm = context.packageManager
+    val i = Intent(Intent.ACTION_VIEW).apply {
+        data = "http://example.com".toUri()
+        addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+
+    val resolveInfo = pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)
+    AssertionResultNull("resolveActivity/resolveIntent", resolveInfo)
 }
 
 @Composable
@@ -257,11 +329,25 @@ private fun SensorsAssertions(ctx: Context) {
     AssertionResult("Sensors", getSensorsInfo(ctx), "")
 }
 
+
+
 @Composable
-private fun NetworkIfacesAssertions() {
+private fun NetworkingAssertions(ctx: Context) {
+    Text(
+        text = "Network interface enumeration",
+        color = Color.Magenta
+    )
     var ifaceList by remember { mutableStateOf<List<NetworkInterface>?>(null) }
+
     LaunchedEffect(Unit) {
-        ifaceList = getNetworkInterfaces()
+        val start = System.currentTimeMillis()
+
+        ifaceList = getNetworkInterfaces() // already does its own withContext(IO) internally
+
+        debugCoroutine(CoroutineName("NetworkIfacesAssertionsCr"),
+            CoroutineMode.LAUNCHED_EFFECT,
+            System.currentTimeMillis() - start
+        )
     }
 
     when (val interfaceList = ifaceList) {
@@ -298,10 +384,12 @@ private fun NetworkIfacesAssertions() {
                 }
         }
     }
-}
 
-@Composable
-private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
+    Text(
+        text = "Link Properties via Connectivity Manager",
+        color = Color.Magenta
+    )
+
     val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     @Suppress("DEPRECATION")
@@ -322,8 +410,8 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     }
     val hasTransportVpn = caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
     val hasCapNotVpn = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-    AssertionResult("Network has VPN transport?", hasTransportVpn, false)
-    AssertionResult("Network has cap NOT_VPN?", hasCapNotVpn, true)
+    AssertionResult("Network has VPN transport ?", hasTransportVpn, false)
+    AssertionResult("Network has cap NOT_VPN ?", hasCapNotVpn, true)
 
     val activeNetwork = cm.activeNetwork
     if (activeNetwork == null) {
@@ -378,7 +466,10 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
     val expectedDnsServers = listOf("8.8.8.8", "8.8.4.4")
     AssertionResultSomeValuesInIterable("DNS Servers", dnsServers, expectedDnsServers)
 
-    HorizontalDivider()
+    Text(
+        text = "Wifi Manager (deprecated)",
+        color = Color.Magenta
+    )
 
     val wifiInfo = try {
         getWifiManagerInfo(ctx)
@@ -390,13 +481,27 @@ private fun LinkPropertiesAndWifiAssertions(ctx: Context) {
         return
     }
 
+    val isOnWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+
     @Suppress("DEPRECATION")
-    AssertionResult("IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
+    if (isOnWifi) {
+        AssertionResult("(Connected to Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), FAKE_IP)
+    } else {
+        AssertionResult("(Not on Wi-Fi) IPv4 address", Formatter.formatIpAddress(wifiInfo.ipAddress), "0.0.0.0")
+    }
 
     if (wifiInfo.bssid != null) {
         AssertionResult("BSSID", wifiInfo.bssid, "02:00:00:00:00:00")
     }
     AssertionResultContains("SSID", wifiInfo.ssid, "<unknown ssid>")
+
+    Text(
+        text = "LAN leak tests",
+        color = Color.Magenta
+    )
+
+    val socketIp4 = NativeLibWrapper.testGetsocknameV4()
+    AssertionResult("IPv4 via 'getsockname'", socketIp4, "10.111.222.1")
 }
 
 @Composable
@@ -524,7 +629,20 @@ private fun RootCheckAssertions(ctx: Context) {
     var isRooted by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        isRooted = RootBeer(ctx).isRooted
+        val isRootedInCr = withContext(Dispatchers.IO + CoroutineName("RootCheckAssertionsCr")) {
+            val start = System.currentTimeMillis()
+
+            val rootRes = RootBeer(ctx).isRooted
+
+            debugCoroutine(coroutineContext[CoroutineName],
+                CoroutineMode.LAUNCHED_EFFECT,
+                System.currentTimeMillis() - start
+            )
+            rootRes
+        }
+        isRooted = isRootedInCr
+
+
     }
 
     when (val rooted = isRooted) {
@@ -548,7 +666,16 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
     var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
+        withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstLaunchFetch")) {
+            val start = System.currentTimeMillis()
+
+            isFirstAppLaunch = app.configRepository.isFirstLaunchFlow.first()
+
+            debugCoroutine(coroutineContext[CoroutineName],
+                CoroutineMode.LAUNCHED_EFFECT,
+                System.currentTimeMillis() - start
+            )
+        }
     }
 
     when (isFirstAppLaunch) {
@@ -561,13 +688,23 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                 color = Color.Yellow
             )
             LaunchedEffect(Unit) {
-                val ssaid = getSsaid(cr)
-                val gsfId = getGsfId(context)
-                val drmId = getMediaDrmId()
-                val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/firstAppLaunch")) {
+                    val start = System.currentTimeMillis()
 
-                app.configRepository.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
-                app.configRepository.toggleFirstLaunch()
+                    val ssaid = getSsaid(cr)
+                    val gsfId = getGsfId(context)
+                    val drmId = getMediaDrmId()
+                    val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
+
+                    app.configRepository.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
+                    app.configRepository.toggleFirstLaunch()
+
+                    debugCoroutine(coroutineContext[CoroutineName],
+                        CoroutineMode.LAUNCHED_EFFECT,
+                        System.currentTimeMillis() - start
+                    )
+                }
+
             }
         }
         else -> {
@@ -577,18 +714,32 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             var drmIdFromPref by remember { mutableStateOf<String?>(null) }
             var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
 
-            LaunchedEffect(Unit) {
-                ssaidFromPref = app.configRepository.ssaidFlow.first()
-                gsfIdFromPref = app.configRepository.gsfIdFlow.first()
-                drmIdFromPref = app.configRepository.drmIdFlow.first()
-                drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
-                fetchedFromPrefs = true
-            }
 
             val currentSsaid = getSsaid(cr)
             val currentGsfId = getGsfId(context)
             val currentDrmId = getMediaDrmId()
             val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
+
+
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/fetchAndUpdatePrefs")) {
+                    val start = System.currentTimeMillis()
+
+                    ssaidFromPref = app.configRepository.ssaidFlow.first()
+                    gsfIdFromPref = app.configRepository.gsfIdFlow.first()
+                    drmIdFromPref = app.configRepository.drmIdFlow.first()
+                    drmIdNdkFromPref = app.configRepository.drmIdNdkFlow.first()
+
+                    app.configRepository.updateDeviceIds(currentSsaid, currentGsfId, currentDrmId, currentDrmIdNdk)
+
+                    fetchedFromPrefs = true
+
+                    debugCoroutine(coroutineContext[CoroutineName],
+                        CoroutineMode.LAUNCHED_EFFECT,
+                        System.currentTimeMillis() - start
+                    )
+                }
+            }
 
             if (!fetchedFromPrefs) {
                 Text("Fetching data from SharedPrefs...")
@@ -606,18 +757,49 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
 private fun StealthAssertions() {
     val defaultValue = ""
 
-    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps()
-    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps()
+    CodeTitle("Traces of injection in VFS", Color.Magenta)
+    val procSelfMaps = NativeLibWrapper.scanProcSelfMaps("/proc/self/maps")
+    val procPidMaps = NativeLibWrapper.scanProcSelfMaps("/proc/${Process.myPid()}/maps")
+    val procSelfSmaps = NativeLibWrapper.scanProcSelfSmaps("/proc/self/smaps")
+    val procPidSmaps = NativeLibWrapper.scanProcSelfMaps("/proc/${Process.myPid()}/smaps")
     val procSelfMountinfo = NativeLibWrapper.scanMountPoint("/proc/self/mountinfo")
+    val procPidMountinfo = NativeLibWrapper.scanMountPoint("/proc/${Process.myPid()}/mountinfo")
     val procMounts = NativeLibWrapper.scanMountPoint("/proc/mounts")
+    val procSelfMounts = NativeLibWrapper.scanMountPoint("/proc/self/mounts")
+    val procPidMounts = NativeLibWrapper.scanMountPoint("/proc/${Process.myPid()}/mounts")
 
     AssertionResult("/proc/self/maps", procSelfMaps, defaultValue)
+    AssertionResult("/proc/<PID>/maps", procPidMaps, defaultValue)
     AssertionResult("/proc/self/smaps", procSelfSmaps, defaultValue)
+    AssertionResult("/proc/<PID>/smaps", procPidSmaps, defaultValue)
     AssertionResult("/proc/self/mountinfo", procSelfMountinfo, defaultValue)
+    AssertionResult("/proc/<PID>/mountinfo", procPidMountinfo, defaultValue)
     AssertionResult("/proc/mounts", procMounts, defaultValue)
+    AssertionResult("/proc/self/mounts", procSelfMounts, defaultValue)
+    AssertionResult("/proc/<PID>/mounts", procPidMounts, defaultValue)
 
-    val dlIteratePhdr = NativeLibWrapper.dlIteratePhdrTest()
+    CodeTitle("Traces of injection in linker's soinfo", Color.Magenta)
+    val dlIteratePhdr = NativeLibWrapper.testDlIteratePhdr()
     AssertionResult("dl_iterate_phdr", dlIteratePhdr, defaultValue)
+
+    CodeTitle("Correct symlinks of spoofed files", Color.Magenta)
+    val procSelfMapsFd = NativeLibWrapper.openFileNative("/proc/self/maps")
+    val procPidMapsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/maps")
+    val procSelfSmapsFd = NativeLibWrapper.openFileNative("/proc/self/smaps")
+    val procPidSmapsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/smaps")
+    val etcHostsFd = NativeLibWrapper.openFileNative("/etc/hosts")
+    val systemEtcHostsFd = NativeLibWrapper.openFileNative("/system/etc/hosts")
+    val procSelfMountinfoFd = NativeLibWrapper.openFileNative("/proc/self/mountinfo")
+    val procPidMountinfoFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/mountinfo")
+
+    AssertionResult("/proc/self/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procSelfMapsFd), "/proc/${Process.myPid()}/maps")
+    AssertionResult("/proc/<PID>/maps -> /proc/<PID>/maps", NativeLibWrapper.getFdSymlink(procPidMapsFd), "/proc/${Process.myPid()}/maps")
+    AssertionResult("/proc/self/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procSelfSmapsFd), "/proc/${Process.myPid()}/smaps")
+    AssertionResult("/proc/<PID>/smaps -> /proc/<PID>/smaps", NativeLibWrapper.getFdSymlink(procPidSmapsFd), "/proc/${Process.myPid()}/smaps")
+    AssertionResult("/proc/self/mountinfo -> /proc/<PID>/mountinfo", NativeLibWrapper.getFdSymlink(procSelfMountinfoFd), "/proc/${Process.myPid()}/mountinfo")
+    AssertionResult("/proc/<PID>/mountinfo -> /proc/<PID>/mountinfo", NativeLibWrapper.getFdSymlink(procPidMountinfoFd), "/proc/${Process.myPid()}/mountinfo")
+    AssertionResult("/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(etcHostsFd), "/system/etc/hosts")
+    AssertionResult("/system/etc/hosts -> /system/etc/hosts", NativeLibWrapper.getFdSymlink(systemEtcHostsFd), "/system/etc/hosts")
 }
 
 @Composable
@@ -636,26 +818,12 @@ private fun HookingDepthAssertions() {
 }
 
 @Composable
-private fun LanLeakAssertions() {
-    val socketIp = NativeLibWrapper.testGetsockname()
-    AssertionResult("Socket IP via 'getsockname'", socketIp, "10.111.222.1")
-}
-
-@Composable
 private fun FilesystemAssertions() {
     CodeTitle("statx()", Color.Magenta)
+
     val statxTest = NativeLibWrapper.testStatx()
-
     AssertionResult("'statx'", statxTest, "Function not implemented")
-    CodeTitle("statfs()", Color.Magenta)
 
-    val statfsToHosts = NativeLibWrapper.testStatfsToHosts()
-    statfsToHosts
-        .split("\n")
-        .take(2) // /system/etc/hosts and /etc/hosts
-        .forEach {
-            AssertionResult("'statfs' to hosts file", it, "Function not implemented")
-        }
     CodeTitle("faccessat()", Color.Magenta)
 
     val rootNodes = arrayOf(
@@ -730,7 +898,7 @@ private fun FilesystemAssertions() {
     AssertionResult("/system/etc/hosts and /system/etc status change time should match", newfstatatSystemEtc.modTime, newfstatatSystemEtcHosts.modTime)
 
     Text(
-        text = "Sensitive file read",
+        text = "Sensitive file read (should be blocked by SELinux)",
         color = Color.Magenta
     )
 

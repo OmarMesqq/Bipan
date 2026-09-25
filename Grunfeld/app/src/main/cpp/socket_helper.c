@@ -4,8 +4,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* address, int port, const char* sunPath, SockProto proto) {
-    int sock = socket((int)fam, (int)sockType, (int)proto);
+SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* address, int port) {
+    int sock = socket((int)fam, (int)sockType, 0);
     if (sock == -1) {
         return NULL;
     }
@@ -38,22 +38,6 @@ SockFactoryRes* CreateSocket(SockFamily fam, SockType sockType, const char* addr
 
         res->sas.sas6 = sas6;
         return res;
-    } else if (fam == Unix) {
-        struct sockaddr_un sasUn = {
-                .sun_family = AF_UNIX
-        };
-        strncpy(sasUn.sun_path, sunPath, sizeof(sasUn.sun_path)-1);
-
-        res->sas.sasUn = sasUn;
-        return res;
-    } else {
-        struct sockaddr_nl sasNetlink;
-        memset(&sasNetlink, 0, sizeof(sasNetlink));
-        sasNetlink.nl_family = Netlink;
-        sasNetlink.nl_pid = (__u32) getpid();
-        sasNetlink.nl_groups = 0;
-
-        res->sas.sasNetlink = sasNetlink;
-        return res;
     }
+    return NULL;
 }
