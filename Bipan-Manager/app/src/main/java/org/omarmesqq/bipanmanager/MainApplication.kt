@@ -9,7 +9,6 @@ import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.core.content.ContextCompat
 import org.omarmesqq.bipanmanager.data.DataStoreRepoInitParams
-import org.omarmesqq.bipanmanager.data.PackageUpdateReceiverInitParams
 import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
 import org.omarmesqq.bipanmanager.repository.RootShellRepo
@@ -25,8 +24,6 @@ class MainApplication : Application() {
             System.loadLibrary("nativeTemplate")
         }
     }
-
-    private lateinit var packageUpdateReceiver: PackageUpdateReceiver
 
     lateinit var rootShellRepo: RootShellRepo
         private set
@@ -46,13 +43,12 @@ class MainApplication : Application() {
 
         rootShellRepo = RootShellRepo()
 
-        val packageUpdateReceiverInitParams = PackageUpdateReceiverInitParams(rootShellRepo)
-        packageUpdateReceiver = PackageUpdateReceiver(packageUpdateReceiverInitParams)
-
         registerPackageAddedReceiver()
     }
 
     private fun registerPackageAddedReceiver() {
+        val packageUpdateReceiver = PackageUpdateReceiver()
+
         val filter = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
             addDataScheme("package")
         }

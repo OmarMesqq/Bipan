@@ -39,7 +39,7 @@ This works because Bipan operates at the syscall level: you can't (I think?) lie
 
 ## Usage
 ### Prerequisites
-- An Android device running the `aarch64`/`arm64-v8a` and/or `armeabi-v7a` (WIP) architecture which supports at least SDK `28` and is rooted with Magisk >= 26
+- An Android device running the `aarch64`/`arm64-v8a` and/or `armeabi-v7a` architectures whose minimum SDK is `28` and is rooted with Magisk >= 26
 
 At each app launch, Bipan is injected by Zygisk and applies the patches to the app
 using info at the module's private folder: `/data/adb/modules/bipan/targets/`  
@@ -55,6 +55,9 @@ touch /data/adb/modules/bipan/targets/com.facebook.katana
 touch /data/adb/modules/bipan/targets/com.instagram.android
 touch /data/adb/modules/bipan/targets/com.android.webview
 ```
+
+Alternatively, you can use the *Bipan Manager* app to sandbox in the apps:
+
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
 any sort of modification to the app's memory.

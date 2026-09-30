@@ -8,12 +8,17 @@ import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 private const val TAG = "BootUnlockRcvr"
 class BootAndUnlockReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
+        if (intent == null) {
+            jote("Got null Intent", TAG)
+            return
+        }
+
         if (context == null) {
             jote("Got Intent but Context is null!", TAG)
             return
         }
 
-        when (intent?.action) {
+        when (intent.action) {
             Intent.ACTION_USER_UNLOCKED -> {
                 // no-op: just start to watch for app installs
             }
