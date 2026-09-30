@@ -627,7 +627,6 @@ Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_testDlIteratePhdr(JNIEnv *env
 
 JNIEXPORT jint JNICALL
 Java_com_omarmesqq_grunfeld_utils_NativeLibWrapper_openFileNative(JNIEnv *env, jobject thiz, jstring pathJni) {
-    char report[PATH_MAX * 2] = {0};
     int fd = -1;
 
     const char* path = (*env)->GetStringUTFChars(env, pathJni, NULL);
