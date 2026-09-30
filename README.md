@@ -1,6 +1,7 @@
 # Bipan
 
-<img width="192" height="192" alt="ic_launcher" src="https://github.com/user-attachments/assets/a1f55879-0921-4997-9105-c9f91a207262" />
+<img width="192" height="192" alt="ic_launcher_round" src="https://github.com/user-attachments/assets/bc6244e6-3ed6-4f8c-a812-d991e90d28bb" />
+
 
 Bipan is an anti-fingerprinting sandbox for Android which works on a per-app
 basis. For the apps you wish to jail, Bipan applies a set of patches *at runtime*
@@ -57,7 +58,8 @@ touch /data/adb/modules/bipan/targets/com.android.webview
 ```
 
 Alternatively, you can use the *Bipan Manager* app to sandbox in the apps:
-
+<img width="853" height="1217" alt="screenshot1" src="https://github.com/user-attachments/assets/ff03b53b-6bc8-4bd5-8aac-c255ca635e3c" />
+<img width="757" height="1519" alt="screenshot2" src="https://github.com/user-attachments/assets/939da314-002c-420b-9bdc-2849abe6a88d" />
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
 any sort of modification to the app's memory.
