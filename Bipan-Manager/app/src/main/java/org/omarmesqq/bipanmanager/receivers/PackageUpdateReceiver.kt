@@ -7,7 +7,8 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.omarmesqq.bipanmanager.data.PackageUpdateReceiverInitParams
+import org.omarmesqq.bipanmanager.MainApplication
+import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.joti
@@ -16,10 +17,14 @@ import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 private const val TAG = "PkgUpdRecvr"
 
-class PackageUpdateReceiver(private val initParams: PackageUpdateReceiverInitParams) :
-    BroadcastReceiver() {
+class PackageUpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
-        when (intent?.action) {
+        if (intent == null) {
+            jote("Got null Intent", TAG)
+            return
+        }
+
+        when (intent.action) {
             Intent.ACTION_PACKAGE_ADDED -> {
                 if (context == null) {
                     jote("Got Intent but Context is null!", TAG)
@@ -31,7 +36,12 @@ class PackageUpdateReceiver(private val initParams: PackageUpdateReceiverInitPar
                     return
                 }
 
+                if (packageName == PACKAGE_NAME) {
+                    return
+                }
                 jotd("New app: $packageName", TAG)
+                val app = context.applicationContext as MainApplication
+                val rootShellRepo = app.rootShellRepo
 
                 // Root shell calls are blocking
                 // goAsync() extends the receiver's lifetime past onReceive() returning
@@ -39,7 +49,7 @@ class PackageUpdateReceiver(private val initParams: PackageUpdateReceiverInitPar
                 CoroutineScope(Dispatchers.IO + CoroutineName("$TAG/onReceive")).launch {
                     profileCoroutine(CoroutineMode.LAUNCH) {
                         try {
-                            val jailed = initParams.rootShellRepo.jailApp(packageName)
+                            val jailed = rootShellRepo.jailApp(packageName)
                             if (jailed) {
                                 joti("Jailed $packageName", TAG)
                             } else {
