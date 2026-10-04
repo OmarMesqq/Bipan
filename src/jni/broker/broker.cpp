@@ -202,7 +202,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           ipc_mem->ret = -EACCES;
           ipc_mem->action = ACTION_USE_RET;
           break;
-        } else if (isMapsFile(path_payload) || isSmapsFile(path_payload) || shouldFakeFile(path_payload)) {
+        } else if (isMapsFile(path_payload) || isSmapsFile(path_payload) || isMountsFile(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
           char real_path[IPC_STRING_STRUCT_BUF_SIZ];
           if (strncmp(path_payload, "/proc/self/", 11) == 0) {
@@ -217,6 +217,8 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
             fake_fd = clean_proc_maps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
           } else if (isSmapsFile(path_payload)) {
             fake_fd = clean_proc_smaps((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
+          } else if (isMountsFile(path_payload)) {
+            fake_fd = clean_proc_mounts((int)ipc_mem->arg0, real_path, (int)ipc_mem->arg2, (mode_t)ipc_mem->arg3);
           } else {
             fake_fd = create_spoofed_file(shouldFakeFile(path_payload));
           }
