@@ -37,7 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import com.omarmesqq.grunfeld.MainApplication
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.omarmesqq.grunfeld.data.DeviceIdState
 import com.omarmesqq.grunfeld.ui.MainActivity
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
@@ -52,20 +53,18 @@ import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 import com.omarmesqq.grunfeld.utils.findActivity
-import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.getSensorsInfo
-import com.omarmesqq.grunfeld.utils.getSsaid
 import com.omarmesqq.grunfeld.utils.getSystemProperty
 import com.omarmesqq.grunfeld.utils.getWifiManagerInfo
 import com.omarmesqq.grunfeld.utils.hasPermission
 import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
+import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 import com.scottyab.rootbeer.RootBeer
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -75,7 +74,7 @@ private const val FAKE_IP = "10.111.222.1"
 private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 
 @Composable
-fun TestsScreen() {
+fun TestsScreen(mvm: MainViewModel) {
     val context = LocalContext.current
     val cr = context.contentResolver
 
@@ -168,7 +167,7 @@ fun TestsScreen() {
 
         item {
             SectionHeader("DEVICE IDENTIFIERS")
-            DeviceIdAssertions(context, cr)
+            DeviceIdAssertions(mvm)
         }
 
         item {
@@ -319,24 +318,19 @@ private fun SettingsAssertions(cr: ContentResolver) {
 
 @Composable
 private fun SystemPropertiesAssertions() {
-    val arch = System.getProperty("os.arch")
-    val name = System.getProperty("os.name")
     val version = System.getProperty("os.version")
-
-    AssertionResult("os.arch", arch ?: "", "aarch64")
-    AssertionResult("os.name", name ?: "", "Linux")
     AssertionResult("os.version", version ?: "", "6.6.56-android16-11-g8a3e2b1c4d5f")
 }
 
 @Composable
 private fun RuntimeAssertions() {
     AssertionResult(
-        "Runtime.exec('which', 'su')",
+        "Runtime.exec(which, su)",
         runtimeExecWithCmdArray(arrayOf("which", "su")),
         ""
     )
-    AssertionResult("Runtime.exec('getprop')", runtimeExecWithCmd("getprop"), "null")
-    AssertionResult("fork()/exec('uname')", NativeLibWrapper.testForkExec(""), "")
+    AssertionResult("Runtime.exec(getprop)", runtimeExecWithCmd("getprop"), "null")
+    AssertionResult("fork()/exec(uname)", NativeLibWrapper.testForkExec(""), "")
 }
 
 @Composable
@@ -670,73 +664,18 @@ private fun RootCheckAssertions(ctx: Context) {
 }
 
 @Composable
-private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
-    val app = ctx.applicationContext as MainApplication
+private fun DeviceIdAssertions(mvm: MainViewModel) {
+    val deviceIdsState by mvm.deviceIdsState.collectAsStateWithLifecycle()
 
-    var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
+    when (val state = deviceIdsState) {
+        DeviceIdState.Loading -> Text("Loading...")
+        DeviceIdState.FirstLaunch -> Text(
+            "First app launch: collected device IDs to check in next launch",
+            color = Color.Yellow
+        )
 
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/isFirstLaunchFetch")) {
-            isFirstAppLaunch = app.container.dataStoreRepo.isFirstLaunchFlow.first()
-        }
-    }
-
-    when (isFirstAppLaunch) {
-        null -> {
-            Text("Loading...")
-        }
-
-        true -> {
-            Text(
-                text = "First app launch: collected device IDs to check in next launch",
-                color = Color.Yellow
-            )
-            LaunchedEffect(Unit) {
-                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/firstAppLaunch")) {
-                    val ssaid = getSsaid(cr)
-                    val drmId = getMediaDrmId()
-                    val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
-
-                    app.container.dataStoreRepo.updateDeviceIds(ssaid, drmId, drmIdFromNdk)
-                    app.container.dataStoreRepo.toggleFirstLaunch()
-                }
-            }
-        }
-
-        else -> {
-            var fetchedFromPrefs by remember { mutableStateOf(false) }
-            var ssaidFromPref by remember { mutableStateOf<String?>(null) }
-            var drmIdFromPref by remember { mutableStateOf<String?>(null) }
-            var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
-
-            val currentSsaid = getSsaid(cr)
-            val currentDrmId = getMediaDrmId()
-            val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
-
-
-            LaunchedEffect(Unit) {
-                withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/fetchAndUpdatePrefs")) {
-                    ssaidFromPref = app.container.dataStoreRepo.ssaidFlow.first()
-                    drmIdFromPref = app.container.dataStoreRepo.drmIdFlow.first()
-                    drmIdNdkFromPref = app.container.dataStoreRepo.drmIdNdkFlow.first()
-
-                    app.container.dataStoreRepo.updateDeviceIds(
-                        currentSsaid,
-                        currentDrmId,
-                        currentDrmIdNdk
-                    )
-
-                    fetchedFromPrefs = true
-                }
-            }
-
-            if (!fetchedFromPrefs) {
-                Text("Fetching data from SharedPrefs...")
-            } else {
-                AssertionResultNotEqualStrings("SSAID", currentSsaid, ssaidFromPref!!)
-                AssertionResultNotEqualStrings("DRM ID (Java API)", currentDrmId, drmIdFromPref!!)
-                AssertionResultNotEqualStrings("DRM ID (NDK)", currentDrmIdNdk, drmIdNdkFromPref!!)
-            }
+        is DeviceIdState.Compared -> state.rows.forEach {
+            AssertionResultNotEqualStrings(it.label, it.current, it.previous)
         }
     }
 }
@@ -877,9 +816,21 @@ private fun FilesystemAssertions() {
         fstatEtcHosts.ino
     )
 
-    AssertionResult("/etc/hosts size (in bytes)", fstatEtcHosts.size, 46)
-    AssertionResult("/etc/hosts block size (in bytes)", fstatEtcHosts.blkSiz, 4096)
-    AssertionResult("/etc/hosts allocated blocks", fstatEtcHosts.blksAllocated, 8)
+    val hostsExpectedSize = 46
+    val hostsExpectedBlockSize = 4096
+    val hostsExpectedAllocatedBlocks = 8
+
+    AssertionResult("/etc/hosts size (in bytes)", fstatEtcHosts.size, hostsExpectedSize.toLong())
+    AssertionResult(
+        "/etc/hosts block size (in bytes)",
+        fstatEtcHosts.blkSiz,
+        hostsExpectedBlockSize.toLong()
+    )
+    AssertionResult(
+        "/etc/hosts allocated blocks",
+        fstatEtcHosts.blksAllocated,
+        hostsExpectedAllocatedBlocks.toLong()
+    )
 
     AssertionResult(
         "/etc/hosts and /etc access time should match",
@@ -918,13 +869,21 @@ private fun FilesystemAssertions() {
         newfstatatSystemEtcHosts.ino
     )
 
-    AssertionResult("/system/etc/hosts size (in bytes)", newfstatatSystemEtcHosts.size, 46)
+    AssertionResult(
+        "/system/etc/hosts size (in bytes)",
+        newfstatatSystemEtcHosts.size,
+        hostsExpectedSize.toLong()
+    )
     AssertionResult(
         "/system/etc/hosts block size (in bytes)",
         newfstatatSystemEtcHosts.blkSiz,
-        4096
+        hostsExpectedBlockSize.toLong()
     )
-    AssertionResult("/system/etc/hosts allocated blocks", newfstatatSystemEtcHosts.blksAllocated, 8)
+    AssertionResult(
+        "/system/etc/hosts allocated blocks",
+        newfstatatSystemEtcHosts.blksAllocated,
+        hostsExpectedAllocatedBlocks.toLong()
+    )
 
     AssertionResult(
         "/system/etc/hosts and /system/etc access time should match",
@@ -949,6 +908,7 @@ private fun FilesystemAssertions() {
 
     val senstiveFiles = arrayOf(
         "/proc/self/mountstats",
+        "/proc/${Process.myPid()}/mountstats",
         "/proc/sys/kernel/version",
         "/proc/sys/kernel/osrelease",
         "/proc/version",

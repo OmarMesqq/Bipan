@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.omarmesqq.grunfeld.MainApplication
+import com.omarmesqq.grunfeld.data.MainViewModelInitParams
 import com.omarmesqq.grunfeld.ui.screens.MainScreen
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -41,9 +42,10 @@ private const val TAG = "MainActivity"
 
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class MainActivity : ComponentActivity() {
-    private val viewModel: MainViewModel by viewModels {
+    private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        MainViewModelFactory(app.container.dataStoreRepo)
+        val ip = MainViewModelInitParams(app.container.dataStoreRepo, app.contentResolver)
+        MainViewModelFactory(ip)
     }
 
     private val screenCaptureCallback = ScreenCaptureCallback {
@@ -64,12 +66,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
-            !viewModel.isAppReady.value
+            !mainViewModel.isAppReady.value
         }
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
-            viewModel.isFlagSecureEnabled.collectLatest { isEnabled ->
+            mainViewModel.isFlagSecureEnabled.collectLatest { isEnabled ->
                 if (isEnabled) {
                     window.setFlags(
                         WindowManager.LayoutParams.FLAG_SECURE,
@@ -93,7 +95,7 @@ class MainActivity : ComponentActivity() {
                 lightColorScheme()
             }
             MaterialTheme(colorScheme = colors) {
-                MainScreen()
+                MainScreen(mainViewModel)
             }
         }
     }

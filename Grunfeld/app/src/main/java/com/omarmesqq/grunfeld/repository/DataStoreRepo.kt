@@ -56,9 +56,8 @@ class DataStoreRepo(private val context: Context) {
     }
 
     suspend fun toggleFirstLaunch() {
-        val currentState = isFirstLaunchFlow.first()
         context.dataStore.edit { prefs ->
-            prefs[isFirstLaunchPref] = !currentState
+            prefs[isFirstLaunchPref] = false
         }
     }
 
