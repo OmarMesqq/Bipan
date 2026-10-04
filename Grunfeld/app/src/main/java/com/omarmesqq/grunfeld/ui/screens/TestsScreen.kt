@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.omarmesqq.grunfeld.data.DeviceIdState
+import com.omarmesqq.grunfeld.data.RootCheckResult
 import com.omarmesqq.grunfeld.ui.MainActivity
 import com.omarmesqq.grunfeld.ui.composables.AssertionResult
 import com.omarmesqq.grunfeld.ui.composables.AssertionResultContains
@@ -62,10 +64,6 @@ import com.omarmesqq.grunfeld.utils.openFileKt
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmd
 import com.omarmesqq.grunfeld.utils.runtimeExecWithCmdArray
 import com.omarmesqq.grunfeld.viewmodel.MainViewModel
-import com.scottyab.rootbeer.RootBeer
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.NetworkInterface
@@ -162,7 +160,7 @@ fun TestsScreen(mvm: MainViewModel) {
 
         item {
             SectionHeader("ROOTBER ROOT CHECK")
-            RootCheckAssertions(context)
+            RootCheckAssertions(mvm)
         }
 
         item {
@@ -640,24 +638,16 @@ private fun TelephonyAssertions(ctx: Context) {
 }
 
 @Composable
-private fun RootCheckAssertions(ctx: Context) {
-    var isRooted by remember { mutableStateOf<Boolean?>(null) }
-
-    LaunchedEffect(Unit) {
-        val isRootedInCr = withContext(Dispatchers.IO + CoroutineName("RootCheckAssertionsCr")) {
-            RootBeer(ctx).isRooted
-        }
-        isRooted = isRootedInCr
-    }
-
-    when (val rooted = isRooted) {
-        null -> {
+private fun RootCheckAssertions(mvm: MainViewModel) {
+    when (val isRooted = mvm.isRooted.collectAsState().value) {
+        RootCheckResult.LOADING -> {
             Text("Loading...")
         }
 
         else -> {
             AssertionResult(
-                "Is rooted?", rooted, false
+                // LOADING guards against null in current contract, safe to force cast
+                "Is rooted?", isRooted.actualValue!!, false
             )
         }
     }
