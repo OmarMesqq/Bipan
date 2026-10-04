@@ -45,12 +45,6 @@ android {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
 
-            externalNativeBuild {
-                cmake {
-                    arguments += "-DCMAKE_BUILD_TYPE=Release"
-                }
-            }
-
             signingConfig = signingConfigs.getByName("debug")
         }
 
@@ -66,11 +60,6 @@ android {
 
             ndk {
                 debugSymbolLevel = "FULL"
-            }
-            externalNativeBuild {
-                cmake {
-                    arguments += "-DCMAKE_BUILD_TYPE=Debug"
-                }
             }
         }
 
@@ -91,12 +80,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    externalNativeBuild {
-        cmake {
-            path("src/main/native/CMakeLists.txt")
-        }
     }
 }
 

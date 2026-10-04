@@ -7,6 +7,7 @@ import org.omarmesqq.bipanmanager.data.DEFAULT_TARGETS
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 private const val TAG = "RootShellRepo"
+
 class RootShellRepo {
     fun getRootShell(): Shell {
         Shell.enableVerboseLogging = BuildConfig.DEBUG
@@ -20,37 +21,15 @@ class RootShellRepo {
 
     fun doesBipanTargetsDirExist(): Boolean {
         val result = Shell.cmd("ls -d $BIPAN_TARGETS_DIR").exec()
-        if (result.err.isNotEmpty()) {
-            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
-            return false
-        }
-        if (!result.isSuccess) {
-            jote("doesBipanTargetsDirExist FAILED!", TAG)
-            return false
-        }
-        return true
+        return reportShellErr(result, "doesBipanTargetsDirExist")
     }
 
-    fun createDefaultTargets(): Boolean {
-        var err = false
-        DEFAULT_TARGETS.forEach {
-            val jailed = jailApp(it)
-            if (!jailed) {
-                err = true
-                return@forEach
-            }
-        }
-        return !err
-    }
+    fun createDefaultTargets(): Boolean = DEFAULT_TARGETS.all { jailApp(it) }
 
     fun getBipanTargetsDir(): List<String> {
         val result = Shell.cmd("ls $BIPAN_TARGETS_DIR").exec()
-        if (result.err.isNotEmpty()) {
-            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
-            return emptyList()
-        }
-        if (!result.isSuccess) {
-            jote("getBipanTargetsDir FAILED!", TAG)
+        val verdict = reportShellErr(result, "getBipanTargetsDir")
+        if (!verdict) {
             return emptyList()
         }
         return result.out
@@ -58,27 +37,26 @@ class RootShellRepo {
 
     fun jailApp(pkgName: String): Boolean {
         val result = Shell.cmd("touch $BIPAN_TARGETS_DIR/$pkgName").exec()
-        if (result.err.isNotEmpty()) {
-            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
-            return false
-        }
-        if (!result.isSuccess) {
-            jote("jailApp($pkgName) FAILED!", TAG)
-            return false
-        }
-        return true
+        return reportShellErr(result, "jailApp($pkgName)")
     }
 
     fun unjailApp(pkgName: String): Boolean {
         val result = Shell.cmd("rm $BIPAN_TARGETS_DIR/$pkgName").exec()
-        if (result.err.isNotEmpty()) {
-            jote("Shell stderr: ${result.err} | exitCode: ${result.code}", TAG)
+        return reportShellErr(result, "unjailApp($pkgName)")
+    }
+
+    private fun reportShellErr(res: Shell.Result, fnName: String): Boolean {
+        var failed = false
+        if (!res.isSuccess) {
+            jote("$fnName failed", TAG)
+            failed = true
+        }
+        if (res.err.isNotEmpty()) {
+            jote("$fnName stderr: ${res.err} | code: ${res.code}", TAG)
             return false
         }
-        if (!result.isSuccess) {
-            jote("unjailApp($pkgName) FAILED!", TAG)
-            return false
-        }
+        if (failed) return false
+
         return true
     }
 }

@@ -30,7 +30,6 @@ import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
-import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
@@ -100,8 +99,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initUi() {
-        val initParams =
-            AppInitParams(mainViewModel, isRootGranted, bipanFolderExists, isFirstLaunch)
+        val initParams = AppInitParams(
+            mainViewModel,
+            isRootGranted,
+            bipanFolderExists,
+            isFirstLaunch
+        )
 
         if (isFirstLaunch) {
             val app = application as MainApplication
@@ -136,11 +139,8 @@ class MainActivity : ComponentActivity() {
         }
 
         if (status) {
-            joti("Root granted", TAG)
             return true
         }
-
-        jotf("Root denied", TAG)
         return false
     }
 
