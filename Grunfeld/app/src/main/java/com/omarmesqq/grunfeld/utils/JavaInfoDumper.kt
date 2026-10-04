@@ -9,14 +9,12 @@ import android.media.MediaDrm
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.provider.Settings
-import androidx.core.net.toUri
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.lang.Long.toHexString
 import java.lang.String.format
 import java.lang.reflect.Method
 import java.net.NetworkInterface
@@ -77,26 +75,6 @@ fun getSystemProperty(key: String, defaultValue: String = "<empty>"): String {
 
     return (getMethod.invoke(null, key, defaultValue) as? String)
         ?.takeIf { it.isNotEmpty() } ?: defaultValue
-}
-
-// Credits to https://github.com/fingerprintjs/fingerprintjs-android
-fun getGsfId(ctx: Context): String {
-    val cr = ctx.contentResolver
-    val gsfContentProviderUri = "content://com.google.android.gsf.gservices"
-    val idKey = "android_id"
-
-    val uri = gsfContentProviderUri.toUri()
-    val params = arrayOf(idKey)
-
-    val gsfId = try {
-        cr!!.query(uri, null, null, params, null)!!.use { cursor ->
-            check(cursor.moveToFirst() && cursor.columnCount >= 2)
-            toHexString(cursor.getString(1).toLong())
-        }
-    } catch (e: Exception) {
-        "Failed to get GSF ID: ${e.message}"
-    }
-    return gsfId
 }
 
 // Credits to https://github.com/fingerprintjs/fingerprintjs-android

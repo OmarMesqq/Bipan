@@ -20,7 +20,6 @@ class DataStoreRepo(private val context: Context) {
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
     private val flagSecureEnabledPref = booleanPreferencesKey("IS_FLAG_SECURE_ENABLED")
     private val deviceidSsaidPref = stringPreferencesKey("DEVICE_SSAID")
-    private val deviceidGsfIdPref = stringPreferencesKey("DEVICE_GSF_ID")
     private val deviceidDrmIdPref = stringPreferencesKey("DEVICE_DRM_ID")
     private val deviceidDrmIdNdkPref = stringPreferencesKey("DEVICE_DRM_ID_NDK")
 
@@ -37,11 +36,6 @@ class DataStoreRepo(private val context: Context) {
     val ssaidFlow: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[deviceidSsaidPref] ?: UNIQUE_DEVICE_ID_DEFAULT
-        }
-
-    val gsfIdFlow: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[deviceidGsfIdPref] ?: UNIQUE_DEVICE_ID_DEFAULT
         }
 
     val drmIdFlow: Flow<String> = context.dataStore.data
@@ -68,10 +62,9 @@ class DataStoreRepo(private val context: Context) {
         }
     }
 
-    suspend fun updateDeviceIds(ssaid: String, gsfId: String, drmId: String, drmIdNdk: String) {
+    suspend fun updateDeviceIds(ssaid: String, drmId: String, drmIdNdk: String) {
         context.dataStore.edit { prefs ->
             prefs[deviceidSsaidPref] = ssaid
-            prefs[deviceidGsfIdPref] = gsfId
             prefs[deviceidDrmIdPref] = drmId
             prefs[deviceidDrmIdNdkPref] = drmIdNdk
         }

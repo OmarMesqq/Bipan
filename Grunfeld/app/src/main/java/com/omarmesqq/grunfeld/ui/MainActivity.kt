@@ -14,7 +14,6 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -36,7 +35,6 @@ import java.util.function.Consumer
 open class Screen(val route: String, val title: String, val icon: ImageVector) {
     object TestsScreen : Screen("tests", "Tests", Icons.Default.CheckCircle)
     object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
-    object AboutScreen : Screen("about", "About", Icons.Default.Info)
 }
 
 private const val TAG = "MainActivity"

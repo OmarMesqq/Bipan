@@ -24,7 +24,6 @@ fun MainScreen() {
     val items = listOf(
         Screen.TestsScreen,
         Screen.SettingsScreen,
-        Screen.AboutScreen
     )
 
     Scaffold(
@@ -61,7 +60,6 @@ fun MainScreen() {
         ) {
             composable(Screen.TestsScreen.route) { TestsScreen() }
             composable(Screen.SettingsScreen.route) { SettingsScreen() }
-            composable(Screen.AboutScreen.route) { AboutScreen() }
         }
     }
 }

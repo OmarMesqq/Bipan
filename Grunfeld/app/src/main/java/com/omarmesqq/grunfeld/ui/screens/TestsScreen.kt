@@ -52,7 +52,6 @@ import com.omarmesqq.grunfeld.ui.composables.CodeTitle
 import com.omarmesqq.grunfeld.ui.composables.SectionHeader
 import com.omarmesqq.grunfeld.utils.NativeLibWrapper
 import com.omarmesqq.grunfeld.utils.findActivity
-import com.omarmesqq.grunfeld.utils.getGsfId
 import com.omarmesqq.grunfeld.utils.getMediaDrmId
 import com.omarmesqq.grunfeld.utils.getNetworkInterfaces
 import com.omarmesqq.grunfeld.utils.getSensorsInfo
@@ -672,7 +671,6 @@ private fun RootCheckAssertions(ctx: Context) {
 
 @Composable
 private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
-    val context = LocalContext.current
     val app = ctx.applicationContext as MainApplication
 
     var isFirstAppLaunch by remember { mutableStateOf<Boolean?>(null) }
@@ -696,11 +694,10 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             LaunchedEffect(Unit) {
                 withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/firstAppLaunch")) {
                     val ssaid = getSsaid(cr)
-                    val gsfId = getGsfId(context)
                     val drmId = getMediaDrmId()
                     val drmIdFromNdk = NativeLibWrapper.getMediaDrmIdNative()
 
-                    app.container.dataStoreRepo.updateDeviceIds(ssaid, gsfId, drmId, drmIdFromNdk)
+                    app.container.dataStoreRepo.updateDeviceIds(ssaid, drmId, drmIdFromNdk)
                     app.container.dataStoreRepo.toggleFirstLaunch()
                 }
             }
@@ -709,13 +706,10 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
         else -> {
             var fetchedFromPrefs by remember { mutableStateOf(false) }
             var ssaidFromPref by remember { mutableStateOf<String?>(null) }
-            var gsfIdFromPref by remember { mutableStateOf<String?>(null) }
             var drmIdFromPref by remember { mutableStateOf<String?>(null) }
             var drmIdNdkFromPref by remember { mutableStateOf<String?>(null) }
 
-
             val currentSsaid = getSsaid(cr)
-            val currentGsfId = getGsfId(context)
             val currentDrmId = getMediaDrmId()
             val currentDrmIdNdk = NativeLibWrapper.getMediaDrmIdNative()
 
@@ -723,13 +717,11 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
             LaunchedEffect(Unit) {
                 withContext(Dispatchers.IO + CoroutineName("DeviceIdAssertionsCr/fetchAndUpdatePrefs")) {
                     ssaidFromPref = app.container.dataStoreRepo.ssaidFlow.first()
-                    gsfIdFromPref = app.container.dataStoreRepo.gsfIdFlow.first()
                     drmIdFromPref = app.container.dataStoreRepo.drmIdFlow.first()
                     drmIdNdkFromPref = app.container.dataStoreRepo.drmIdNdkFlow.first()
 
                     app.container.dataStoreRepo.updateDeviceIds(
                         currentSsaid,
-                        currentGsfId,
                         currentDrmId,
                         currentDrmIdNdk
                     )
@@ -742,7 +734,6 @@ private fun DeviceIdAssertions(ctx: Context, cr: ContentResolver) {
                 Text("Fetching data from SharedPrefs...")
             } else {
                 AssertionResultNotEqualStrings("SSAID", currentSsaid, ssaidFromPref!!)
-                AssertionResultNotEqualStrings("GSF ID", currentGsfId, gsfIdFromPref!!)
                 AssertionResultNotEqualStrings("DRM ID (Java API)", currentDrmId, drmIdFromPref!!)
                 AssertionResultNotEqualStrings("DRM ID (NDK)", currentDrmIdNdk, drmIdNdkFromPref!!)
             }
