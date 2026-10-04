@@ -215,7 +215,6 @@ public class J {
       if (isIsolatedProcess()) {
         modules.add(new AntiAppInspectionHook());
         modules.add(new SystemPropertiesHook());
-        modules.add(new GsfIdSpoofHook());
       } else {
         modules.add(new AntiAppInspectionHook());
         modules.add(new NetworkSpoofingHook());
@@ -224,7 +223,6 @@ public class J {
         modules.add(new AntiNetworkDiscoveryHook());
         modules.add(new TelephonyManagerHook());
         modules.add(new AntiScreenshotDetectionHook());
-        modules.add(new GsfIdSpoofHook());
         modules.add(new BroadcastReceiverHook());
       }
     }
