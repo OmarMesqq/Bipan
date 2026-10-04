@@ -40,11 +40,12 @@ open class Screen(val route: String, val title: String, val icon: ImageVector) {
 }
 
 private const val TAG = "MainActivity"
+
 @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        MainViewModelFactory(app.configRepository)
+        MainViewModelFactory(app.container.dataStoreRepo)
     }
 
     private val screenCaptureCallback = ScreenCaptureCallback {
@@ -52,7 +53,12 @@ class MainActivity : ComponentActivity() {
     }
     private val screenRecordCallback = Consumer<Int> { state ->
         if (state == SCREEN_RECORDING_STATE_VISIBLE) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG, "Screen recording in progress!", shouldToast = true)
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO,
+                TAG,
+                "Screen recording in progress!",
+                shouldToast = true
+            )
         }
     }
     lateinit var launcherApps: LauncherApps
@@ -98,7 +104,8 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         registerScreenCaptureCallback(mainExecutor, screenCaptureCallback)
-        val initialWindowState = windowManager.addScreenRecordingCallback(mainExecutor, screenRecordCallback)
+        val initialWindowState =
+            windowManager.addScreenRecordingCallback(mainExecutor, screenRecordCallback)
         screenRecordCallback.accept(initialWindowState)
     }
 
@@ -118,21 +125,24 @@ class MainActivity : ComponentActivity() {
 
     private val launcherAppsCb = object : LauncherApps.Callback() {
         override fun onPackageAdded(packageName: String, user: UserHandle) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
                 "packageAdded: $packageName",
                 shouldToast = true
             )
         }
 
         override fun onPackageRemoved(packageName: String, user: UserHandle) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
                 "packageRemoved: $packageName",
                 shouldToast = true
             )
         }
 
         override fun onPackageChanged(packageName: String, user: UserHandle) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
                 "packageChanged: $packageName",
                 shouldToast = true
             )
@@ -151,7 +161,8 @@ class MainActivity : ComponentActivity() {
                 }
 
 
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
                 "packagesAvailable: replacing? $replacing\n" +
                         "3 packages: ${curatedPkgs.contentToString()}",
                 shouldToast = true
@@ -171,7 +182,8 @@ class MainActivity : ComponentActivity() {
                 }
 
 
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_INFO, TAG,
                 "packagesUnavailable: replacing? $replacing\n" +
                         "3 packages: ${curatedPkgs.contentToString()}",
                 shouldToast = true

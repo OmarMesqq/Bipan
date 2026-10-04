@@ -7,7 +7,7 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.annotation.RequiresApi
-import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
+import com.omarmesqq.grunfeld.repository.DataStoreRepo
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
@@ -22,8 +22,7 @@ class MainApplication: Application() {
         }
     }
 
-    lateinit var configRepository: GrunfeldConfigs
-        private  set
+    val container = AppContainer(this)
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
@@ -33,8 +32,6 @@ class MainApplication: Application() {
         if (BuildConfig.DEBUG) {
             setupStrictMode()
         }
-
-        configRepository = GrunfeldConfigs(this)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

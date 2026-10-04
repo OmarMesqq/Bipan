@@ -29,14 +29,7 @@ suspend fun getNetworkInterfaces(): List<NetworkInterface>? {
     }
     try {
         withContext(Dispatchers.IO + CoroutineName("getNetworkInterfacesCr")) {
-            val start = System.currentTimeMillis()
-
             ifaces = NetworkInterface.getNetworkInterfaces().toList()
-
-            debugCoroutine(coroutineContext[CoroutineName],
-                CoroutineMode.SUSPEND_FUN,
-                System.currentTimeMillis() - start
-            )
         }
         return ifaces
     } catch (e: Exception) {

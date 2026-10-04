@@ -2,13 +2,13 @@ package com.omarmesqq.grunfeld.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.omarmesqq.grunfeld.repository.GrunfeldConfigs
+import com.omarmesqq.grunfeld.repository.DataStoreRepo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class MainViewModel(private val repository: GrunfeldConfigs) : ViewModel() {
+class MainViewModel(private val repository: DataStoreRepo) : ViewModel() {
     private val _isAppReady = MutableStateFlow(false)
     private val _isFlagSecureEnabled = MutableStateFlow(false)
 

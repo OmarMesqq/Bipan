@@ -111,7 +111,11 @@ fun AboutScreen() {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("✦ v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+            Text(
+                "✦ v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            )
         }
 
     }
@@ -125,7 +129,12 @@ private fun LinkRow(
     uriHandler: UriHandler
 ) {
     val annotated = buildAnnotatedString {
-        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+        withStyle(
+            SpanStyle(
+                color = MaterialTheme.colorScheme.primary,
+                textDecoration = TextDecoration.Underline
+            )
+        ) {
             pushStringAnnotation(tag = "URL", annotation = url)
             append(linkText)
             pop()
