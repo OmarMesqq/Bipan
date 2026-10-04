@@ -7,14 +7,22 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.annotation.RequiresApi
-import com.omarmesqq.grunfeld.repository.DataStoreRepo
+import com.omarmesqq.grunfeld.data.RootCheckResult
 import com.omarmesqq.grunfeld.utils.AVOCADO_LOG_LEVEL
 import com.omarmesqq.grunfeld.utils.Avocado
 import com.omarmesqq.grunfeld.utils.Avocado.avocadoLog
+import com.scottyab.rootbeer.RootBeer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 private const val TAG = "MainApplication"
 
-class MainApplication: Application() {
+class MainApplication : Application() {
     companion object {
         init {
             System.loadLibrary("toolChecker")
@@ -22,7 +30,11 @@ class MainApplication: Application() {
         }
     }
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val container = AppContainer(this)
+    private val _rootBeerResult = MutableStateFlow(RootCheckResult.LOADING)
+    val rootBeerResult: StateFlow<RootCheckResult> = _rootBeerResult.asStateFlow()
+
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onCreate() {
@@ -32,7 +44,23 @@ class MainApplication: Application() {
         if (BuildConfig.DEBUG) {
             setupStrictMode()
         }
+
+        // RootBeer check: heavyweight, but it appears down in screen at least
+        launchRootCheckInBg()
     }
+
+    private fun launchRootCheckInBg() {
+        appScope.launch {
+            val rooted = RootBeer(this@MainApplication).isRooted
+
+            _rootBeerResult.value = if (rooted) {
+                RootCheckResult.ROOTED
+            } else {
+                RootCheckResult.NOT_ROOTED
+            }
+        }
+    }
+
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -43,13 +71,20 @@ class MainApplication: Application() {
         super.onTrimMemory(level)
         // Release any resources that can be rebuilt quickly when the app returns to the foreground
         if (level >= TRIM_MEMORY_BACKGROUND) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory above TRIM_MEMORY_BACKGROUND")
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+                TAG,
+                "onTrimMemory above TRIM_MEMORY_BACKGROUND"
+            )
         }
         // Release UI elements
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
-            avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory above TRIM_MEMORY_UI_HIDDEN")
-        }
-        else {
+            avocadoLog(
+                AVOCADO_LOG_LEVEL.AVOCADO_DEBUG,
+                TAG,
+                "onTrimMemory above TRIM_MEMORY_UI_HIDDEN"
+            )
+        } else {
             avocadoLog(AVOCADO_LOG_LEVEL.AVOCADO_DEBUG, TAG, "onTrimMemory unknown level: $level")
         }
     }
