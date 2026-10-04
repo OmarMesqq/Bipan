@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.omarmesqq.grunfeld.MainApplication
 import kotlinx.coroutines.launch
+import com.omarmesqq.grunfeld.BuildConfig
 
 @Composable
 fun SettingsScreen() {
@@ -43,7 +45,7 @@ fun SettingsScreen() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Enable Flag Secure")
+            Text("Toggle Window FLAG_SECURE")
 
             Switch(
                 checked = isFlagSecureEnabled,
@@ -55,8 +57,21 @@ fun SettingsScreen() {
             )
         }
         Text(
-            text = "If enabled, you cannot take screenshots.",
+            text = "If enabled, you can't take screenshots",
             style = MaterialTheme.typography.bodyMedium
         )
+
+        HorizontalDivider()
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "✦ v${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE} ✦",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            )
+        }
     }
 }
