@@ -127,6 +127,24 @@ fun AssertionResult(testTitle: String, actual: Int, expected: String) {
 }
 
 @Composable
+fun AssertionResult(testTitle: String, actual: Int, expected: Int) {
+    val passed = TestRunner.ensureEqualInts(actual, expected)
+
+    Text(
+        text = if (passed) {
+            "$testTitle: $actual"
+        } else  {
+            "$testTitle test FAIL: actual (\"$actual\") != expected(\"$expected\")"
+        },
+        color = if (passed) {
+            Color.Green
+        } else {
+            Color.Red
+        }
+    )
+}
+
+@Composable
 fun AssertionResult(testTitle: String, actual: Boolean, expected: Boolean) {
     val passed = TestRunner.ensureEqualBooleans(actual, expected)
 
