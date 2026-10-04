@@ -43,13 +43,13 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        val dsRepo = app.dataStoreRepo
+        val dsRepo = app.appContainer.dataStoreRepo
 
         val pm = this.packageManager
         val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
         val installedAppsRepo = InstalledAppsRepo(installedAppsRepoInitParams)
 
-        val rootShellRepo = app.rootShellRepo
+        val rootShellRepo = app.appContainer.rootShellRepo
 
         val initParams = MainViewModelInitParams(
             dsRepo,
@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 withContext(Dispatchers.IO + CoroutineName("$TAG/initUi")) {
                     profileCoroutine(CoroutineMode.LAUNCH) {
-                        app.dataStoreRepo.toggleFirstLaunch()
+                        app.appContainer.dataStoreRepo.toggleFirstLaunch()
                     }
                 }
             }
