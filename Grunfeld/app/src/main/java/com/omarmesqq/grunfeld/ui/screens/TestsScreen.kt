@@ -2,7 +2,6 @@ package com.omarmesqq.grunfeld.ui.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,7 +10,6 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Process
 import android.os.Process.myUserHandle
-import android.provider.Settings.Global
 import android.telephony.TelephonyManager
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
@@ -74,7 +72,6 @@ private const val PLAY_STORE_PKG_NAME = "com.android.vending"
 @Composable
 fun TestsScreen(mvm: MainViewModel) {
     val context = LocalContext.current
-    val cr = context.contentResolver
 
     LazyColumn(
         modifier = Modifier
@@ -98,7 +95,7 @@ fun TestsScreen(mvm: MainViewModel) {
             ) {
                 BuildAssertions()
                 HorizontalDivider()
-                SettingsAssertions(cr)
+                SettingsAssertions(mvm)
                 HorizontalDivider()
                 SystemPropertiesAssertions()
             }
@@ -300,24 +297,24 @@ private fun BuildAssertions() {
 }
 
 @Composable
-private fun SettingsAssertions(cr: ContentResolver) {
-    val notFoundKey = -999
+private fun SettingsAssertions(mvm: MainViewModel) {
+    val fields = mvm.settingsGlobalFields.collectAsState().value
+    if (fields.isEmpty()) {
+        Text(
+            text = "Failed to retrieve Settings.Global fields!",
+            color = Color.Red
+        )
+    }
 
-    val devSettingsOn = Global.getInt(cr, Global.DEVELOPMENT_SETTINGS_ENABLED, notFoundKey)
-    val adbEnabled = Global.getInt(cr, Global.ADB_ENABLED, notFoundKey)
-    val bootCount = Global.getInt(cr, Global.BOOT_COUNT, notFoundKey)
-    val waitForDebugger = Global.getInt(cr, Global.WAIT_FOR_DEBUGGER, notFoundKey)
-
-    AssertionResult("DEVELOPMENT_SETTINGS_ENABLED", devSettingsOn, "0")
-    AssertionResult("ADB_ENABLED", adbEnabled, "0")
-    AssertionResult("BOOT_COUNT", bootCount, "43")
-    AssertionResult("WAIT_FOR_DEBUGGER", waitForDebugger, "0")
+    fields.forEach {
+        AssertionResult(it.label, it.value, it.expectedValue)
+    }
 }
 
 @Composable
 private fun SystemPropertiesAssertions() {
     val version = System.getProperty("os.version")
-    AssertionResult("os.version", version ?: "", "6.6.56-android16-11-g8a3e2b1c4d5f")
+    AssertionResult("os.version", version ?: "(NULL!)", "6.6.56-android16-11-g8a3e2b1c4d5f")
 }
 
 @Composable

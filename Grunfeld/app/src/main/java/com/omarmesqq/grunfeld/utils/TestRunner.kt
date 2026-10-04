@@ -1,6 +1,9 @@
 package com.omarmesqq.grunfeld.utils
 
 object TestRunner {
+    fun ensureEqualInts(actual: Int, expected: Int): Boolean {
+        return actual == expected
+    }
     fun ensureEqualStrings(actual: String, expected: String): Boolean {
         return actual == expected
     }
