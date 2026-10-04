@@ -8,16 +8,12 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import androidx.core.content.ContextCompat
-import org.omarmesqq.bipanmanager.data.DataStoreRepoInitParams
 import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
-import org.omarmesqq.bipanmanager.repository.DataStoreRepo
-import org.omarmesqq.bipanmanager.repository.RootShellRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 
 private const val TAG = "MainApplication"
-
 class MainApplication : Application() {
     companion object {
         init {
@@ -25,10 +21,7 @@ class MainApplication : Application() {
         }
     }
 
-    lateinit var rootShellRepo: RootShellRepo
-        private set
-    lateinit var dataStoreRepo: DataStoreRepo
-        private set
+    val appContainer = AppContainer(this)
 
     override fun onCreate() {
         super.onCreate()
@@ -37,11 +30,6 @@ class MainApplication : Application() {
         if (BuildConfig.DEBUG) {
             enableStrictMode()
         }
-
-        val dataStoreRepoInitParams = DataStoreRepoInitParams(this)
-        dataStoreRepo = DataStoreRepo(dataStoreRepoInitParams)
-
-        rootShellRepo = RootShellRepo()
 
         registerPackageAddedReceiver()
     }

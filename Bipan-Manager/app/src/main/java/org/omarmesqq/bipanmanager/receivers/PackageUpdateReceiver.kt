@@ -41,7 +41,7 @@ class PackageUpdateReceiver : BroadcastReceiver() {
                 }
                 jotd("New app: $packageName", TAG)
                 val app = context.applicationContext as MainApplication
-                val rootShellRepo = app.rootShellRepo
+                val rootShellRepo = app.appContainer.rootShellRepo
 
                 // Root shell calls are blocking
                 // goAsync() extends the receiver's lifetime past onReceive() returning
