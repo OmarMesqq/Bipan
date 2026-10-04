@@ -16,9 +16,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.omarmesqq.grunfeld.ui.Screen
+import com.omarmesqq.grunfeld.viewmodel.MainViewModel
 
 @Composable
-fun MainScreen() {
+fun MainScreen(mvm: MainViewModel) {
     val navController = rememberNavController()
 
     val items = listOf(
@@ -58,7 +59,7 @@ fun MainScreen() {
                 .padding(innerPadding) // Handles system bar/bottom bar space
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            composable(Screen.TestsScreen.route) { TestsScreen() }
+            composable(Screen.TestsScreen.route) { TestsScreen(mvm) }
             composable(Screen.SettingsScreen.route) { SettingsScreen() }
         }
     }
