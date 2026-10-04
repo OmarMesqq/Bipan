@@ -79,11 +79,11 @@ public class GsfIdSpoofHook implements BaseHook {
             } catch (InvocationTargetException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
               Log.e(TAG, "GsfProxy InvocationTargetException: cause:", cause);
-              throw J.cleanThrowable(cause);
+              return null;
             } catch (UndeclaredThrowableException e) {
               Throwable cause = e.getCause() != null ? e.getCause() : e;
               Log.e(TAG, "GsfProxy UndeclaredThrowableException: cause:", cause);
-              throw J.cleanThrowable(cause);
+              return null;
             } catch (Exception e) {
               Log.e(TAG, "GsfProxy Exception:", e);
               throw J.cleanThrowable(new OutOfMemoryError());
