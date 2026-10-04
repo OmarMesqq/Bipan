@@ -22,10 +22,6 @@ data class MainViewModelInitParams(
     val rootShellRepo: RootShellRepo
 )
 
-data class PackageUpdateReceiverInitParams(
-    val rootShellRepo: RootShellRepo
-)
-
 data class AppInitParams(
     val mainViewModel: MainViewModel,
     val isRooted: Boolean,

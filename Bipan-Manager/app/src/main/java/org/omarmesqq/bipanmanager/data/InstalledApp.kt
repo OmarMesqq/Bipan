@@ -8,7 +8,3 @@ data class InstalledApp(
     val icon: Drawable,
     val isSystemApp: Boolean
 )
-
-data class TemplateJniCrossingStruct(
-    val foo: String
-)

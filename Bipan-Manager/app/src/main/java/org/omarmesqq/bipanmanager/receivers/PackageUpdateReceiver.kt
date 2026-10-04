@@ -15,7 +15,7 @@ import org.omarmesqq.bipanmanager.singletons.Darwin.joti
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
-private const val TAG = "PkgUpdRecvr"
+private const val TAG = "PkgUpdateReceiver"
 
 class PackageUpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {

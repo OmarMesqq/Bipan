@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
-private const val TAG = "BootUnlockRcvr"
+private const val TAG = "BootUnlockReceiver"
 class BootAndUnlockReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent == null) {

@@ -15,12 +15,6 @@ import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 
 private const val TAG = "MainApplication"
 class MainApplication : Application() {
-    companion object {
-        init {
-            System.loadLibrary("nativeTemplate")
-        }
-    }
-
     val appContainer = AppContainer(this)
 
     override fun onCreate() {
