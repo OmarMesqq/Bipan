@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.omarmesqq.grunfeld.data.DataStoreRepoInitParams
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -16,7 +17,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 private const val IS_FLAG_SECURE_ENABLED_DEFAULT = true
 private const val UNIQUE_DEVICE_ID_DEFAULT = ""
 
-class DataStoreRepo(private val context: Context) {
+class DataStoreRepo(initParams: DataStoreRepoInitParams) {
+    private val context = initParams.context
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
     private val flagSecureEnabledPref = booleanPreferencesKey("IS_FLAG_SECURE_ENABLED")
     private val deviceidSsaidPref = stringPreferencesKey("DEVICE_SSAID")

@@ -3,7 +3,6 @@ package com.omarmesqq.grunfeld.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.omarmesqq.grunfeld.data.MainViewModelInitParams
-import com.omarmesqq.grunfeld.repository.DataStoreRepo
 
 class MainViewModelFactory(val initParams: MainViewModelInitParams) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
