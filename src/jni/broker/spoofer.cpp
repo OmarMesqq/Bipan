@@ -12,6 +12,10 @@
 
 #define TAG "BipanSpoofer"
 
+static constexpr const char* SPOOFED_FILE_MEMFD_NAME = "SUGcv6fF5U1O";
+static constexpr const char* SPOOFED_MAPS_MEMFD_NAME = "JpWOjmVl33X2";
+static constexpr const char* SPOOFED_SMAPS_MEMFD_NAME = "6EdrMX3OSn0Q";
+static constexpr const char* SPOOFED_MOUNTS_MEMFD_NAME = "8qpr6eE0o003";
 
 int uname_spoofer(struct utsname* buf) {
   if (!buf) {
@@ -32,17 +36,16 @@ int uname_spoofer(struct utsname* buf) {
 
 /**
  * Calls to `memfd_create` in the functions below could, and imo, should use the bionic
- * wrapper, but NDK says it was introduced only on API 30, so I kept the raw syscall
- * calls for backwards-compatibility so Bipan works on most phones.
+ * wrapper, but apparently it was introduced only on API 30, so I kept the raw syscall
+ * wrapper for backwards-compatibility so Bipan works on most phones.
  * Hopefully your kernel will be recent enough so that the syscall exists.
  */
-
 int create_spoofed_file(const char* fake_content) {
   if (fake_content == nullptr) {
     return -1;
   }
 
-  int fd = (int)raw_syscall(__NR_memfd_create, (long)"SUGcv6fF5U1O", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fd = (int)raw_syscall(__NR_memfd_create, (long)SPOOFED_FILE_MEMFD_NAME, MFD_CLOEXEC, 0, 0, 0, 0);
   if (fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "create_spoofed_file: memfd_create failed");
     return fd;
@@ -62,7 +65,7 @@ int clean_proc_maps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)"JpWOjmVl33X2", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)SPOOFED_MAPS_MEMFD_NAME, MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_maps: memfd_create failed");
     close(real_fd);
@@ -116,7 +119,7 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
     return -1;
   }
 
-  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)"6EdrMX3OSn0Q", MFD_CLOEXEC, 0, 0, 0, 0);
+  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)SPOOFED_SMAPS_MEMFD_NAME, MFD_CLOEXEC, 0, 0, 0, 0);
   if (fake_fd < 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_smaps: memfd_create failed");
     close(real_fd);
@@ -131,7 +134,9 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
 
   while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
     for (int i = 0; i < bytes_read; i++) {
-      if (line_pos < sizeof(line) - 1) line[line_pos++] = buf[i];
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
 
       if (buf[i] == '\n') {
         line[line_pos] = '\0';
@@ -145,6 +150,50 @@ int clean_proc_smaps(int dirfd, const char* pathname, int flags, mode_t mode) {
         }
 
         if (!skip_current_region) {
+          write(fake_fd, line, line_pos);
+        }
+        line_pos = 0;
+      }
+    }
+  }
+
+  close(real_fd);
+  lseek(fake_fd, 0, SEEK_SET);
+  return fake_fd;
+}
+
+int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
+  int real_fd = openat(dirfd, pathname, flags, mode);
+  if (real_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: openat real dir failed!");
+    return -1;
+  }
+
+  int fake_fd = (int)raw_syscall(__NR_memfd_create, (long)SPOOFED_MOUNTS_MEMFD_NAME, MFD_CLOEXEC, 0, 0, 0, 0);
+  if (fake_fd < 0) {
+    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "clean_proc_mounts: memfd_create failed");
+    close(real_fd);
+    return -1;
+  }
+
+  char buf[1024] = {0};
+  char line[1024] = {0};
+  long bytes_read;
+  unsigned long line_pos = 0;
+
+  while ((bytes_read = read(real_fd, buf, sizeof(buf))) > 0) {
+    for (int i = 0; i < bytes_read; i++) {
+      if (line_pos < sizeof(line) - 1) {
+        line[line_pos++] = buf[i];
+      }
+
+      if (buf[i] == '\n') {
+        line[line_pos] = '\0';
+
+        bool is_dirty = strstr(line, "/adb/modules") ||
+                        strstr(line, "magisk");
+
+        if (!is_dirty) {
           write(fake_fd, line, line_pos);
         }
         line_pos = 0;

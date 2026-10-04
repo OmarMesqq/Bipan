@@ -160,6 +160,11 @@ bool isSmapsFile(const char* pathname) {
          is_dynamic_proc_file(pathname, "/smaps");
 }
 
+bool isMountsFile(const char* pathname) {
+  return (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
+         is_dynamic_proc_file(pathname, "/mountinfo");
+}
+
 // HEAP ALLOCATION
 char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   char* fixed = (char*)calloc(PATH_MAX, sizeof(char));
@@ -172,7 +177,6 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     return fixed;
   }
 
-
   if (strstr(resolvedPath, "smaps")) {
     char proc_pid_mounts[PATH_MAX] = {0};
     snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/smaps", pid);
@@ -184,6 +188,13 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
     char proc_pid_mounts[PATH_MAX] = {0};
     snprintf(proc_pid_mounts, sizeof(proc_pid_mounts), "/proc/%d/maps", pid);
     strcpy(fixed, proc_pid_mounts);
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "mountinfo")) {
+    char proc_pid_mountinfo[PATH_MAX] = {0};
+    snprintf(proc_pid_mountinfo, sizeof(proc_pid_mountinfo), "/proc/%d/mountinfo", pid);
+    strcpy(fixed, proc_pid_mountinfo);
     return fixed;
   }
 
