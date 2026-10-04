@@ -30,8 +30,9 @@ class MainApplication : Application() {
         }
     }
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val container = AppContainer(this)
+
     private val _rootBeerResult = MutableStateFlow(RootCheckResult.LOADING)
     val rootBeerResult: StateFlow<RootCheckResult> = _rootBeerResult.asStateFlow()
 

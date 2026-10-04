@@ -44,7 +44,7 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels {
         val app = application as MainApplication
-        val ip = MainViewModelInitParams(app.container.dataStoreRepo, app.contentResolver)
+        val ip = MainViewModelInitParams(app, app.container.dataStoreRepo, app.container.deviceIdRepo)
         MainViewModelFactory(ip)
     }
 
