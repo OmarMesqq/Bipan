@@ -70,16 +70,20 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     fun toggleJail(pkgName: String, jail: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val success = if (jail) {
-                jotd("Jailed $pkgName", TAG)
                 initParams.rootShellRepo.jailApp(pkgName)
             } else {
-                jotd("Unjailed $pkgName", TAG)
                 initParams.rootShellRepo.unjailApp(pkgName)
             }
 
             if (success) {
                 _currentTargets.update { targets ->
-                    if (jail) targets + pkgName else targets - pkgName
+                    if (jail) {
+                        jotd("Jailed $pkgName", TAG, null, true)
+                        targets + pkgName
+                    } else {
+                        jotd("Unjailed $pkgName", TAG, null, true)
+                        targets - pkgName
+                    }
                 }
             }
         }
