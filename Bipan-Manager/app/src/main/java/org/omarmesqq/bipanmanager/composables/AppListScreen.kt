@@ -135,7 +135,7 @@ fun AppListScreen(initParams: AppInitParams) {
                                 iconBitmap = null,
                                 fallbackIcon = Icons.Default.Warning,
                                 onToggle = { checked ->
-                                    mVM.toggleJail(pkgName, checked)
+                                    mVM.toggleJail(pkgName, pkgName, checked)
                                 }
                             )
                         }
@@ -152,7 +152,7 @@ fun AppListScreen(initParams: AppInitParams) {
                             iconBitmap = null,
                             fallbackIcon = Icons.Default.Android,
                             onToggle = { checked ->
-                                mVM.toggleJail(DROIDGUARD_PKG_NAME, checked)
+                                mVM.toggleJail("DroidGuard", DROIDGUARD_PKG_NAME, checked)
                             }
                         )
                     }
@@ -175,7 +175,7 @@ fun AppListScreen(initParams: AppInitParams) {
                         isSystemApp = app.isSystemApp,
                         iconBitmap = bitmap,
                         onToggle = { checked ->
-                            mVM.toggleJail(app.packageName, checked)
+                            mVM.toggleJail(app.label, app.packageName, checked)
                         }
                     )
                 }

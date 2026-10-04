@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -22,18 +21,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import org.omarmesqq.bipanmanager.BuildConfig
 
 @Composable
 fun AboutScreen() {
-    val uriHandler = LocalUriHandler.current
     val scrollState = rememberScrollState()
 
     Column(
@@ -90,8 +88,7 @@ fun AboutScreen() {
                 LinkRow(
                     label = "My personal corner of the Internet",
                     linkText = "i2dk.com",
-                    url = "https://i2dk.com?refd_by=bipan_mngr",
-                    uriHandler = uriHandler
+                    url = "https://i2dk.com?refd_by=bipan_mngr"
                 )
 
                 HorizontalDivider()
@@ -100,7 +97,6 @@ fun AboutScreen() {
                     label = "Email",
                     linkText = "omarmsqt@gmail.com",
                     url = "mailto:omarmsqt@gmail.com",
-                    uriHandler = uriHandler
                 )
             }
         }
@@ -124,19 +120,21 @@ fun AboutScreen() {
 private fun LinkRow(
     label: String,
     linkText: String,
-    url: String,
-    uriHandler: UriHandler
+    url: String
 ) {
     val annotated = buildAnnotatedString {
-        withStyle(
-            SpanStyle(
-                color = MaterialTheme.colorScheme.primary,
-                textDecoration = TextDecoration.Underline
+        withLink(
+            LinkAnnotation.Url(
+                url = url,
+                styles = TextLinkStyles(
+                    style = SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline
+                    )
+                )
             )
         ) {
-            pushStringAnnotation(tag = "URL", annotation = url)
             append(linkText)
-            pop()
         }
     }
 
@@ -150,13 +148,9 @@ private fun LinkRow(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        ClickableText(
+        Text(
             text = annotated,
-            style = MaterialTheme.typography.bodyMedium,
-            onClick = { offset ->
-                annotated.getStringAnnotations("URL", offset, offset)
-                    .firstOrNull()?.let { uriHandler.openUri(it.item) }
-            }
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }
