@@ -16,8 +16,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 private const val IS_FLAG_SECURE_ENABLED_DEFAULT = true
 private const val UNIQUE_DEVICE_ID_DEFAULT = ""
 
-
-class GrunfeldConfigs(private val context: Context) {
+class DataStoreRepo(private val context: Context) {
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
     private val flagSecureEnabledPref = booleanPreferencesKey("IS_FLAG_SECURE_ENABLED")
     private val deviceidSsaidPref = stringPreferencesKey("DEVICE_SSAID")
@@ -28,7 +27,7 @@ class GrunfeldConfigs(private val context: Context) {
     val flagSecureEnabledFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[flagSecureEnabledPref] ?: IS_FLAG_SECURE_ENABLED_DEFAULT
-    }
+        }
 
     val isFirstLaunchFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
