@@ -12,7 +12,6 @@ class BootAndUnlockReceiver : BroadcastReceiver() {
             jote("Got null Intent", TAG)
             return
         }
-
         if (context == null) {
             jote("Got Intent but Context is null!", TAG)
             return

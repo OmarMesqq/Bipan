@@ -23,16 +23,16 @@ class PackageUpdateReceiver : BroadcastReceiver() {
             jote("Got null Intent", TAG)
             return
         }
+        if (context == null) {
+            jote("Got Intent but Context is null!", TAG)
+            return
+        }
 
         when (intent.action) {
             Intent.ACTION_PACKAGE_ADDED -> {
-                if (context == null) {
-                    jote("Got Intent but Context is null!", TAG)
-                    return
-                }
                 val packageName = intent.data?.schemeSpecificPart
                 if (packageName == null) {
-                    jote("Got Intent but packageName inside is null!", TAG)
+                    jote("Got null packageName", TAG)
                     return
                 }
 
