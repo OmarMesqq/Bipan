@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -19,21 +18,26 @@ import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
+import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 private const val TAG = "MainViewModel"
 
 class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
+    private val _shouldShowUi = MutableStateFlow(false)
     private val _isAppReady = MutableStateFlow(false)
     private val _isFirstLaunch = MutableStateFlow(true)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
 
-    val isFirstLaunch: Flow<Boolean> = _isFirstLaunch
+    // Blocks `App` Compose until everything UI-wise is ready
+    val shouldShowUi = _shouldShowUi.asStateFlow()
+    // Blocks MainActivity until logic essentials are ready
+    val isAppReady = _isAppReady.asStateFlow()
+    val isFirstLaunch = _isFirstLaunch.asStateFlow()
     val appList = _appList.asStateFlow()
-    val isAppReady: Flow<Boolean> = _isAppReady
     val currentTargets = _currentTargets.asStateFlow()
     val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
         val installedPackageNames = apps
@@ -53,36 +57,48 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
             withContext(Dispatchers.IO + CoroutineName("$TAG/init")) {
                 profileCoroutine(CoroutineMode.LAUNCH) {
                     val dsRepo = initParams.dataStoreRepo
-                    val installedAppsRepo = initParams.installedAppsRepo
                     val rootShellRepo = initParams.rootShellRepo
 
-                    _isFirstLaunch.value = dsRepo.isFirstLaunchFlow.first()
-                    _appList.value = installedAppsRepo.getInstalledApps()
-                    _rootShell.value = rootShellRepo.getRootShell()
-                    _currentTargets.value = rootShellRepo.getBipanTargetsDir().toSet()
+                    _rootShell.value = rootShellRepo.buildAndGetFirstShell()
+
+                    val firstLaunch = dsRepo.isFirstLaunchFlow.first()
+                    _isFirstLaunch.value = firstLaunch
+
+                    if (firstLaunch) {
+                        if (rootShellRepo.createDefaultTargets()) {
+                            dsRepo.toggleFirstLaunch()
+                        } else {
+                            jote("$TAG/init: createDefaultTargets failed", TAG)
+                        }
+                    }
+
+                    refreshAll()
 
                     _isAppReady.value = true
+                    _shouldShowUi.value = true
                 }
             }
         }
     }
 
     fun toggleJail(label: String, pkgName: String, jail: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val success = if (jail) {
-                initParams.rootShellRepo.jailApp(pkgName)
-            } else {
-                initParams.rootShellRepo.unjailApp(pkgName)
-            }
+        viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/toggleJail")) {
+            profileCoroutine(CoroutineMode.LAUNCH) {
+                val success = if (jail) {
+                    initParams.rootShellRepo.jailApp(pkgName)
+                } else {
+                    initParams.rootShellRepo.unjailApp(pkgName)
+                }
 
-            if (success) {
-                _currentTargets.update { targets ->
-                    if (jail) {
-                        jotd("Jailed $label", TAG, null, true)
-                        targets + pkgName
-                    } else {
-                        jotd("Unjailed $label", TAG, null, true)
-                        targets - pkgName
+                if (success) {
+                    _currentTargets.update { targets ->
+                        if (jail) {
+                            jotd("Jailed $label", TAG, null, true)
+                            targets + pkgName
+                        } else {
+                            jotd("Unjailed $label", TAG, null, true)
+                            targets - pkgName
+                        }
                     }
                 }
             }
@@ -100,10 +116,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
 
     fun doesBipanDirExist(): Boolean {
         return initParams.rootShellRepo.doesBipanTargetsDirExist()
-    }
-
-    fun createDefaults(): Boolean {
-        return initParams.rootShellRepo.createDefaultTargets()
     }
 
     private suspend fun refreshTargets() {

@@ -8,7 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import org.omarmesqq.bipanmanager.MainApplication
 
-private const val TAG = "Bipan-Manager"
+private const val TAG = "BipanMngr"
 
 
 /**

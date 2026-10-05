@@ -4,19 +4,64 @@ import com.topjohnwu.superuser.Shell
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.data.BIPAN_TARGETS_DIR
 import org.omarmesqq.bipanmanager.data.DEFAULT_TARGETS
+import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 private const val TAG = "RootShellRepo"
 
 class RootShellRepo {
-    fun getRootShell(): Shell {
-        Shell.enableVerboseLogging = BuildConfig.DEBUG
+    private var shellInitialized = false
+    fun buildAndGetFirstShell(): Shell {
+        if (shellInitialized) {
+            return getRootShell()
+        }
+        Shell.enableVerboseLogging = BuildConfig.DEBUG || BuildConfig.PROFILE
         Shell.setDefaultBuilder(
             Shell.Builder.create()
                 .setFlags(Shell.FLAG_MOUNT_MASTER)
                 .setTimeout(10)
         )
+        shellInitialized = true
         return Shell.getShell()
+    }
+
+    fun getRootShell(): Shell {
+        val sh = Shell.getCachedShell()
+        if (sh != null && sh.isAlive) {
+            return sh
+        }
+        return Shell.getShell()
+    }
+
+    fun isRooted(): Boolean {
+        val status = Shell.isAppGrantedRoot()
+        if (status == null) {
+            jote("isAppGrantedRoot returned null!", TAG)
+            return false
+        }
+
+        if (status) {
+            return true
+        }
+        return false
+    }
+
+    fun releaseShell() {
+        try {
+            val sh = Shell.getCachedShell()
+            if (sh == null) {
+                jotd("releaseShell: cachedShell is null", TAG)
+                return
+            }
+            if (!sh.isAlive) {
+                jotd("releaseShell: cachedShell is dead", TAG)
+                return
+            }
+            sh.close()
+            jotd("releaseShell: cachedShell released", TAG)
+        } catch (e: Exception) {
+            jote("releaseShell e: ${e.message}", TAG)
+        }
     }
 
     fun doesBipanTargetsDirExist(): Boolean {
