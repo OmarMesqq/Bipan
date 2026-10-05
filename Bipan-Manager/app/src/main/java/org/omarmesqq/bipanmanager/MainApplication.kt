@@ -49,12 +49,15 @@ class MainApplication : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        appContainer.iconCache.trim(level)
+
         // Clean up resources that can efficiently and quickly be re-built if the user returns to the app
         if (level >= TRIM_MEMORY_BACKGROUND) {
             jotw("onTrimMemory: on LRU list", TAG)
         }
         // Large allocations with the UI should be released
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
+            appContainer.rootShellRepo.releaseShell()
             jotw("onTrimMemory: no longer showing UI", TAG)
         } else {
             jote("onTrimMemory: unexpected level: $level", TAG)

@@ -168,25 +168,4 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         jotd("onDestroy", TAG)
     }
-
-    override fun onLowMemory() {
-        super.onLowMemory()
-        cleanupRootShell()
-        jotd("onLowMemory", TAG)
-    }
-
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        cleanupRootShell()
-        // Clean up resources that can efficiently and quickly be re-built if the user returns to the app
-        if (level >= TRIM_MEMORY_BACKGROUND) {
-            jotd("onTrimMemory: on LRU list", TAG)
-        }
-        // Large allocations with the UI should be released
-        else if (level >= TRIM_MEMORY_UI_HIDDEN) {
-            jotd("onTrimMemory: no longer showing UI", TAG)
-        } else {
-            jotd("onTrimMemory: [!] unexpected level: $level", TAG)
-        }
-    }
 }
