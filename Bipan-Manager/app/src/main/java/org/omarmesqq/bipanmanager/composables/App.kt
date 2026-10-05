@@ -1,10 +1,13 @@
 package org.omarmesqq.bipanmanager.composables
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -12,7 +15,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.compose.NavHost
@@ -20,7 +25,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import org.omarmesqq.bipanmanager.data.AppInitParams
-import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
     object AppListScreenRoute : Route("appList", "App List", Icons.AutoMirrored.Filled.List)
@@ -32,25 +36,23 @@ private val START_ROUTE = Route.AppListScreenRoute.route
 @Composable
 fun App(initParams: AppInitParams) {
     val mainViewModel = initParams.mainViewModel
-    val rooted = initParams.isRooted
-    val bipanFolderExists = initParams.bipanFolderExists
-    val isFirstLaunch = initParams.isFirstLaunch
 
-    if (!rooted) {
+    if (!initParams.isRooted) {
         NoRootScreen()
         return
     }
 
-    if (!bipanFolderExists) {
+    if (!initParams.bipanFolderExists) {
         NoBipanScreen()
         return
     }
 
-    if (isFirstLaunch) {
-        val res = mainViewModel.createDefaults()
-        if (!res) {
-            jote("Failed to create default targets!", shouldToast = true)
+    val uiReady by mainViewModel.shouldShowUi.collectAsState()
+    if (!uiReady) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
+        return
     }
 
 
