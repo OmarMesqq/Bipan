@@ -42,10 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -59,8 +59,7 @@ import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.omarmesqq.bipanmanager.data.AppInitParams
-import org.omarmesqq.bipanmanager.data.DROIDGUARD_PKG_NAME
-import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
+import org.omarmesqq.bipanmanager.interfaces.AppListItem
 import kotlin.time.Duration.Companion.milliseconds
 
 /** How long the user must wait before either dialog action becomes tappable */
@@ -69,50 +68,28 @@ private const val CONFIRM_DELAY_SECONDS = 3
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(initParams: AppInitParams) {
-    val mVM = initParams.mainViewModel
-
-    val installedApps = mVM.appList.collectAsState().value
-    val currentTargets = mVM.currentTargets.collectAsState().value
-    val staleTargets = mVM.staleTargets.collectAsState().value
-
+    val mvm = initParams.mainViewModel
+    val items by mvm.listItems.collectAsState()
     var isRefreshing by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = {
-            coroutineScope.launch {
+            scope.launch {
                 isRefreshing = true
-                mVM.refreshAll()
-                isRefreshing = false
+                try {
+                    mvm.refreshAll()
+                } finally {
+                    isRefreshing = false
+                }
             }
         },
         modifier = Modifier.fillMaxSize()
     ) {
-        if (installedApps == null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(64.dp)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "Failed to fetch app list!",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            }
+        val list = items
+        if (list == null) {
+            FetchErrorContent()
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -121,63 +98,8 @@ fun AppListScreen(initParams: AppInitParams) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (staleTargets.isNotEmpty()) {
-                    items(
-                        items = staleTargets.toList(),
-                        key = { "orphan_$it" }
-                    ) { pkgName ->
-                        if (pkgName != DROIDGUARD_PKG_NAME) {
-                            AppRow(
-                                label = pkgName,
-                                isJailed = true,
-                                isOrphaned = true,
-                                isSystemApp = false,
-                                iconBitmap = null,
-                                fallbackIcon = Icons.Default.Warning,
-                                onToggle = { checked ->
-                                    mVM.toggleJail(pkgName, pkgName, checked)
-                                }
-                            )
-                        }
-                    }
-                }
-
-                if (staleTargets.contains(DROIDGUARD_PKG_NAME)) {
-                    item {
-                        AppRow(
-                            label = "DroidGuard",
-                            isJailed = true,
-                            isOrphaned = false,
-                            isSystemApp = false,
-                            iconBitmap = null,
-                            fallbackIcon = Icons.Default.Android,
-                            onToggle = { checked ->
-                                mVM.toggleJail("DroidGuard", DROIDGUARD_PKG_NAME, checked)
-                            }
-                        )
-                    }
-                }
-
-                items(
-                    items = installedApps
-                        .filterNot { it.packageName == PACKAGE_NAME }
-                        .sortedBy { !currentTargets.contains(it.packageName) },
-                    key = { it.packageName }
-                ) { app ->
-                    val isJailed = currentTargets.contains(app.packageName)
-                    val bitmap = remember(app.packageName) {
-                        app.icon.toBitmap().asImageBitmap()
-                    }
-                    AppRow(
-                        label = app.label,
-                        isJailed = isJailed,
-                        isOrphaned = false,
-                        isSystemApp = app.isSystemApp,
-                        iconBitmap = bitmap,
-                        onToggle = { checked ->
-                            mVM.toggleJail(app.label, app.packageName, checked)
-                        }
-                    )
+                items(list, key = { it.packageName }) { item ->
+                    AppRow(item) { checked -> mvm.toggleJail(item, checked) }
                 }
             }
         }
@@ -185,16 +107,7 @@ fun AppListScreen(initParams: AppInitParams) {
 }
 
 @Composable
-private fun AppRow(
-    label: String,
-    isJailed: Boolean,
-    isOrphaned: Boolean,
-    isSystemApp: Boolean,
-    iconBitmap: ImageBitmap?,
-    fallbackIcon: ImageVector? = null,
-    onToggle: (Boolean) -> Unit
-) {
-    // Only the "unjail" direction is destructive/sensitive enough to need confirmation.
+private fun AppRow(item: AppListItem, onToggle: (Boolean) -> Unit) {
     var showUnjailConfirm by remember { mutableStateOf(false) }
 
     Row(
@@ -204,46 +117,18 @@ private fun AppRow(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
-        if (iconBitmap != null) {
-            Image(
-                bitmap = iconBitmap,
-                contentDescription = "$label icon",
-                modifier = Modifier.size(40.dp)
-            )
-        } else if (fallbackIcon != null) {
-            Icon(
-                imageVector = fallbackIcon,
-                contentDescription = "$label icon (not installed)",
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(40.dp)
-            )
-        }
+        TargetIcon(item)
 
         Text(
-            text = buildAnnotatedString {
-                append(label)
-                if (isOrphaned) {
-                    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.error)) {
-                        append("\nOrphaned (not installed)")
-                    }
-                } else if (isJailed) {
-                    withStyle(style = SpanStyle(color = Color.Green)) {
-                        append("\nJailed")
-                    }
-                }
-                if (isSystemApp) {
-                    withStyle(style = SpanStyle(color = Color.Cyan)) {
-                        append("\nSystem app")
-                    }
-                }
-            },
+            text = buildStatusText(item),
             modifier = Modifier.weight(1f)
         )
 
         Switch(
-            checked = isJailed,
+            checked = item.isJailed,
             onCheckedChange = { checked ->
-                if (isJailed && !checked) {
+                // Only installed apps get the confirmation delay
+                if (item is AppListItem.Installed && item.isJailed && !checked) {
                     showUnjailConfirm = true
                 } else {
                     onToggle(checked)
@@ -260,13 +145,56 @@ private fun AppRow(
 
     if (showUnjailConfirm) {
         UnjailConfirmationDialog(
-            appLabel = label,
-            onConfirm = {
-                showUnjailConfirm = false
-                onToggle(false)
-            },
+            appLabel = item.label,
+            onConfirm = { showUnjailConfirm = false; onToggle(false) },
             onDismiss = { showUnjailConfirm = false }
         )
+    }
+}
+
+@Composable
+private fun TargetIcon(item: AppListItem) {
+    val size = Modifier.size(40.dp)
+    when (item) {
+        is AppListItem.Installed -> {
+            val bitmap = remember(item.packageName) { item.app.icon.toBitmap().asImageBitmap() }
+            Image(bitmap, contentDescription = "${item.label} icon", modifier = size)
+        }
+
+        is AppListItem.Orphaned -> FallbackIcon(
+            Icons.Default.Warning,
+            "${item.label} icon (not installed)",
+            size
+        )
+
+        AppListItem.DroidGuard -> FallbackIcon(Icons.Default.Android, "DroidGuard icon", size)
+    }
+}
+
+@Composable
+private fun FallbackIcon(icon: ImageVector, description: String, modifier: Modifier) {
+    Icon(
+        icon,
+        contentDescription = description,
+        tint = MaterialTheme.colorScheme.error,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun buildStatusText(item: AppListItem): AnnotatedString = buildAnnotatedString {
+    append(item.label)
+    when (item) {
+        is AppListItem.Orphaned -> withStyle(SpanStyle(color = MaterialTheme.colorScheme.error)) {
+            append("\nOrphaned (not installed)")
+        }
+
+        is AppListItem.Installed -> {
+            if (item.isJailed) withStyle(SpanStyle(color = Color.Green)) { append("\nJailed") }
+            if (item.app.isSystemApp) withStyle(SpanStyle(color = Color.Cyan)) { append("\nSystem app") }
+        }
+
+        AppListItem.DroidGuard -> withStyle(SpanStyle(color = Color.Green)) { append("\nJailed") }
     }
 }
 
@@ -290,7 +218,11 @@ private fun UnjailConfirmationDialog(
     BackHandler(enabled = actionsEnabled) { onDismiss() }
 
     Dialog(
-        onDismissRequest = { if (actionsEnabled) onDismiss() },
+        onDismissRequest = {
+            if (actionsEnabled) {
+                onDismiss()
+            }
+        },
         properties = DialogProperties(
             dismissOnBackPress = false,
             dismissOnClickOutside = false,
@@ -348,5 +280,32 @@ private fun UnjailConfirmationDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FetchErrorContent() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Error,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(64.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Failed to fetch app list!",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center
+        )
     }
 }

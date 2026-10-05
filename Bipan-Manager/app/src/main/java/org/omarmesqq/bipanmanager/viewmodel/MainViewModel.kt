@@ -15,8 +15,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.omarmesqq.bipanmanager.data.DROIDGUARD_PKG_NAME
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
+import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
+import org.omarmesqq.bipanmanager.interfaces.AppListItem
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
@@ -37,20 +40,29 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     // Blocks MainActivity until logic essentials are ready
     val isAppReady = _isAppReady.asStateFlow()
     val isFirstLaunch = _isFirstLaunch.asStateFlow()
-    val appList = _appList.asStateFlow()
-    val currentTargets = _currentTargets.asStateFlow()
-    val staleTargets: StateFlow<Set<String>> = combine(_appList, _currentTargets) { apps, targets ->
-        val installedPackageNames = apps
-            ?.map { it.packageName }
-            ?.toSet()
-            ?: emptySet()
 
-        targets - installedPackageNames
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptySet()
-    )
+    val listItems: StateFlow<List<AppListItem>?> =
+        combine(_appList, _currentTargets) { apps, targets ->
+            if (apps == null) return@combine null
+
+            val installedPkgs = apps.mapTo(HashSet()) { it.packageName }
+
+            val stale = (targets - installedPkgs)
+            val droidGuard = if (DROIDGUARD_PKG_NAME in stale) {
+                listOf(AppListItem.DroidGuard)
+            } else emptyList()
+
+            val orphans = stale
+                .filterNot { it == DROIDGUARD_PKG_NAME }
+                .sorted()
+                .map(AppListItem::Orphaned)
+
+            val installed = apps
+                .filterNot { it.packageName == PACKAGE_NAME }
+                .map { AppListItem.Installed(it, isJailed = it.packageName in targets) }
+                .sortedByDescending { it.isJailed }
+            orphans + droidGuard + installed
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     init {
         viewModelScope.launch {
@@ -81,23 +93,23 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         }
     }
 
-    fun toggleJail(label: String, pkgName: String, jail: Boolean) {
+    fun toggleJail(item: AppListItem, jail: Boolean) {
         viewModelScope.launch(Dispatchers.IO + CoroutineName("$TAG/toggleJail")) {
             profileCoroutine(CoroutineMode.LAUNCH) {
                 val success = if (jail) {
-                    initParams.rootShellRepo.jailApp(pkgName)
+                    initParams.rootShellRepo.jailApp(item.packageName)
                 } else {
-                    initParams.rootShellRepo.unjailApp(pkgName)
+                    initParams.rootShellRepo.unjailApp(item.packageName)
                 }
 
                 if (success) {
                     _currentTargets.update { targets ->
                         if (jail) {
-                            jotd("Jailed $label", TAG, null, true)
-                            targets + pkgName
+                            jotd("Jailed ${item.label}", TAG, null, true)
+                            targets + item.packageName
                         } else {
-                            jotd("Unjailed $label", TAG, null, true)
-                            targets - pkgName
+                            jotd("Unjailed ${item.label}", TAG, null, true)
+                            targets - item.packageName
                         }
                     }
                 }
