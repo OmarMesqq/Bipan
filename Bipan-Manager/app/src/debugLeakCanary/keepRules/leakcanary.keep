@@ -1,0 +1,10 @@
+-dontobfuscate
+-keepattributes SourceFile,LineNumberTable
+
+-dontwarn android.support.v4.app.**
+-dontwarn androidx.work.**
+
+# LC does lots of reflection, keep pretty much all of it
+-keep class leakcanary.** { *; }
+-keep class shark.** { *; }
+-keep class com.squareup.leakcanary.** { *; }

@@ -25,26 +25,21 @@ android {
             abiFilters += listOf("arm64-v8a")
         }
 
-        buildConfigField("boolean", "PROFILE", "false")
         buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
+        buildConfigField("boolean", "PROFILE", "false")
     }
 
     buildTypes {
         release {
-            buildConfigField("boolean", "PROFILE", "false")
-            buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
-
             optimization {
                 enable = true
                 keepRules {
                     includeDefault = false
                 }
             }
-
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
-
             signingConfig = signingConfigs.getByName("debug")
         }
 
@@ -56,19 +51,15 @@ android {
 
         debug {
             buildConfigField("boolean", "PROFILE", "true")
-            buildConfigField("double", "FREE_DROID_WARN_VERSION", "1.14")
-
             ndk {
                 debugSymbolLevel = "FULL"
             }
         }
 
         create("debugLeakCanary") {
-            // Copies all default debugging configurations from the built-in debug type
-            initWith(getByName("debug"))
-
-            // Matching fallbacks ensure libraries that only know about 'debug' work here too
-            matchingFallbacks += listOf("debug")
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "PROFILE", "true")
         }
     }
 
