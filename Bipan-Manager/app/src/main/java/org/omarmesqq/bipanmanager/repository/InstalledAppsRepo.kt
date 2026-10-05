@@ -1,6 +1,7 @@
 package org.omarmesqq.bipanmanager.repository
 
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
@@ -17,7 +18,7 @@ class InstalledAppsRepo(initParams: InstalledAppsRepoInitParams) {
             return null
         }
 
-        return pm.getInstalledApplications(0)
+        return pm.getInstalledApplications(MATCH_UNINSTALLED_PACKAGES)
             .map { appInfo ->
                 InstalledApp(
                     appInfo.packageName,
