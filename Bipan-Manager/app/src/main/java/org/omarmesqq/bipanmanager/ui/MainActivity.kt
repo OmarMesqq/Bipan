@@ -1,8 +1,6 @@
 package org.omarmesqq.bipanmanager.ui
 
-import android.content.res.Configuration
 import android.os.Bundle
-import android.os.PersistableBundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,25 +52,12 @@ class MainActivity : ComponentActivity() {
         )
         MainViewModelFactory(initParams)
     }
-    private var isRootGranted = false
-    private var isFirstLaunch = true
-    private var bipanFolderExists = false
-
-    override fun onCreate(savedInstanceState: Bundle?, persistentState: PersistableBundle?) {
-        onCreatePrep()
-        super.onCreate(savedInstanceState, persistentState)
-        jotd("onCreate(persistentState)", TAG)
-        initUi()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        onCreatePrep()
-        super.onCreate(savedInstanceState)
-        jotd("onCreate", TAG)
-        initUi()
-    }
+        var isRootGranted = false
+        var isFirstLaunch = true
+        var bipanFolderExists = false
 
-    private fun onCreatePrep() {
         installSplashScreen().setKeepOnScreenCondition {
             runBlocking(CoroutineName("$TAG/setSplashScreenCondition")) {
                 profileCoroutine(CoroutineMode.RUN_BLOCKING) {
@@ -80,7 +65,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        runBlocking(CoroutineName("$TAG/onCreatePrep")) {
+        runBlocking(CoroutineName("$TAG/startupStateFetching")) {
             profileCoroutine(CoroutineMode.RUN_BLOCKING) {
                 val state = mainViewModel.startupState.filterNotNull().first()
                 bipanFolderExists = state.bipanFolderExists
@@ -98,9 +83,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
 
-    private fun initUi() {
+        super.onCreate(savedInstanceState)
+        jotd("onCreate", TAG)
+
         val initParams = AppInitParams(
             mainViewModel,
             isRootGranted,
@@ -125,24 +111,6 @@ class MainActivity : ComponentActivity() {
     private fun cleanupRootShell() {
         val app = application as MainApplication
         app.appContainer.rootShellRepo.releaseShell()
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        val currentNightMode = newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        when (currentNightMode) {
-            Configuration.UI_MODE_NIGHT_YES -> {
-                // Dark theme is active
-            }
-
-            Configuration.UI_MODE_NIGHT_NO -> {
-                // Light theme is active
-            }
-
-            Configuration.UI_MODE_NIGHT_UNDEFINED -> {
-                // App hasn't specified dark/light mode support
-            }
-        }
     }
 
     override fun onStart() {
