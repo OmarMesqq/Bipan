@@ -42,7 +42,7 @@ static struct sigaction g_old_ill_act = {};
 
 static char g_altstack[SIGSTKSZ * 4];
 
-bool registerAssistSigHandlers() {
+void registerAssistSigHandlers() {
   int ret = -1;
 
   // Setup auxiliary stack
@@ -54,7 +54,7 @@ bool registerAssistSigHandlers() {
   ret = sigaltstack(&ss, nullptr);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaltstack failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
   // Unified act for important signals
@@ -65,43 +65,42 @@ bool registerAssistSigHandlers() {
   ret = sigemptyset(&act.sa_mask);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigemptyset failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
   // Register the actual signal handlers for their corresponding signals
   ret = sigaction(SIGSEGV, &act, &g_old_segv_act);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGSEGV) failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
   ret = sigaction(SIGABRT, &act, &g_old_abrt_act);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGABRT) failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
   ret = sigaction(SIGBUS, &act, &g_old_bus_act);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGBUS) failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
   ret = sigaction(SIGILL, &act, &g_old_ill_act);
   if (ret != 0) {
     write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "sigaction(SIGILL) failed (errno: %s)", strerror(errno));
-    return false;
+    return;
   }
 
-  write_to_logcat_async(ANDROID_LOG_DEBUG, TAG, "Assist handlers registered on altstack, size=%zu", sizeof(g_altstack));
-  return true;
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker assistance handlers registered successfuly on altstack :) | size=%zu", sizeof(g_altstack));
 }
 
 /**
  * TODO:
  * - think of something which allows `write_to_logcat_async` to be AS-safe with
  * diagnostic information (`%`)
- * - Backtrace printing should be before `kill_current_client`, but for now the 
+ * - Backtrace printing should be before `kill_current_client`, but for now the
  * priority is eliminating the deadlock
  */
 static void bipan_broker_signal_handler(int sig, siginfo_t* info, void* void_context) {

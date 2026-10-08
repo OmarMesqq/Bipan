@@ -101,8 +101,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        cleanupRootShell()
         jotd("onStop", TAG)
+        cleanupRootShell()
     }
 
     override fun onRestart() {
