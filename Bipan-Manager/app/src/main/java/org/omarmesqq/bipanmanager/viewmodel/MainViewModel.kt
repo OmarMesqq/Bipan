@@ -36,7 +36,7 @@ data class StartupState(
 class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
     private val _startupState = MutableStateFlow<StartupState?>(null)
     private val _shouldShowUi = MutableStateFlow(false)
-    private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
+    private val _appList = MutableStateFlow<List<InstalledApp>>(emptyList())
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
     private val _brokerProcesses = MutableStateFlow<List<BrokerProcess>>(emptyList())
@@ -49,7 +49,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
 
     val listItems: StateFlow<List<AppListItem>?> =
         combine(_appList, _currentTargets) { apps, targets ->
-            if (apps == null) {
+            if (apps.isEmpty()) {
                 return@combine null
             }
 
@@ -173,6 +173,6 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
 
     override fun onCleared() {
         super.onCleared()
-        jotd("onCleared: VM destroyed", TAG)
+        jotd("onCleared: $TAG destroyed", TAG)
     }
 }

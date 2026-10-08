@@ -1,6 +1,5 @@
 package org.omarmesqq.bipanmanager.data
 
-import android.content.pm.PackageManager
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.repository.DataStoreRepo
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
@@ -13,7 +12,7 @@ data class DataStoreRepoInitParams(
 )
 
 data class InstalledAppsRepoInitParams(
-    val pm: PackageManager
+    val app: MainApplication
 )
 
 data class MainViewModelInitParams(

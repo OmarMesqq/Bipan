@@ -4,20 +4,11 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
-import org.omarmesqq.bipanmanager.singletons.Darwin.jote
-import java.lang.ref.WeakReference
 
 private const val TAG = "InstalledAppsRepo"
-class InstalledAppsRepo(initParams: InstalledAppsRepoInitParams) {
-    private val pmRef = WeakReference(initParams.pm)
-
-    fun getInstalledApps(): List<InstalledApp>? {
-        val pm = pmRef.get()
-        if (pm == null) {
-            jote("PM reference is null!", TAG)
-            return null
-        }
-
+class InstalledAppsRepo(private val initParams: InstalledAppsRepoInitParams) {
+    fun getInstalledApps(): List<InstalledApp> {
+        val pm = initParams.app.packageManager
         return pm.getInstalledApplications(MATCH_UNINSTALLED_PACKAGES)
             .map { appInfo ->
                 InstalledApp(

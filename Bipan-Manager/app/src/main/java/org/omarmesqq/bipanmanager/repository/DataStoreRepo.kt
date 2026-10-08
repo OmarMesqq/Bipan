@@ -17,15 +17,15 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class DataStoreRepo (initParams: DataStoreRepoInitParams) {
     private val isFirstLaunchPref = booleanPreferencesKey("IS_FIRST_LAUNCH")
 
-    private val appCtx = initParams.app
-    val isFirstLaunchFlow: Flow<Boolean> = appCtx.dataStore.data
+    private val mainApplication = initParams.app
+    val isFirstLaunchFlow: Flow<Boolean> = mainApplication.dataStore.data
         .map { preferences ->
             preferences[isFirstLaunchPref] ?: true
         }
 
     suspend fun toggleFirstLaunch() {
         profileCoroutine(CoroutineMode.SUSPEND_FUN) {
-            appCtx.dataStore.edit { prefs ->
+            mainApplication.dataStore.edit { prefs ->
                 prefs[isFirstLaunchPref] = false
             }
         }

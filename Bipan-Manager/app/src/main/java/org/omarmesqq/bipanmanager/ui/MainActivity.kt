@@ -9,11 +9,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
@@ -22,8 +21,6 @@ import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.repository.InstalledAppsRepo
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
-import org.omarmesqq.bipanmanager.utils.CoroutineMode
-import org.omarmesqq.bipanmanager.utils.profileCoroutine
 import org.omarmesqq.bipanmanager.viewmodel.MainViewModel
 import org.omarmesqq.bipanmanager.viewmodel.factories.MainViewModelFactory
 import org.woheller69.freeDroidWarn.FreeDroidWarn.showWarningOnUpgrade
@@ -35,8 +32,7 @@ class MainActivity : ComponentActivity() {
         val app = application as MainApplication
         val dsRepo = app.appContainer.dataStoreRepo
 
-        val pm = this.packageManager
-        val installedAppsRepoInitParams = InstalledAppsRepoInitParams(pm)
+        val installedAppsRepoInitParams = InstalledAppsRepoInitParams(app)
         val installedAppsRepo = InstalledAppsRepo(installedAppsRepoInitParams)
 
         val rootShellRepo = app.appContainer.rootShellRepo
@@ -50,47 +46,30 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        var isRootGranted = false
-        var isFirstLaunch = true
-        var bipanFolderExists = false
-
-        installSplashScreen().setKeepOnScreenCondition {
-            runBlocking(CoroutineName("$TAG/setSplashScreenCondition")) {
-                profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                    mainViewModel.startupState.value == null
-                }
-            }
-        }
-        runBlocking(CoroutineName("$TAG/startupStateFetching")) {
-            profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                val state = mainViewModel.startupState.filterNotNull().first()
-                bipanFolderExists = state.bipanFolderExists
-                isFirstLaunch = state.isFirstLaunch
-                isRootGranted = state.isRootGranted
-            }
-        }
-        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
-
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
+        splash.setKeepOnScreenCondition { mainViewModel.startupState.value == null }
 
-        val initParams = AppInitParams(
-            mainViewModel,
-            isRootGranted,
-            bipanFolderExists,
-            isFirstLaunch
-        )
+        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         enableEdgeToEdge()
         setContent {
-            val darkTheme = isSystemInDarkTheme()
-            val colors = if (darkTheme) {
-                darkColorScheme()
-            } else {
-                lightColorScheme()
-            }
+            val startupState by mainViewModel.startupState.collectAsStateWithLifecycle()
+
+            val colors = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()
             MaterialTheme(colorScheme = colors) {
-                App(initParams)
+                startupState?.let { state ->
+                    val initParams = remember(state) {
+                        AppInitParams(
+                            mainViewModel,
+                            state.isRootGranted,
+                            state.bipanFolderExists,
+                            state.isFirstLaunch,
+                        )
+                    }
+                    App(initParams)
+                }
             }
         }
     }

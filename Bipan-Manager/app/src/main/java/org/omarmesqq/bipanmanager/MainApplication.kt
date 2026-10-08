@@ -15,7 +15,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
 import org.omarmesqq.bipanmanager.singletons.Darwin
-import org.omarmesqq.bipanmanager.singletons.Darwin.jote
+import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 import org.omarmesqq.bipanmanager.utils.handleCrash
 import java.util.concurrent.Executors
@@ -93,14 +93,14 @@ class MainApplication : Application() {
 
         // Clean up resources that can efficiently and quickly be re-built if the user returns to the app
         if (level >= TRIM_MEMORY_BACKGROUND) {
-            jotw("onTrimMemory: on LRU list", TAG)
+            jotd("onTrimMemory: on LRU list", TAG)
         }
         // Large allocations with the UI should be released
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
             appContainer.rootShellRepo.releaseShell()
-            jotw("onTrimMemory: no longer showing UI", TAG)
+            jotd("onTrimMemory: no longer showing UI", TAG)
         } else {
-            jote("onTrimMemory: unexpected level: $level", TAG)
+            jotw("onTrimMemory: unexpected level: $level", TAG)
         }
     }
 

@@ -4,14 +4,16 @@ import android.app.ActivityManager
 import android.content.Context.ACTIVITY_SERVICE
 import android.os.Debug
 import org.omarmesqq.bipanmanager.MainApplication
+import org.omarmesqq.bipanmanager.singletons.Darwin.jotf
 import java.io.File
 
+private const val TAG = "CrashUtils"
 fun handleCrash(appCtx: MainApplication, th: Thread, tr: Throwable) {
     val runtime = Runtime.getRuntime()
     val rand = generateRandomString(8)
     val folder = File("${appCtx.filesDir}/crash_$rand}")
     if (!folder.mkdirs()) {
-        throw Error("Failed to create crash folder!")
+        jotf("Failed to create crash folder!", TAG)
     }
     val sb = StringBuilder()
 
@@ -29,9 +31,6 @@ fun handleCrash(appCtx: MainApplication, th: Thread, tr: Throwable) {
     sb.appendLine("Runtime total memory: %.2f MB".format(totMem / bytesPerMb))
     sb.appendLine("Runtime free memory: %.2f MB".format(freeMem / bytesPerMb))
 
-    val loadedClzsCount = Debug.getLoadedClassCount()
-    sb.appendLine("Loaded classes: $loadedClzsCount")
-
     val am = appCtx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
     val memClassMb = am.memoryClass // MB for my app's heap
     sb.appendLine("App's memory class: $memClassMb MB")
@@ -47,7 +46,9 @@ fun handleCrash(appCtx: MainApplication, th: Thread, tr: Throwable) {
     sb.appendLine("Total private dirty: $privateDirtyMb MB")
     sb.appendLine("Shared private dirty: $sharedDirtyMb MB")
 
-    sb.appendLine("Throwable:\n")
+    sb.appendLine("Throwable's message: ${tr.message}\n")
+    sb.appendLine("Throwable's cause message: ${tr.cause?.message}\n")
+    sb.appendLine("Throwable's stack trace: ${tr.message}\n")
     tr.stackTrace.forEach {
         sb.appendLine(
             "${it.methodName} " +
