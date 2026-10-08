@@ -9,6 +9,15 @@ import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 
 private const val TAG = "RootShellRepo"
 
+data class BrokerProcess(
+    val pid: Int,
+    val cpu: String,
+    val state: String,
+    val name: String,
+    val mem: String,
+    val rssKb: Long,
+)
+
 class RootShellRepo {
     private var shellInitialized = false
     fun buildAndGetFirstShell(): Shell {
@@ -90,10 +99,34 @@ class RootShellRepo {
         return reportShellErr(result, "unjailApp($pkgName)")
     }
 
+    fun getBipanBrokers(): List<BrokerProcess> {
+        val script = """
+        ps -A -o PID,%CPU,S,NAME,%MEM,RSS | grep BB- | grep -v grep
+        """.trimIndent()
+
+        val result = Shell.cmd(script).exec()
+        if (!reportShellErr(result, "getBipanBrokers")) {
+            return emptyList()
+        }
+
+        return result.out
+            .mapNotNull { line ->
+                val f = line.trim().split(Regex("\\s+"))
+                BrokerProcess(
+                    pid = f[0].toIntOrNull() ?: return@mapNotNull null,
+                    cpu = f[1],
+                    state = f[2],
+                    name = f[3],
+                    mem = f[4],
+                    rssKb = f[5].toLongOrNull() ?: 0,
+                )
+            }
+    }
+
     private fun reportShellErr(res: Shell.Result, fnName: String): Boolean {
         var failed = false
         if (!res.isSuccess) {
-            jote("$fnName failed", TAG)
+            jote("$fnName failed | code: ${res.code}", TAG)
             failed = true
         }
         if (res.err.isNotEmpty()) {

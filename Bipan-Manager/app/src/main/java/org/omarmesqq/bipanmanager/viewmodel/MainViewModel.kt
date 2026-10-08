@@ -20,6 +20,7 @@ import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
 import org.omarmesqq.bipanmanager.interfaces.AppListItem
+import org.omarmesqq.bipanmanager.repository.BrokerProcess
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
@@ -34,12 +35,14 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
+    private val _brokerProcesses = MutableStateFlow<List<BrokerProcess>>(emptyList())
 
     // Blocks `App` Compose until everything UI-wise is ready
     val shouldShowUi = _shouldShowUi.asStateFlow()
     // Blocks MainActivity until logic essentials are ready
     val isAppReady = _isAppReady.asStateFlow()
     val isFirstLaunch = _isFirstLaunch.asStateFlow()
+    val brokerProcesses = _brokerProcesses.asStateFlow()
 
     val listItems: StateFlow<List<AppListItem>?> =
         combine(_appList, _currentTargets) { apps, targets ->
@@ -116,6 +119,15 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
             }
         }
     }
+
+    suspend fun fetchBipanBrokers() {
+        withContext(Dispatchers.IO + CoroutineName("$TAG/fetchBipanBrokers")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
+                _brokerProcesses.value = initParams.rootShellRepo.getBipanBrokers()
+            }
+        }
+    }
+
 
     suspend fun refreshAll() {
         withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAll")) {
