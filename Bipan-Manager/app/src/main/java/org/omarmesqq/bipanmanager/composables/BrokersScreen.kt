@@ -60,19 +60,10 @@ fun BrokersScreen(initParams: AppInitParams) {
             items(brokers, key = { it.pid }) { bb ->
                 Text(
                     "${bb.name} (${bb.pid})\n" +
-                            "State: ${bb.state}\n" +
-                            "CPU: ${bb.cpu}%\n" +
-                            "MEM: ${bb.mem}\n" +
-                            "RAM usage (VmRSS): ${bb.vmRssKb} kB (${bb.vmRssKb / 1024} MB)\n" +
-                            "Swapped mem (VmSwap): ${bb.vmSwapKb} kB (${bb.vmSwapKb / 1024} MB)\n" +
-                            "Heap and mmaps (VmData): ${bb.vmData} kB (${bb.vmData / 1024} MB)\n" +
-                            "Main thread stack (VmStk): ${bb.vmStk} kB (${bb.vmStk / 1024} MB)\n" +
-                            "Executable size (VmExe): ${bb.vmExe} kB (${bb.vmExe / 1024} MB)\n" +
-                            "Shared libs size (VmLib): ${bb.vmLib} kB (${bb.vmLib / 1024} MB)\n" +
-                            "Heap/stacks (rssAnon): ${bb.rssAnon} kB (${bb.rssAnon / 1024} MB)\n" +
-                            "File backed pages (rssFile): ${bb.rssFile} kB (${bb.rssFile / 1024} MB)\n" +
-                            "Shared mem e.g. memfd (rssShmem): ${bb.rssShmem} kB (${bb.rssShmem / 1024} MB)\n" +
-                            "Highest VmRSS (VmHWM): ${bb.vmHwm} kB (${bb.vmHwm / 1024} MB)\n" +
+                            "CPU usage: ${bb.cpu}%\n" +
+                            "RAM usage (VmRSS): ${bb.vmRss} kB (${bb.vmRss / 1024} MB)\n" +
+                            "Swapped memory (VmSwap): ${bb.vmSwap} kB (${bb.vmSwap / 1024} MB)\n" +
+                            "Highest RSS (VmHWM): ${bb.vmHwm} kB (${bb.vmHwm / 1024} MB)\n" +
                             "Threads: ${bb.threads}\n"
                 )
                 HorizontalDivider()

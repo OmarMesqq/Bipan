@@ -127,8 +127,7 @@ private fun AppRow(item: AppListItem, onToggle: (Boolean) -> Unit) {
         Switch(
             checked = item.isJailed,
             onCheckedChange = { checked ->
-                // Only installed apps get the confirmation delay
-                if (item is AppListItem.Installed && item.isJailed && !checked) {
+                if (item !is AppListItem.Orphaned && item.isJailed && !checked) {
                     showUnjailConfirm = true
                 } else {
                     onToggle(checked)

@@ -8,7 +8,7 @@ sealed interface AppListItem {
     val label: String
     val isJailed: Boolean
 
-    // Actual Installed app w/ icon
+    // Actually installed app
     data class Installed(
         val app: InstalledApp,
         override val isJailed: Boolean,
@@ -17,7 +17,7 @@ sealed interface AppListItem {
         override val label get() = app.label
     }
 
-    // Inside Bipan targets but uninstalled
+    // In Bipan targets folder but uninstalled
     data class Orphaned(
         override val packageName: String,
     ) : AppListItem {
@@ -25,7 +25,7 @@ sealed interface AppListItem {
         override val isJailed get() = true
     }
 
-    // Special case bc it has no "UI"
+    // Special case because it has no "UI"
     data object DroidGuard : AppListItem {
         override val packageName = DROIDGUARD_PKG_NAME
         override val label = "DroidGuard"
