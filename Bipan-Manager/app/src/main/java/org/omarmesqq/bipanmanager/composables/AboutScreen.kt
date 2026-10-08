@@ -75,13 +75,8 @@ fun AboutScreen() {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "If you installed this app, I would love to hear about you and your stories",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
                     text = "Get in touch with me!",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
 
@@ -101,7 +96,6 @@ fun AboutScreen() {
             }
         }
 
-        HorizontalDivider()
         Row(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,

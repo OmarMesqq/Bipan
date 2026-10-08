@@ -33,7 +33,6 @@ data class StartupState(
     val isRootGranted: Boolean,
 )
 
-
 class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
     private val _startupState = MutableStateFlow<StartupState?>(null)
     private val _shouldShowUi = MutableStateFlow(false)
@@ -148,8 +147,12 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
         }
     }
 
-    fun doesBipanDirExist(): Boolean {
-        return initParams.rootShellRepo.doesBipanTargetsDirExist()
+    private suspend fun doesBipanDirExist(): Boolean {
+        return withContext(Dispatchers.IO + CoroutineName("$TAG/doesBipanDirExist")) {
+            profileCoroutine(CoroutineMode.SUSPEND_FUN) {
+                initParams.rootShellRepo.doesBipanTargetsDirExist()
+            }
+        }
     }
 
     private suspend fun refreshTargets() {
