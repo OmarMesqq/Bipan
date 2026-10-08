@@ -1,0 +1,25 @@
+-dontobfuscate
+-keepattributes SourceFile,
+  LineNumberTable,
+  LocalVariableTable,
+  LocalVariableTypeTable,
+  *Annotation*,
+  Signature,
+  Exceptions,
+  InnerClasses,
+  EnclosingMethod
+
+-dontwarn android.support.v4.app.**
+-dontwarn androidx.work.**
+
+-keep class leakcanary.** { *; }
+-keep class shark.** { *; }
+-keep class com.squareup.** { *; }
+
+-keep class org.omarmesqq.bipanmanager.** { *; }
+
+-keep class com.topjohnwu.superuser.Shell.** { *; }
+
+-keep class androidx.lifecycle.ViewModelProvider
+-keep class androidx.lifecycle.ViewModel
+-keep class androidx.activity.ComponentActivity

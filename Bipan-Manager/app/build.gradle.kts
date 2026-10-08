@@ -44,6 +44,7 @@ android {
         }
 
         create("profile") {
+            isDefault = true
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
             buildConfigField("boolean", "PROFILE", "true")
@@ -56,10 +57,9 @@ android {
             }
         }
 
-        create("debugLeakCanary") {
-            initWith(getByName("release"))
-            matchingFallbacks += listOf("release")
-            buildConfigField("boolean", "PROFILE", "true")
+        create("leakCanary") {
+            initWith(getByName("debug"))
+            matchingFallbacks += listOf("debug")
         }
     }
 
@@ -105,5 +105,5 @@ dependencies {
     implementation(libs.androidx.room3.runtime)
     ksp(libs.androidx.room3.compiler)
 
-    "debugLeakCanaryImplementation"(libs.leakcanary.android)
+    "leakCanaryImplementation"(libs.leakcanary.android)
 }
