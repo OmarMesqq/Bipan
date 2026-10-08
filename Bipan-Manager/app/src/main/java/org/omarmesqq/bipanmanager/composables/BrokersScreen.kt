@@ -63,7 +63,8 @@ fun BrokersScreen(initParams: AppInitParams) {
                             "State: ${bb.state}\n" +
                             "CPU: ${bb.cpu}%\n" +
                             "MEM: ${bb.mem}\n" +
-                            "RSS: ${bb.rssKb} kB (${bb.rssKb / 1024} MB)"
+                            "VmRSS: ${bb.vmRssKb} kB (${bb.vmRssKb / 1024} MB)\n" +
+                            "VmSwap: ${bb.vmSwapKb} kB (${bb.vmSwapKb / 1024} MB)"
                 )
                 HorizontalDivider()
             }

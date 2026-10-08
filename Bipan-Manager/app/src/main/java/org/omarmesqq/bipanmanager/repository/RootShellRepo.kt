@@ -15,7 +15,8 @@ data class BrokerProcess(
     val state: String,
     val name: String,
     val mem: String,
-    val rssKb: Long,
+    val vmRssKb: Long,
+    val vmSwapKb: Long,
 )
 
 class RootShellRepo {
@@ -100,27 +101,40 @@ class RootShellRepo {
     }
 
     fun getBipanBrokers(): List<BrokerProcess> {
+        val d = "$" // shell dollar sign, avoids Kotlin templates
         val script = """
-        ps -A -o PID,%CPU,S,NAME,%MEM,RSS | grep BB- | grep -v grep
-        """.trimIndent()
+        ps -A -o PID,%CPU,S,NAME,%MEM | grep BB- | grep -v grep | while read pid cpu s name mem; do
+          vmrss=0
+          vmswap=0
+          if [ -r /proc/${d}pid/status ]; then
+            while read key val unit; do
+              case "${d}key" in
+                VmRSS:) vmrss=${d}val ;;
+                VmSwap:) vmswap=${d}val ;;
+              esac
+            done < /proc/${d}pid/status
+          fi
+          echo "${d}pid ${d}cpu ${d}s ${d}name ${d}mem ${d}vmrss ${d}vmswap"
+        done
+    """.trimIndent()
 
         val result = Shell.cmd(script).exec()
         if (!reportShellErr(result, "getBipanBrokers")) {
             return emptyList()
         }
 
-        return result.out
-            .mapNotNull { line ->
-                val f = line.trim().split(Regex("\\s+"))
-                BrokerProcess(
-                    pid = f[0].toIntOrNull() ?: return@mapNotNull null,
-                    cpu = f[1],
-                    state = f[2],
-                    name = f[3],
-                    mem = f[4],
-                    rssKb = f[5].toLongOrNull() ?: 0,
-                )
-            }
+        return result.out.mapNotNull { line ->
+            val f = line.trim().split(Regex("\\s+"))
+            BrokerProcess(
+                pid = f[0].toIntOrNull() ?: return@mapNotNull null,
+                cpu = f[1],
+                state = f[2],
+                name = f[3],
+                mem = f[4],
+                vmRssKb = f[5].toLongOrNull() ?: 0,
+                vmSwapKb = f[6].toLongOrNull() ?: 0,
+            )
+        }
     }
 
     private fun reportShellErr(res: Shell.Result, fnName: String): Boolean {
