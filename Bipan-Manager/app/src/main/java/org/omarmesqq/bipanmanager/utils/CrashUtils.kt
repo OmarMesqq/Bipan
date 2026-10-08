@@ -1,5 +1,7 @@
 package org.omarmesqq.bipanmanager.utils
 
+import android.app.ActivityManager
+import android.content.Context.ACTIVITY_SERVICE
 import android.os.Debug
 import org.omarmesqq.bipanmanager.MainApplication
 import java.io.File
@@ -30,15 +32,8 @@ fun handleCrash(appCtx: MainApplication, th: Thread, tr: Throwable) {
     val loadedClzsCount = Debug.getLoadedClassCount()
     sb.appendLine("Loaded classes: $loadedClzsCount")
 
-    // only meaningful when compared to the result from an earlier call
-    val appCrashEnd = Debug.threadCpuTimeNanos()
-    val elapsedNs = appCrashEnd - appCtx.appStart
-    val elapsedMs = elapsedNs / 1_000_000.0
-    val elapsedSec = elapsedNs / 1_000_000_000.0
-
-    sb.appendLine("Time elapsed from app birth to crash: %.2f ms (%.3f s)".format(elapsedMs, elapsedSec))
-
-    val memClassMb = appCtx.memClass // MB for my app's heap
+    val am = appCtx.getSystemService(ACTIVITY_SERVICE) as ActivityManager
+    val memClassMb = am.memoryClass // MB for my app's heap
     sb.appendLine("App's memory class: $memClassMb MB")
 
     val memoryInfo = Debug.MemoryInfo()
@@ -54,10 +49,12 @@ fun handleCrash(appCtx: MainApplication, th: Thread, tr: Throwable) {
 
     sb.appendLine("Throwable:\n")
     tr.stackTrace.forEach {
-        sb.appendLine("${it.methodName} " +
-                "(${it.className}) " +
-                "at ${it.fileName}:${it.lineNumber} " +
-                "| Native? ${it.isNativeMethod}")
+        sb.appendLine(
+            "${it.methodName} " +
+                    "(${it.className}) " +
+                    "at ${it.fileName}:${it.lineNumber} " +
+                    "| Native? ${it.isNativeMethod}"
+        )
     }
     sb.append("\n\n")
     sb.appendLine("====== END CRASH REPORT ====== ")
