@@ -20,6 +20,7 @@ import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 import org.omarmesqq.bipanmanager.utils.handleCrash
 import java.util.concurrent.Executors
 import java.util.function.Consumer
+import kotlin.system.exitProcess
 
 private const val TAG = "MainApplication"
 
@@ -52,9 +53,13 @@ class MainApplication : Application() {
                 .registerAnrWarningListener(anrExecutor, anrListener)
         }
 
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { th, tr ->
-            handleCrash(this, th, tr)
-            throw Error("Uncaught exception!")
+            try {
+                handleCrash(this, th, tr)
+            } finally {
+                previous?.uncaughtException(th, tr) ?: exitProcess(10)
+            }
         }
 
         if (BuildConfig.DEBUG) {
