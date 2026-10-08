@@ -2,8 +2,10 @@ package b.modules;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -13,6 +15,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.util.Log;
 import b.BaseHook;
+import b.J;
 
 public class BroadcastReceiverHook implements BaseHook {
   private static final String TAG = "BipanJavaBroadcastRec";
@@ -36,23 +39,36 @@ public class BroadcastReceiverHook implements BaseHook {
     Class<?> iAmClz = Class.forName("android.app.IActivityManager");
 
     InvocationHandler amHandler = (proxy, method, args) -> {
-      String methodName = method.getName();
+      try {
+        String methodName = method.getName();
 
-      if (methodName.startsWith("registerReceiver")) {
-        IntentFilter filter = null;
-        for (Object arg : args) {
-          if (arg instanceof IntentFilter) {
-            filter = (IntentFilter) arg;
-            break;
+        if (methodName.startsWith("registerReceiver")) {
+          IntentFilter filter = null;
+          for (Object arg : args) {
+            if (arg instanceof IntentFilter) {
+              filter = (IntentFilter) arg;
+              break;
+            }
+          }
+
+          if (filter != null && shouldBlockFilter(filter)) {
+            Log.i(TAG, "Blocked registerReceiver for filter: " + dumpFilter(filter));
+            return null;
           }
         }
-
-        if (filter != null && shouldBlockFilter(filter)) {
-          Log.i(TAG, "Blocked registerReceiver for filter: " + dumpFilter(filter));
-          return null;
-        }
+        return method.invoke(realAm, args);
+      } catch (InvocationTargetException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "amHandler InvocationTargetException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (UndeclaredThrowableException e) {
+        Throwable cause = e.getCause() != null ? e.getCause() : e;
+        Log.e(TAG, "amHandler UndeclaredThrowableException: cause:", cause);
+        throw J.cleanThrowable(cause);
+      } catch (Exception e) {
+        Log.e(TAG, "amHandler Exception:", e);
+        throw J.cleanThrowable(new OutOfMemoryError());
       }
-      return method.invoke(realAm, args);
     };
 
     Object amProxy = Proxy.newProxyInstance(

@@ -107,14 +107,14 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
         return method.invoke(originalMediaRouterService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        Log.e(TAG, "MediaRouter InvocationTargetException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (UndeclaredThrowableException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        Log.e(TAG, "MediaRouter UndeclaredThrowableException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
+        Log.e(TAG, "MediaRouter Exception:", e);
         throw J.cleanThrowable(new OutOfMemoryError());
       }
     };
@@ -185,17 +185,16 @@ public class AntiNetworkDiscoveryHook implements BaseHook {
         return method.invoke(originalNsdService, args);
       } catch (InvocationTargetException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+        Log.e(TAG, "NSD InvocationTargetException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (UndeclaredThrowableException e) {
         Throwable cause = e.getCause() != null ? e.getCause() : e;
-        Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+        Log.e(TAG, "NSD UndeclaredThrowableException: cause:", cause);
         throw J.cleanThrowable(cause);
       } catch (Exception e) {
-        Log.e(TAG, "invoke Exception:", e);
+        Log.e(TAG, "NSD Exception:", e);
         throw J.cleanThrowable(new OutOfMemoryError());
       }
-
     };
 
     Object nsdProxy = Proxy.newProxyInstance(

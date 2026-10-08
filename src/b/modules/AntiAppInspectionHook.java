@@ -764,14 +764,14 @@ public class AntiAppInspectionHook implements BaseHook, InvocationHandler {
       }
     } catch (InvocationTargetException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke InvocationTargetException: cause:", cause);
+      Log.e(TAG, "InvocationTargetException: cause:", cause);
       throw J.cleanThrowable(cause);
     } catch (UndeclaredThrowableException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
-      Log.e(TAG, "invoke UndeclaredThrowableException: cause:", cause);
+      Log.e(TAG, "UndeclaredThrowableException: cause:", cause);
       throw J.cleanThrowable(cause);
     } catch (Exception e) {
-      Log.e(TAG, "invoke Exception:", e);
+      Log.e(TAG, "Exception:", e);
       throw J.cleanThrowable(new OutOfMemoryError());
     }
   }
