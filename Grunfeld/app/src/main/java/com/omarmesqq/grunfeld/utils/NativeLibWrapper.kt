@@ -16,16 +16,6 @@ data class StatResult(
 )
 
 object NativeLibWrapper {
-    external fun sysPropsGet(propName: String): String
-    external fun sysPropsReadWithNullName(propName: String): String
-    external fun sysPropsRead(propName: String): String
-    external fun sysPropsReadCb(propName: String): String
-
-    external fun unameInlineAsm(): String
-    external fun unameRawAsmSyscall(): String
-    external fun unameSyscallLibcWrapper(): String
-    external fun unameBionic(): String
-
     external fun testGetsocknameV4(): String
     external fun testSensors(): String
     external fun testDlIteratePhdr(): String
@@ -43,8 +33,4 @@ object NativeLibWrapper {
     external fun testFstat(filename: String): StatResult
     external fun testNewfstatat(filename:String): StatResult
     external fun testStatx(): String
-
-    external fun installSigsysHandler(): Boolean
-    external fun triggerSigsysViolation(): Boolean
-    external fun blockSigSys(): Boolean
 }
