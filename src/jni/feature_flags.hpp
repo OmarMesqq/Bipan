@@ -15,12 +15,6 @@
  */
 // #define IN_APP_DEBUG_LOGGING
 
-/**
- * Features or refactors that are interesting
- * or help me with debugging. Some stuff might be shipped
- * out of this FT to become an actual feature!
- */
-// #define IN_APP_DEV_EXPERIMENTS
 
 /**
  * Toggles some branches that _may_ facilitate debugging.

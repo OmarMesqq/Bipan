@@ -406,9 +406,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     ipc_mem->status = IDLE;
     unlock_ipc();
 
+#ifdef IN_APP_DEBUG_LOGGING
     write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
                           "ACTION_EXIT_PROCESS(%s) before exit_group(0)",
                           (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
+#endif
 
     in_sigsys_handler = false;
 
@@ -421,9 +423,11 @@ static void sigsys_handler(int sig, siginfo_t* info, void* void_context) {
     // fork/exec family handling:
     // clear reentrancy flag and IPC lock before the exec'ing
     if (nr == __NR_execve || nr == __NR_execveat) {
+#ifdef IN_APP_DEBUG_LOGGING
       write_to_logcat_async(ANDROID_LOG_DEBUG, TAG,
                             "ACTION_EXECUTE_NATIVE - execve(%s) BEFORE IPC unlock",
                             (const char*)arg0 != nullptr ? (const char*)arg0 : "null");
+#endif
       in_sigsys_handler = false;
       ipc_mem->status = IDLE;
       unlock_ipc();
