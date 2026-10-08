@@ -62,7 +62,6 @@ import org.omarmesqq.bipanmanager.data.AppInitParams
 import org.omarmesqq.bipanmanager.interfaces.AppListItem
 import kotlin.time.Duration.Companion.milliseconds
 
-/** How long the user must wait before either dialog action becomes tappable */
 private const val CONFIRM_DELAY_SECONDS = 3
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,7 +203,7 @@ private fun UnjailConfirmationDialog(
     onDismiss: () -> Unit
 ) {
     var secondsLeft by remember { mutableIntStateOf(CONFIRM_DELAY_SECONDS) }
-    val actionsEnabled = secondsLeft <= 0
+    val confirmEnabled = secondsLeft <= 0
 
     LaunchedEffect(Unit) {
         while (secondsLeft > 0) {
@@ -213,17 +212,11 @@ private fun UnjailConfirmationDialog(
         }
     }
 
-    // Only allow back-press to dismiss once the delay has elapsed.
-    BackHandler(enabled = actionsEnabled) { onDismiss() }
+    BackHandler { onDismiss() }
 
     Dialog(
-        onDismissRequest = {
-            if (actionsEnabled) {
-                onDismiss()
-            }
-        },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(
-            dismissOnBackPress = false,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = true
         )
@@ -260,21 +253,18 @@ private fun UnjailConfirmationDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        enabled = actionsEnabled
-                    ) {
+                    TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onConfirm,
-                        enabled = actionsEnabled,
+                        enabled = confirmEnabled,
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Text(if (actionsEnabled) "Unjail" else "Unjail (${secondsLeft}s)")
+                        Text(if (confirmEnabled) "Unjail" else "Unjail (${secondsLeft}s)")
                     }
                 }
             }
