@@ -2,39 +2,55 @@ package org.omarmesqq.bipanmanager
 
 import android.annotation.SuppressLint
 import android.app.ActivityManager
+import android.app.AnrWarningResult
 import android.app.Application
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Debug
+import android.os.Build
+import android.os.Looper
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import org.omarmesqq.bipanmanager.receivers.PackageUpdateReceiver
 import org.omarmesqq.bipanmanager.singletons.Darwin
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotw
 import org.omarmesqq.bipanmanager.utils.handleCrash
+import java.util.concurrent.Executors
+import java.util.function.Consumer
 
 private const val TAG = "MainApplication"
+
 class MainApplication : Application() {
-    var appStart: Long = -1
-        private set
-    init {
-        appStart = Debug.threadCpuTimeNanos()
-    }
 
     val appContainer = AppContainer(this)
-    var memClass: Int = -1
+
+    private val anrExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "anr-warning").apply { priority = Thread.MAX_PRIORITY }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.CINNAMON_BUN)
+    private val anrListener = Consumer<AnrWarningResult> { warning ->
+        val mainStack = Looper.getMainLooper().thread.stackTrace
+            .joinToString("\n") { "    at $it" }
+
+        jotw(
+            "ANR warning: id=${warning.anrId} type=${warning.anrType} " +
+                    "blocked=${warning.consumedMillis}ms\n$warning\nMain thread:\n$mainStack", TAG
+        )
+    }
+
 
     override fun onCreate() {
         super.onCreate()
         Darwin.init(this)
 
-        val am = this.getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        memClass = am.memoryClass
-        // am.registerAnrWarningListener()
-        // am.unregisterAnrWarningListener {}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+            getSystemService(ActivityManager::class.java)
+                .registerAnrWarningListener(anrExecutor, anrListener)
+        }
 
         Thread.setDefaultUncaughtExceptionHandler { th, tr ->
             handleCrash(this, th, tr)
