@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import org.omarmesqq.bipanmanager.data.AppInitParams
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
     object AppListScreenRoute : Route("appList", "App List", Icons.AutoMirrored.Filled.List)
+    object BrokersScreen : Route("brokers", "Brokers", Icons.Default.AdminPanelSettings)
     object AboutScreen : Route("about", "About", Icons.Default.Info)
 }
 
@@ -59,6 +61,7 @@ fun App(initParams: AppInitParams) {
     val navController = rememberNavController()
     val routes = listOf(
         Route.AppListScreenRoute,
+        Route.BrokersScreen,
         Route.AboutScreen
     )
 
@@ -93,6 +96,7 @@ fun App(initParams: AppInitParams) {
                 .background(MaterialTheme.colorScheme.surface)
         ) {
             composable(Route.AppListScreenRoute.route) { AppListScreen(initParams) }
+            composable(Route.BrokersScreen.route) { BrokersScreen(initParams) }
             composable(Route.AboutScreen.route) { AboutScreen() }
         }
     }
