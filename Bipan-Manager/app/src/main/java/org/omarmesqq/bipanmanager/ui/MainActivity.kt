@@ -12,9 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
@@ -69,23 +74,30 @@ class MainActivity : ComponentActivity() {
 
     private fun onCreatePrep() {
         installSplashScreen().setKeepOnScreenCondition {
-            runBlocking(CoroutineName("setSplashScreenCondition")) {
+            runBlocking(CoroutineName("$TAG/setSplashScreenCondition")) {
                 profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                    !mainViewModel.isAppReady.first()
+                    mainViewModel.startupState.value == null
                 }
             }
         }
-        runBlocking(CoroutineName("onCreatePrep")) {
+        runBlocking(CoroutineName("$TAG/onCreatePrep")) {
             profileCoroutine(CoroutineMode.RUN_BLOCKING) {
-                mainViewModel.isAppReady.first { it }
-                bipanFolderExists = mainViewModel.doesBipanDirExist()
-                isFirstLaunch = mainViewModel.isFirstLaunch.first()
-
-                val app = application as MainApplication
-                isRootGranted = app.appContainer.rootShellRepo.isRooted()
+                val state = mainViewModel.startupState.filterNotNull().first()
+                bipanFolderExists = state.bipanFolderExists
+                isFirstLaunch = state.isFirstLaunch
+                isRootGranted = state.isRootGranted
             }
         }
-        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO + CoroutineName("$TAG/freeDroidWarn")) {
+                profileCoroutine(CoroutineMode.LAUNCH) {
+                    showWarningOnUpgrade(
+                        this@MainActivity,
+                        BuildConfig.FREE_DROID_WARN_VERSION.toInt()
+                    )
+                }
+            }
+        }
     }
 
     private fun initUi() {

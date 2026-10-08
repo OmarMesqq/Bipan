@@ -19,7 +19,7 @@ enum class CoroutineMode(val value: String) {
 
 suspend inline fun <T> profileCoroutine(crMode: CoroutineMode, codeBlock: suspend () -> T): T {
     if (BuildConfig.PROFILE) {
-        val coroutineDebugTag = "CR_DEBUG"
+        val coroutineDebugTag = "CoroutineDbg"
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
             jotw("API level not supported", coroutineDebugTag)
             return codeBlock()

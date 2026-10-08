@@ -22,31 +22,37 @@ import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
 import org.omarmesqq.bipanmanager.interfaces.AppListItem
 import org.omarmesqq.bipanmanager.repository.BrokerProcess
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
-import org.omarmesqq.bipanmanager.singletons.Darwin.jote
 import org.omarmesqq.bipanmanager.utils.CoroutineMode
 import org.omarmesqq.bipanmanager.utils.profileCoroutine
 
 private const val TAG = "MainViewModel"
 
+data class StartupState(
+    val bipanFolderExists: Boolean,
+    val isFirstLaunch: Boolean,
+    val isRootGranted: Boolean,
+)
+
+
 class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel() {
+    private val _startupState = MutableStateFlow<StartupState?>(null)
     private val _shouldShowUi = MutableStateFlow(false)
-    private val _isAppReady = MutableStateFlow(false)
-    private val _isFirstLaunch = MutableStateFlow(true)
     private val _appList = MutableStateFlow<List<InstalledApp>?>(null)
     private val _rootShell = MutableStateFlow<Shell?>(null)
     private val _currentTargets = MutableStateFlow<Set<String>>(emptySet())
     private val _brokerProcesses = MutableStateFlow<List<BrokerProcess>>(emptyList())
 
+    // Blocks MainActivity until logic essentials are ready
+    val startupState = _startupState.asStateFlow()
     // Blocks `App` Compose until everything UI-wise is ready
     val shouldShowUi = _shouldShowUi.asStateFlow()
-    // Blocks MainActivity until logic essentials are ready
-    val isAppReady = _isAppReady.asStateFlow()
-    val isFirstLaunch = _isFirstLaunch.asStateFlow()
     val brokerProcesses = _brokerProcesses.asStateFlow()
 
     val listItems: StateFlow<List<AppListItem>?> =
         combine(_appList, _currentTargets) { apps, targets ->
-            if (apps == null) return@combine null
+            if (apps == null) {
+                return@combine null
+            }
 
             val installedPkgs = apps.mapTo(HashSet()) { it.packageName }
 
@@ -74,22 +80,26 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
                     val dsRepo = initParams.dataStoreRepo
                     val rootShellRepo = initParams.rootShellRepo
 
+                    // App can't work without root so check this first
                     _rootShell.value = rootShellRepo.buildAndGetFirstShell()
 
+                    // Create default targets if it's a fresh install
                     val firstLaunch = dsRepo.isFirstLaunchFlow.first()
-                    _isFirstLaunch.value = firstLaunch
-
                     if (firstLaunch) {
-                        if (rootShellRepo.createDefaultTargets()) {
-                            dsRepo.toggleFirstLaunch()
-                        } else {
-                            jote("$TAG/init: createDefaultTargets failed", TAG)
-                        }
+                        rootShellRepo.createDefaultTargets()
+                        dsRepo.toggleFirstLaunch()
                     }
 
-                    refreshAll()
+                    // Get packages and Bipan targets for first screen
+                    refreshAppsAndTargets()
 
-                    _isAppReady.value = true
+                    // Signal Activity to proceed
+                    _startupState.value = StartupState(
+                        bipanFolderExists = doesBipanDirExist(),
+                        isFirstLaunch = firstLaunch,
+                        isRootGranted = rootShellRepo.isRooted()
+                    )
+
                     _shouldShowUi.value = true
                 }
             }
@@ -129,11 +139,11 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
     }
 
 
-    suspend fun refreshAll() {
+    suspend fun refreshAppsAndTargets() {
         withContext(Dispatchers.IO + CoroutineName("$TAG/refreshAll")) {
             profileCoroutine(CoroutineMode.SUSPEND_FUN) {
-                refreshTargets()
                 refreshAppList()
+                refreshTargets()
             }
         }
     }

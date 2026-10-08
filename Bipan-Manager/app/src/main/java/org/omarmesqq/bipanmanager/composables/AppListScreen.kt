@@ -79,7 +79,7 @@ fun AppListScreen(initParams: AppInitParams) {
             scope.launch {
                 isRefreshing = true
                 try {
-                    mvm.refreshAll()
+                    mvm.refreshAppsAndTargets()
                 } finally {
                     isRefreshing = false
                 }
