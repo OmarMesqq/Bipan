@@ -97,8 +97,8 @@ class MainApplication : Application() {
         }
         // Large allocations with the UI should be released
         else if (level >= TRIM_MEMORY_UI_HIDDEN) {
-            appContainer.rootShellRepo.releaseShell()
             jotd("onTrimMemory: no longer showing UI", TAG)
+            appContainer.rootShellRepo.releaseShell()
         } else {
             jotw("onTrimMemory: unexpected level: $level", TAG)
         }

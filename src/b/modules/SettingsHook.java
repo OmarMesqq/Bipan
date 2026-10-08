@@ -163,7 +163,7 @@ public class SettingsHook implements BaseHook, InvocationHandler {
       }
 
       this.originalProvider = original;
-      // TODO: put `invoke` separate
+      // TODO: create separate function for the `InvocationHandler`
       Object proxy = Proxy.newProxyInstance(
           iContentProviderClass.getClassLoader(),
           new Class[] { iContentProviderClass },

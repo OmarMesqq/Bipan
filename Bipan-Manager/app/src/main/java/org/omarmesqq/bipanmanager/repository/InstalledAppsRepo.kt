@@ -5,7 +5,6 @@ import android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
 import org.omarmesqq.bipanmanager.data.InstalledApp
 import org.omarmesqq.bipanmanager.data.InstalledAppsRepoInitParams
 
-private const val TAG = "InstalledAppsRepo"
 class InstalledAppsRepo(private val initParams: InstalledAppsRepoInitParams) {
     fun getInstalledApps(): List<InstalledApp> {
         val pm = initParams.app.packageManager

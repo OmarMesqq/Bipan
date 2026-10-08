@@ -83,7 +83,7 @@ public class TelephonyManagerHook implements BaseHook, InvocationHandler {
     Method asInterface = iTelephonyStub.getDeclaredMethod("asInterface", IBinder.class);
     originalITelephony = asInterface.invoke(null, realPhoneBinder);
 
-    // // TODO: put `invoke` separate
+    // TODO: create separate function for the `InvocationHandler`
     Class<?> iTelephonyClass = Class.forName("com.android.internal.telephony.ITelephony");
     Object proxy = Proxy.newProxyInstance(
         iTelephonyClass.getClassLoader(),

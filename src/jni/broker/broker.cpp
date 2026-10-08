@@ -82,19 +82,14 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
 
   // Broker Assist setup
   g_current_client_pid = client_pid;
-  bool registrationRet = registerAssistSigHandlers();
-  if (!registrationRet) {
-    write_to_logcat_async(ANDROID_LOG_ERROR, TAG, "Couldn't setup debug signal handlers for Broker. Proceeding anyway...");
-  } else {
-    write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker assistance handlers registered successfuly :)");
-  }
+  registerAssistSigHandlers();
 
   set_broker_proctitle(ipc_mem->package_name);
   prctl(PR_SET_NAME, "BrokerMainTh");
 
   pid_t pid = getpid();
-  pid_t tid = gettid();
-  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "[*] Broker (PID: %d | TID: %d) started for: %s (PID: %d)", pid, tid, ipc_mem->package_name, ipc_mem->target_pid);
+  // pid_t tid = gettid();
+  write_to_logcat_async(ANDROID_LOG_INFO, TAG, "Broker (PID: %d) started for: %s (PID: %d)", pid, ipc_mem->package_name, ipc_mem->target_pid);
 
   std::unordered_set<uintptr_t> patched_pcs;
   std::unordered_set<uintptr_t> trusted_pcs;
@@ -674,7 +669,7 @@ dead_client_exit:
   }
   close(epfd);
 
-  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "[*] Broker (PID: %d | TID: %d) exiting for dead client (PID: %d)", pid, tid, client_pid);
+  write_to_logcat_async(ANDROID_LOG_WARN, TAG, "Broker (PID: %d) exiting for dead client (PID: %d)", pid, client_pid);
 }
 
 static bool get_arg_bounds(unsigned long* arg_start, unsigned long* arg_end) {
