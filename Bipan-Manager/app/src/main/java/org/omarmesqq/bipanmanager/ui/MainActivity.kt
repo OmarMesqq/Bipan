@@ -10,14 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.BuildConfig
 import org.omarmesqq.bipanmanager.MainApplication
 import org.omarmesqq.bipanmanager.composables.App
@@ -73,16 +69,7 @@ class MainActivity : ComponentActivity() {
                 isRootGranted = state.isRootGranted
             }
         }
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO + CoroutineName("$TAG/freeDroidWarn")) {
-                profileCoroutine(CoroutineMode.LAUNCH) {
-                    showWarningOnUpgrade(
-                        this@MainActivity,
-                        BuildConfig.FREE_DROID_WARN_VERSION.toInt()
-                    )
-                }
-            }
-        }
+        showWarningOnUpgrade(this, BuildConfig.FREE_DROID_WARN_VERSION.toInt())
 
         super.onCreate(savedInstanceState)
         jotd("onCreate", TAG)
