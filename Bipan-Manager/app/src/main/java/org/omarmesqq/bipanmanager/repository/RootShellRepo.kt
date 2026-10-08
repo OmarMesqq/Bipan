@@ -17,6 +17,15 @@ data class BrokerProcess(
     val mem: String,
     val vmRssKb: Long,
     val vmSwapKb: Long,
+    val vmData: Long,
+    val vmStk: Long,
+    val vmExe: Long,
+    val vmLib: Long,
+    val rssAnon: Long,
+    val rssFile: Long,
+    val rssShmem: Long,
+    val vmHwm: Long,
+    val threads: Int,
 )
 
 class RootShellRepo {
@@ -106,15 +115,33 @@ class RootShellRepo {
         ps -A -o PID,%CPU,S,NAME,%MEM | grep BB- | grep -v grep | while read pid cpu s name mem; do
           vmrss=0
           vmswap=0
+          vmdata=0
+          vmstk=0
+          vmexe=0
+          vmlib=0
+          rssanon=0
+          rssfile=0
+          rssshmem=0
+          vmhwm=0
+          threads=0
           if [ -r /proc/${d}pid/status ]; then
             while read key val unit; do
               case "${d}key" in
                 VmRSS:) vmrss=${d}val ;;
                 VmSwap:) vmswap=${d}val ;;
+                VmData:) vmdata=${d}val ;;
+                VmStk:) vmstk=${d}val ;;
+                VmExe:) vmexe=${d}val ;;
+                VmLib:) vmlib=${d}val ;;
+                RssAnon:) rssanon=${d}val ;;
+                RssFile:) rssfile=${d}val ;;
+                RssShmem:) rssshmem=${d}val ;;
+                VmHWM:) vmhwm=${d}val ;;
+                Threads:) threads=${d}val ;;
               esac
             done < /proc/${d}pid/status
           fi
-          echo "${d}pid ${d}cpu ${d}s ${d}name ${d}mem ${d}vmrss ${d}vmswap"
+          echo "${d}pid ${d}cpu ${d}s ${d}name ${d}mem ${d}vmrss ${d}vmswap ${d}vmdata ${d}vmstk ${d}vmexe ${d}vmlib ${d}rssanon ${d}rssfile ${d}rssshmem ${d}vmhwm ${d}threads"
         done
     """.trimIndent()
 
@@ -133,6 +160,15 @@ class RootShellRepo {
                 mem = f[4],
                 vmRssKb = f[5].toLongOrNull() ?: 0,
                 vmSwapKb = f[6].toLongOrNull() ?: 0,
+                vmData = f[7].toLongOrNull() ?: 0,
+                vmStk = f[8].toLongOrNull() ?: 0,
+                vmExe = f[9].toLongOrNull() ?: 0,
+                vmLib = f[10].toLongOrNull() ?: 0,
+                rssAnon = f[11].toLongOrNull() ?: 0,
+                rssFile = f[12].toLongOrNull() ?: 0,
+                rssShmem = f[13].toLongOrNull() ?: 0,
+                vmHwm = f[14].toLongOrNull() ?: 0,
+                threads = f[15].toIntOrNull() ?: 0,
             )
         }
     }
