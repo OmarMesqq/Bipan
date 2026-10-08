@@ -58,8 +58,8 @@ touch /data/adb/modules/bipan/targets/com.android.webview
 ```
 
 Alternatively, you can use the *Bipan Manager* app to sandbox in the apps:
-<img width="853" height="1217" alt="screenshot1" src="https://github.com/user-attachments/assets/ff03b53b-6bc8-4bd5-8aac-c255ca635e3c" />
-<img width="757" height="1519" alt="screenshot2" src="https://github.com/user-attachments/assets/939da314-002c-420b-9bdc-2849abe6a88d" />
+<img width="1080" height="2182" alt="appListScreen" src="https://github.com/user-attachments/assets/d82265f2-f120-4f00-ab32-4a020cc2c832" />
+<img width="1080" height="2188" alt="brokerScreen" src="https://github.com/user-attachments/assets/f3ba58e3-7cd8-4a76-8ae3-ca32353826a7" />
 
 If the launched app isn't in this list, Bipan exits cleanly and doesn't apply
 any sort of modification to the app's memory.
