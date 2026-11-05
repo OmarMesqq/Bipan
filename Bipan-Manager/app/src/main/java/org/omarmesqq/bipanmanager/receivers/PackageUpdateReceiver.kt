@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.omarmesqq.bipanmanager.MainApplication
+import org.omarmesqq.bipanmanager.data.MAGISK_PACKAGE_NAME
 import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
 import org.omarmesqq.bipanmanager.singletons.Darwin.jotd
 import org.omarmesqq.bipanmanager.singletons.Darwin.jote
@@ -36,7 +37,7 @@ class PackageUpdateReceiver : BroadcastReceiver() {
                     return
                 }
 
-                if (packageName == PACKAGE_NAME) {
+                if (packageName == PACKAGE_NAME || packageName == MAGISK_PACKAGE_NAME) {
                     return
                 }
                 jotd("New app: $packageName", TAG)

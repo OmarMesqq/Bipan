@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.omarmesqq.bipanmanager.data.DROIDGUARD_PKG_NAME
 import org.omarmesqq.bipanmanager.data.InstalledApp
+import org.omarmesqq.bipanmanager.data.MAGISK_PACKAGE_NAME
 import org.omarmesqq.bipanmanager.data.MainViewModelInitParams
 import org.omarmesqq.bipanmanager.data.PACKAGE_NAME
 import org.omarmesqq.bipanmanager.interfaces.AppListItem
@@ -67,6 +68,7 @@ class MainViewModel(private val initParams: MainViewModelInitParams) : ViewModel
 
             val installed = apps
                 .filterNot { it.packageName == PACKAGE_NAME }
+                .filterNot { it.packageName == MAGISK_PACKAGE_NAME }
                 .map { AppListItem.Installed(it, isJailed = it.packageName in targets) }
                 .sortedByDescending { it.isJailed }
             orphans + droidGuard + installed

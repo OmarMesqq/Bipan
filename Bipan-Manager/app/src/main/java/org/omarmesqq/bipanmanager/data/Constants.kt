@@ -1,6 +1,7 @@
 package org.omarmesqq.bipanmanager.data
 
 const val PACKAGE_NAME = "org.omarmesqq.bipanmanager"
+const val MAGISK_PACKAGE_NAME = "com.topjohnwu.magisk"
 const val BIPAN_TARGETS_DIR = "/data/adb/modules/bipan/targets"
 const val DROIDGUARD_PKG_NAME = "com.google.android.gms.unstable"
 val DEFAULT_TARGETS = listOf(

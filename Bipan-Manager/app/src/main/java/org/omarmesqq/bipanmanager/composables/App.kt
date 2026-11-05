@@ -28,7 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import org.omarmesqq.bipanmanager.data.AppInitParams
 
 open class Route(val route: String, val title: String, val icon: ImageVector) {
-    object AppListScreenRoute : Route("appList", "App List", Icons.Default.Apps)
+    object AppListScreenRoute : Route("appList", "Apps", Icons.Default.Apps)
     object BrokersScreen : Route("brokers", "Brokers", Icons.Default.Security)
     object AboutScreen : Route("about", "About", Icons.Default.Info)
 }
