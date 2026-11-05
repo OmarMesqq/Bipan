@@ -288,7 +288,10 @@ public class NetworkSpoofingHook implements BaseHook {
     } catch (UndeclaredThrowableException e) {
       Throwable cause = e.getCause() != null ? e.getCause() : e;
       Log.e(TAG, "applyVpnSpoof UndeclaredThrowableException: cause:", cause);
-    } catch (Exception e) {
+    } catch (NoSuchMethodException e) {
+      Log.e(TAG, "Couldn't apply VPN spoof: " + e.getMessage(), e);
+    }
+    catch (Exception e) {
       Log.e(TAG, "Failed to apply VPN spoof", e);
       throw J.cleanThrowable(new OutOfMemoryError());
     }
