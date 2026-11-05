@@ -199,7 +199,7 @@ void startBroker(int sock, SharedIPC* ipc_mem) {
           break;
         } else if (isMapsFile(path_payload) || isSmapsFile(path_payload) || isMountsFile(path_payload) || shouldFakeFile(path_payload)) {
           // Translate target's /proc/self/ to /proc/[target_pid]/ so the Broker reads the app's maps rather than its own
-          char real_path[IPC_STRING_STRUCT_BUF_SIZ];
+          char real_path[IPC_STRING_STRUCT_BUF_SIZ] = {0};
           if (strncmp(path_payload, "/proc/self/", 11) == 0) {
             snprintf(real_path, sizeof(real_path), "/proc/%d/%s", ipc_mem->target_pid, path_payload + 11);
           } else {

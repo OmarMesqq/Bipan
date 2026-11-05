@@ -191,6 +191,10 @@ int clean_proc_mounts(int dirfd, const char* pathname, int flags, mode_t mode) {
         line[line_pos] = '\0';
 
         bool is_dirty = strstr(line, "/adb/modules") ||
+                        strstr(line, "/hosts") ||
+                        strstr(line, "/cacerts") ||
+                        strstr(line, "/mdnsd") ||
+                        strstr(line, "/keylayout") ||
                         strstr(line, "magisk");
 
         if (!is_dirty) {

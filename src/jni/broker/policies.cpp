@@ -140,7 +140,9 @@ bool shouldDenyOpen(const char* pathname) {
            localStartsWith(pathname, "/sys/class/power_supply") ||
            localStartsWith(pathname, "/sys/devices/platform") ||
            localStartsWith(pathname, "/sys/bus/platform") ||
-           localStartsWith(pathname, "/sys/module")));
+           localStartsWith(pathname, "/sys/module") ||
+           (strcmp(pathname, "/proc/self/mountstats") == 0) ||
+           is_dynamic_proc_file(pathname, "/mountstats")));
 }
 
 const char* shouldFakeFile(const char* pathname) {
@@ -162,7 +164,10 @@ bool isSmapsFile(const char* pathname) {
 
 bool isMountsFile(const char* pathname) {
   return (strcmp(pathname, "/proc/self/mountinfo") == 0) ||
-         is_dynamic_proc_file(pathname, "/mountinfo");
+         is_dynamic_proc_file(pathname, "/mountinfo") ||
+         (strcmp(pathname, "/proc/self/mounts") == 0) ||
+         (strcmp(pathname, "/proc/mounts") == 0) ||
+         is_dynamic_proc_file(pathname, "/mounts");
 }
 
 // HEAP ALLOCATION
@@ -194,6 +199,13 @@ char* fixMemfdSymlink(const char* resolvedPath, pid_t pid) {
   if (strstr(resolvedPath, "mountinfo")) {
     char proc_pid_mountinfo[PATH_MAX] = {0};
     snprintf(proc_pid_mountinfo, sizeof(proc_pid_mountinfo), "/proc/%d/mountinfo", pid);
+    strcpy(fixed, proc_pid_mountinfo);
+    return fixed;
+  }
+
+  if (strstr(resolvedPath, "mounts")) {
+    char proc_pid_mountinfo[PATH_MAX] = {0};
+    snprintf(proc_pid_mountinfo, sizeof(proc_pid_mountinfo), "/proc/%d/mounts", pid);
     strcpy(fixed, proc_pid_mountinfo);
     return fixed;
   }
