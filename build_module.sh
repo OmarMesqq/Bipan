@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BUILD_MODE="release"
-PRO_FILE="bipan-rules.pro"
+PRO_FILE="bipan-rules-release.pro"
 
 if [[ "${1:-}" == "debug" ]]; then
   BUILD_MODE="debug"
@@ -35,7 +35,7 @@ java -cp r8lib.jar \
   com.android.tools.r8.R8 \
   "${R8_FLAGS[@]}" \
   --lib $ANDROID_HOME/platforms/android-36/android.jar \
-  --pg-conf bipan-rules.pro \
+  --pg-conf bipan-rules-release.pro \
   --output . \
   $(find javac_out -name '*.class' | tr '\n' ' ')
 

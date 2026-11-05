@@ -688,6 +688,9 @@ private fun StealthAssertions() {
     val systemEtcHostsFd = NativeLibWrapper.openFileNative("/system/etc/hosts")
     val procSelfMountinfoFd = NativeLibWrapper.openFileNative("/proc/self/mountinfo")
     val procPidMountinfoFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/mountinfo")
+    val procSelfMountsFd = NativeLibWrapper.openFileNative("/proc/self/mounts")
+    val procPidMountsFd = NativeLibWrapper.openFileNative("/proc/${Process.myPid()}/mounts")
+    val procMountsFd = NativeLibWrapper.openFileNative("/proc/mounts")
 
     AssertionResult(
         "/proc/self/maps -> /proc/<PID>/maps",
@@ -718,6 +721,21 @@ private fun StealthAssertions() {
         "/proc/<PID>/mountinfo -> /proc/<PID>/mountinfo",
         NativeLibWrapper.getFdSymlink(procPidMountinfoFd),
         "/proc/${Process.myPid()}/mountinfo"
+    )
+    AssertionResult(
+        "/proc/self/mounts -> /proc/<PID>/mounts",
+        NativeLibWrapper.getFdSymlink(procSelfMountsFd),
+        "/proc/${Process.myPid()}/mounts"
+    )
+    AssertionResult(
+        "/proc/<PID>/mounts -> /proc/<PID>/mounts",
+        NativeLibWrapper.getFdSymlink(procPidMountsFd),
+        "/proc/${Process.myPid()}/mounts"
+    )
+    AssertionResult(
+        "/proc/mounts -> /proc/<PID>/mounts",
+        NativeLibWrapper.getFdSymlink(procMountsFd),
+        "/proc/${Process.myPid()}/mounts"
     )
     AssertionResult(
         "/etc/hosts -> /system/etc/hosts",

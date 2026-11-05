@@ -58,8 +58,11 @@
     !strstr(cstr, "zygisk") && \
     !strstr(cstr, "debug_ramdisk") && \
     !strstr(cstr, "/cache/") && \
-    !strstr(cstr, "/product/bin") && \
-    !strstr(cstr, "modules")
+    !strstr(cstr, "/hosts") &&  \
+    !strstr(cstr, "/cacerts") &&          \
+    !strstr(cstr, "/mdnsd") && \
+    !strstr(cstr, "/keylayout") && \
+    !strstr(cstr, "modules") \
 
 static inline long arm64_raw_syscall(long sysno, long a0, long a1, long a2, long a3, long a4, long a5);
 static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *data);
